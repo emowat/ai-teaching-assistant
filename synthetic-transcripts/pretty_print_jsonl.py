@@ -15,6 +15,15 @@ def pretty_print_jsonl(filename):
                 print(f" SESSION {i+1}")
                 print(f"{'='*80}")
                 
+                if 'metadata' in data:
+                    print("\n[METADATA]:")
+                    meta = data['metadata']
+                    print(f"  Problem ID: {meta.get('problem_id', 'N/A')} (Week {meta.get('week', '?')})")
+                    print(f"  Trigger: {meta.get('trigger', 'N/A')}")
+                    print(f"  Hidden Vulnerability: {meta.get('Hidden_Vulnerability', 'N/A')}")
+                    print(f"  Hidden Trigger: {meta.get('Hidden_Trigger_Condition', 'N/A')}")
+                    print(f"{'-'*40}")
+                
                 for msg in data.get('messages', []):
                     role = msg.get('role', 'unknown').upper()
                     content = msg.get('content', '')
