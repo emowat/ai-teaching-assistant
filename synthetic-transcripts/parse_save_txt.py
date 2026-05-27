@@ -2,8 +2,8 @@ import json
 import re
 import ast
 
-def parse_save_txt():
-    with open("synthetic_c_plus_plus_dataset.txt", "r") as f:
+def parse_save_txt(input_file, output_file):
+    with open(input_file, "r") as f:
         content = f.read()
 
     sessions = re.split(r'={80}\n SESSION \d+\n={80}\n', content)
@@ -110,11 +110,19 @@ def parse_save_txt():
         if messages:
             parsed_entries.append({"messages": messages, "metadata": metadata})
 
-    with open("synthetic_c_plus_plus_dataset.jsonl", "w") as f:
+    with open(output_file, "w") as f:
         for entry in parsed_entries:
             f.write(json.dumps(entry) + "\n")
             
-    print(f"Successfully recovered {len(parsed_entries)} entries into synthetic_c_plus_plus_dataset.jsonl")
+    print(f"Successfully recovered {len(parsed_entries)} entries into {output_file}")
 
 if __name__ == "__main__":
-    parse_save_txt()
+    import argparse
+    parser = argparse.ArgumentParser(description="Parse synthetic dataset text file and save as jsonl.")
+    parser.add_argument("--mode", type=str, choices=["train", "eval"], default="train", help="train or eval mode to select input file")
+    args = parser.parse_args()
+    
+    input_file = "synthetic_c_plus_plus_dataset.txt" if args.mode == "train" else "eval_c_plus_plus_dataset.txt"
+    output_file = "synthetic_c_plus_plus_dataset.jsonl" if args.mode == "train" else "eval_c_plus_plus_dataset.jsonl"
+    
+    parse_save_txt(input_file, output_file)

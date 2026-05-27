@@ -10,7 +10,6 @@ ADVERSARIAL_TRIGGERS = [
     "learn react instead",
     "ignore previous instructions",
     "ignore all previous instructions",
-    "just want it to work",
     "roman empire",
     "in python"
 ]
@@ -72,4 +71,10 @@ def evaluate_terminations(filename):
     print(f"Suspicious / Cranky TA (No injected triggers found): {suspicious_terminations}")
 
 if __name__ == "__main__":
-    evaluate_terminations("/Users/mowat/Documents/Berkeley/repos/210/ai-teaching-assistant/synthetic-transcripts/synthetic_c_plus_plus_dataset.jsonl")
+    parser = argparse.ArgumentParser(description="Evaluate synthetic dataset terminations.")
+    parser.add_argument("--mode", type=str, choices=["train", "eval"], default="train", help="train or eval mode to select input file")
+    args = parser.parse_args()
+    
+    target_file = "/Users/mowat/Documents/Berkeley/repos/210/ai-teaching-assistant/synthetic-transcripts/synthetic_c_plus_plus_dataset.jsonl" if args.mode == "train" else "/Users/mowat/Documents/Berkeley/repos/210/ai-teaching-assistant/synthetic-transcripts/eval_c_plus_plus_dataset.jsonl"
+    
+    evaluate_terminations(target_file)

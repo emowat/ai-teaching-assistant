@@ -66,7 +66,9 @@ def evaluate_code_leaks(filename):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Evaluate code leaks with a smart second pass.")
-    parser.add_argument("filename", help="Path to the JSONL dataset")
+    parser.add_argument("--mode", type=str, choices=["train", "eval"], default="train", help="train or eval mode to select input file")
     args = parser.parse_args()
     
-    evaluate_code_leaks(args.filename)
+    target_file = "/Users/mowat/Documents/Berkeley/repos/210/ai-teaching-assistant/synthetic-transcripts/synthetic_c_plus_plus_dataset.jsonl" if args.mode == "train" else "/Users/mowat/Documents/Berkeley/repos/210/ai-teaching-assistant/synthetic-transcripts/eval_c_plus_plus_dataset.jsonl"
+    
+    evaluate_code_leaks(target_file)

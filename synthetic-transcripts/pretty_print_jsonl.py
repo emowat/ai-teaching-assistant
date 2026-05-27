@@ -37,8 +37,11 @@ def pretty_print_jsonl(filename):
                 print(f"Error decoding JSON on line {i+1}")
 
 if __name__ == "__main__":
-    target_file = "synthetic_c_plus_plus_dataset.jsonl"
-    if len(sys.argv) > 1:
-        target_file = sys.argv[1]
+    import argparse
+    parser = argparse.ArgumentParser(description="Pretty print synthetic dataset.")
+    parser.add_argument("--mode", type=str, choices=["train", "eval"], default="train", help="train or eval mode to select input file")
+    args = parser.parse_args()
+    
+    target_file = "synthetic_c_plus_plus_dataset.jsonl" if args.mode == "train" else "eval_c_plus_plus_dataset.jsonl"
     
     pretty_print_jsonl(target_file)

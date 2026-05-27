@@ -117,7 +117,9 @@ def evaluate_jailbreaks(filename):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Evaluate successful jailbreaks and digressions.")
-    parser.add_argument("filename", help="Path to the JSONL dataset")
+    parser.add_argument("--mode", type=str, choices=["train", "eval"], default="train", help="train or eval mode to select input file")
     args = parser.parse_args()
     
-    evaluate_jailbreaks(args.filename)
+    target_file = "/Users/mowat/Documents/Berkeley/repos/210/ai-teaching-assistant/synthetic-transcripts/synthetic_c_plus_plus_dataset.jsonl" if args.mode == "train" else "/Users/mowat/Documents/Berkeley/repos/210/ai-teaching-assistant/synthetic-transcripts/eval_c_plus_plus_dataset.jsonl"
+    
+    evaluate_jailbreaks(target_file)
