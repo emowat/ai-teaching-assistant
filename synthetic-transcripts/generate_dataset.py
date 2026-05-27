@@ -230,14 +230,26 @@ SYLLABUS_MATRIX = {
     8: {"name": "Advanced Data Structures", "allowed": "hash tables, tries, queues, stacks, linked lists", "forbidden": "raw malloc/free, bare new/delete"}
 }
 
-COURSE_STYLE_GUIDE = """
-- Indentation: 4 spaces.
-- Braces: Always use curly braces for if/for/while, even for single-line statements.
-- Brace Placement: Open brace on the same line as the statement (K&R style).
-- Naming: Use camelCase for variables and PascalCase for classes.
-- Standard Library: Use 'std::' prefix instead of 'using namespace std;'.
-- Trailing Whitespace: Do NOT add trailing whitespace or blank lines with trailing spaces.
-"""
+STYLE_A = """[Style_Context]
+- Indentation: 4 spaces
+- Braces: K&R style
+- Naming: camelCase for variables, PascalCase for classes
+- Standard Library: 'std::' prefix (NO 'using namespace std;')"""
+
+STYLE_B = """[Style_Context]
+- Indentation: Tabs
+- Braces: Allman style
+- Naming: snake_case for variables, PascalCase for classes
+- Standard Library: 'std::' prefix (NO 'using namespace std;')"""
+
+STYLE_C = """[Style_Context]
+- Indentation: 2 spaces
+- Braces: Omitted braces for single-line statements (compact style) allowed
+- Naming: camelCase for variables, PascalCase for classes
+- Standard Library: 'using namespace std;' allowed
+- Structure: Ternary operators encouraged for simple if/else"""
+
+STYLE_PROFILES = [STYLE_A, STYLE_B, STYLE_C]
 
 # --- Configuration & Prompts ---
 
@@ -254,8 +266,7 @@ RULES:
 6. CHECK HISTORY: Review the chat history. Never repeat a question or suggest a fix that the student has already provided or acknowledged.
 7. TECHNICAL GROUNDING: If a student proposes a fix that would cause a different error, ask a question to help them realize it.
 8. IDIOMATIC C++: Prefer C++ References over C-style Pointer-to-Pointer. If a student suggests a double pointer, acknowledge it's a valid C approach but nudging them toward a reference.
-9. STYLE ALIGNMENT: Adhere to the following course style guide in any code you mention:
-{COURSE_STYLE_GUIDE}
+9. STYLE ALIGNMENT: You must adhere to the `[Style_Context]` provided in the `[Vector_Database_Results]`. If the student's code violates the `[Style_Context]`, your FIRST response MUST issue a Socratic nudge about their formatting before helping them debug their code logic.
 10. MODERN I/O: Prefer C++ streams (std::cin/std::cout) over C-style once basic arrays are mastered (Week 3+).
 11. DO NOT EXPLAIN THE BUG: Lead the student to discover the error.
 12. SYLLABUS ALIGNMENT: You are assisting a student. You will receive a `[Vector_Database_Results]` block containing retrieved documents. If a `[Retrieved_Syllabus_Chunk]` is present, you MUST obey its `Forbidden` concepts. If it is omitted due to search failure, fall back to general Socratic debugging based on standard C++ principles. You may use information from other retrieved documents if helpful, but ignore them if they are irrelevant.
@@ -562,7 +573,7 @@ RAG_DOCUMENT_BANK = [
     {"week": 8, "category": "Strict_Rules", "content": "When implementing a hash table, ensure your load factor does not exceed 0.75 before resizing to maintain O(1) performance."}
 ]
 
-def get_automated_context(problem, raw_code="", ast_metadata=None, mode="Homework Assist"):
+def get_automated_context(problem, raw_code="", ast_metadata=None, mode="Homework Assist", style_context=STYLE_A):
     """
     Programmatically generates the complete RAG/Code/Terminal block
     to pass into the LLM loop without manual text editing.
@@ -640,13 +651,14 @@ Output: "{terminal_block['Output']}"
 Trigger_Event: "{terminal_block['Trigger_Event']}"
 
 [Vector_Database_Results]
+{style_context}
 {retrieval_context}
 """
     return context_string
 
 
 
-def generate_dynamic_problem(week_number, topic, vulnerability, theme):
+def generate_dynamic_problem(week_number, topic, vulnerability, theme, style_context=STYLE_A):
     """Calls the LLM to act as a Professor and design a new debugging problem, with Critic validation."""
     syllabus = SYLLABUS_MATRIX.get(week_number, {"name": "Advanced", "allowed": "All"})
 
@@ -663,7 +675,7 @@ CRITICAL: DO NOT write comments in the code that reveal the bug or the solution 
 CRITICAL: The "code" MUST be a fully self-contained, compilable C++ program including `#include` headers and a `main()` function. DO NOT output partial snippets.
 
 STYLE GUIDE:
-{COURSE_STYLE_GUIDE}
+{style_context}
 CRITICAL: The "code" MUST be formatted across multiple lines using '\n' and proper indentation. DO NOT minify the code onto a single line.
 
 Output ONLY a valid JSON object matching this template:
@@ -770,11 +782,13 @@ CONCEPTUAL_PROMPTS = [
 
 def generate_synthetic_transcript(problem_config, max_turns=6, is_study_mode=False):
     """Runs the self-play loop for a single debugging session."""
+    ta_style = problem_config.get("ta_style", STYLE_A)
     system_context = get_automated_context(
         problem=problem_config,
         raw_code=problem_config.get("code", ""),
         ast_metadata=problem_config.get("ast_metadata", {}),
-        mode="Study Assist" if is_study_mode else "Homework Assist"
+        mode="Study Assist" if is_study_mode else "Homework Assist",
+        style_context=ta_style
     )
 
     # Include ALL adversarial exemplars, the mode-specific exemplar, and 1 random standard exemplar
@@ -1089,7 +1103,18 @@ if __name__ == "__main__":
         else:
             print(f"\nGenerating: Topic '{topic}', Vuln '{vulnerability}', Theme '{theme}'...")
             try:
-                problem = generate_dynamic_problem(week, topic, vulnerability, theme)
+                # Randomize style for future data generation
+                is_messy = random.random() < 0.05
+                if is_messy:
+                    student_style = random.choice([STYLE_A, STYLE_B, STYLE_C])
+                    ta_styles = [s for s in STYLE_PROFILES if s != student_style]
+                    ta_style = random.choice(ta_styles)
+                else:
+                    student_style = random.choice(STYLE_PROFILES)
+                    ta_style = student_style
+
+                problem = generate_dynamic_problem(week, topic, vulnerability, theme, style_context=student_style)
+                problem["ta_style"] = ta_style
                 print(f"Generated Problem: {problem['problem_id']} (Vulnerability: {problem.get('Hidden_Vulnerability', 'Unknown')})")
                 print(f"AST Metadata: {json.dumps(problem['ast_metadata'], indent=2)}")
             except Exception as e:

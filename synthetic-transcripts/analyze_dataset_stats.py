@@ -6,6 +6,7 @@ def analyze_stats(filename):
     study_assist_count = 0
     homework_assist_count = 0
     end_chat_count = 0
+    style_flagged_count = 0
     
     with open(filename, 'r') as f:
         lines = f.readlines()
@@ -39,6 +40,16 @@ def analyze_stats(filename):
             if has_end_chat:
                 end_chat_count += 1
                 
+            # Check for Style Flagged
+            has_style_flag = False
+            for msg in messages:
+                if msg.get("role") == "assistant" and "style guide" in msg.get("content", "").lower():
+                    has_style_flag = True
+                    break
+            
+            if has_style_flag:
+                style_flagged_count += 1
+                
         except Exception as e:
             print(f"Error parsing line {idx+1}: {e}")
 
@@ -49,6 +60,7 @@ def analyze_stats(filename):
     print(f"Out-of-Scope:           {out_of_scope_count}")
     print(f"--------------------------")
     print(f"Terminations [END_CHAT]: {end_chat_count}")
+    print(f"Style Flagged:          {style_flagged_count}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Analyze dataset statistics (out-of-scope, study assist, etc).")
