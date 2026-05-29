@@ -47,7 +47,7 @@ def load_jsonl(path):
 
 
 def select_split(rows, splits, name):
-    return [r for r in rows if splits.get(r["scenario_id"], "train") == name]
+    return [r for r in rows if splits.get(r["context_id"], "train") == name]
 
 
 def main():

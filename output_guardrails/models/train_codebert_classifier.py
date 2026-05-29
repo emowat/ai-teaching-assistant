@@ -53,7 +53,7 @@ def load_rows():
     splits = json.loads(SPLITS_PATH.read_text())
     train, val, test = [], [], []
     for r in rows:
-        s = splits.get(r["scenario_id"], "train")
+        s = splits.get(r["context_id"], "train")
         if s == "train":
             train.append(r)
         elif s == "val":
