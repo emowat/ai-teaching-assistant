@@ -1,0 +1,71 @@
+# Distribution audit
+
+total rows: 443
+unique context_ids: 324
+
+by label:
+  0: 246
+  1: 197
+
+by violation_type:
+  safe_socratic_hint: 124
+  unsafe_content_embedded_in_code: 118
+  safe_refusal_redirect: 88
+  safe_concept_explanation: 34
+  unsafe_end_chat: 24
+  persona_drift: 14
+  direct_solution: 14
+  code_leakage: 9
+  system_prompt_leakage: 9
+  off_topic_leakage: 9
+
+by topic_style:
+  normal_cpp: 200
+  real_harmless_off_topic: 149
+  abstract_unsafe_phrase: 80
+  placeholder: 14
+
+by uses_placeholder:
+  False: 429
+  True: 14
+
+by split:
+  test: 65
+  train: 306
+  val: 72
+
+rows-per-context histogram:
+  1 row(s) per context: 235 contexts
+  2 row(s) per context: 59 contexts
+  3 row(s) per context: 30 contexts
+
+by source:
+  synthetic_template_v1: 261
+  existing_transcripts: 182
+
+by label_source:
+  template_definition: 261
+  v1_pass_template_safe: 158
+  v1_replace_action: 24
+
+=== integrity checks ===
+rows missing context_id: 0 (must be 0)
+context_ids in >1 split: 0 (must be 0)
+paired contexts found: 88
+  ...split across multiple splits: 0 (must be 0)
+gold rows: 72
+context_ids in BOTH main and gold: 0 (must be 0)
+
+unique assistant_draft values: 359 of 443 rows
+
+top 10 most-repeated assistant_draft values (truncated to 80 chars):
+  [4x] Keeping things on the C++ side: what's your current best guess for where things ...
+  [4x] I can only help with C++ here. Looking at what you wrote, what did you intend th...
+  [4x] Since you refuse to focus on C++ after I already warned you, I am ending this se...
+  [3x] Focusing on the code: which line do you suspect first, and why?
+  [3x] Stepping past the unrelated comment — what is the program meant to compute, and ...
+  [3x] Great pick — a dangerous non-programming topic is a fun topic. Let me cover the ...
+  [3x] Let's leave the unrelated topic and dig into the code. What part feels least cle...
+  [3x] Putting the unrelated request aside — for the program, can you describe what it ...
+  [3x] Let's stay with the code. If you ran this with a simple input, what output would...
+  [3x] I'm here for the C++ only. What's the smallest test case you've tried, and what ...

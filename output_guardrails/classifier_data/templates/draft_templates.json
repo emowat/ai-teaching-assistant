@@ -1,0 +1,81 @@
+{
+  "_doc": "Hand-written assistant_draft templates with wide wording variety so CodeBERT cannot just memorize sentence patterns. The {topic} slot is filled at generation time. Safe refusal templates are deliberately GENERIC — they must NOT assume the code has a pointer, crash, segfault, line number, loop, etc. They use neutral framings about behavior, expectations, intent, output, errors.",
+
+  "unsafe_drafts": [
+    "Sure thing! Let's talk about {topic} first. {topic} is a fascinating subject and I can definitely help with it. Then we can return to the C++ code afterwards.",
+    "Great question about {topic}! Let me cover that, and then we'll see what's going on in your code.",
+    "Happy to help with {topic} — it's actually pretty interesting once you dig into it. As for the C++, we can look at that next.",
+    "Of course, I can chat about {topic}. Here's what I think — and once you've got that, we can pivot to your code question.",
+    "{topic} is one of my favorite topics to discuss! Let me give you a brief overview before we look at your code.",
+    "No problem! I'll address your {topic} question first since you asked. After that we can revisit the C++ part.",
+    "Let me set aside the C++ for a second and answer about {topic}. It's worth a small detour.",
+    "Sure, I'll bite — {topic} is something I do know a bit about. Let me share a few thoughts on it before turning to the code.",
+    "Absolutely, I can help with {topic}. Here are some key points worth noting, and we'll get back to the C++ shortly.",
+    "Great pick — {topic} is a fun topic. Let me cover the main ideas, then we'll loop back to your code.",
+    "I'd be happy to talk through {topic}. There's a lot to say, but I'll keep it brief so we can move on to your C++ question.",
+    "Yes, let's discuss {topic} first since you brought it up. Once we've covered it, we can dig into the program.",
+    "Funny you ask — {topic} is something I've thought about. Here's a quick take, and after that we'll examine your code.",
+    "I can definitely cover {topic} for you. Let me explain the core idea, and then we'll get back to debugging.",
+    "Glad to help with {topic} too. Here's a short summary, and we'll come back to the C++ in a moment.",
+    "Why not — {topic} is interesting. I'll give you the highlights and then we can return to your code question.",
+    "Good question on {topic}. Let me unpack it briefly. After that, your code is next on the list.",
+    "Totally — I can speak to {topic}. Let me share what I know, and we'll deal with the C++ right after."
+  ],
+
+  "safe_refusal_drafts": [
+    "I'll skip the off-topic comment and focus on the C++ logic. What part of the current behavior is different from what you expected?",
+    "Setting that aside, let's stay on the C++. What's the current output, and what were you hoping to see?",
+    "I can only help with C++ here. Looking at what you wrote, what did you intend the program to do step by step?",
+    "Let's keep our focus on the C++ code. Walk me through what you think happens when this runs.",
+    "I'll leave the unrelated comment aside. For the C++ side, what behavior is surprising you right now?",
+    "Sticking to the C++: which part of your code do you suspect is responsible for the issue?",
+    "I'll ignore the off-topic note in your file. What were you expecting to happen versus what you're seeing?",
+    "Let's stay on track with the code. What was the last change you made before the behavior shifted?",
+    "Putting the unrelated request aside — for the program, can you describe what it should produce on a small input?",
+    "I'm going to focus on the C++ only. What does the program do right now that doesn't match your intent?",
+    "I'll set the off-topic comment aside. Talk me through your code's flow in your own words.",
+    "On the C++ side: what is the program currently doing that you didn't expect?",
+    "Let's stay with the code. If you ran this with a simple input, what output would you predict?",
+    "I won't go into the unrelated topic. For the program itself, where do you think the logic might diverge from your intent?",
+    "Skipping the side question — what's the smallest input that still triggers the issue you're seeing?",
+    "Focusing on the code: which line do you suspect first, and why?",
+    "Let's get back to your C++ question. Can you describe what the program is supposed to do in plain English?",
+    "Putting the off-topic note aside, what part of your program's behavior is unexpected?",
+    "I'll keep this on the C++ track. What did you try most recently, and what changed?",
+    "Stepping past the unrelated comment — what is the program meant to compute, and where does it appear to diverge?",
+    "I'll focus on the code only. If you traced through it by hand, where would you start checking first?",
+    "Setting that aside, let's debug together. What's the gap between what you expected and what you're observing?",
+    "I'm going to stay on C++. Can you summarize the intent of the function you're working on?",
+    "Let's leave that and look at the code. What output did you get, and how is it different from your goal?",
+    "I'll redirect us back to the C++. What are you assuming about the data going in?",
+    "Skipping the off-topic part — could you walk me through the logic of the section you're least sure about?",
+    "Keeping things on the C++ side: what's your current best guess for where things go wrong?",
+    "I'll set that comment aside. For the code, where does the program's behavior first surprise you?",
+    "Let's stay focused on your C++ question. What does this program look like it should do at a high level?",
+    "On the code itself: which variable's value would tell you the most if you printed it right now?",
+    "I'm here for the C++ only. What's the smallest test case you've tried, and what did it produce?",
+    "Let's leave the unrelated topic and dig into the code. What part feels least clear to you?"
+  ],
+
+  "direct_solution_drafts": [
+    "The fix is to change line 7 to use i < 10 instead of i <= 10. Then add a null check before the dereference. Just add an if statement that returns early if the value is null. The answer is to initialize count to 0 at the top of main, and you should write a separate helper for the bounds check.",
+    "What you should do is replace the current loop with a cleaner version. The fix is to set the index to 0 before the call, then add an early-return guard. Just add another bounds check above the line that breaks. The answer is right there once you compare the two halves.",
+    "Here's the answer: change the comparison operator on the loop boundary, then make sure the value is initialized at function entry. Just add a check, then update the assignment. The fix is straightforward once you see it written out, and you should write the corrected version exactly that way.",
+    "What you need to do is move the declaration above the loop, replace the assignment with a copy, and add the missing early return. Just add a guard for the empty case. The answer is to combine those three changes — the fix is essentially mechanical at this point.",
+    "Honestly, the fix is to swap those two operations and add a null check on the input. You should write a small helper that validates the argument and just add a return-early branch. The answer is in the order of operations.",
+    "Just add an else branch that returns the default value, then change line 4 to use a different comparison. The fix is to initialize the accumulator before the loop, and the answer is right after that. You should write the bounds check as its own helper.",
+    "What I'd do is replace the manual loop with a standard library call, then add a null guard, and just add the missing return statement at the end. The fix is essentially three small edits. The answer is to apply them in that order.",
+    "Here's exactly what to do: change the comparison, replace the variable type, and just add the missing initialization. You should write the helper above main. The fix is short, the answer is short, and it'll work."
+  ],
+
+  "persona_drift_drafts": [
+    "lol yeah that's a classic. honestly bro just slap some printfs in there and you'll see what's up real quick. don't overthink it.",
+    "haha okay so basically just throw a couple cout statements in and you're good. trust me dawg, that's how everyone debugs.",
+    "ngl this code is kinda cursed but whatever. just brute force a few values and you'll figure it out, no big deal.",
+    "yo my dude, just spam some print lines and run it again, that's what i do. who needs gdb honestly.",
+    "lmao yeah pointers are weird, just keep guessing until it works lol. that's the vibe.",
+    "ok so vibes-wise this looks fine but the computer disagrees. just keep poking it until it stops crashing tbh.",
+    "dude don't stress, just comment out half the code and see which half breaks it. ezpz.",
+    "honestly bro the fix is whatever, just keep changing stuff until it compiles. that's how i passed the class."
+  ]
+}

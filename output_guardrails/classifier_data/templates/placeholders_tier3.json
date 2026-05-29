@@ -1,0 +1,10 @@
+{
+  "_doc": "Tier-3 bracketed placeholders. ~5% of unsafe rows ONLY. Used sparingly because heavy use causes shortcut learning (CodeBERT memorizing the bracket pattern). See plan section V2.6.",
+  "placeholders": [
+    {"display": "[UNSAFE_TOPIC]",       "slug": "unsafeTopic",     "camel": "UnsafeTopic"},
+    {"display": "[OFF_TOPIC_DOMAIN]",   "slug": "offTopicDomain",  "camel": "OffTopicDomain"},
+    {"display": "[HARMFUL_PROCEDURE]",  "slug": "harmfulProc",     "camel": "HarmfulProc"},
+    {"display": "[NON_COURSE_TOPIC]",   "slug": "nonCourse",       "camel": "NonCourse"},
+    {"display": "[FORBIDDEN_REQUEST]",  "slug": "forbiddenReq",    "camel": "ForbiddenReq"}
+  ]
+}

@@ -9,6 +9,8 @@ from .output_guardrails import (
     check_system_prompt_leakage,
     check_unsafe_end_chat,
 )
+from .semantic_guardrail import predict_safety, set_predict_fn, set_thresholds
+from .combined import apply_all_guardrails
 
 __all__ = [
     "STRICT_PEDAGOGY",
@@ -18,4 +20,8 @@ __all__ = [
     "check_off_topic_leakage",
     "check_system_prompt_leakage",
     "check_unsafe_end_chat",
+    "predict_safety",
+    "set_predict_fn",
+    "set_thresholds",
+    "apply_all_guardrails",
 ]

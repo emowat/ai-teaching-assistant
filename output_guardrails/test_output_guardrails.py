@@ -1,14 +1,14 @@
 """Pytest cases for output_guardrails.
 
 Run from ai-teaching-assistant/:
-    pytest guardrails/test_output_guardrails.py -v
+    pytest output_guardrails/test_output_guardrails.py -v
 """
 
 from __future__ import annotations
 
 import pytest
 
-from guardrails import (
+from output_guardrails import (
     apply_output_guardrails,
     check_code_leakage,
     check_direct_solution_leakage,
@@ -16,8 +16,8 @@ from guardrails import (
     check_system_prompt_leakage,
     check_unsafe_end_chat,
 )
-from guardrails import output_guardrails as og
-from guardrails.fallbacks import FALLBACKS
+from output_guardrails import output_guardrails as og
+from output_guardrails.fallbacks import FALLBACKS
 
 
 STUDENT_CODE_SAMPLE = """\
