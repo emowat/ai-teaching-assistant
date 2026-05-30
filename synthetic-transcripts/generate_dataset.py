@@ -35,8 +35,10 @@ def add_embedding(text):
         existing_embeddings.append(embedding_model.encode(text))
 
 # Initialize Tree-sitter for C++
+print("Initializing tree-sitter...")
 CPP_LANGUAGE = tree_sitter.Language(tree_sitter_cpp.language())
 parser = tree_sitter.Parser(CPP_LANGUAGE)
+print("Finished tree-sitter init.")
 
 def extract_ast_metadata(raw_code):
     """
@@ -118,7 +120,7 @@ def extract_ast_metadata(raw_code):
                             if decl:
                                 # Recursively find the identifier to get the function name
                                 def get_id(n):
-                                    if n.type == 'identifier': 
+                                    if n.type == 'identifier':
                                         return n.text.decode('utf8').split('::')[-1]
                                     for child in n.children:
                                         res = get_id(child)
@@ -163,7 +165,9 @@ def extract_ast_metadata(raw_code):
     return metadata
 
 # --- Setup Client ---
+print("Loading dotenv...")
 load_dotenv()
+print("Finished dotenv.")
 
 # Choose provider: "groq" or "together"
 PROVIDER = "together"
@@ -172,18 +176,19 @@ PROVIDER = "together"
 if PROVIDER == "groq":
     client = OpenAI(
         api_key=os.environ.get('GROQ_API_KEY'),
-        base_url="https://api.groq.com/openai/v1"
+        base_url="https://api.groq.com/openai/v1",
+        timeout=60.0
     )
     MODEL_NAME = "llama-3.3-70b-versatile"
     CRITIC_MODEL = "llama-3.3-70b-versatile" # same model
 else:
     client = OpenAI(
         api_key=os.environ.get('TOGETHER_API_KEY'),
-        base_url="https://api.together.xyz/v1"
+        base_url="https://api.together.xyz/v1",
+        timeout=60.0
     )
-    MODEL_NAME = "meta-llama/Llama-3.3-70B-Instruct-Turbo"
-    # CRITIC_MODEL = "google/gemma-4-31B-it" # High reasoning, available serverless
     CRITIC_MODEL = "openai/gpt-oss-120b"
+    MODEL_NAME = "Qwen/Qwen3-235B-A22B-Instruct-2507-tput"
 
 def validate_dynamic_problem(problem):
     """Calls a different LLM (Critic) to verify the technical accuracy of the generated problem."""
@@ -232,22 +237,27 @@ SYLLABUS_MATRIX = {
 
 STYLE_A = """[Style_Context]
 - Indentation: 4 spaces
-- Braces: K&R style
+- Braces: K&R style (opening brace on same line)
 - Naming: camelCase for variables, PascalCase for classes
-- Standard Library: 'std::' prefix (NO 'using namespace std;')"""
+- Standard Library: 'std::' prefix (NO 'using namespace std;')
+- Spacing: Exactly one space after control keywords (if, for, while)
+- Comments: Use only C++ style (//) comments"""
 
 STYLE_B = """[Style_Context]
 - Indentation: Tabs
-- Braces: Allman style
+- Braces: Allman style (opening brace on new line)
 - Naming: snake_case for variables, PascalCase for classes
-- Standard Library: 'std::' prefix (NO 'using namespace std;')"""
+- Standard Library: 'std::' prefix (NO 'using namespace std;')
+- Spacing: NO space after control keywords e.g. if()
+- Comments: Use only C-style (/* */) comments"""
 
 STYLE_C = """[Style_Context]
 - Indentation: 2 spaces
-- Braces: Omitted braces for single-line statements (compact style) allowed
+- Braces: Mandatory braces even for single-line statements
 - Naming: camelCase for variables, PascalCase for classes
 - Standard Library: 'using namespace std;' allowed
-- Structure: Ternary operators encouraged for simple if/else"""
+- Spacing: Consistent spacing around operators
+- Comments: Mixed comments allowed"""
 
 STYLE_PROFILES = [STYLE_A, STYLE_B, STYLE_C]
 
@@ -498,7 +508,10 @@ def generate_ta_response(chat_history, system_context, exemplars, is_study_mode=
         temperature=0.5, # Increased from 0.2 for more varied phrasing
         max_tokens=250
     )
-    return response.choices[0].message.content.strip()
+    reply = response.choices[0].message.content.strip()
+    if not reply:
+        reply = "I'm not sure what you mean."
+    return reply
 
 def generate_student_response(chat_history):
     """Calls the LLM acting as the Student, with randomized friction."""
@@ -677,6 +690,7 @@ CRITICAL: The "code" MUST be a fully self-contained, compilable C++ program incl
 STYLE GUIDE:
 {style_context}
 CRITICAL: The "code" MUST be formatted across multiple lines using '\n' and proper indentation. DO NOT minify the code onto a single line.
+CRITICAL: You are generating a JSON object. You MUST properly escape all double quotes (\") and backslashes (\\) inside the C++ code string so that Python's `json.loads` does not crash!
 
 Output ONLY a valid JSON object matching this template:
 {{
@@ -708,7 +722,14 @@ Syllabus Forbidden: {syllabus.get('forbidden', 'None')}
                 response_format={"type": "json_object"}
             )
 
-            problem = json.loads(response.choices[0].message.content)
+            content = response.choices[0].message.content
+            # Bulletproof extraction: find the first { and last }
+            start_idx = content.find('{')
+            end_idx = content.rfind('}')
+            if start_idx != -1 and end_idx != -1:
+                content = content[start_idx:end_idx+1]
+
+            problem = json.loads(content)
 
             required_keys = ["problem_id", "code", "initial_message", "Hidden_Vulnerability", "Hidden_Trigger_Condition"]
             for key in required_keys:
@@ -723,7 +744,7 @@ Syllabus Forbidden: {syllabus.get('forbidden', 'None')}
             msg_val = problem.get("initial_message", "")
             if isinstance(msg_val, list):
                 msg_val = "\n".join(msg_val)
-                
+
             problem_text = str(code_val) + "\n" + str(msg_val)
             if is_duplicate(problem_text):
                 print(f"  [Attempt {attempt+1}] Duplicate detected via semantic embeddings. Retrying...")
@@ -804,10 +825,16 @@ def generate_synthetic_transcript(problem_config, max_turns=6, is_study_mode=Fal
     print(f"Student Initial: {chat_history[0]['content']}\n")
 
     adversarial_count = 0
+    is_concept = False
 
     for turn in range(max_turns):
         # 1. TA's Turn
         ta_reply = generate_ta_response(chat_history, system_context, session_exemplars, is_study_mode=is_study_mode)
+
+        # Force termination if the TA model is too polite to follow the [END_CHAT] rule
+        if adversarial_count >= 2 and "[END_CHAT]" not in ta_reply:
+            ta_reply = "Since you are repeatedly refusing to focus on the C++ problem at hand, I am ending this session. [END_CHAT]"
+            print("[!] Forcefully overwrote TA response with [END_CHAT] because the LLM failed to terminate properly on relapse.")
 
         if "[END_CHAT]" in ta_reply:
             if adversarial_count < 2:
@@ -832,9 +859,10 @@ def generate_synthetic_transcript(problem_config, max_turns=6, is_study_mode=Fal
             adversarial_count += 1
             is_injected = True
             print(f"[!] ADVERSARIAL INJECTION TRIGGERED (Relapse: {adversarial_count > 1})")
-        elif rand_val < adversarial_chance + 0.05:
+        elif not is_concept and rand_val < adversarial_chance + 0.05:
             student_reply = random.choice(CONCEPTUAL_PROMPTS)
             is_injected = True
+            is_concept = True
             print(f"[!] CONCEPTUAL INJECTION TRIGGERED")
         else:
             student_reply = generate_student_response(chat_history)
@@ -1093,10 +1121,10 @@ if __name__ == "__main__":
         rand_val = random.random()
         is_study_mode = False
 
-        if rand_val < 0.05:
+        if rand_val < 0.00:
             print(f"\n[!] Generating OUT-OF-SCOPE Problem snippet...")
             problem = random.choice(OUT_OF_SCOPE_PROBLEM_BANK)
-        elif rand_val < 0.15:
+        elif rand_val < 0.00:
             print(f"\n[!] Generating STUDY ASSIST Mode snippet...")
             problem = random.choice(STUDY_MODE_PROBLEM_BANK)
             is_study_mode = True
@@ -1104,7 +1132,7 @@ if __name__ == "__main__":
             print(f"\nGenerating: Topic '{topic}', Vuln '{vulnerability}', Theme '{theme}'...")
             try:
                 # Randomize style for future data generation
-                is_messy = random.random() < 0.05
+                is_messy = random.random() < 0.20
                 if is_messy:
                     student_style = random.choice([STYLE_A, STYLE_B, STYLE_C])
                     ta_styles = [s for s in STYLE_PROFILES if s != student_style]

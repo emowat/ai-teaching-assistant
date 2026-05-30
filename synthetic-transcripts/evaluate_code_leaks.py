@@ -47,8 +47,12 @@ def evaluate_code_leaks(filename):
                             # If it contains new code not found in the original snippet, it's a true leak.
                             # We remove whitespace for a more robust substring check.
                             
+                            import re
+                            # Strip line numbers from raw_code (e.g., "5: ")
+                            raw_code_no_lines = re.sub(r'^\d+:\s*', '', raw_code, flags=re.MULTILINE)
+                            
                             clean_ta_code = "".join(ta_code.split())
-                            clean_raw_code = "".join(raw_code.split())
+                            clean_raw_code = "".join(raw_code_no_lines.split())
                             
                             if clean_ta_code in clean_raw_code and len(clean_ta_code) > 0:
                                 safe_quotes += 1
