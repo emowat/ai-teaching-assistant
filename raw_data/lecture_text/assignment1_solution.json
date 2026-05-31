@@ -1,0 +1,14 @@
+[
+  {
+    "page": 1,
+    "text": "The assignment was split into 2 problems, but below we've included only the final \nversions of all the files. \nThe header files remained unchanged. \nFIBONACCI.C \n#include <stdio.h> \n#include \"fibonacci.h\" \nvoid print_fib(int n) {\nprintf(\"%d\\n\", fib(n)); \n} \nint fib(int n) {\nif (n <= 0) {\nreturn 0;\n} else if(n == 1) {\nreturn 1;\n} else {\nreturn fib(n-1) + fib(n-2); \n}\n} \nREVERSE.C \n#include <stdio.h> \nvoid reverse(char *str, int len) {\nchar reversed[len+1];\nint pos = 0;\nint caret = len;\nreversed[len] = '\\0';\nfor (int i = len - 1; i >= -1; --i){ \n1"
+  },
+  {
+    "page": 2,
+    "text": "if (i == -1 || str[i] == ' '){\nfor (int j = i + 1; j < caret; ++j){\nreversed[pos++] = str[j]; \n}\nif (i != -1) {\nreversed[pos++] = ' '; \n}\ncaret = i;\n} \n} \nprintf(\"%s\\n\", reversed); \n} \nFIBEVERSE.C \n#include <stdlib.h> \n#include <string.h>\n#include \"fibonacci.h\" \n#include \"reverse.h\" \nint main(int argc, char *argv[]) {\nint i = 1; \n#ifdef FIBONACCI \nif (i < argc) { \nprint_fib(atoi(argv[i])); \ni++; \n}\n#endif \n#ifdef REVERSE \nif (i < argc) {\nreverse(argv[i], strlen(argv[i]));\ni++;\n}\n#endif \nreturn 0;\n} \n2"
+  },
+  {
+    "page": 3,
+    "text": "MIT OpenCourseWare\nhttp://ocw.mit.edu\n6.S096 Introduction to C and C++\nIAP 2013\nFor information about citing these materials or our Terms of Use, visit: http://ocw.mit.edu/terms."
+  }
+]

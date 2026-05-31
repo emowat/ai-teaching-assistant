@@ -1,0 +1,14 @@
+# RAG pipeline
+qdrant-client>=1.9
+sentence-transformers>=2.7
+pydantic>=2.0
+
+# LLM (TA response generation)
+langchain-cohere>=0.1
+python-dotenv>=1.0
+
+# Dataset generation (synthetic-transcripts/)
+openai>=1.0
+tree-sitter>=0.21
+tree-sitter-cpp>=0.22
+numpy>=1.24

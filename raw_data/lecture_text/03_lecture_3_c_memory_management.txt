@@ -1,0 +1,596 @@
+[Slide 1]
+6.S096: Introduction to C/C++ 
+Frank Li, Tom Lieber, Kyle Murray 
+Lecture 3: C Memory Management 
+January 15, 2013 
+1
+
+[Slide 2] (Today…)
+Today… 
+• Computer Memory 
+• Pointers/Addresses 
+• Arrays 
+• Memory Allocation 
+2
+
+[Slide 3] (Today…)
+Today… 
+• Computer Memory 
+• Pointers/Addresses 
+• Arrays 
+• Memory Allocation 
+3
+
+[Slide 4] (Today…)
+Heap 
+• Heap is a chunk of memory that users can use to 
+dynamically allocated memory. 
+• Lasts until freed, or program exits. 
+4
+
+[Slide 5] (Today…)
+Stack 
+• Stack contains local variables from functions and 
+related book-keeping data. LIFO structure. 
+▫ Function variables are pushed onto stack when 
+called. 
+▫ Functions variables are popped off stack when 
+return. 
+5
+
+[Slide 6] (Today…)
+Memory Layout Diagram of stack, heap, and other parts of memory.
+6
+Memory Layout diagram courtesy of bogotobogo.com, and used with permission.
+
+[Slide 7] (Today…)
+Call Stack 
+• Example: DrawSquare called from main() 
+void DrawSquare(int i){ 
+int start, end, …. //other local variables 
+DrawLine(start, end); 
+} 
+void DrawLine(int start, int end){ 
+//local variables 
+... 
+} 
+7
+
+[Slide 8] (Today…)
+Lower address 
+Call Stack 
+• Example: 
+void DrawSquare(int i){ 
+int start, end, ... 
+DrawLine(start, end); 
+} 
+void DrawLine(int start, 
+int end){ 
+//local variables 
+... 
+} 
+8
+Top of Stack 
+Higher address
+
+[Slide 9] (Today…)
+Lower address 
+Call Stack 
+• Example: 
+void DrawSquare(int i){ 
+int start, end, ... 
+DrawLine(start, end); 
+} 
+void DrawLine(int start, 
+int end){ 
+Top of Stack 
+//local variables 
+... 
+} 
+9
+int i (DrawSquare arg) 
+Higher address
+
+[Slide 10] (Today…)
+Lower address 
+Call Stack 
+• Example: 
+void DrawSquare(int i){ 
+int start, end, ... 
+DrawLine(start, end); 
+} 
+void DrawLine(int start, 
+Top of Stack 
+int end){ 
+//local variables 
+... 
+} 
+10
+main() book-keeping 
+int i (DrawSquare arg) 
+Higher address
+
+[Slide 11] (Today…)
+Lower address 
+Call Stack 
+• Example: 
+void DrawSquare(int i){ 
+int start, end, ... 
+DrawLine(start, end); 
+Top of Stack 
+} 
+void DrawLine(int start, 
+int end){ 
+DrawSquare 
+//local variables 
+stack frame 
+... 
+} 
+11
+local variables (start, end) 
+main() book-keeping 
+int i (DrawSquare arg) 
+Higher address
+
+[Slide 12] (Today…)
+Lower address 
+Call Stack 
+• Example: 
+void DrawSquare(int i){ 
+int start, end, ... 
+Top of Stack 
+DrawLine(start, end); 
+} 
+void DrawLine(int start, 
+int end){ 
+DrawSquare 
+//local variables 
+stack frame 
+... 
+} 
+12
+start, end (DrawLine args) 
+local variables (start, end) 
+main() book-keeping 
+int i (DrawSquare arg) 
+Higher address
+
+[Slide 13] (Today…)
+Lower address 
+Call Stack 
+• Example: 
+void DrawSquare(int i){ 
+Top of Stack 
+int start, end, ... 
+DrawLine(start, end); 
+} 
+void DrawLine(int start, 
+int end){ 
+DrawSquare 
+//local variables 
+stack frame 
+... 
+} 
+13
+DrawSquare book-keeping 
+start, end (DrawLine args) 
+local variables (start, end) 
+main() book-keeping 
+int i (DrawSquare arg) 
+Higher address
+
+[Slide 14] (Today…)
+Lower address 
+Call Stack 
+Top of Stack 
+• Example: 
+void DrawSquare(int i){ 
+DrawLine 
+int start, end, ... 
+stack 
+frame 
+DrawLine(start, end); 
+} 
+void DrawLine(int start, 
+int end){ 
+DrawSquare 
+//local variables 
+stack frame 
+... 
+} 
+14
+DrawLine local vars 
+DrawSquare book-keeping 
+start, end (DrawLine args) 
+local variables (start, end) 
+main() book-keeping 
+int i (DrawSquare arg) 
+Higher address
+
+[Slide 15] (Today…)
+Lower address 
+Call Stack 
+• Example: DrawLine returns 
+void DrawSquare(int i){ 
+DrawLine 
+int start, end, ... 
+stack 
+frame 
+DrawLine(start, end); 
+} 
+void DrawLine(int start, 
+int end){ 
+DrawSquare 
+//local variables 
+stack frame 
+... 
+} 
+Top of Stack 
+15
+DrawLine local vars 
+DrawSquare book-keeping 
+start, end (DrawLine args) 
+local variables (start, end) 
+main() book-keeping 
+int i (DrawSquare arg) 
+Higher address
+
+[Slide 16] (Today…)
+Lower address 
+Call Stack 
+• Example: DrawLine returns 
+void DrawSquare(int i){ 
+int start, end, ... 
+DrawLine(start, end); 
+Top of Stack 
+} 
+void DrawLine(int start, 
+int end){ 
+DrawSquare 
+//local variables 
+stack frame 
+... 
+} 
+16
+local variables (start, end) 
+main() book-keeping 
+int i (DrawSquare arg) 
+Higher address
+
+[Slide 17] (Today…)
+Lower address 
+Call Stack 
+• Example: DrawSquare returns 
+void DrawSquare(int i){ 
+int start, end, ... 
+DrawLine(start, end); 
+} 
+Top of Stack 
+void DrawLine(int start, 
+int end){ 
+DrawSquare 
+//local variables 
+stack frame 
+... 
+} 
+17
+local variables (start, end) 
+main() book-keeping 
+int i (DrawSquare arg) 
+Higher address
+
+[Slide 18] (Today…)
+Lower address 
+Call Stack 
+• Example: DrawSquare returns 
+void DrawSquare(int i){ 
+int start, end, ... 
+DrawLine(start, end); 
+} 
+void DrawLine(int start, 
+int end){ 
+//local variables 
+... 
+Top of Stack 
+} 
+18
+Higher address
+
+[Slide 19] (Today…)
+Today… 
+• Computer Memory 
+• Pointers/Addresses 
+• Arrays 
+• Memory Allocation 
+19
+
+[Slide 20] (Today…)
+Pointers and Addresses 
+Courtesy of xkcd at http://xkcd.com/138/, available under a CC by-nc license 
+20
+
+[Slide 21] (Today…)
+Addresses 
+• Each variable represents an address in memory 
+and a value. 
+• Address: &variable = address of variable 
+21
+Im a
+ge showing t
+hat &x is equal to the address of x, which is shown as a mailbox.
+Image by MIT OpenCourseWare.
+
+[Slide 22] (Today…)
+Pointers 
+A pointer is a variable that “points” to the block 
+of memory that a variable represent. 
+▫ Declaration: data_type *pointer_name; 
+▫ Example: 
+char x = 'a'; 
+char *ptr = &x; // ptr points to a char x 
+22
+
+[Slide 23] (Today…)
+Pointers 
+A pointer is a variable that “points” to the block 
+of memory that a variable represent. 
+▫ Declaration: data_type *pointer_name; 
+▫ Example: 
+char x = 'a'; 
+char *ptr = &x; // ptr points to a char x 
+▫ Pointers are integer variables themselves, so can 
+have pointer to pointers: char **ptr; 
+23
+
+[Slide 24] (Today…)
+Data type sizes 
+Name 
+Description 
+Size* 
+Range* 
+Character or small 
+signed: -128 to 127 
+char 
+1byte 
+integer. 
+unsigned: 0 to 255 
+signed: -32768 to 32767 
+short int (short) Short Integer. 
+2bytes 
+unsigned: 0 to 65535 
+signed: -2147483648 to 2147483647 
+int 
+Integer. 
+4bytes 
+unsigned: 0 to 4294967295 
+signed: -2147483648 to 2147483647 
+long int (long) 
+Long integer. 
+4bytes 
+unsigned: 0 to 4294967295 
+Boolean value. It can 
+bool 
+take one of two values: 1byte 
+true or false 
+true or false. 
+float 
+Floating point number. 4bytes 
++/- 3.4e +/- 38 (~7 digits) 
+Double precision 
+double 
+8bytes 
++/- 1.7e +/- 308 (~15 digits) 
+floating point number. 
+Long double precision 
+long double 
+8bytes 
++/- 1.7e +/- 308 (~15 digits) 
+floating point number. 
+24
+
+[Slide 25] (Today…)
+Dereferencing = Using Addresses 
+• Also uses * symbol with a pointer. Confusing? I know!!! 
+• Given pointer ptr, to get value at that address, do: *ptr 
+▫ int x = 5; 
+int *ptr = &x; 
+*ptr = 6; // Access x via ptr, and changes it to 6 
+ printf(“%d”, x); // Will print 6 now 
+• Can use void pointers, just cannot dereference without casting 
+25
+
+[Slide 26] (Today…)
+Pointer Arithmetic 
+• Can do math on pointers 
+– Ex: char* ptr 
+ptr 
+a 
+b 
+c 
+d 
+26
+
+[Slide 27] (Today…)
+Pointer Arithmetic 
+• Can do math on pointers 
+– Ex: char* ptr 
+ptr + 1 
+a 
+b 
+c 
+d 
+27
+
+[Slide 28] (Today…)
+Pointer Arithmetic 
+• Can do math on pointers 
+– Ex: char* ptr 
+ptr + 1 
+a 
+b 
+c 
+d 
+ptr+i has value: ptr + i * sizeof(data_type of ptr) 
+28
+
+[Slide 29] (Today…)
+Pointer Arithmetic 
+• Can do math on pointers 
+▫ p1 = p2: sets p1 to the same address as p2 
+▫ Addition/subtraction: 
+● p1 + c , p1 - c 
+▫ Increment/decrement: 
+● p1++, p1-­
+29
+
+[Slide 30] (Today…)
+Why use pointers? They so confuzin… 
+• Pass-by-reference rather than value. 
+void sample_func( char* str_input); 
+• Manipulate memory effectively. 
+• Useful for arrays (next topic). 
+30
+
+[Slide 31] (Today…)
+Today… 
+• Computer Memory 
+• Pointers/Addresses 
+• Arrays 
+• Memory Allocation 
+31
+
+[Slide 32] (Today…)
+C Arrays (Statically Allocated) 
+• Arrays are really chunks of memory! 
+• Declaration: 
+▫ Data_type array_name[num_elements]; 
+• Declare array size, cannot change. 
+32
+
+[Slide 33] (Today…)
+C Arrays (Statically Allocated) 
+• Can initialize like: 
+▫ int data[] = {0, 1, 2}; //Compiler figures out size 
+▫ int data[3] = {0, 1, 2}; 
+▫ int data[3] = {1}; // data[0] = 1, rest are set to 0 
+▫ int data[3]; //Here, values in data are still junk 
+data[0] = 0; 
+data[1] = 1; 
+data[2] = 2; 
+33
+
+[Slide 34] (Today…)
+Array and Pointers 
+• Array variables are pointers to the array start! 
+▫ char *ptr; 
+char str[10]; 
+ptr = str; //ptr now points to array start 
+ptr = &str[0]; //Same as above line 
+• Array indexing is same as dereferencing after 
+pointer addition. 
+▫ str[1] = ‘a’ is same as *(str+1) = ‘a’ 
+34
+
+[Slide 35] (Today…)
+C-Style Strings 
+• No string data type in C. Instead, a string is 
+interpreted as a null-terminated char array. 
+• Null-terminated = last char is null char ‘\0’, not 
+explicitly written 
+char str[] = “abc”; 
+a 
+b 
+c 
+\0 
+• String literals use “ ”. Compiler converts literals 
+to char array. 
+35
+
+[Slide 36] (Today…)
+C-Style Strings 
+• Char array can be larger than contained string 
+char str[5] = “abc”; 
+a 
+b 
+c 
+\0 
+• Special chars start with ‘\’: 
+▫ \n, \t, \b, \r: newline, tab, backspace, carriage 
+return 
+▫ \\, \’, \”: backslash, apostrophe, quotation mark 
+36
+
+[Slide 37] (Today…)
+String functionalities 
+• #include <string.h> 
+• char pointer arguments: char str1[14] 
+▫ char* strcpy(char* dest, const char* source); 
+strcpy(str1, “hakuna ”); 
+▫ char* strcat(char* dest, const char* source); 
+strcat(str1, “matata”); //str1 now has “hakuna matata” 
+• More in documentation… 
+37
+
+[Slide 38] (Today…)
+Today… 
+• Computer Memory 
+• Pointers/Addresses 
+• Arrays and Strings 
+• Memory Allocation 
+38
+
+[Slide 39] (Today…)
+Dynamic Allocation 
+• #include <stdlib.h> 
+• sizeof (a C language keyword) returns number 
+of bytes of a data type. 
+• malloc/realloc finds a specified amount of free 
+memory and returns a void pointer to it. 
+▫ char * str = (char *) malloc( 3 * sizeof(char) ); 
+strcpy(str, “hi”); 
+▫ str = (char *) realloc( str , 6 * sizeof(char) ); 
+strcpy(str, “hello”); 
+39
+
+[Slide 40] (Today…)
+Dynamic Deallocation 
+• #include <stdlib.h> 
+• free declares the memory pointed to by a 
+pointer variable as free for future use: 
+char * str = (char *) malloc( 3 * sizeof(char) ); 
+strcpy(str, “hi”); 
+... use str ... 
+free(str); 
+40
+
+[Slide 41] (Today…)
+Dynamically Allocated Arrays 
+• Allows you to avoid declaring array size at 
+declaration. 
+• Use malloc to allocate memory for array when 
+needed: 
+▫ int *dynamic_array; 
+dynamic_array = malloc( sizeof( int ) * 10 ); 
+dynamic_array[0]=1; // now points to an array 
+41
+
+[Slide 42] (Summary)
+Summary 
+• Memory has stack and heap. 
+• Pointers and addresses access memory. 
+• Arrays are r eally chunks of memory. St
+ 
+rings are 
+null-terminated char arrays. 
+• C allows user memory allocation. Use m
+ 
+alloc, 
+realloc and free. 
+42
+
+[Slide 43] (MIT OpenCourseWare)
+MIT OpenCourseWare
+http://ocw.mit.edu
+6.S096 Introduction to C and C++
+IAP 2013
+For information about citing these materials or our Terms of Use, visit: http://ocw.mit.edu/terms.

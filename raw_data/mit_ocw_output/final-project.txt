@@ -1,0 +1,114 @@
+TITLE: Final Project
+BREADCRUMB: Home » Courses » Electrical Engineering and Computer Science » Introduction to C and C++ » Final Project
+SOURCE: https://mitocw.ups.edu.ec/courses/electrical-engineering-and-computer-science/6-s096-introduction-to-c-and-c-january-iap-2013/final-project/
+======================================================================
+
+Your task is to make something nifty using
+primarily
+C or C++. The title of your project should be a statement of the problem it solves. For example:
+"I don't have an egg timer GUI that plays a cool sound."
+"There's no game about placing pepperonis on pizza without any of them touching."
+"Not every photo of a person's face has a hat."
+"None of the N-Queens solvers were written by me."
+The only requirements are that the project is appropriate in size for the number of people working on it, that it compiles and runs without any significant problems, and that you link with
+at least one
+third party library. We list some libraries you might be interested in below.
+Use this as an opportunity to use many of the language features we presented in class, perhaps more than are actually called for by your project.
+If your project doesn't run on Windows, Linux, or OS X (maybe it runs on phones or robots), you should submit a short video of it in operation.
+Starter Kit
+If you're having trouble getting started, perhaps you'll find what you need in the
+Starter Kit
+!
+Example Projects
+Countdown
+Use
+wxWidgets
+to create a countdown clock. Then keep going: allow multiple countdowns, display the time in words, or make it look cool.
+Pepperoni Placement
+Use
+Cinder
+to create a game where you place pepperonis on a pizza without any of them overlapping or going off the edge. (It's fun in real life, trust me.) Then keep going: by the end of
+their tutorial
+, you'd have a particle system with which you could add sweet effects.
+Third-Party Libraries
+You must use at least one third-party library. Here's a list you can use for inspiration. Can you think of more?
+2D/3D Games
+Cinder
+openFrameworks
+SFML
+Allegro
+SDL
+OpenGL
+Ogre
+Irrlicht
+GUI
+Qt
+wxWidgets
+GTK+
+Graphics
+Cairo
+libpng
+ImageMagick
+Haru Free PDF Library
+Audio
+PortAudio
+Synthesis ToolKit
+RtAudio
+libsndfile
+fftw
+sox
+Database
+sqlite3
+Math
+cblas
+Physics
+Chipmunk
+Bullet
+Box2D
+AI
+OpenCV
+Utility
+Boost
+ncurses
+libxml2
+zlib
+Web
+curl
+
+--- Resource Links ---
+  [PAGE] Starter Kit: https://mitocw.ups.edu.ec/courses/electrical-engineering-and-computer-science/6-s096-introduction-to-c-and-c-january-iap-2013/final-project/starter-kit
+  [PAGE] wxWidgets: http://www.wxwidgets.org/
+  [PAGE] Cinder: http://libcinder.org/
+  [PAGE] their tutorial: http://libcinder.org/docs/v0.8.4/hello_cinder.html
+  [PAGE] Cinder: http://libcinder.org/
+  [PAGE] openFrameworks: http://www.openframeworks.cc/
+  [PAGE] SFML: http://www.sfml-dev.org/
+  [PAGE] Allegro: http://alleg.sourceforge.net/
+  [PAGE] SDL: http://www.libsdl.org/
+  [PAGE] OpenGL: http://www.arcsynthesis.org/gltut/
+  [PAGE] Ogre: http://www.ogre3d.org/
+  [PAGE] Irrlicht: http://irrlicht.sourceforge.net/
+  [PAGE] Qt: http://qt-project.org/
+  [PAGE] wxWidgets: http://www.wxwidgets.org/
+  [PAGE] GTK+: http://www.gtk.org/
+  [PAGE] Cairo: http://www.cairographics.org/
+  [PAGE] libpng: http://www.libpng.org/pub/png/libpng.html
+  [PAGE] ImageMagick: http://www.imagemagick.org/script/index.php
+  [PAGE] Haru Free PDF Library: http://libharu.org/
+  [PAGE] PortAudio: http://www.portaudio.com/
+  [PAGE] Synthesis ToolKit: https://ccrma.stanford.edu/software/stk/index.html
+  [PAGE] RtAudio: http://www.music.mcgill.ca/~gary/rtaudio/
+  [PAGE] libsndfile: http://www.mega-nerd.com/libsndfile/
+  [PAGE] fftw: http://www.fftw.org/
+  [PAGE] sox: http://sox.sourceforge.net/
+  [PAGE] sqlite3: http://www.sqlite.org/
+  [PAGE] cblas: http://www.netlib.org/blas/
+  [PAGE] Chipmunk: http://chipmunk-physics.net/
+  [PAGE] Bullet: http://www.bulletphysics.com/
+  [PAGE] Box2D: http://box2d.org/
+  [PAGE] OpenCV: http://opencv.org/
+  [PAGE] Boost: http://www.boost.org/
+  [PAGE] ncurses: http://www.gnu.org/software/ncurses/
+  [PAGE] libxml2: http://www.xmlsoft.org/
+  [PAGE] zlib: http://www.zlib.net/
+  [PAGE] curl: http://curl.haxx.se/libcurl/
