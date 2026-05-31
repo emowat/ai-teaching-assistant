@@ -1,0 +1,98 @@
+[
+  {
+    "page": 1,
+    "section": "",
+    "text": "6.s096 \nLecture 5 \n \nTuesday, January 22, 13 \n1",
+    "has_code": false
+  },
+  {
+    "page": 2,
+    "section": "",
+    "text": "Today \n•C++ (!) \n• Compiling \n• Memory management \n•Classes \n•Templates \nTuesday, January 22, 13 \n2",
+    "has_code": false
+  },
+  {
+    "page": 3,
+    "section": "",
+    "text": "C++ \nTuesday, January 22, 13 \n3",
+    "has_code": false
+  },
+  {
+    "page": 4,
+    "section": "",
+    "text": "C++ \n• Bjarne Stroustrup \n• 1983 \n• Object-oriented (but later than Simula, Smalltalk) \n• Like C, but introduces real objects and classes \n• (plus loads of other features (kitchen sink?)) \nTuesday, January 22, 13 \n4",
+    "has_code": false
+  },
+  {
+    "page": 5,
+    "section": "",
+    "text": "g++ (C++ compiler) \n• Very similar to gcc. \n#include <stdio.h> \ng++ -­‐o test test.cpp \nint main(){ \n./test \nprintf(\"hi from C++\\n\"); \n=> hi from C++ \n} \nTuesday, January 22, 13 \n5",
+    "has_code": true
+  },
+  {
+    "page": 6,
+    "section": "",
+    "text": "Wait... was that really C++? \n• Yes. \n• C++ is pretty close to being a superset of C. \n• We know C, thus we’ll build from that knowledge to learn C++. \nTuesday, January 22, 13 \n6",
+    "has_code": false
+  },
+  {
+    "page": 7,
+    "section": "",
+    "text": "new memory management syntax \n• The new operator allocates space on the heap. \n• new and delete take the place of malloc and free. \nint * numArray = new int[100]; \ndelete numArray; \nstruct foo * bar = new struct foo; // delete later \nTuesday, January 22, 13 \n7",
+    "has_code": true
+  },
+  {
+    "page": 8,
+    "section": "",
+    "text": "Classes \nTuesday, January 22, 13 \n8",
+    "has_code": false
+  },
+  {
+    "page": 9,
+    "section": "",
+    "text": "Why classes? \n• Modularity \n• Objects (data + behavior) \n• Lets programmers (you) define behavior for your own data \nTuesday, January 22, 13 \n9",
+    "has_code": true
+  },
+  {
+    "page": 10,
+    "section": "",
+    "text": "Basic Class Example \nRectangle::Rectangle(int w, int h){ \n// constructor definition \nwidth = new int; \n#include <stdio.h> \nheight = new int; \n*width = w; \nclass Rectangle { \n*height = h; \nint * width; \n} \nint * height; \nint main(){ \npublic: \nRectangle box(5, 7); \nRectangle(int, int); // constructor \nbox.printMe(); \n~Rectangle(); // destructor \n} \nvoid printMe(){ // 'method' / member function \nprintf(\"Dimensions: %d by %d.\\n\", *width, *height); \n} \n}; \nTuesday, January 22, 13 \n10",
+    "has_code": true
+  },
+  {
+    "page": 11,
+    "section": "",
+    "text": "Constructors and Destructors \n• This destructor should have fit on \nthe last slide...: \nRectangle::~Rectangle(){ \n• \ndelete width; \nSince we explicitly allocated \ndelete height; \nsomething with new, we must also \n} \nexplicitly de-allocate it. \n• Rectangle itself is automatically \ndeallocated when it goes out of \nscope. \n \nTuesday, January 22, 13 \n11",
+    "has_code": true
+  },
+  {
+    "page": 12,
+    "section": "",
+    "text": "Default constructors \nRectangle::Rectangle(){ \n// no arguments needed! \nwidth = new int; \nRectangle box; \nheight = new int; \n*width = 5; \n*height = 5; \n} \n \nTuesday, January 22, 13 \n12",
+    "has_code": true
+  },
+  {
+    "page": 13,
+    "section": "",
+    "text": "Templates \n• Syntax for making code more flexible. \n• Similar in spirit to Java’s generics. \n• Applied at compile-time, like C macros (the preprocessor). \n• Can be applied to classes, functions. \n• Trivia: language of templates is Turing complete. \n \nTuesday, January 22, 13 \n13",
+    "has_code": true
+  },
+  {
+    "page": 14,
+    "section": "",
+    "text": "Function Template Example \ntemplate <class typeParam> \ntypeParam max(typeParam a, typeParam b){ \nreturn (a > b ? a : b); \n} \nint main(){ \nint a = 3, b = 7; \ndouble c = 5.5, d = 1.5; \nprintf(\"%d\\n\", max(a, b)); // 7 \nprintf(\"%f\\n\", max(c, d)); // 5.5 \n} \n \nTuesday, January 22, 13 \n14",
+    "has_code": true
+  },
+  {
+    "page": 15,
+    "section": "",
+    "text": "Class Template Example \ntemplate <class T> \ntemplate <class T> \nclass mypair { \nT mypair<T>::getmax(){ \nT a, b; \nreturn a > b ? a : b; \npublic: \n} \nmypair(T first, T second){ \na = first; \nint main(){ \nb = second; \nmypair<int> myints(100, 75); \n} \nprintf(\"%d\\n\", \nT getmax(); \nmyints.getmax()); // 100 \n}; \n \nTuesday, January 22, 13 \n15",
+    "has_code": true
+  },
+  {
+    "page": 16,
+    "section": "MIT OpenCourseWare",
+    "text": "MIT OpenCourseWare\nhttp://ocw.mit.edu\n6.S096 Introduction to C and C++\nIAP 2013\nFor information about citing these materials or our Terms of Use, visit: http://ocw.mit.edu/terms.",
+    "has_code": true
+  }
+]

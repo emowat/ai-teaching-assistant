@@ -1,0 +1,308 @@
+[
+  {
+    "page": 1,
+    "section": "",
+    "text": "C++ (& C) Grab Bag\n1",
+    "has_code": false
+  },
+  {
+    "page": 2,
+    "section": "",
+    "text": "Final Project: Due in 2 Days\nComplete Something\n2",
+    "has_code": false
+  },
+  {
+    "page": 3,
+    "section": "",
+    "text": "Parent destructors\n3",
+    "has_code": false
+  },
+  {
+    "page": 4,
+    "section": "",
+    "text": "struct Buffer {\nBuffer(int s) { buf = new char[s]; }\n~Buffer() { delete [] buf; }\nchar *buf; \n}; \nstruct FBuffer : public Buffer {\nFBuffer(int s) : Buffer(s) {\nf = fopen(\"file\", \"w\");\n}\n~FBuffer() { fclose(f); }\nvoid write() { fwrite(buf, 1, 40, f); }\nFILE *f; \n}; \n4",
+    "has_code": true
+  },
+  {
+    "page": 5,
+    "section": "",
+    "text": "struct FBuffer \nstruct Buffer {\n: public Buffer {\nBuffer(int s);\n FBuffer(int s);\n~Buffer();\n ~FBuffer();\nchar *buf; \nvoid write();\n}; \nFILE *f; \n}; \nBuffer *buf = new Buffer(128); \ndelete buf; \n// ✓ \n5",
+    "has_code": true
+  },
+  {
+    "page": 6,
+    "section": "",
+    "text": "struct FBuffer \nstruct Buffer {\n: public Buffer { \nFBuffer(int s);\nBuffer(int s);\n~Buffer();\n~FBuffer();\nchar *buf; \nvoid write();\n}; \nFILE *f; \n}; \nFBuffer *fbuf = new FBuffer(128); \ndelete fbuf; \n// ✓ \n6",
+    "has_code": true
+  },
+  {
+    "page": 7,
+    "section": "",
+    "text": "Construction\nUninitialized \nUninitialized \nBuﬀer\n(buf)\nBuﬀer\n(buf)\nFBuﬀer\n(f)\n7",
+    "has_code": false
+  },
+  {
+    "page": 8,
+    "section": "",
+    "text": "Destruction\nBuﬀer\n(buf)\nFBuﬀer\n(f)\nBuﬀer\n(buf)\nUninitialized \nUninitialized \n8",
+    "has_code": false
+  },
+  {
+    "page": 9,
+    "section": "",
+    "text": "struct FBuffer \nstruct Buffer {\n: public Buffer { \nBuffer(int s);\nFBuffer(int s);\n~Buffer();\n ~FBuffer();\nchar *buf; \nvoid write();\n}; \nFILE *f; \n}; \nBuffer *fbuf = new FBuffer(128); \ndelete fbuf; \n// ✘ only ~Buffer is called \n9",
+    "has_code": true
+  },
+  {
+    "page": 10,
+    "section": "",
+    "text": "struct FBuffer \nstruct Buffer {\n: public Buffer {\nBuffer();\n FBuffer();\nvirtual ~Buffer();\nvirtual ~FBuffer();\nchar *buf; \nvoid write();\n}; \nFILE *f; \n}; \nBuffer *fbuf = new FBuffer; \ndelete fbuf; \n// ✓ \n10",
+    "has_code": true
+  },
+  {
+    "page": 11,
+    "section": "",
+    "text": "C++ Casts\n11",
+    "has_code": false
+  },
+  {
+    "page": 12,
+    "section": "",
+    "text": "// C cast \nchar *buf = (char *)malloc(128); \n// C-style cast \nfloat b = 98.6; \nint a = int(b); \n12",
+    "has_code": true
+  },
+  {
+    "page": 13,
+    "section": "",
+    "text": "// C-style cat casts \nclass Cat { }; \nclass Tiger : public Cat { }; \nclass Persian : public Cat { }; \nCat *c = new Persian; \nTiger *t = (Tiger *)c; // whoops! \nCat \nPersian\nTiger \n13",
+    "has_code": true
+  },
+  {
+    "page": 14,
+    "section": "",
+    "text": "// valid up-cast \nTiger *t = new Tiger; \nCat *c1 = (Cat *)t; \nCat *c2 = static_cast<Cat *>(t); \nCat *c3 = dynamic_cast<Cat *>(t); \n14",
+    "has_code": true
+  },
+  {
+    "page": 15,
+    "section": "",
+    "text": "// almost valid down-cast \nCat *c = new Tiger; \nTiger *t1 = (Tiger *)c; \nTiger *t2 = static_cast<Tiger *>(c); \nTiger *t3 = dynamic_cast<Tiger *>(c); \n// compile error \n15",
+    "has_code": true
+  },
+  {
+    "page": 16,
+    "section": "",
+    "text": "// valid down-cast \nclass Cat { virtual void purr() { } }; \nclass Tiger : public Cat { }; \nclass Persian : public Cat { }; \nCat *c = new Tiger; \nTiger *t1 = (Tiger *)c; \nTiger *t2 = static_cast<Tiger *>(c); \nTiger *t3 = dynamic_cast<Tiger *>(c); \n16",
+    "has_code": true
+  },
+  {
+    "page": 17,
+    "section": "",
+    "text": "// invalid down-cast \nCat *c = new Persian; \nTiger *t1 = (Tiger *)c; \nTiger *t2 = static_cast<Tiger *>(c); \nTiger *t3 = dynamic_cast<Tiger *>(c); \n// t1 & t2 are invalid pointers \n// t3 is NULL \n17",
+    "has_code": true
+  },
+  {
+    "page": 18,
+    "section": "",
+    "text": "References\n18",
+    "has_code": false
+  },
+  {
+    "page": 19,
+    "section": "",
+    "text": "void swap(int *a, int *b) {\nint tmp = *a;\n*a = *b;\n *b = tmp;\n} \nint main() {\nint x = 2, y = 3;\nswap(&x, &y);\n} \n19",
+    "has_code": true
+  },
+  {
+    "page": 20,
+    "section": "",
+    "text": "void swap(int &a, int &b) {\nint tmp = a;\na = b;\n b = tmp;\n} \nint main() {\nint x = 2, y = 3;\nswap(x, y);\n} \n20",
+    "has_code": true
+  },
+  {
+    "page": 21,
+    "section": "",
+    "text": "Hello, World!\n21",
+    "has_code": false
+  },
+  {
+    "page": 22,
+    "section": "",
+    "text": "#include <iostream> \nint main() {\nstd::cout << \"Hello, World!\"\n << std::endl;\n return 0; \n} \n22",
+    "has_code": true
+  },
+  {
+    "page": 23,
+    "section": "",
+    "text": "#include <iostream> \nint main() {\nstd::cout << \"Hello, World!\"\n << std::endl;\n return 0; \n} \n23",
+    "has_code": true
+  },
+  {
+    "page": 24,
+    "section": "",
+    "text": "Namespaces\n24",
+    "has_code": false
+  },
+  {
+    "page": 25,
+    "section": "",
+    "text": "SNDFILE *open(const char *);\ncount_t seek(SNDFILE *, count_t);\nint error(SNDFILE *); \n25",
+    "has_code": true
+  },
+  {
+    "page": 26,
+    "section": "",
+    "text": "SNDFILE *sf_open(const char *); \ncount_t sf_seek(SNDFILE *, count_t);\nint sf_error(SNDFILE *); \n26",
+    "has_code": true
+  },
+  {
+    "page": 27,
+    "section": "",
+    "text": "namespace sf {\nSNDFILE *open(const char *);\ncount_t seek(SNDFILE *, count_t);\nint error(SNDFILE *); \n} \n27",
+    "has_code": true
+  },
+  {
+    "page": 28,
+    "section": "",
+    "text": "#include <iostream> \nint main() {\nstd::cout << \"Hello, World!\"\n << std::endl;\n return 0; \n} \n28",
+    "has_code": true
+  },
+  {
+    "page": 29,
+    "section": "",
+    "text": "std::cout << \"Hello, World!\"\n << std::endl; \nusing namespace std;\ncout << \"Hello, World!\"\n << endl; \nusing std::cout;\nusing std::endl;\ncout << \"Hello, World!\"\n << endl; \n29",
+    "has_code": false
+  },
+  {
+    "page": 30,
+    "section": "",
+    "text": "g++ -E hello.cpp \niostream\nnamespace std {\nextern istream cin;\n extern ostream cout;\n extern ostream cerr; \n} \n30",
+    "has_code": true
+  },
+  {
+    "page": 31,
+    "section": "",
+    "text": "namespace std {\nextern istream cin;\n extern ostream cout;\n extern ostream cerr;\n class ActionLawsuit {\n};\n} \n31",
+    "has_code": true
+  },
+  {
+    "page": 32,
+    "section": "",
+    "text": "extern istream cin; \n extern ostream cout; \n extern ostream cerr; \n class ActionLawsuit {\n}; \n32",
+    "has_code": true
+  },
+  {
+    "page": 33,
+    "section": "",
+    "text": "namespace super {\nnamespace std {\nextern istream cin;\n extern ostream cout;\n extern ostream cerr;\n class ActionLawsuit {\n};\n}\n} \nsuper::std::ActionLawsuit; \n33",
+    "has_code": true
+  },
+  {
+    "page": 34,
+    "section": "",
+    "text": "extern \n34",
+    "has_code": false
+  },
+  {
+    "page": 35,
+    "section": "",
+    "text": "iostream\nnamespace std { \nextern istream cin; \nextern ostream cout; \nextern ostream cerr; \n} \n35",
+    "has_code": true
+  },
+  {
+    "page": 36,
+    "section": "",
+    "text": "iostream\nostream cout; \nmain.c \nfoo.c \n#include <iostream> #include <iostream> \nint main() {\nint foo() {\ncout << \"i\";\n cout << \"Phone\"; \nfoo(); \n}\n} \n36",
+    "has_code": true
+  },
+  {
+    "page": 37,
+    "section": "",
+    "text": "cout\nmain\ncout\nfoo\nmain.c (preprocessed) foo.c (preprocessed) ­\nostream cout; \nostream cout; \nint main() {\nint foo() {\ncout << \"i\";\n cout << \"Phone\"; \nfoo(); \n}\n} \nmain.o \nfoo.o \ncout\nmain\ncout\nfoo\nld: 1 duplicate symbol for architecture x86_64 \n37",
+    "has_code": true
+  },
+  {
+    "page": 38,
+    "section": "",
+    "text": "main.c (preprocessed) foo.c (preprocessed)\nextern ostream cout; extern ostream cout; \nint main() {\nint foo() {\ncout << \"i\";\n cout << \"Phone\"; \nfoo(); \n}\n} \nmain.o \nfoo.o \nmain \nfoo \n<standard library>\ncout\n38",
+    "has_code": true
+  },
+  {
+    "page": 39,
+    "section": "",
+    "text": "#include <iostream> \nint main() {\nstd::cout << \"Hello, World!\" \n<< std::endl;\n return 0; \n} \n39",
+    "has_code": true
+  },
+  {
+    "page": 40,
+    "section": "",
+    "text": "#include <iostream> \nint main() {\nstd::cout << \"Hello, World!\" \n<< std::endl;\n int a = 2 << 1;\n return 0; \n} \n40",
+    "has_code": true
+  },
+  {
+    "page": 41,
+    "section": "",
+    "text": "Operator Overloading\n41",
+    "has_code": false
+  },
+  {
+    "page": 42,
+    "section": "",
+    "text": "struct vec2 { \nvec2(float x, float y) \n: x(x), y(y) { } \nfloat x, y; \n}; \nint main() {\nvec2 a(1, 0);\nvec2 b(1, 3);\nvec2 c = a + b; // compile error\n} \nvec.cpp: In function ‘int main()’: \nvec.cpp:12: error: no match for ‘operator+’ in ‘a + b’ \n42",
+    "has_code": true
+  },
+  {
+    "page": 43,
+    "section": "",
+    "text": "vec2 vec2::add(const vec2 &o) {\nreturn vec2(x + o.x, y + o.y);\n} \nint main() {\nvec2 a(1, 0), b(1, 3);\nvec2 c = a.add(b);\n} \n43",
+    "has_code": true
+  },
+  {
+    "page": 44,
+    "section": "",
+    "text": "vec2 vec2::operator +(const vec2 &o) {\nreturn vec2(x + o.x, y + o.y);\n} \nint main() {\nvec2 a(1, 0), b(1, 3);\nvec2 c = a + b;\n vec2 d = a.operator+(b);\n} \n44",
+    "has_code": true
+  },
+  {
+    "page": 45,
+    "section": "",
+    "text": "vec2 operator +(vec2 &v, const vec2 &o) {\nreturn vec2(x + o.x, y + o.y);\n} \nint main() {\nvec2 a(1, 0), b(1, 3);\nvec2 c = a + b; \n} \n45",
+    "has_code": true
+  },
+  {
+    "page": 46,
+    "section": "",
+    "text": "a + b \na - b \na * b \na / b\na % b \na < b \na <= b \na == b \na >= b \na > b \na != b \na && b \na || b\na & b \na | b\na ^ b \na << b \na >> b \na, b \na[b] \nvec2 operator+(const vec2 &o); \n46",
+    "has_code": true
+  },
+  {
+    "page": 47,
+    "section": "",
+    "text": "+a \n-a \n++a \na++ \n--a \na-­\n!a \n~a \n*a \n&a \nvec2 operator+(); \n47",
+    "has_code": false
+  },
+  {
+    "page": 48,
+    "section": "",
+    "text": "a = b \na &= b \na += b \na |= b\na -= b \na ^= b \na *= b \na <<= b \na /= b\na >>= b \na %= b \na = (b += c) \nvec2 &vec2::operator+=(const vec2 &o)\n{\n x += o.x;\n(this is a pointer\ny += o.y;\n return *this; \nto the object) \n} \n48",
+    "has_code": true
+  },
+  {
+    "page": 49,
+    "section": "",
+    "text": "Streams\n49",
+    "has_code": false
+  },
+  {
+    "page": 50,
+    "section": "",
+    "text": "struct Foo {\nchar *str() const {\nreturn \"Foo!\";\n }\n}; \nostream & \noperator<<(ostream &os, const Foo &f) {\nreturn os << f.str();\n} \nint main() {\nFoo f;\n std::cout << f << std::endl; \n} \n50",
+    "has_code": true
+  },
+  {
+    "page": 51,
+    "section": "MIT OpenCourseWare",
+    "text": "MIT OpenCourseWare\nhttp://ocw.mit.edu\n6.S096 Introduction to C and C++\nIAP 2013\nFor information about citing these materials or our Terms of Use, visit: http://ocw.mit.edu/terms.",
+    "has_code": true
+  }
+]

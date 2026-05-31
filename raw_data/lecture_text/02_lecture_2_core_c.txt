@@ -1,0 +1,417 @@
+[Slide 1]
+6.s096 
+Lecture 2 
+1 
+Thursday, January 10, 13
+
+[Slide 2]
+Today 
+•Control Structures 
+•Variables and Functions 
+•Scope 
+•Uninitialized Memory - and what to do about it! 
+3 
+The core of the language 
+Thursday, January 10, 13
+
+[Slide 3]
+Control Structures 
+4 
+Thursday, January 10, 13
+
+[Slide 4]
+Basic Control Structures 
+You’ve probably seen these… 
+while 
+ 
+do…while 
+ 
+ 
+ 
+for 
+ 
+if […else if], […else] 
+ 
+5 
+Thursday, January 10, 13
+
+[Slide 5]
+Basic Control Structures 
+You’ve probably seen these… 
+while 
+ 
+do…while 
+ 
+ 
+for 
+ 
+ 
+if […else if], […else] 
+ 
+6 
+Thursday, January 10, 13
+
+[Slide 6]
+Basic Control Structures 
+You’ve probably seen these… 
+while 
+ !!"#$
+ 
+do…while 
+  
+ 
+for 
+ 
+if […else if], […else] 
+ 
+7 
+Thursday, January 10, 13
+
+[Slide 7]
+Basic Control Structures 
+You’ve probably seen these… 
+ 
+while 
+ 
+do…while 
+% #& #' 
+ 
+# 
+for 
+(' 
+if […else if], […else] 
+ 
+# 
+)
+
+ ' 
+ 
+8 
+Thursday, January 10, 13
+
+[Slide 8]
+Slight variations 
+• Blocks / braces often optional (if, while, for): 
+* +## 
+• Empty loop is an “infinite” 
+: 
+ +## 
+9 
+Thursday, January 10, 13
+
+[Slide 9]
+#* 
+, #* 
+*-# . 
+%/# 0 
+1-2 
+*-# . 
+%/# 00 
+1-2 
+-&
+. 
+%/# #3 4 
+#000 
+10 
+Thursday, January 10, 13
+
+[Slide 10] (6666)
+6666 
+ 
+56 
+66666666666
+Jumps 
+666666667676 
+6666666666 
+66666666666666 
+666666666666*& 
+666666666
+#6668 
+6666666666661-2
+Output: 
+66666666 
+6666
+666;6<686 6 
+666646 
+66667-6 697 
+6666.6 
+66667 697 
+6666& 
+666676#6:7 
+11 
+Thursday, January 10, 13
+
+[Slide 11] (6666)
+6666 
+ 
+56 
+66666666666
+Jumps 
+666666667676 
+6666666666 
+66666666666666 
+666666666666*& 
+666666666
+#6668 
+6666666666661-2
+Output: 
+66666666 
+6666
+666;6<686 6 
+666646 
+66667-6 697 
+6666.6 
+66667 697 
+6666& 
+666676#6:7 
+12 
+Thursday, January 10, 13
+
+[Slide 12] (6666)
+6666 
+ 
+56 
+66666666666
+Jumps 
+666666667676 
+6666666666 
+66666666666666 
+666666666666*& 
+666666666
+#6668 
+6666666666661-2
+Output: 
+66666666 
+6666
+666;6<686 6 
+666646 
+66667-6 697 
+6666.6 
+66667 697 
+6666& 
+666676#6:7 
+13 
+Thursday, January 10, 13
+
+[Slide 13] (6666)
+6666 
+ 
+56 
+66666666666
+Jumps 
+666666667676 
+6666666666 
+66666666666666 
+666666666666*& 
+666666666
+#6668 
+6666666666661-2
+Output: 
+66666666 
+6666
+666;6<686 6 
+666646 
+66667-6 697 
+6666.6 
+66667 697 
+6666& 
+666676#6:7 
+14 
+Thursday, January 10, 13
+
+[Slide 14] (6666)
+6666 
+ 
+56 
+66666666666
+Jumps 
+666666667676 
+6666666666 
+66666666666666 
+666666666666*& 
+666666666
+#6668 
+6666666666661-2
+Output: 
+66666666 
+6666 
+666;6<686 6 
+666646 
+63-6-4*6* -6==6-45 66667-6 697 
+6666 
+6666.6 
+ 
+6666& 
+666676#6:7 
+6666&6 
+66667 697 
+15 
+Thursday, January 10, 13
+
+[Slide 15] (6666)
+The statement in detail 
+• Syntax: 
+46 
+… where label refers to an earlier or later labelled section of code. 
+• Target label must be in the same function as the 4 statement. 
+• Notorious for creating hard-to-read code, but the concept is critical 
+to how computers operate. 
+16 
+Thursday, January 10, 13
+
+[Slide 16] (6666)
+Variables and Functions 
+17 
+Thursday, January 10, 13
+
+[Slide 17] (6666)
+Variables and constants 
+int a = 1; 
+*#66166 
+a = 2; // cool 
+1666 
+6.6 
+666-"
+$65--1
+6 
+666#66-##4-1
+ 
+18 
+Thursday, January 10, 13
+
+[Slide 18] (6666)
+#-* Variables 
+Static variables retain their value 
+throughout the life of the program. 
+56 
+666666<6 
+6666#-*66*&66 
+6666 
+66667676*& 
+ 
+Output: 6666; 
+19 
+Thursday, January 10, 13
+
+[Slide 19] (6666)
+Functions in Variables 
+We’ll examine part of this syntax in more depth in later lectures. 
+66-661 
+6=&*666> 
+6666&6-661 
+6#&
+66&*6 
+ 
+7676#&
+66; 
+6666 
+61-6*66 
+&*66>1- 
+6666&6*6"6 
+#&
+66&*6 
+ 
+776#&
+66 
+20 
+Thursday, January 10, 13
+
+[Slide 20] (6666)
+Scope 
+21 
+Thursday, January 10, 13
+
+[Slide 21] (6666)
+Scope 
+A variable has a scope in which it is said to be defined. 
+56 
+66666-66 
+ 
+In and 1- 
+ is “in scope” f 
+the entire functi 
+6 
+ is “in scope” only with
+6 
+the if statement’s block in 1- 
+22 
+561- 
+66666-66 
+666666 
+666666666166 
+66666666166662-$ 
+6666 
+6666-662-$ 
+6666166.6 
+6666666666&#66&*
+ 
+66666666666?1 
+ 
+- 
+? 
+, 
+or 
+on. 
+in 
+. 
+Thursday, January 10, 13
+
+[Slide 22] (6666)
+Anonymous Blocks 
+Anonymous blocks demonstrate the concept of block scope. 
+56 
+666666666 
+6666 
+66666666&1
+666';6661
+30 
+66666666 
+66666666 
+666666666666* -6=6667';76661
+30 
+66666666 
+6666 
+666666?-?666 #6#* 
+ 
+23 
+Thursday, January 10, 13
+
+[Slide 23] (6666)
+Uninitialized Memory 
+24 
+When you see that gibberish output… 
+Thursday, January 10, 13
+
+[Slide 24] (6666)
+Program memory, simplified… 
+6-66 
+00000000 00000000 00000000 00000000 
+00000000 00000000 00000000 00000000 
+00000000 00000000 00000000 00000000 
+00000000 00000000 00000000 00000000 
+25 
+Thursday, January 10, 13
+
+[Slide 25] (6666)
+(Common)
+Sources 
+Avoid these situations if you can help it! 
+• Uninitialized variables: 
+6 
+6 
+• Out-of-bounds array access: 
+* -65#@A 
+* -6&BB1&#665#@A 
+• Variables passed out of their defining function’s scope. 
+• 3-
+
+*6(coming up in a later lecture) 
+26 
+Thursday, January 10, 13
+
+[Slide 26] (MIT OpenCourseWare)
+MIT OpenCourseWare
+http://ocw.mit.edu
+6.S096 Introduction to C and C++
+IAP 2013
+For information about citing these materials or our Terms of Use, visit: http://ocw.mit.edu/terms.

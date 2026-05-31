@@ -1,0 +1,72 @@
+[Page 1]
+The assignment was split into 2 problems, but below we've included only the final 
+versions of all the files. 
+The header files remained unchanged. 
+FIBONACCI.C 
+#include <stdio.h> 
+#include "fibonacci.h" 
+void print_fib(int n) {
+printf("%d\n", fib(n)); 
+} 
+int fib(int n) {
+if (n <= 0) {
+return 0;
+} else if(n == 1) {
+return 1;
+} else {
+return fib(n-1) + fib(n-2); 
+}
+} 
+REVERSE.C 
+#include <stdio.h> 
+void reverse(char *str, int len) {
+char reversed[len+1];
+int pos = 0;
+int caret = len;
+reversed[len] = '\0';
+for (int i = len - 1; i >= -1; --i){ 
+1
+
+[Page 2]
+if (i == -1 || str[i] == ' '){
+for (int j = i + 1; j < caret; ++j){
+reversed[pos++] = str[j]; 
+}
+if (i != -1) {
+reversed[pos++] = ' '; 
+}
+caret = i;
+} 
+} 
+printf("%s\n", reversed); 
+} 
+FIBEVERSE.C 
+#include <stdlib.h> 
+#include <string.h>
+#include "fibonacci.h" 
+#include "reverse.h" 
+int main(int argc, char *argv[]) {
+int i = 1; 
+#ifdef FIBONACCI 
+if (i < argc) { 
+print_fib(atoi(argv[i])); 
+i++; 
+}
+#endif 
+#ifdef REVERSE 
+if (i < argc) {
+reverse(argv[i], strlen(argv[i]));
+i++;
+}
+#endif 
+return 0;
+} 
+2
+
+[Page 3]
+MIT OpenCourseWare
+http://ocw.mit.edu
+6.S096 Introduction to C and C++
+IAP 2013
+For information about citing these materials or our Terms of Use, visit: http://ocw.mit.edu/terms.
+

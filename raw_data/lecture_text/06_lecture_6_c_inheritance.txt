@@ -1,0 +1,680 @@
+[Slide 1]
+C++ Inheritance
+1
+
+[Slide 2]
+Bits & Bobs
+2
+
+[Slide 3]
+int x; 
+int y; 
+struct {
+ int x;
+ int y; 
+} pt; 
+union {
+ int x;
+ int y; 
+} pt; 
+x ­
+y ­
+pt 
+pt.x 
+pt.y 
+pt 
+pt.x 
+pt.y 
+int 
+int 
+int 
+int 
+int 
+int 
+3
+
+[Slide 4]
+foo 
+union {
+ struct {
+foo.x 
+int 
+int
+int a;
+foo.y 
+char
+char b; 
+ } x; 
+ int y; 
+foo.x.a ­
+} foo; 
+foo.x.b 
+4
+
+[Slide 5]
+Why Inheritance?
+5
+
+[Slide 6]
+struct Circle {
+struct Square {
+int x, y;
+ int x, y;
+int radius;
+ int width;
+ void draw(); 
+void draw();
+}; 
+}; 
+6
+
+[Slide 7]
+struct Circle {
+struct Square {
+int x, y;
+ int x, y;
+int radius;
+ int width;
+ void draw(); 
+void draw();
+}; 
+}; 
+Circle *circles[nc]; 
+Square *squares[ns]; 
+7
+
+[Slide 8]
+struct Circle {
+struct Square {
+int x, y;
+ int x, y;
+int radius;
+ int width;
+ void draw(); 
+void draw();
+}; 
+}; 
+Circle *circles[nc]; 
+Square *squares[ns]; 
+for(int i = 0; i < nc; i++)
+circles[i].draw();
+for(int i = 0; i < ns; i++)
+squares[i].draw(); 
+8
+
+[Slide 9]
+Circle *circles[nc]; 
+Square *squares[ns]; 
+for(int i = 0; i < nc; i++)
+circles[i].draw();
+for(int i = 0; i < ns; i++)
+squares[i].draw(); 
+for(int i = 0; i < nc; i++)
+delete circles[i];
+for(int i = 0; i < ns; i++)
+delete squares[i]; 
+printf("%d\n"
+circles[i] width);
+for(int i = 0; i < nc; i++)
+9
+
+[Slide 10]
+struct Circle {
+struct Square {
+int x, y;
+ int x, y;
+ void draw(); 
+void draw();
+ int radius;
+ int width;
+}; 
+};
+? 
+?
+Shape *shapes[ns]; 
+for(int i = 0; i < ns; i++)
+shapes[i].draw(); 
+for(int i = 0; i < ns; i++)
+ delete shapes[i]; 
+10
+
+[Slide 11]
+Inheritance
+11
+
+[Slide 12]
+class Shape {
+public:
+virtual void draw() = 0;
+}; 
+class Circle : public Shape { 
+private:
+int x, y;
+int radius; 
+public:
+virtual void draw();
+}; 
+void Circle::draw() {
+ ... 
+Best Practice
+} 
+12
+
+[Slide 13]
+1) Subclassing 
+2) virtual 
+13
+
+[Slide 14]
+1) Subclassing
+2) virtual 
+14
+
+[Slide 15]
+1) Subclassing
+inherit behavior from the parent
+15
+
+[Slide 16]
+class Shape {
+public:
+void draw();
+}; 
+class Circle : public Shape {
+public:
+int getRadius();
+}; 
+int main() {
+Circle circle; 
+circle.draw(); 
+} 
+16
+
+[Slide 17]
+void draw() 
+void draw() 
+int getRadius() 
+Shape 
+Circle : public Shape
+17
+
+[Slide 18]
+1) Subclassing
+inherit ﬁelds from the parent
+18
+
+[Slide 19]
+class Shape {
+public:
+int x, y;
+}; 
+class Circle : public Shape {
+public:
+int radius; 
+}; 
+int main() {
+Circle circle; 
+circle.x = 5; 
+} 
+19
+
+[Slide 20]
+Shape 
+Circle : public Shape
+int x 
+int y 
+int x 
+int y 
+int radius 
+20
+
+[Slide 21]
+Shape 
+int x 
+int y 
+int radius 
+Circle
+{ 
+} 
+is-a or has-a?
+21
+
+[Slide 22]
+class Circle
+class Circle {
+ : public Shape { 
+public:
+public:
+Shape shape;
+ int radius; 
+int radius; 
+}; 
+}; 
+22
+
+[Slide 23]
+class Circle
+class Circle {
+ : public Shape {
+public:
+public:
+ Shape shape;
+ int radius; 
+int radius; 
+}; 
+}; 
+circle.x; 
+circle.shape.x; 
+23
+
+[Slide 24]
+1) Subclassing
+public/protected/private ﬁelds
+24
+
+[Slide 25]
+class Shape {
+public:
+int x; 
+private:
+only accessible in
+int y;
+Shape class
+}; 
+void Circle::foo() {
+printf("%d", x);
+printf("%d", y); // compile error
+} 
+25
+
+[Slide 26]
+class Shape {
+public:
+int x; 
+protected:
+accessible in Shape class 
+int y;
+and in subclasses
+}; 
+void Circle::foo() { 
+printf("%d", x); 
+printf("%d", y); 
+} 
+int main() {
+Circle circle;
+ circle.x = 0; // compile error
+} 
+26
+
+[Slide 27]
+1) Subclassing
+public/protected/private inheritance
+27
+
+[Slide 28]
+class Shape {
+public:
+void draw();
+}; 
+class Circle : public Shape {
+}; 
+28
+
+[Slide 29]
+class Shape {
+public:
+void draw();
+}; 
+class Circle : protected Shape {
+}; 
+29
+
+[Slide 30]
+class Shape {
+public:
+void draw();
+}; 
+class Circle : protected Shape {
+protected:
+ int getRadius();
+}; 
+The inheritance is protected. 
+If you can access getRadius(),
+ you can access draw() 
+30
+
+[Slide 31]
+class Shape {
+public:
+void draw();
+}; 
+class Circle : private Shape {
+private:
+ int getRadius();
+}; 
+The inheritance is private. 
+If you can access getRadius(),
+ you can access draw() 
+31
+
+[Slide 32]
+private inheritance:
+is-a or has-a
+32
+
+[Slide 33]
+1) Subclassing
+multiple inheritance
+33
+
+[Slide 34]
+class Color { 
+public: virtual void print(); 
+}; 
+class Mood { 
+public: virtual void print(); 
+}; 
+class Blue : public Color, public Mood {
+public:
+virtual void print() { 
+this->Color::print(); 
+this->Mood::print(); 
+}
+}; 
+34
+
+[Slide 35]
+1) Subclassing
+slicing
+35
+
+[Slide 36]
+struct Cow {
+void speak() {
+printf("Moo.\n");
+}
+}; 
+struct Werecow : public Cow {
+bool transformed;
+ void speak() {
+if (transformed)
+printf("Aaooooh!\n");
+else
+ printf("Moo.\n");
+}
+}; 
+36
+
+[Slide 37]
+Werecow wcow; 
+wcow.transformed = true; 
+Cow cows[2];
+cows[0] = Cow();
+cows[1] = wcow; 
+for (int i = 0; i < 2; i++)
+cows[i].speak();
+wcow.speak(); 
+// Output:
+// 
+Moo. 
+// 
+Moo. 
+// 
+Aaooooh! 
+37
+
+[Slide 38]
+void poke(Cow cow) {
+cow.speak();
+} 
+Cow judy; 
+Werecow bev; 
+bev.transformed = true; 
+poke(judy); 
+poke(bev); 
+bev.speak(); 
+// Output: 
+// 
+Moo. 
+// 
+Moo. 
+// 
+Aaooooh! 
+38
+
+[Slide 39]
+Cow 
+Werecow
+bool transformed 
+39
+
+[Slide 40]
+Use pointers
+Use virtual 
+40
+
+[Slide 41]
+1) Subclassing
+2) virtual 
+41
+
+[Slide 42]
+class Shape {
+public:
+void draw() { printf("shape\n"); }
+}; 
+class Circle : public Shape {
+public:
+void draw() { printf("circle\n"); }
+}; 
+42
+
+[Slide 43]
+class Shape {
+public:
+void draw() { printf("shape\n"); }
+}; 
+class Circle : public Shape {
+public:
+void draw() { printf("circle\n"); }
+}; 
+Circle *circle = new Circle; 
+circle->draw(); // "circle" 
+43
+
+[Slide 44]
+class Shape {
+public:
+void draw() { printf("shape\n"); }
+}; 
+class Circle : public Shape {
+public:
+void draw() { printf("circle\n"); }
+}; 
+Shape *shape = new Circle; 
+shape->draw(); // "shape" 
+44
+
+[Slide 45]
+class Shape {
+public:
+void draw() { printf("shape\n"); }
+}; 
+class Circle : public Shape {
+public:
+void draw() { printf("circle\n"); }
+}; 
+Shape *shape = new Circle; 
+shape->draw(); // "shape" 
+draw() is non-virtual, 
+so it’s compiled like a C call 
+45
+
+[Slide 46]
+Non-virtual functions are ­
+determined at compile-time ­
+class Cat {
+public:
+void yawn(int duration);
+}; 
+Cat cat, *pcat = new SuperCat; 
+cat.yawn(4); 
+pcat->yawn(4); 
+Both use Cat::yawn ­
+because both have type Cat ­
+46
+
+[Slide 47]
+Virtual functions are
+determined at run-time
+class Cat {
+public:
+virtual void yawn(int duration);
+}; 
+Cat cat, *pcat = new SuperCat; 
+cat.yawn(4); 
+pcat->yawn(4); 
+Use Cat::yawn and SuperCat::yawn
+(pcat’s type is checked every time it’s called)
+47
+
+[Slide 48]
+non-virtual: compile-time
+virtual: run-time
+48
+
+[Slide 49]
+2) virtual 
+pure virtual methods
+49
+
+[Slide 50]
+class Shape { 
+public: 
+virtual void draw() = 0;
+}; 
+int main() { 
+Shape shape; 
+} 
+pure.cpp: In function ‘int main()’: 
+pure.cpp:7: error: cannot declare variable ‘shape’ to be of abstract type ‘Shape’ 
+pure.cpp:1: note: 
+because the following virtual functions are pure within ‘Shape’: 
+pure.cpp:3: note: ! virtual void Shape::draw() 
+50
+
+[Slide 51]
+class Drawable {
+public:
+virtual void draw() = 0;
+}; 
+class Fish : public Drawable {
+public:
+virtual void draw();
+}; 
+int main() {
+Drawable *drawables[3];
+drawables[0] = new Fish;
+drawables[1] = new Salami;
+drawables[2] = new JackSparrow;
+} 
+51
+
+[Slide 52]
+2) virtual 
+destructors
+52
+
+[Slide 53]
+Make virtual destructors ­
+class Fish {
+public:
+Fish() {
+gills[0] = new Gill;
+gills[1] = new Gill;
+}
+virtual ~Fish() {
+delete gills[0];
+delete gills[1];
+}
+private:
+Gill *gills[2];
+}; 
+53
+
+[Slide 54]
+2) virtual 
+virtual inheritance
+54
+
+[Slide 55]
+class Goofball {
+int x; 
+}; 
+class Stupid : public Goofball { };
+class Dumb : public Goofball { }; 
+class Oops : public Stupid, public Dumb {
+}; 
+Oops 
+Stupid::x 
+Dumb::x 
+55
+
+[Slide 56]
+class Goofball {
+int x; 
+}; 
+class Stupid : public Goofball { };
+class Dumb : public Goofball { }; 
+class Oops : public Stupid, public Dumb {
+int fail();
+}; 
+int Oops::fail() {
+Stupid::x = 1; Dumb::x = 2;
+ return Stupid::x + Dumb::x; // 3
+} 
+56
+
+[Slide 57]
+class Goofball {
+int x; 
+}; 
+class Stupid : virtual public Goofball { };
+class Dumb : virtual public Goofball { }; 
+class Oops : public Stupid, public Dumb {
+int fail();
+}; 
+int Oops::fail() {
+Stupid::x = 1; Dumb::x = 2;
+ return Stupid::x + Dumb::x; // 4
+} 
+57
+
+[Slide 58]
+Conclusion
+58
+
+[Slide 59]
+class Shape {
+public:
+virtual void draw() = 0;
+}; 
+class Circle : public Shape { 
+private:
+int x, y;
+int radius; 
+public:
+virtual void draw();
+}; 
+void Circle::draw() {
+ ... 
+Best Practice
+} 
+59
+
+[Slide 60] (MIT OpenCourseWare)
+MIT OpenCourseWare
+http://ocw.mit.edu
+6.S096 Introduction to C and C++
+IAP 2013
+For information about citing these materials or our Terms of Use, visit: http://ocw.mit.edu/terms.

@@ -1,0 +1,236 @@
+[
+  {
+    "page": 1,
+    "section": "",
+    "text": "6.S096: Introduction to C/C++ \nFrank Li, Tom Lieber, Kyle Murray \nLecture 4: Data Structures \nand Debugging! \nJanuary 17, 2012 \n1",
+    "has_code": false
+  },
+  {
+    "page": 2,
+    "section": "Today…",
+    "text": "Today… \n• Memory Leaks and Valgrind Tool \n• Structs and Unions \n• Opaque Types \n• Enum and Typedef \n• GDB Debugging Tool \n2",
+    "has_code": false
+  },
+  {
+    "page": 3,
+    "section": "Today…",
+    "text": "Today… \n• Memory Leaks and Valgrind Tool \n• Structs and Unions \n• Opaque Types \n• Enum and Typedef \n• GDB Debugging Tool \n3",
+    "has_code": false
+  },
+  {
+    "page": 4,
+    "section": "Today…",
+    "text": "Memory Issues (Live Demos!) \n• Illegal memory accesses (segmentation faults) \n• Stack overflow \n▫ Infinite recursions \n• Double frees \n• Dangerous use of uninitialized variables (see Lec 2) \n• Memory leaks \n4",
+    "has_code": true
+  },
+  {
+    "page": 5,
+    "section": "Today…",
+    "text": "Memory Leaks \n• Since memory is user managed, there can be \nmistakes. \n• Memory leaks = allocated memory that’s not \nfreed. \n• Why it matters? \n5",
+    "has_code": false
+  },
+  {
+    "page": 6,
+    "section": "Today…",
+    "text": "Valgrind \n• A memory profiling tool. Helps you find memory leaks. \n• Compile with debug mode (using -g flag). \ngcc -g hello.c -o hello \n• Includes tools such as memcheck, cachegrind, callgrind, \netc… \n• Command line: \n▫ valgrind --tool=tool_name ./program_name \n▫ Example: valgrind --tool=memcheck ./hello_world \n6",
+    "has_code": false
+  },
+  {
+    "page": 7,
+    "section": "Today…",
+    "text": "Valgrind No Leaks Demo \n• $ valgrind --tool=memcheck ./hello_world \n... \n=18515== malloc/free: in use at exit: 0 bytes in 0 blocks. \n==18515== malloc/free: 1 allocs, 1 frees, 10 bytes allocated. \n==18515== For a detailed leak analysis, rerun with: --leak­\ncheck=yes \n7",
+    "has_code": true
+  },
+  {
+    "page": 8,
+    "section": "Today…",
+    "text": "Valgrind Leak Demo \n• #include <stdlib.h> \nint main() \n{ \nchar *x = (char*) malloc(100); //Mem Leak! \nreturn 0; \n} \n8",
+    "has_code": true
+  },
+  {
+    "page": 9,
+    "section": "Today…",
+    "text": "Valgrind No Leaks Demo \n• $ valgrind --tool=memcheck ./mem_leak \n... \n==12196== HEAP SUMMARY: \n==12196== \nin use at exit: 100 bytes in 1 blocks \n==12196== total heap usage: 1 allocs, 0 frees, 100 bytes allocated \n==12196== \n==12196== LEAK SUMMARY: \n==12196== definitely lost: 100 bytes in 1 blocks \n==12196== indirectly lost: 0 bytes in 0 blocks \n==12196== \npossibly lost: 0 bytes in 0 blocks \n==12196== still reachable: 0 bytes in 0 blocks \n==12196== \nsuppressed: 0 bytes in 0 blocks \n9",
+    "has_code": false
+  },
+  {
+    "page": 10,
+    "section": "Today…",
+    "text": "More Valgrind Functionalities \n• Can also detect invalid pointer use \n▫ char *arr = malloc(10); \narr[10] = ‘a’ \n• Using uninitialized variables \n▫ int x; \nif(x==0){…} \n• Double/invalid frees \n• Valgrind doesn’t check bounds on statically \nallocated arrays though! \n10",
+    "has_code": true
+  },
+  {
+    "page": 11,
+    "section": "Today…",
+    "text": "Today… \n• Memory Leaks and Valgrind Tool \n• Structs and Unions \n• Opaque Types \n• Enum and Typedef \n• GDB Debugging Tool \n11",
+    "has_code": false
+  },
+  {
+    "page": 12,
+    "section": "Today…",
+    "text": "User Defined Data Types \n• C has no objects, but has data structures that can \nhelp fill in roles. Only contains data. \n• Structures and unions are like data objects \n▫ Contains groups of basic data types \n▫ Can be used like any normal type \n▫ Not true objects b/c they can’t contain functions \n12",
+    "has_code": false
+  },
+  {
+    "page": 13,
+    "section": "Today…",
+    "text": "age\nname\nStructures \n• Declaring structs \nstruct person{ \nint age; \nchar name[50]; \n}; \nstruct person joe; \nA person! \n● Accessing members: . operator \n● instance_name.struct_member \n● joe.age \n13\nage\nname",
+    "has_code": true
+  },
+  {
+    "page": 14,
+    "section": "Today…",
+    "text": "id\ngrade\n \n \n \n \n \n \nStructures \n• Initializing structs \n▫ struct student ｛ \nint id; \nchar grade; \n}; \nstruct student frank= {1, ‘A’}; \nOr \nHmm...is that all I am? \nstruct student frank; \nA number and a letter? \nfrank.id = 1; \n:( \nfrank.grade = ‘A’; \n14\nid\ngrade",
+    "has_code": true
+  },
+  {
+    "page": 15,
+    "section": "Today…",
+    "text": "Structures \n• Struct pointers: \n▫ struct student * frank= malloc(sizeof(struct student)); \n• Accessing members of struct pointers: -> \n▫ frank->grade = 'A' // Hooray (for me)! \n• Can have structs within structs. Just use more . \nor -> operators to access inner structs. \n15",
+    "has_code": true
+  },
+  {
+    "page": 16,
+    "section": "Today…",
+    "text": "Struct Memory \n• Struct size != sum of member sizes \n• All members must “align” with largest member \nsize \n• Each member has own alignment requirements \nEx: char = 1-byte aligned. \nshort = 2-byte aligned. \nint = 4-byte aligned. ←Refer to documentation \n16",
+    "has_code": true
+  },
+  {
+    "page": 17,
+    "section": "Today…",
+    "text": "Struct Memory \n● Blackboard Example: \nstruct x{ \nchar a; //1-byte, must be 1-byte aligned \nshort b; //2-bytes, must be 2-byte aligned \nint c; // Biggest member (4-bytes). X must be 4-byte \n// aligned \nchar d; \n} \n17",
+    "has_code": true
+  },
+  {
+    "page": 18,
+    "section": "Today…",
+    "text": "Unions \n• Can only access one member at a time. Union stores all \ndata in same chunk of memory. \nunion data{ \nint x; char y; \n}; \nunion data mydata; \nmydata.y = 'a'; \nmydata.x = 1; \nprintf(“%d\\n”, mydata.x) // Will print out 1 \nprintf(“%c\\n”, mydata,y) // Will print out JUNK! \n18",
+    "has_code": true
+  },
+  {
+    "page": 19,
+    "section": "Today…",
+    "text": "Common Use of Unions \n• Union within struct \nstruct student{ \nunion grade{ \nint percentage_grade; //ex: 99% \nchar letter_grade; // 'B' \n}; \nint grade_format; // I set to 0 if grade is int, 1 if grade is \nchar \n}; \nstruct student frank; \nfrank.grade.percentage_grade = 90; \nfrank.grade_format = 0; \n19",
+    "has_code": true
+  },
+  {
+    "page": 20,
+    "section": "Today…",
+    "text": "Today… \n• Memory Leaks and Valgrind Tool \n• Structs and Unions \n• Opaque Types \n• Enum and Typedef \n• GDB Debugging Tool \n20",
+    "has_code": false
+  },
+  {
+    "page": 21,
+    "section": "Today…",
+    "text": "Opaque Types \n• Type exposed via pointers where definition can \nstill change. Ex: Can change struct person \ndefinition in test.c without recompiling my_file.c \ntest.h: \nstruct person; \ntest.c: \nstruct person{ \n… //def here \n}; \nmy_file.c: \n#include “test.h” \nint person_function(struct person * ptr){ \n… \n} \n21",
+    "has_code": true
+  },
+  {
+    "page": 22,
+    "section": "Today…",
+    "text": "Today… \n• Memory Leaks and Valgrind Tool \n• Structs and Unions \n• Opaque Types \n• Enum and Typedef \n• GDB Debugging Tool \n22",
+    "has_code": false
+  },
+  {
+    "page": 23,
+    "section": "Today…",
+    "text": "Typedef \n• Typedef assigns alternate name to existing type. \n– typedef existing_type alternate_name \ntypedef int seconds_t; \nseconds_t x = 3; \ntypedef struct person person; \nperson frank; // instead of struct person frank \n• Good for shorthand and code readability \n• Opaque types \ntypedef struct person* person; \nint func(person me){ ...} \n23",
+    "has_code": true
+  },
+  {
+    "page": 24,
+    "section": "Today…",
+    "text": "Enum \n• Define own variable type with a set of int values \nenum time_t { morning, noon, afternoon, night}; \nenum time_t class = morning; \nif (class == afternoon) { … } \n• What actually happens is enum values are mapped \nto increasing sequence of int: \n– morning = 0, noon = 1, afternoon = 2, night = 3 \n– You can explicitly assign int values:\n enum time_t { morning, noon=2, afternoon, night}; \nmorning = 0, noon = 2, afternoon = 3, night = 4 \n24",
+    "has_code": true
+  },
+  {
+    "page": 25,
+    "section": "Today…",
+    "text": "Why use Enum \n• Like a #define variable but is actually a C \nelement (has a type, obeys scoping rules) \n#define NORTH 0 \n#define EAST 1 \n#define SOUTH 2 \n#define WEST 3 \nint direction = SOUTH; \n//Compiler sees: \n//int direction = 2 \nenum dir_t{ \nNORTH, \nEAST, \nSOUTH, \nWEST \n}; \ntypedef enum dir_t dir_t; \r\ndir_t direction = SOUTH; \r\n25",
+    "has_code": true
+  },
+  {
+    "page": 26,
+    "section": "Today…",
+    "text": "Today… \n• Memory Leaks and Valgrind Tool \n• Structs and Unions \n• Opaque Types \n• Enum and Typedef \n• GDB Debugging Tool \n26",
+    "has_code": false
+  },
+  {
+    "page": 27,
+    "section": "Today…",
+    "text": "Debugger (Your LifeSaver) \n• Compile with –g flag (debug mode) \ngcc -g hello.c -o hello \n• Command-line debugger: gdb ./prog_name \ngdb ./hello \n27",
+    "has_code": false
+  },
+  {
+    "page": 28,
+    "section": "Today…",
+    "text": "GDB Example \n28",
+    "has_code": false
+  },
+  {
+    "page": 29,
+    "section": "Today…",
+    "text": "Debugger (Live Demo!) \nUseful commands: \n▫ q/quit: exit GDB \n▫ r/run: run program \n▫ b/break (filename:)linenumber: create a \nbreakpoint at the specified line. \n▫ s/step: execute next line, or step into a function \n▫ c/continue: continue execution \n▫ p variable: print the current value of the variable \n▫ bt: print the stack trace (very useful!) \n29",
+    "has_code": true
+  },
+  {
+    "page": 30,
+    "section": "Summary",
+    "text": "Summary \n• Use Valgrind and GDB to find errors/memory \nbugs \n• C structs and unions are like data “objects” \n• Opaque types allow flexibility in struct/union \nusage \n• Enum and Typedef saves you time! \n30",
+    "has_code": true
+  },
+  {
+    "page": 31,
+    "section": "Summary",
+    "text": "Advanced Data Type Example \nImage from: http://courses.cs.vt.edu/csonline/DataStructures/Lessons/OrderedListImplementationView/Lesson.html \n31\nCourtesy of Osman Balci, Virginia Tech Center for Innovation in Learning. Used with permission.",
+    "has_code": true
+  },
+  {
+    "page": 32,
+    "section": "Summary",
+    "text": "The Linked List! \nImage from: http://courses.cs.vt.edu/csonline/DataStructures/Lessons/OrderedListImplementationView/Lesson.html \n32\nCourtesy of Osman Balci, Virginia Tech Center for Innovation in Learning. Used with permission.",
+    "has_code": true
+  },
+  {
+    "page": 33,
+    "section": "Summary",
+    "text": "Singly Linked Lists \n• Singly linked list is a sequential list of nodes \nwhere each node contains a value and a \nlink/pointer to the next node. \n33\nImage from: http://courses.cs.vt.edu/csonline/DataStructures/Lessons/OrderedListImplementationView/Lesson.html \nCourtesy of Osman Balci, Virginia Tech Center for Innovation in Learning. Used with permission.",
+    "has_code": true
+  },
+  {
+    "page": 34,
+    "section": "Summary",
+    "text": "Singly Linked Lists \n• Nodes: \nstruct node{ \nint data; \nstruct node* next; \n}; \ntypedef struct node node; \nnode* head = NULL; //Points to beginning of list. Set \n// to null initially. \n34",
+    "has_code": true
+  },
+  {
+    "page": 35,
+    "section": "Summary",
+    "text": "Singly Linked Lists \n• Adding new data to list \nnode* add_data(int data){ \nnode* new_node = (node*) malloc(sizeof(node)); \nnew_node->data = data; \nnew_node->next = head; \nhead = new_node; \nreturn new_node; \n} \n35",
+    "has_code": true
+  },
+  {
+    "page": 36,
+    "section": "Summary",
+    "text": "Singly Linked Lists \n• Searching through list \nnode * find_data(int data){ \nnode* current; \nfor( current = head; current->next!=NULL; \ncurrent= current->next){ \nif(current->data == data) return current; \n} \nreturn NULL; \n} \n36",
+    "has_code": true
+  },
+  {
+    "page": 37,
+    "section": "Summary",
+    "text": "Singly Linked Lists \n• Removing a certain data value \nvoid rm_data(int data){ \n//Special case if the head has the data \nif( head->data == data ) { \nnode* tmp = head; \nhead = head->next; \nfree(tmp); \nreturn; \n} \n…//Code continues on next slide \n} \n37",
+    "has_code": true
+  },
+  {
+    "page": 38,
+    "section": "Summary",
+    "text": "Singly Linked Lists \n• Removing a certain data value \nvoid rm_data(int data){ \n…//Code from previous slide \nnode* prev, *current; \nfor(current = head; current->next!=NULL; current= current->next){ \nif(current->data == data){ \nprev->next = current->next; \nfree(current); \nreturn ; \n} \nprev = current; \n} \n} \n38",
+    "has_code": true
+  },
+  {
+    "page": 39,
+    "section": "MIT OpenCourseWare",
+    "text": "MIT OpenCourseWare\nhttp://ocw.mit.edu\n6.S096 Introduction to C and C++\nIAP 2013\nFor information about citing these materials or our Terms of Use, visit: http://ocw.mit.edu/terms.",
+    "has_code": true
+  }
+]

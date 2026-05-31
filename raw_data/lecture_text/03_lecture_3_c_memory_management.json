@@ -1,0 +1,260 @@
+[
+  {
+    "page": 1,
+    "section": "",
+    "text": "6.S096: Introduction to C/C++ \nFrank Li, Tom Lieber, Kyle Murray \nLecture 3: C Memory Management \nJanuary 15, 2013 \n1",
+    "has_code": false
+  },
+  {
+    "page": 2,
+    "section": "Today…",
+    "text": "Today… \n• Computer Memory \n• Pointers/Addresses \n• Arrays \n• Memory Allocation \n2",
+    "has_code": false
+  },
+  {
+    "page": 3,
+    "section": "Today…",
+    "text": "Today… \n• Computer Memory \n• Pointers/Addresses \n• Arrays \n• Memory Allocation \n3",
+    "has_code": false
+  },
+  {
+    "page": 4,
+    "section": "Today…",
+    "text": "Heap \n• Heap is a chunk of memory that users can use to \ndynamically allocated memory. \n• Lasts until freed, or program exits. \n4",
+    "has_code": false
+  },
+  {
+    "page": 5,
+    "section": "Today…",
+    "text": "Stack \n• Stack contains local variables from functions and \nrelated book-keeping data. LIFO structure. \n▫ Function variables are pushed onto stack when \ncalled. \n▫ Functions variables are popped off stack when \nreturn. \n5",
+    "has_code": true
+  },
+  {
+    "page": 6,
+    "section": "Today…",
+    "text": "Memory Layout Diagram of stack, heap, and other parts of memory.\n6\nMemory Layout diagram courtesy of bogotobogo.com, and used with permission.",
+    "has_code": false
+  },
+  {
+    "page": 7,
+    "section": "Today…",
+    "text": "Call Stack \n• Example: DrawSquare called from main() \nvoid DrawSquare(int i){ \nint start, end, …. //other local variables \nDrawLine(start, end); \n} \nvoid DrawLine(int start, int end){ \n//local variables \n... \n} \n7",
+    "has_code": true
+  },
+  {
+    "page": 8,
+    "section": "Today…",
+    "text": "Lower address \nCall Stack \n• Example: \nvoid DrawSquare(int i){ \nint start, end, ... \nDrawLine(start, end); \n} \nvoid DrawLine(int start, \nint end){ \n//local variables \n... \n} \n8\nTop of Stack \nHigher address",
+    "has_code": true
+  },
+  {
+    "page": 9,
+    "section": "Today…",
+    "text": "Lower address \nCall Stack \n• Example: \nvoid DrawSquare(int i){ \nint start, end, ... \nDrawLine(start, end); \n} \nvoid DrawLine(int start, \nint end){ \nTop of Stack \n//local variables \n... \n} \n9\nint i (DrawSquare arg) \nHigher address",
+    "has_code": true
+  },
+  {
+    "page": 10,
+    "section": "Today…",
+    "text": "Lower address \nCall Stack \n• Example: \nvoid DrawSquare(int i){ \nint start, end, ... \nDrawLine(start, end); \n} \nvoid DrawLine(int start, \nTop of Stack \nint end){ \n//local variables \n... \n} \n10\nmain() book-keeping \nint i (DrawSquare arg) \nHigher address",
+    "has_code": true
+  },
+  {
+    "page": 11,
+    "section": "Today…",
+    "text": "Lower address \nCall Stack \n• Example: \nvoid DrawSquare(int i){ \nint start, end, ... \nDrawLine(start, end); \nTop of Stack \n} \nvoid DrawLine(int start, \nint end){ \nDrawSquare \n//local variables \nstack frame \n... \n} \n11\nlocal variables (start, end) \nmain() book-keeping \nint i (DrawSquare arg) \nHigher address",
+    "has_code": true
+  },
+  {
+    "page": 12,
+    "section": "Today…",
+    "text": "Lower address \nCall Stack \n• Example: \nvoid DrawSquare(int i){ \nint start, end, ... \nTop of Stack \nDrawLine(start, end); \n} \nvoid DrawLine(int start, \nint end){ \nDrawSquare \n//local variables \nstack frame \n... \n} \n12\nstart, end (DrawLine args) \nlocal variables (start, end) \nmain() book-keeping \nint i (DrawSquare arg) \nHigher address",
+    "has_code": true
+  },
+  {
+    "page": 13,
+    "section": "Today…",
+    "text": "Lower address \nCall Stack \n• Example: \nvoid DrawSquare(int i){ \nTop of Stack \nint start, end, ... \nDrawLine(start, end); \n} \nvoid DrawLine(int start, \nint end){ \nDrawSquare \n//local variables \nstack frame \n... \n} \n13\nDrawSquare book-keeping \nstart, end (DrawLine args) \nlocal variables (start, end) \nmain() book-keeping \nint i (DrawSquare arg) \nHigher address",
+    "has_code": true
+  },
+  {
+    "page": 14,
+    "section": "Today…",
+    "text": "Lower address \nCall Stack \nTop of Stack \n• Example: \nvoid DrawSquare(int i){ \nDrawLine \nint start, end, ... \nstack \nframe \nDrawLine(start, end); \n} \nvoid DrawLine(int start, \nint end){ \nDrawSquare \n//local variables \nstack frame \n... \n} \n14\nDrawLine local vars \nDrawSquare book-keeping \nstart, end (DrawLine args) \nlocal variables (start, end) \nmain() book-keeping \nint i (DrawSquare arg) \nHigher address",
+    "has_code": true
+  },
+  {
+    "page": 15,
+    "section": "Today…",
+    "text": "Lower address \nCall Stack \n• Example: DrawLine returns \nvoid DrawSquare(int i){ \nDrawLine \nint start, end, ... \nstack \nframe \nDrawLine(start, end); \n} \nvoid DrawLine(int start, \nint end){ \nDrawSquare \n//local variables \nstack frame \n... \n} \nTop of Stack \n15\nDrawLine local vars \nDrawSquare book-keeping \nstart, end (DrawLine args) \nlocal variables (start, end) \nmain() book-keeping \nint i (DrawSquare arg) \nHigher address",
+    "has_code": true
+  },
+  {
+    "page": 16,
+    "section": "Today…",
+    "text": "Lower address \nCall Stack \n• Example: DrawLine returns \nvoid DrawSquare(int i){ \nint start, end, ... \nDrawLine(start, end); \nTop of Stack \n} \nvoid DrawLine(int start, \nint end){ \nDrawSquare \n//local variables \nstack frame \n... \n} \n16\nlocal variables (start, end) \nmain() book-keeping \nint i (DrawSquare arg) \nHigher address",
+    "has_code": true
+  },
+  {
+    "page": 17,
+    "section": "Today…",
+    "text": "Lower address \nCall Stack \n• Example: DrawSquare returns \nvoid DrawSquare(int i){ \nint start, end, ... \nDrawLine(start, end); \n} \nTop of Stack \nvoid DrawLine(int start, \nint end){ \nDrawSquare \n//local variables \nstack frame \n... \n} \n17\nlocal variables (start, end) \nmain() book-keeping \nint i (DrawSquare arg) \nHigher address",
+    "has_code": true
+  },
+  {
+    "page": 18,
+    "section": "Today…",
+    "text": "Lower address \nCall Stack \n• Example: DrawSquare returns \nvoid DrawSquare(int i){ \nint start, end, ... \nDrawLine(start, end); \n} \nvoid DrawLine(int start, \nint end){ \n//local variables \n... \nTop of Stack \n} \n18\nHigher address",
+    "has_code": true
+  },
+  {
+    "page": 19,
+    "section": "Today…",
+    "text": "Today… \n• Computer Memory \n• Pointers/Addresses \n• Arrays \n• Memory Allocation \n19",
+    "has_code": false
+  },
+  {
+    "page": 20,
+    "section": "Today…",
+    "text": "Pointers and Addresses \nCourtesy of xkcd at http://xkcd.com/138/, available under a CC by-nc license \n20",
+    "has_code": true
+  },
+  {
+    "page": 21,
+    "section": "Today…",
+    "text": "Addresses \n• Each variable represents an address in memory \nand a value. \n• Address: &variable = address of variable \n21\nIm a\nge showing t\nhat &x is equal to the address of x, which is shown as a mailbox.\nImage by MIT OpenCourseWare.",
+    "has_code": false
+  },
+  {
+    "page": 22,
+    "section": "Today…",
+    "text": "Pointers \nA pointer is a variable that “points” to the block \nof memory that a variable represent. \n▫ Declaration: data_type *pointer_name; \n▫ Example: \nchar x = 'a'; \nchar *ptr = &x; // ptr points to a char x \n22",
+    "has_code": true
+  },
+  {
+    "page": 23,
+    "section": "Today…",
+    "text": "Pointers \nA pointer is a variable that “points” to the block \nof memory that a variable represent. \n▫ Declaration: data_type *pointer_name; \n▫ Example: \nchar x = 'a'; \nchar *ptr = &x; // ptr points to a char x \n▫ Pointers are integer variables themselves, so can \nhave pointer to pointers: char **ptr; \n23",
+    "has_code": true
+  },
+  {
+    "page": 24,
+    "section": "Today…",
+    "text": "Data type sizes \nName \nDescription \nSize* \nRange* \nCharacter or small \nsigned: -128 to 127 \nchar \n1byte \ninteger. \nunsigned: 0 to 255 \nsigned: -32768 to 32767 \nshort int (short) Short Integer. \n2bytes \nunsigned: 0 to 65535 \nsigned: -2147483648 to 2147483647 \nint \nInteger. \n4bytes \nunsigned: 0 to 4294967295 \nsigned: -2147483648 to 2147483647 \nlong int (long) \nLong integer. \n4bytes \nunsigned: 0 to 4294967295 \nBoolean value. It can \nbool \ntake one of two values: 1byte \ntrue or false \ntrue or false. \nfloat \nFloating point number. 4bytes \n+/- 3.4e +/- 38 (~7 digits) \nDouble precision \ndouble \n8bytes \n+/- 1.7e +/- 308 (~15 digits) \nfloating point number. \nLong double precision \nlong double \n8bytes \n+/- 1.7e +/- 308 (~15 digits) \nfloating point number. \n24",
+    "has_code": true
+  },
+  {
+    "page": 25,
+    "section": "Today…",
+    "text": "Dereferencing = Using Addresses \n• Also uses * symbol with a pointer. Confusing? I know!!! \n• Given pointer ptr, to get value at that address, do: *ptr \n▫ int x = 5; \nint *ptr = &x; \n*ptr = 6; // Access x via ptr, and changes it to 6 \n printf(“%d”, x); // Will print 6 now \n• Can use void pointers, just cannot dereference without casting \n25",
+    "has_code": true
+  },
+  {
+    "page": 26,
+    "section": "Today…",
+    "text": "Pointer Arithmetic \n• Can do math on pointers \n– Ex: char* ptr \nptr \na \nb \nc \nd \n26",
+    "has_code": true
+  },
+  {
+    "page": 27,
+    "section": "Today…",
+    "text": "Pointer Arithmetic \n• Can do math on pointers \n– Ex: char* ptr \nptr + 1 \na \nb \nc \nd \n27",
+    "has_code": true
+  },
+  {
+    "page": 28,
+    "section": "Today…",
+    "text": "Pointer Arithmetic \n• Can do math on pointers \n– Ex: char* ptr \nptr + 1 \na \nb \nc \nd \nptr+i has value: ptr + i * sizeof(data_type of ptr) \n28",
+    "has_code": true
+  },
+  {
+    "page": 29,
+    "section": "Today…",
+    "text": "Pointer Arithmetic \n• Can do math on pointers \n▫ p1 = p2: sets p1 to the same address as p2 \n▫ Addition/subtraction: \n● p1 + c , p1 - c \n▫ Increment/decrement: \n● p1++, p1-­\n29",
+    "has_code": true
+  },
+  {
+    "page": 30,
+    "section": "Today…",
+    "text": "Why use pointers? They so confuzin… \n• Pass-by-reference rather than value. \nvoid sample_func( char* str_input); \n• Manipulate memory effectively. \n• Useful for arrays (next topic). \n30",
+    "has_code": true
+  },
+  {
+    "page": 31,
+    "section": "Today…",
+    "text": "Today… \n• Computer Memory \n• Pointers/Addresses \n• Arrays \n• Memory Allocation \n31",
+    "has_code": false
+  },
+  {
+    "page": 32,
+    "section": "Today…",
+    "text": "C Arrays (Statically Allocated) \n• Arrays are really chunks of memory! \n• Declaration: \n▫ Data_type array_name[num_elements]; \n• Declare array size, cannot change. \n32",
+    "has_code": false
+  },
+  {
+    "page": 33,
+    "section": "Today…",
+    "text": "C Arrays (Statically Allocated) \n• Can initialize like: \n▫ int data[] = {0, 1, 2}; //Compiler figures out size \n▫ int data[3] = {0, 1, 2}; \n▫ int data[3] = {1}; // data[0] = 1, rest are set to 0 \n▫ int data[3]; //Here, values in data are still junk \ndata[0] = 0; \ndata[1] = 1; \ndata[2] = 2; \n33",
+    "has_code": true
+  },
+  {
+    "page": 34,
+    "section": "Today…",
+    "text": "Array and Pointers \n• Array variables are pointers to the array start! \n▫ char *ptr; \nchar str[10]; \nptr = str; //ptr now points to array start \nptr = &str[0]; //Same as above line \n• Array indexing is same as dereferencing after \npointer addition. \n▫ str[1] = ‘a’ is same as *(str+1) = ‘a’ \n34",
+    "has_code": true
+  },
+  {
+    "page": 35,
+    "section": "Today…",
+    "text": "C-Style Strings \n• No string data type in C. Instead, a string is \ninterpreted as a null-terminated char array. \n• Null-terminated = last char is null char ‘\\0’, not \nexplicitly written \nchar str[] = “abc”; \na \nb \nc \n\\0 \n• String literals use “ ”. Compiler converts literals \nto char array. \n35",
+    "has_code": true
+  },
+  {
+    "page": 36,
+    "section": "Today…",
+    "text": "C-Style Strings \n• Char array can be larger than contained string \nchar str[5] = “abc”; \na \nb \nc \n\\0 \n• Special chars start with ‘\\’: \n▫ \\n, \\t, \\b, \\r: newline, tab, backspace, carriage \nreturn \n▫ \\\\, \\’, \\”: backslash, apostrophe, quotation mark \n36",
+    "has_code": true
+  },
+  {
+    "page": 37,
+    "section": "Today…",
+    "text": "String functionalities \n• #include <string.h> \n• char pointer arguments: char str1[14] \n▫ char* strcpy(char* dest, const char* source); \nstrcpy(str1, “hakuna ”); \n▫ char* strcat(char* dest, const char* source); \nstrcat(str1, “matata”); //str1 now has “hakuna matata” \n• More in documentation… \n37",
+    "has_code": true
+  },
+  {
+    "page": 38,
+    "section": "Today…",
+    "text": "Today… \n• Computer Memory \n• Pointers/Addresses \n• Arrays and Strings \n• Memory Allocation \n38",
+    "has_code": false
+  },
+  {
+    "page": 39,
+    "section": "Today…",
+    "text": "Dynamic Allocation \n• #include <stdlib.h> \n• sizeof (a C language keyword) returns number \nof bytes of a data type. \n• malloc/realloc finds a specified amount of free \nmemory and returns a void pointer to it. \n▫ char * str = (char *) malloc( 3 * sizeof(char) ); \nstrcpy(str, “hi”); \n▫ str = (char *) realloc( str , 6 * sizeof(char) ); \nstrcpy(str, “hello”); \n39",
+    "has_code": true
+  },
+  {
+    "page": 40,
+    "section": "Today…",
+    "text": "Dynamic Deallocation \n• #include <stdlib.h> \n• free declares the memory pointed to by a \npointer variable as free for future use: \nchar * str = (char *) malloc( 3 * sizeof(char) ); \nstrcpy(str, “hi”); \n... use str ... \nfree(str); \n40",
+    "has_code": true
+  },
+  {
+    "page": 41,
+    "section": "Today…",
+    "text": "Dynamically Allocated Arrays \n• Allows you to avoid declaring array size at \ndeclaration. \n• Use malloc to allocate memory for array when \nneeded: \n▫ int *dynamic_array; \ndynamic_array = malloc( sizeof( int ) * 10 ); \ndynamic_array[0]=1; // now points to an array \n41",
+    "has_code": true
+  },
+  {
+    "page": 42,
+    "section": "Summary",
+    "text": "Summary \n• Memory has stack and heap. \n• Pointers and addresses access memory. \n• Arrays are r eally chunks of memory. St\n \nrings are \nnull-terminated char arrays. \n• C allows user memory allocation. Use m\n \nalloc, \nrealloc and free. \n42",
+    "has_code": true
+  },
+  {
+    "page": 43,
+    "section": "MIT OpenCourseWare",
+    "text": "MIT OpenCourseWare\nhttp://ocw.mit.edu\n6.S096 Introduction to C and C++\nIAP 2013\nFor information about citing these materials or our Terms of Use, visit: http://ocw.mit.edu/terms.",
+    "has_code": true
+  }
+]

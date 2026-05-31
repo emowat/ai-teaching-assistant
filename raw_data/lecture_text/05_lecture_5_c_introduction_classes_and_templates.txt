@@ -1,0 +1,193 @@
+[Slide 1]
+6.s096 
+Lecture 5 
+ 
+Tuesday, January 22, 13 
+1
+
+[Slide 2]
+Today 
+•C++ (!) 
+• Compiling 
+• Memory management 
+•Classes 
+•Templates 
+Tuesday, January 22, 13 
+2
+
+[Slide 3]
+C++ 
+Tuesday, January 22, 13 
+3
+
+[Slide 4]
+C++ 
+• Bjarne Stroustrup 
+• 1983 
+• Object-oriented (but later than Simula, Smalltalk) 
+• Like C, but introduces real objects and classes 
+• (plus loads of other features (kitchen sink?)) 
+Tuesday, January 22, 13 
+4
+
+[Slide 5]
+g++ (C++ compiler) 
+• Very similar to gcc. 
+#include <stdio.h> 
+g++ -­‐o test test.cpp 
+int main(){ 
+./test 
+printf("hi from C++\n"); 
+=> hi from C++ 
+} 
+Tuesday, January 22, 13 
+5
+
+[Slide 6]
+Wait... was that really C++? 
+• Yes. 
+• C++ is pretty close to being a superset of C. 
+• We know C, thus we’ll build from that knowledge to learn C++. 
+Tuesday, January 22, 13 
+6
+
+[Slide 7]
+new memory management syntax 
+• The new operator allocates space on the heap. 
+• new and delete take the place of malloc and free. 
+int * numArray = new int[100]; 
+delete numArray; 
+struct foo * bar = new struct foo; // delete later 
+Tuesday, January 22, 13 
+7
+
+[Slide 8]
+Classes 
+Tuesday, January 22, 13 
+8
+
+[Slide 9]
+Why classes? 
+• Modularity 
+• Objects (data + behavior) 
+• Lets programmers (you) define behavior for your own data 
+Tuesday, January 22, 13 
+9
+
+[Slide 10]
+Basic Class Example 
+Rectangle::Rectangle(int w, int h){ 
+// constructor definition 
+width = new int; 
+#include <stdio.h> 
+height = new int; 
+*width = w; 
+class Rectangle { 
+*height = h; 
+int * width; 
+} 
+int * height; 
+int main(){ 
+public: 
+Rectangle box(5, 7); 
+Rectangle(int, int); // constructor 
+box.printMe(); 
+~Rectangle(); // destructor 
+} 
+void printMe(){ // 'method' / member function 
+printf("Dimensions: %d by %d.\n", *width, *height); 
+} 
+}; 
+Tuesday, January 22, 13 
+10
+
+[Slide 11]
+Constructors and Destructors 
+• This destructor should have fit on 
+the last slide...: 
+Rectangle::~Rectangle(){ 
+• 
+delete width; 
+Since we explicitly allocated 
+delete height; 
+something with new, we must also 
+} 
+explicitly de-allocate it. 
+• Rectangle itself is automatically 
+deallocated when it goes out of 
+scope. 
+ 
+Tuesday, January 22, 13 
+11
+
+[Slide 12]
+Default constructors 
+Rectangle::Rectangle(){ 
+// no arguments needed! 
+width = new int; 
+Rectangle box; 
+height = new int; 
+*width = 5; 
+*height = 5; 
+} 
+ 
+Tuesday, January 22, 13 
+12
+
+[Slide 13]
+Templates 
+• Syntax for making code more flexible. 
+• Similar in spirit to Java’s generics. 
+• Applied at compile-time, like C macros (the preprocessor). 
+• Can be applied to classes, functions. 
+• Trivia: language of templates is Turing complete. 
+ 
+Tuesday, January 22, 13 
+13
+
+[Slide 14]
+Function Template Example 
+template <class typeParam> 
+typeParam max(typeParam a, typeParam b){ 
+return (a > b ? a : b); 
+} 
+int main(){ 
+int a = 3, b = 7; 
+double c = 5.5, d = 1.5; 
+printf("%d\n", max(a, b)); // 7 
+printf("%f\n", max(c, d)); // 5.5 
+} 
+ 
+Tuesday, January 22, 13 
+14
+
+[Slide 15]
+Class Template Example 
+template <class T> 
+template <class T> 
+class mypair { 
+T mypair<T>::getmax(){ 
+T a, b; 
+return a > b ? a : b; 
+public: 
+} 
+mypair(T first, T second){ 
+a = first; 
+int main(){ 
+b = second; 
+mypair<int> myints(100, 75); 
+} 
+printf("%d\n", 
+T getmax(); 
+myints.getmax()); // 100 
+}; 
+ 
+Tuesday, January 22, 13 
+15
+
+[Slide 16] (MIT OpenCourseWare)
+MIT OpenCourseWare
+http://ocw.mit.edu
+6.S096 Introduction to C and C++
+IAP 2013
+For information about citing these materials or our Terms of Use, visit: http://ocw.mit.edu/terms.

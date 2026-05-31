@@ -1,1 +1,4 @@
 archive_scripts/
+.env
+qdrant_local_data/
+__pycache__/

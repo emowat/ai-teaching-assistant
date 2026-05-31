@@ -1,0 +1,362 @@
+[
+  {
+    "page": 1,
+    "section": "",
+    "text": "C++ Inheritance\n1",
+    "has_code": false
+  },
+  {
+    "page": 2,
+    "section": "",
+    "text": "Bits & Bobs\n2",
+    "has_code": false
+  },
+  {
+    "page": 3,
+    "section": "",
+    "text": "int x; \nint y; \nstruct {\n int x;\n int y; \n} pt; \nunion {\n int x;\n int y; \n} pt; \nx ­\ny ­\npt \npt.x \npt.y \npt \npt.x \npt.y \nint \nint \nint \nint \nint \nint \n3",
+    "has_code": true
+  },
+  {
+    "page": 4,
+    "section": "",
+    "text": "foo \nunion {\n struct {\nfoo.x \nint \nint\nint a;\nfoo.y \nchar\nchar b; \n } x; \n int y; \nfoo.x.a ­\n} foo; \nfoo.x.b \n4",
+    "has_code": true
+  },
+  {
+    "page": 5,
+    "section": "",
+    "text": "Why Inheritance?\n5",
+    "has_code": false
+  },
+  {
+    "page": 6,
+    "section": "",
+    "text": "struct Circle {\nstruct Square {\nint x, y;\n int x, y;\nint radius;\n int width;\n void draw(); \nvoid draw();\n}; \n}; \n6",
+    "has_code": true
+  },
+  {
+    "page": 7,
+    "section": "",
+    "text": "struct Circle {\nstruct Square {\nint x, y;\n int x, y;\nint radius;\n int width;\n void draw(); \nvoid draw();\n}; \n}; \nCircle *circles[nc]; \nSquare *squares[ns]; \n7",
+    "has_code": true
+  },
+  {
+    "page": 8,
+    "section": "",
+    "text": "struct Circle {\nstruct Square {\nint x, y;\n int x, y;\nint radius;\n int width;\n void draw(); \nvoid draw();\n}; \n}; \nCircle *circles[nc]; \nSquare *squares[ns]; \nfor(int i = 0; i < nc; i++)\ncircles[i].draw();\nfor(int i = 0; i < ns; i++)\nsquares[i].draw(); \n8",
+    "has_code": true
+  },
+  {
+    "page": 9,
+    "section": "",
+    "text": "Circle *circles[nc]; \nSquare *squares[ns]; \nfor(int i = 0; i < nc; i++)\ncircles[i].draw();\nfor(int i = 0; i < ns; i++)\nsquares[i].draw(); \nfor(int i = 0; i < nc; i++)\ndelete circles[i];\nfor(int i = 0; i < ns; i++)\ndelete squares[i]; \nprintf(\"%d\\n\"\ncircles[i] width);\nfor(int i = 0; i < nc; i++)\n9",
+    "has_code": true
+  },
+  {
+    "page": 10,
+    "section": "",
+    "text": "struct Circle {\nstruct Square {\nint x, y;\n int x, y;\n void draw(); \nvoid draw();\n int radius;\n int width;\n}; \n};\n? \n?\nShape *shapes[ns]; \nfor(int i = 0; i < ns; i++)\nshapes[i].draw(); \nfor(int i = 0; i < ns; i++)\n delete shapes[i]; \n10",
+    "has_code": true
+  },
+  {
+    "page": 11,
+    "section": "",
+    "text": "Inheritance\n11",
+    "has_code": false
+  },
+  {
+    "page": 12,
+    "section": "",
+    "text": "class Shape {\npublic:\nvirtual void draw() = 0;\n}; \nclass Circle : public Shape { \nprivate:\nint x, y;\nint radius; \npublic:\nvirtual void draw();\n}; \nvoid Circle::draw() {\n ... \nBest Practice\n} \n12",
+    "has_code": true
+  },
+  {
+    "page": 13,
+    "section": "",
+    "text": "1) Subclassing \n2) virtual \n13",
+    "has_code": true
+  },
+  {
+    "page": 14,
+    "section": "",
+    "text": "1) Subclassing\n2) virtual \n14",
+    "has_code": true
+  },
+  {
+    "page": 15,
+    "section": "",
+    "text": "1) Subclassing\ninherit behavior from the parent\n15",
+    "has_code": false
+  },
+  {
+    "page": 16,
+    "section": "",
+    "text": "class Shape {\npublic:\nvoid draw();\n}; \nclass Circle : public Shape {\npublic:\nint getRadius();\n}; \nint main() {\nCircle circle; \ncircle.draw(); \n} \n16",
+    "has_code": true
+  },
+  {
+    "page": 17,
+    "section": "",
+    "text": "void draw() \nvoid draw() \nint getRadius() \nShape \nCircle : public Shape\n17",
+    "has_code": true
+  },
+  {
+    "page": 18,
+    "section": "",
+    "text": "1) Subclassing\ninherit ﬁelds from the parent\n18",
+    "has_code": false
+  },
+  {
+    "page": 19,
+    "section": "",
+    "text": "class Shape {\npublic:\nint x, y;\n}; \nclass Circle : public Shape {\npublic:\nint radius; \n}; \nint main() {\nCircle circle; \ncircle.x = 5; \n} \n19",
+    "has_code": true
+  },
+  {
+    "page": 20,
+    "section": "",
+    "text": "Shape \nCircle : public Shape\nint x \nint y \nint x \nint y \nint radius \n20",
+    "has_code": true
+  },
+  {
+    "page": 21,
+    "section": "",
+    "text": "Shape \nint x \nint y \nint radius \nCircle\n{ \n} \nis-a or has-a?\n21",
+    "has_code": true
+  },
+  {
+    "page": 22,
+    "section": "",
+    "text": "class Circle\nclass Circle {\n : public Shape { \npublic:\npublic:\nShape shape;\n int radius; \nint radius; \n}; \n}; \n22",
+    "has_code": true
+  },
+  {
+    "page": 23,
+    "section": "",
+    "text": "class Circle\nclass Circle {\n : public Shape {\npublic:\npublic:\n Shape shape;\n int radius; \nint radius; \n}; \n}; \ncircle.x; \ncircle.shape.x; \n23",
+    "has_code": true
+  },
+  {
+    "page": 24,
+    "section": "",
+    "text": "1) Subclassing\npublic/protected/private ﬁelds\n24",
+    "has_code": true
+  },
+  {
+    "page": 25,
+    "section": "",
+    "text": "class Shape {\npublic:\nint x; \nprivate:\nonly accessible in\nint y;\nShape class\n}; \nvoid Circle::foo() {\nprintf(\"%d\", x);\nprintf(\"%d\", y); // compile error\n} \n25",
+    "has_code": true
+  },
+  {
+    "page": 26,
+    "section": "",
+    "text": "class Shape {\npublic:\nint x; \nprotected:\naccessible in Shape class \nint y;\nand in subclasses\n}; \nvoid Circle::foo() { \nprintf(\"%d\", x); \nprintf(\"%d\", y); \n} \nint main() {\nCircle circle;\n circle.x = 0; // compile error\n} \n26",
+    "has_code": true
+  },
+  {
+    "page": 27,
+    "section": "",
+    "text": "1) Subclassing\npublic/protected/private inheritance\n27",
+    "has_code": true
+  },
+  {
+    "page": 28,
+    "section": "",
+    "text": "class Shape {\npublic:\nvoid draw();\n}; \nclass Circle : public Shape {\n}; \n28",
+    "has_code": true
+  },
+  {
+    "page": 29,
+    "section": "",
+    "text": "class Shape {\npublic:\nvoid draw();\n}; \nclass Circle : protected Shape {\n}; \n29",
+    "has_code": true
+  },
+  {
+    "page": 30,
+    "section": "",
+    "text": "class Shape {\npublic:\nvoid draw();\n}; \nclass Circle : protected Shape {\nprotected:\n int getRadius();\n}; \nThe inheritance is protected. \nIf you can access getRadius(),\n you can access draw() \n30",
+    "has_code": true
+  },
+  {
+    "page": 31,
+    "section": "",
+    "text": "class Shape {\npublic:\nvoid draw();\n}; \nclass Circle : private Shape {\nprivate:\n int getRadius();\n}; \nThe inheritance is private. \nIf you can access getRadius(),\n you can access draw() \n31",
+    "has_code": true
+  },
+  {
+    "page": 32,
+    "section": "",
+    "text": "private inheritance:\nis-a or has-a\n32",
+    "has_code": true
+  },
+  {
+    "page": 33,
+    "section": "",
+    "text": "1) Subclassing\nmultiple inheritance\n33",
+    "has_code": false
+  },
+  {
+    "page": 34,
+    "section": "",
+    "text": "class Color { \npublic: virtual void print(); \n}; \nclass Mood { \npublic: virtual void print(); \n}; \nclass Blue : public Color, public Mood {\npublic:\nvirtual void print() { \nthis->Color::print(); \nthis->Mood::print(); \n}\n}; \n34",
+    "has_code": true
+  },
+  {
+    "page": 35,
+    "section": "",
+    "text": "1) Subclassing\nslicing\n35",
+    "has_code": false
+  },
+  {
+    "page": 36,
+    "section": "",
+    "text": "struct Cow {\nvoid speak() {\nprintf(\"Moo.\\n\");\n}\n}; \nstruct Werecow : public Cow {\nbool transformed;\n void speak() {\nif (transformed)\nprintf(\"Aaooooh!\\n\");\nelse\n printf(\"Moo.\\n\");\n}\n}; \n36",
+    "has_code": true
+  },
+  {
+    "page": 37,
+    "section": "",
+    "text": "Werecow wcow; \nwcow.transformed = true; \nCow cows[2];\ncows[0] = Cow();\ncows[1] = wcow; \nfor (int i = 0; i < 2; i++)\ncows[i].speak();\nwcow.speak(); \n// Output:\n// \nMoo. \n// \nMoo. \n// \nAaooooh! \n37",
+    "has_code": true
+  },
+  {
+    "page": 38,
+    "section": "",
+    "text": "void poke(Cow cow) {\ncow.speak();\n} \nCow judy; \nWerecow bev; \nbev.transformed = true; \npoke(judy); \npoke(bev); \nbev.speak(); \n// Output: \n// \nMoo. \n// \nMoo. \n// \nAaooooh! \n38",
+    "has_code": true
+  },
+  {
+    "page": 39,
+    "section": "",
+    "text": "Cow \nWerecow\nbool transformed \n39",
+    "has_code": false
+  },
+  {
+    "page": 40,
+    "section": "",
+    "text": "Use pointers\nUse virtual \n40",
+    "has_code": true
+  },
+  {
+    "page": 41,
+    "section": "",
+    "text": "1) Subclassing\n2) virtual \n41",
+    "has_code": true
+  },
+  {
+    "page": 42,
+    "section": "",
+    "text": "class Shape {\npublic:\nvoid draw() { printf(\"shape\\n\"); }\n}; \nclass Circle : public Shape {\npublic:\nvoid draw() { printf(\"circle\\n\"); }\n}; \n42",
+    "has_code": true
+  },
+  {
+    "page": 43,
+    "section": "",
+    "text": "class Shape {\npublic:\nvoid draw() { printf(\"shape\\n\"); }\n}; \nclass Circle : public Shape {\npublic:\nvoid draw() { printf(\"circle\\n\"); }\n}; \nCircle *circle = new Circle; \ncircle->draw(); // \"circle\" \n43",
+    "has_code": true
+  },
+  {
+    "page": 44,
+    "section": "",
+    "text": "class Shape {\npublic:\nvoid draw() { printf(\"shape\\n\"); }\n}; \nclass Circle : public Shape {\npublic:\nvoid draw() { printf(\"circle\\n\"); }\n}; \nShape *shape = new Circle; \nshape->draw(); // \"shape\" \n44",
+    "has_code": true
+  },
+  {
+    "page": 45,
+    "section": "",
+    "text": "class Shape {\npublic:\nvoid draw() { printf(\"shape\\n\"); }\n}; \nclass Circle : public Shape {\npublic:\nvoid draw() { printf(\"circle\\n\"); }\n}; \nShape *shape = new Circle; \nshape->draw(); // \"shape\" \ndraw() is non-virtual, \nso it’s compiled like a C call \n45",
+    "has_code": true
+  },
+  {
+    "page": 46,
+    "section": "",
+    "text": "Non-virtual functions are ­\ndetermined at compile-time ­\nclass Cat {\npublic:\nvoid yawn(int duration);\n}; \nCat cat, *pcat = new SuperCat; \ncat.yawn(4); \npcat->yawn(4); \nBoth use Cat::yawn ­\nbecause both have type Cat ­\n46",
+    "has_code": true
+  },
+  {
+    "page": 47,
+    "section": "",
+    "text": "Virtual functions are\ndetermined at run-time\nclass Cat {\npublic:\nvirtual void yawn(int duration);\n}; \nCat cat, *pcat = new SuperCat; \ncat.yawn(4); \npcat->yawn(4); \nUse Cat::yawn and SuperCat::yawn\n(pcat’s type is checked every time it’s called)\n47",
+    "has_code": true
+  },
+  {
+    "page": 48,
+    "section": "",
+    "text": "non-virtual: compile-time\nvirtual: run-time\n48",
+    "has_code": true
+  },
+  {
+    "page": 49,
+    "section": "",
+    "text": "2) virtual \npure virtual methods\n49",
+    "has_code": true
+  },
+  {
+    "page": 50,
+    "section": "",
+    "text": "class Shape { \npublic: \nvirtual void draw() = 0;\n}; \nint main() { \nShape shape; \n} \npure.cpp: In function ‘int main()’: \npure.cpp:7: error: cannot declare variable ‘shape’ to be of abstract type ‘Shape’ \npure.cpp:1: note: \nbecause the following virtual functions are pure within ‘Shape’: \npure.cpp:3: note: ! virtual void Shape::draw() \n50",
+    "has_code": true
+  },
+  {
+    "page": 51,
+    "section": "",
+    "text": "class Drawable {\npublic:\nvirtual void draw() = 0;\n}; \nclass Fish : public Drawable {\npublic:\nvirtual void draw();\n}; \nint main() {\nDrawable *drawables[3];\ndrawables[0] = new Fish;\ndrawables[1] = new Salami;\ndrawables[2] = new JackSparrow;\n} \n51",
+    "has_code": true
+  },
+  {
+    "page": 52,
+    "section": "",
+    "text": "2) virtual \ndestructors\n52",
+    "has_code": true
+  },
+  {
+    "page": 53,
+    "section": "",
+    "text": "Make virtual destructors ­\nclass Fish {\npublic:\nFish() {\ngills[0] = new Gill;\ngills[1] = new Gill;\n}\nvirtual ~Fish() {\ndelete gills[0];\ndelete gills[1];\n}\nprivate:\nGill *gills[2];\n}; \n53",
+    "has_code": true
+  },
+  {
+    "page": 54,
+    "section": "",
+    "text": "2) virtual \nvirtual inheritance\n54",
+    "has_code": true
+  },
+  {
+    "page": 55,
+    "section": "",
+    "text": "class Goofball {\nint x; \n}; \nclass Stupid : public Goofball { };\nclass Dumb : public Goofball { }; \nclass Oops : public Stupid, public Dumb {\n}; \nOops \nStupid::x \nDumb::x \n55",
+    "has_code": true
+  },
+  {
+    "page": 56,
+    "section": "",
+    "text": "class Goofball {\nint x; \n}; \nclass Stupid : public Goofball { };\nclass Dumb : public Goofball { }; \nclass Oops : public Stupid, public Dumb {\nint fail();\n}; \nint Oops::fail() {\nStupid::x = 1; Dumb::x = 2;\n return Stupid::x + Dumb::x; // 3\n} \n56",
+    "has_code": true
+  },
+  {
+    "page": 57,
+    "section": "",
+    "text": "class Goofball {\nint x; \n}; \nclass Stupid : virtual public Goofball { };\nclass Dumb : virtual public Goofball { }; \nclass Oops : public Stupid, public Dumb {\nint fail();\n}; \nint Oops::fail() {\nStupid::x = 1; Dumb::x = 2;\n return Stupid::x + Dumb::x; // 4\n} \n57",
+    "has_code": true
+  },
+  {
+    "page": 58,
+    "section": "",
+    "text": "Conclusion\n58",
+    "has_code": false
+  },
+  {
+    "page": 59,
+    "section": "",
+    "text": "class Shape {\npublic:\nvirtual void draw() = 0;\n}; \nclass Circle : public Shape { \nprivate:\nint x, y;\nint radius; \npublic:\nvirtual void draw();\n}; \nvoid Circle::draw() {\n ... \nBest Practice\n} \n59",
+    "has_code": true
+  },
+  {
+    "page": 60,
+    "section": "MIT OpenCourseWare",
+    "text": "MIT OpenCourseWare\nhttp://ocw.mit.edu\n6.S096 Introduction to C and C++\nIAP 2013\nFor information about citing these materials or our Terms of Use, visit: http://ocw.mit.edu/terms.",
+    "has_code": true
+  }
+]

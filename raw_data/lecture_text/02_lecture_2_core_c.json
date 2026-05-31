@@ -1,0 +1,158 @@
+[
+  {
+    "page": 1,
+    "section": "",
+    "text": "6.s096 \nLecture 2 \n1 \nThursday, January 10, 13",
+    "has_code": false
+  },
+  {
+    "page": 2,
+    "section": "",
+    "text": "Today \n•Control Structures \n•Variables and Functions \n•Scope \n•Uninitialized Memory - and what to do about it! \n3 \nThe core of the language \nThursday, January 10, 13",
+    "has_code": true
+  },
+  {
+    "page": 3,
+    "section": "",
+    "text": "Control Structures \n4 \nThursday, January 10, 13",
+    "has_code": false
+  },
+  {
+    "page": 4,
+    "section": "",
+    "text": "Basic Control Structures \nYou’ve probably seen these… \nwhile \n \ndo…while \n \n\r\r \n \nfor \n \nif […else if], […else] \n \n5 \nThursday, January 10, 13",
+    "has_code": true
+  },
+  {
+    "page": 5,
+    "section": "",
+    "text": "Basic Control Structures \nYou’ve probably seen these… \nwhile \n \ndo…while \n \n \nfor \n \n\r\r \nif […else if], […else] \n \n6 \nThursday, January 10, 13",
+    "has_code": true
+  },
+  {
+    "page": 6,
+    "section": "",
+    "text": "Basic Control Structures \nYou’ve probably seen these… \nwhile \n !!\"#$\n \ndo…while \n \r\r \n \nfor \n \nif […else if], […else] \n \n7 \nThursday, January 10, 13",
+    "has_code": true
+  },
+  {
+    "page": 7,
+    "section": "",
+    "text": "Basic Control Structures \nYou’ve probably seen these… \n \nwhile \n \ndo…while \n% #& #' \n \n# \nfor \n(' \nif […else if], […else] \n \n# \n)\n\n ' \n \n8 \nThursday, January 10, 13",
+    "has_code": true
+  },
+  {
+    "page": 8,
+    "section": "",
+    "text": "Slight variations \n• Blocks / braces often optional (if, while, for): \n* +## \n• Empty loop is an “infinite” \n: \n +## \n9 \nThursday, January 10, 13",
+    "has_code": true
+  },
+  {
+    "page": 9,
+    "section": "",
+    "text": "#* \n, #* \n*-# . \n%/# 0 \n1-2 \n*-# . \n%/# 00 \n1-2 \n-&\n. \n%/# #3 4 \n#000 \n10 \nThursday, January 10, 13",
+    "has_code": false
+  },
+  {
+    "page": 10,
+    "section": "6666",
+    "text": "6666 \n \n56 \n66666666666\r\r\nJumps \n666666667676 \n6666666666 \n66666666666666 \n666666666666*& \n666666666\n#6668 \n6666666666661-2\nOutput: \n66666666 \n6666\n666;6<686 6 \n666646 \n66667-6 697 \n6666.6 \n66667 697 \n6666& \n666676#6:7 \n11 \nThursday, January 10, 13",
+    "has_code": false
+  },
+  {
+    "page": 11,
+    "section": "6666",
+    "text": "6666 \n \n56 \n66666666666\r\r\nJumps \n666666667676 \n6666666666 \n66666666666666 \n666666666666*& \n666666666\n#6668 \n6666666666661-2\nOutput: \n66666666 \n6666\n666;6<686 6 \n666646 \n66667-6 697 \n6666.6 \n66667 697 \n6666& \n666676#6:7 \n12 \nThursday, January 10, 13",
+    "has_code": false
+  },
+  {
+    "page": 12,
+    "section": "6666",
+    "text": "6666 \n \n56 \n66666666666\r\r\nJumps \n666666667676 \n6666666666 \n66666666666666 \n666666666666*& \n666666666\n#6668 \n6666666666661-2\nOutput: \n66666666 \n6666\n666;6<686 6 \n666646 \n66667-6 697 \n6666.6 \n66667 697 \n6666& \n666676#6:7 \n13 \nThursday, January 10, 13",
+    "has_code": false
+  },
+  {
+    "page": 13,
+    "section": "6666",
+    "text": "6666 \n \n56 \n66666666666\r\r\nJumps \n666666667676 \n6666666666 \n66666666666666 \n666666666666*& \n666666666\n#6668 \n6666666666661-2\nOutput: \n66666666 \n6666\n666;6<686 6 \n666646 \n66667-6 697 \n6666.6 \n66667 697 \n6666& \n666676#6:7 \n14 \nThursday, January 10, 13",
+    "has_code": false
+  },
+  {
+    "page": 14,
+    "section": "6666",
+    "text": "6666 \n \n56 \n66666666666\r\r\nJumps \n666666667676 \n6666666666 \n66666666666666 \n666666666666*& \n666666666\n#6668 \n6666666666661-2\nOutput: \n66666666 \n6666 \n666;6<686 6 \n666646 \n63-6-4*6* -6==6-45 66667-6 697 \n6666 \n6666.6 \n \n6666& \n666676#6:7 \n6666&6 \n66667 697 \n15 \nThursday, January 10, 13",
+    "has_code": false
+  },
+  {
+    "page": 15,
+    "section": "6666",
+    "text": "The statement in detail \n• Syntax: \n46 \n… where label refers to an earlier or later labelled section of code. \n• Target label must be in the same function as the 4 statement. \n• Notorious for creating hard-to-read code, but the concept is critical \nto how computers operate. \n16 \nThursday, January 10, 13",
+    "has_code": true
+  },
+  {
+    "page": 16,
+    "section": "6666",
+    "text": "Variables and Functions \n17 \nThursday, January 10, 13",
+    "has_code": false
+  },
+  {
+    "page": 17,
+    "section": "6666",
+    "text": "Variables and constants \nint a = 1; \n*#66166 \na = 2; // cool \n1666 \n6.6 \n666-\"\n$65--1\n6 \n666#66-##4-1\n \n18 \nThursday, January 10, 13",
+    "has_code": true
+  },
+  {
+    "page": 18,
+    "section": "6666",
+    "text": "#-* Variables \nStatic variables retain their value \nthroughout the life of the program. \n56 \n666666<6\r\r \n6666#-*66*&66 \n6666 \n66667676*&\r\r \n \nOutput: 6666; \n19 \nThursday, January 10, 13",
+    "has_code": true
+  },
+  {
+    "page": 19,
+    "section": "6666",
+    "text": "Functions in Variables \nWe’ll examine part of this syntax in more depth in later lectures. \n66-661 \n6=&*666> \n6666&6-6\r61 \n6#&\n66&*6 \n \n7676#&\n66; \n6666 \n61-6*66 \n&*66>1- \n6666&6*6\"6 \n#&\n66&*6 \n \n776#&\n66 \n20 \nThursday, January 10, 13",
+    "has_code": false
+  },
+  {
+    "page": 20,
+    "section": "6666",
+    "text": "Scope \n21 \nThursday, January 10, 13",
+    "has_code": false
+  },
+  {
+    "page": 21,
+    "section": "6666",
+    "text": "Scope \nA variable has a scope in which it is said to be defined. \n56 \n66666-66 \n \nIn and 1- \n is “in scope” f \nthe entire functi \n6 \n is “in scope” only with\n6 \nthe if statement’s block in 1- \n22 \n561- \n66666-66 \n666666 \n666666666166 \n66666666166662-$ \n6666 \n6666-\r\r662-$ \n66661\r\r66.6 \n6666666666&#66&*\n \n66666666666?1 \n \n- \n? \n, \nor \non. \nin \n. \nThursday, January 10, 13",
+    "has_code": true
+  },
+  {
+    "page": 22,
+    "section": "6666",
+    "text": "Anonymous Blocks \nAnonymous blocks demonstrate the concept of block scope. \n56 \n666666666 \n6666 \n66666666&1\n666';6661\n30 \n66666666 \n66666666 \n666666666666* -6=6667';76661\n30 \n66666666 \n6666 \n666666?-?666 #6#* \n \n23 \nThursday, January 10, 13",
+    "has_code": false
+  },
+  {
+    "page": 23,
+    "section": "6666",
+    "text": "Uninitialized Memory \n24 \nWhen you see that gibberish output… \nThursday, January 10, 13",
+    "has_code": false
+  },
+  {
+    "page": 24,
+    "section": "6666",
+    "text": "Program memory, simplified… \n6-66 \n00000000 00000000 00000000 00000000 \n00000000 00000000 00000000 00000000 \n00000000 00000000 00000000 00000000 \n00000000 00000000 00000000 00000000 \n25 \nThursday, January 10, 13",
+    "has_code": false
+  },
+  {
+    "page": 25,
+    "section": "6666",
+    "text": "(Common)\nSources \nAvoid these situations if you can help it! \n• Uninitialized variables: \n6 \n6 \n• Out-of-bounds array access: \n* -65#@A \n* -6&BB1&#665#@A \n• Variables passed out of their defining function’s scope. \n• 3-\n\n*6(coming up in a later lecture) \n26 \nThursday, January 10, 13",
+    "has_code": true
+  },
+  {
+    "page": 26,
+    "section": "MIT OpenCourseWare",
+    "text": "MIT OpenCourseWare\nhttp://ocw.mit.edu\n6.S096 Introduction to C and C++\nIAP 2013\nFor information about citing these materials or our Terms of Use, visit: http://ocw.mit.edu/terms.",
+    "has_code": true
+  }
+]

@@ -1,0 +1,1100 @@
+[Slide 1]
+6.s096 
+Introduction to C and C++ 
+1
+
+[Slide 2]
+Why? 
+2
+
+[Slide 3] (1)
+1 
+You seek performance 
+3
+
+[Slide 4] (1)
+1 
+You seek performance 
+“zero-overhead principle” 
+4
+
+[Slide 5] (2)
+2 
+You seek to interface 
+directly with hardware 
+5
+
+[Slide 6] (3)
+3 
+That’s kinda it 
+6
+
+[Slide 7] (3)
+C 
+a nice way to avoid writing 
+assembly language directly 
+7
+
+[Slide 8] (3)
+C++ 
+responds to the demands of 
+maintaining large C projects 
+8
+
+[Slide 9] (3)
+C++11 
+responds to the demands of 
+maintaining large C++ projects 
+9
+
+[Slide 10] (3)
+Maintain power and flexibility 
+of what came before 
+10
+
+[Slide 11] (3)
+Today: 
+Compilation 
+Pipeline 
+11
+
+[Slide 12] (3)
+Source Code 
+Program 
+12
+
+[Slide 13] (3)
+main.c 
+prog 
+int a = 1; 
+@*)!% 
+./prog 
+gcc -o prog main.c 
+13
+
+[Slide 14] (3)
+main.c 
+int a = 1; 
+prog 
+@*)!% 
+./prog 
+main2.c 
+int b = 2; 
+gcc -o prog main.c main2.c 
+14
+
+[Slide 15] (3)
+$ gcc -o prog main.c 
+$ ./prog 
+Hello, World! 
+$ 
+15
+
+[Slide 16] (3)
+DONE 
+$ gcc -o prog main.c 
+$ ./prog 
+Hello, World! 
+$ 
+16
+
+[Slide 17] (3)
+“To debug the sausage, one 
+must see how it is made.” 
+—Someone, probably 
+17
+
+[Slide 18] (3)
+Main.java 
+Main.class 
+%!(*@ 
+int a = 1; 
+java Main 
+18
+
+[Slide 19] (3)
+Main.java 
+Main.class 
+%!(*@
+main.pyc
+%!(*@ 
+a = 1 
+main.py 
+int a = 1; 
+java Main 
+python main.py 
+19
+
+[Slide 20] (3)
+Main.java 
+Main.class 
+int a = 1;
+%!(*@
+main.o
+@*)!% 
+prog 
+%!(*@
+main.pyc
+%!(*@ 
+int a = 1; 
+main.c 
+a = 1 
+main.py 
+int a = 1; 
+java Main 
+python main.py 
+./prog 
+20
+
+[Slide 21] (21)
+21
+
+[Slide 22] (22)
+22
+
+[Slide 23] (22)
+main.c
+int a = 1;
+%!(*@ 
+@*)!% 
+int a = 1;
+./prog
+Pre-Process 
+Compile 
+Link 
+23
+main.o
+prog
+
+[Slide 24] (22)
+main.c
+int a = 1;
+int a = 1;
+Pre-Process 
+%!(*@ 
+main2.o 
+%!(*@ 
+@*)!% 
+./prog
+Compile 
+Link 
+24
+prog
+main.o
+
+[Slide 25] (22)
+Pre-Process 
+Compile 
+Link 
+25
+
+[Slide 26] (22)
+Pre-Process
+Compile
+Link
+26
+
+[Slide 27] (22)
+#include 
+#define 
+#ifdef 
+27
+
+[Slide 28] (22)
+rimshot.txt 
+ba-dum chh 
+joke.txt 
+A man walks into 
+a bar. Ouch! 
+#include "rimshot.txt" 
+cpp -P joke.txt 
+28
+
+[Slide 29] (22)
+output: 
+A man walks into 
+a bar. Ouch! 
+ba-dum chh 
+cpp -P joke.txt 
+29
+
+[Slide 30] (22)
+double.py 
+#define fosho def 
+#define kthx return 
+#define wutz print 
+fosho double(x): 
+ kthx x * 2 
+wutz double(6) 
+These are called 
+“macros” 
+cpp -P double.py 
+30
+
+[Slide 31] (22)
+output: 
+def double(x): 
+ return x * 2 
+print double(6) 
+cpp -P double.py 
+31
+
+[Slide 32] (22)
+AWESOME 
+output: 
+def double(x): 
+ return x * 2 
+print double(6) 
+cpp -P double.py | python 
+12 
+cpp -P double.py 
+32
+
+[Slide 33] (22)
+beer.txt 
+#define beer(x) x bottles of \ 
+beer on the wall... 
+beer(99) 
+beer(98) 
+beer(97) 
+... 
+cpp -P beer.txt 
+33
+
+[Slide 34] (22)
+beer.txt 
+#define beer(x) x bottles of \ 
+beer on the wall... 
+beer(99) 
+beer(98) 
+beer(97) 
+... 
+cpp -P beer.txt 
+34
+
+[Slide 35] (22)
+output: 
+99 bottles of beer on the wall... 
+98 bottles of beer on the wall... 
+97 bottles of beer on the wall... 
+... 
+cpp -P beer.txt 
+35
+
+[Slide 36] (22)
+answer.txt 
+What’s 7 times 6? 
+#ifdef REVEAL 
+42 
+#endif 
+cpp -P answer.txt 
+36
+
+[Slide 37] (22)
+output: 
+What’s 7 times 6? 
+cpp -P answer.txt 
+37
+
+[Slide 38] (22)
+?
+?
+? 
+output: 
+What’s 7 times 6? 
+cpp -P answer.txt 
+38
+
+[Slide 39] (22)
+#define REVEAL 
+cpp -P answer.txt 
+39
+
+[Slide 40] (22)
+#define REVEAL 
+or: 
+cpp -P -D REVEAL answer.txt 
+cpp -P answer.txt 
+40
+
+[Slide 41] (22)
+output: 
+What’s 7 times 6? 
+42 
+cpp -P -D REVEAL answer.txt 
+41
+
+[Slide 42] (22)
+answer.txt 
+What’s 7 times 6? 
+#ifndef REVEAL 
+42 
+#endif 
+cpp -P answer.txt 
+42
+
+[Slide 43] (22)
+(Fancy) 
+String Substitution 
+43
+
+[Slide 44] (22)
+How is this used in C? 
+44
+
+[Slide 45] (22)
+hello.c 
+#include <stdio.h> 
+int main() { 
+ printf("Hello, World!\n"); 
+ return 0; 
+} 
+gcc -E hello.c 
+45
+
+[Slide 46] (22)
+hello.c 
+* angle brackets -> use the system search path 
+#include <stdio.h> 
+int main() { 
+ printf("Hello, World!\n"); 
+ return 0; 
+} 
+gcc -E hello.c 
+46
+
+[Slide 47] (22)
+hello.c 
+* angle brackets -> use the system search path 
+#include <stdio.h> 
+int main() { 
+ printf("Hello, World!\n"); 
+ return 0; 
+} 
+gcc -E hello.c 
+47
+
+[Slide 48] (22)
+output: 
+int printf(const char * , ...) 
+__attribute__((__format__ 
+(__printf__, 1, 2))); 
+int main() { 
+ printf("Hello, World!\n"); 
+} 
+* pretending printf is all that’s defined in stdio.h 
+gcc -E hello.c 
+48
+
+[Slide 49] (22)
+output: 
+int printf(const char * , ...); 
+int main() { 
+ printf("Hello, World!\n"); 
+} 
+* pretending printf is all that’s defined in stdio.h 
+gcc -E hello.c 
+49
+
+[Slide 50] (22)
+#include is not 
+import pickle 
+import java.io.*; 
+50
+
+[Slide 51] (22)
+fib.c 
+#define MAX_FIB 20 
+int fib[MAX_FIB]; 
+int main() { 
+ fib[0] = 0; 
+ fib[1] = 1; 
+ for(int i = 2; i < MAX_FIB; i++) 
+ fib[i] = fib[i-1] + fib[i-2]; 
+ return 0; 
+} 
+gcc -E fib.c 
+51
+
+[Slide 52] (22)
+output: 
+int fib[20]; 
+int main() { 
+ fib[0] = 0; 
+ fib[1] = 1; 
+ for(int i = 2; i < 20; i++) 
+ fib[i] = fib[i-1] + fib[i-2]; 
+} 
+gcc -E fib.c 
+52
+
+[Slide 53] (22)
+debug.c 
+#include <stdio.h> 
+int main() { 
+#ifdef DEBUG 
+ printf("Hello, World!\n"); 
+#endif 
+ return 0; 
+} 
+gcc -DDEBUG debug.c -o debug 
+53
+
+[Slide 54] (22)
+debug.c 
+#include <stdio.h> 
+int main() { 
+ printf("Hello, World!\n"); 
+ return 0; 
+} 
+gcc -DDEBUG debug.c -o debug 
+54
+
+[Slide 55] (22)
+debug.c 
+#include <stdio.h> 
+int main() { 
+ return 0; 
+} 
+gcc debug.c -o debug 
+55
+
+[Slide 56] (22)
+Pre-Process
+Compile
+Link
+56
+
+[Slide 57] (22)
+int a = 1; 
+%!(*@ 
+main.o 
+@*)!%
+prog
+int a = 1;
+main.c
+./prog
+ 
+57
+Compile
+
+[Slide 58] (22)
+Compile 
+Type-checking 
+Linear processing 
+58
+
+[Slide 59] (22)
+Type-checking 
+int reptile() { 
+ return "frog"; 
+} 
+59
+
+[Slide 60] (22)
+Type-checking 
+int reptile() { 
+ return "frog"; 
+} 
+reptile.c: In function ‘reptile’: 
+reptile.c:2:5: warning: return makes 
+integer from pointer without a cast 
+60
+
+[Slide 61] (22)
+Type-checking 
+def vegetable(day): 
+ if day != "Tuesday": 
+ return "tomato" 
+ else: 
+ return 1000 
+61
+
+[Slide 62] (22)
+Type-checking 
+def vegetable(day): 
+ if day != "Tuesday": 
+ return "tomato" 
+ else: 
+ return 1000 
+Python says: no problem 
+62
+
+[Slide 63] (22)
+int reptile() { 
+ return "frog"; 
+} 
+63
+
+[Slide 64] (22)
+int () { 
+ return char*; 
+} 
+64
+
+[Slide 65] (22)
+int vegetable(char *day) { 
+ if (strcmp(day, "Tuesday") != 0){ 
+ return "tomato"; 
+ } else { 
+ return 1000; 
+ } 
+} 
+65
+
+[Slide 66] (22)
+int (char*) { 
+ if (int){ 
+ return char*; 
+ } else { 
+ return int; 
+ } 
+} 
+66
+
+[Slide 67] (22)
+int (char*) { 
+ if (int){ 
+ return char*; 
+ } else { 
+ return int; 
+ } 
+} 
+67
+
+[Slide 68] (22)
+int (char*) {
+ if (int){
+ return char*;
+ } else {
+ return int;
+ }
+}
+68
+
+[Slide 69] (22)
+Everything has 
+a single, fixed type 
+69
+
+[Slide 70] (22)
+def foo(a, b): 
+ return a + b 
+foo(2, 3) 
+foo("2", "3") 
+70
+
+[Slide 71] (22)
+Variable Declarations 
+int foo; 
+float foo; 
+double foo; 
+char foo; 
+int foo[42]; 
+int *foo; 
+struct Bar foo; 
+71
+
+[Slide 72] (22)
+Function Declarations 
+double fmin(double, double); 
+return type 
+argument types 
+72
+
+[Slide 73] (22)
+Function Declarations 
+void exit(int); 
+returns nothing 
+int rand(void); 
+takes no arguments 
+73
+
+[Slide 74] (22)
+int foo(int a, int b){ 
+ return a + b; 
+} 
+74
+
+[Slide 75] (22)
+reptile.c: In function ‘reptile’: 
+reptile.c:2:5: warning: return makes 
+integer from pointer without a cast 
+75
+
+[Slide 76] (22)
+reptile.c: In function ‘reptile’: 
+reptile.c:2:5: warning: return makes 
+integer from pointer without a cast 
+int a = 4; 
+float b = (float)a; 
+76
+
+[Slide 77] (22)
+all theoretical casts 
+int 
+float 
+double 
+char 
+int[] 
+int* 
+void (*f )(int) 
+struct X 
+int 
+float 
+double 
+char 
+int[] 
+int* 
+void (*f )(int) 
+struct X 
+77
+
+[Slide 78] (22)
+allowed casts 
+int 
+float 
+double 
+char 
+int[] 
+int* 
+void (*f )(int) 
+struct X 
+int 
+float 
+double 
+char 
+int[] 
+int* 
+void (*f )(int) 
+struct X 
+78
+
+[Slide 79] (79)
+79
+
+[Slide 80] (79)
+allowed casts 
+int 
+float 
+double 
+char 
+int[] 
+int* 
+void (*f )(int) 
+int 
+float 
+double 
+char 
+int[] 
+int* 
+void (*f )(int) 
+struct X 
+struct X 
+80
+
+[Slide 81] (79)
+allowed casts 
+int 
+float 
+double 
+char 
+int[] 
+int* 
+void (*f )(int) 
+struct X 
+int 
+float 
+double 
+char 
+int[] 
+int* 
+void (*f )(int) 
+struct X 
+81
+
+[Slide 82] (79)
+implicit casts 
+int 
+int 
+float 
+float 
+double 
+double 
+char 
+char 
+int[] 
+int[] 
+int* 
+int* 
+void (*f )(int) 
+void (*f )(int) 
+struct X 
+struct X 
+82
+
+[Slide 83] (79)
+implicit casts 
+int 
+float 
+double 
+char 
+int[] 
+int* 
+void (*f )(int) 
+int 
+float 
+double 
+char 
+int[] 
+int* 
+void (*f )(int) 
+struct X 
+struct X 
+83
+
+[Slide 84] (79)
+implicit casts 
+int 
+int 
+float 
+float 
+double 
+double 
+char 
+char 
+int[] 
+int* 
+int[] 
+int* 
+void (*f )(int) 
+void (*f )(int) 
+struct X 
+struct X 
+84
+
+[Slide 85] (79)
+implicit casts 
+int 
+int 
+float 
+float 
+double 
+double 
+char 
+char 
+int[] 
+int[] 
+int* 
+int* 
+void (*f )(int) 
+struct X 
+void (*f )(int) 
+struct X 
+85
+
+[Slide 86] (79)
+Compile 
+Type-checking 
+Linear processing 
+86
+
+[Slide 87] (79)
+Linear processing 
+( just a small note)
+87
+
+[Slide 88] (79)
+You can only use 
+what’s declared above 
+88
+
+[Slide 89] (79)
+int main() { 
+ printf("%d\n", answer()); 
+ return 0; 
+} 
+int answer() { 
+ return 1337; 
+} 
+89
+
+[Slide 90] (79)
+int main() {
+ printf("%d\n", answer());
+ return 0; 
+} 
+int answer() {
+ return 1337; 
+} 
+90
+
+[Slide 91] (79)
+int answer() { 
+ return 1337; 
+} 
+int main() { 
+ printf("%d\n", answer()); 
+ return 0; 
+} 
+91
+
+[Slide 92] (79)
+int answer(); 
+declaration 
+int main() { 
+ printf("%d\n", answer()); 
+ return 0; 
+} 
+int answer() { 
+definition 
+return 1337; 
+} 
+92
+
+[Slide 93] (79)
+HMM 
+93
+
+[Slide 94] (79)
+int answer(); 
+declaration 
+int main() { 
+ printf("%d\n", answer()); 
+ return 0; 
+} 
+int answer() { 
+definition 
+return 1337; 
+} 
+94
+
+[Slide 95] (79)
+int answer(); 
+int main() {
+ printf("%d\n", answer());
+ return 0; 
+} 
+declaration 
+int answer() {
+ return 1337; 
+} 
+definition 
+95
+
+[Slide 96] (79)
+int answer(); 
+declaration 
+#include "answer.h" 
+int main() {
+ printf("%d\n", answer());
+ return 0; 
+} 
+int answer() {
+ return 1337; 
+} 
+definition 
+96
+
+[Slide 97] (79)
+Pre-Process
+Compile
+Link
+97
+
+[Slide 98] (79)
+main.o 
+✓ 
+int main() 
+int answer() 
+98
+
+[Slide 99] (79)
+main.o 
+int main() 
+99
+
+[Slide 100] (79)
+answer.c: In function ‘main’: 
+answer.c:4: warning: implicit declaration of 
+function ‘answer’ 
+Undefined symbols for architecture x86_64: 
+"_answer", referenced from: 
+ _main in ccuzmRrm.o 
+ld: symbol(s) not found for architecture x86_64 
+collect2: ld returned 1 exit status 
+100
+
+[Slide 101] (79)
+answer.c: In function ‘main’: 
+answer.c:4: warning: implicit declaration of 
+function ‘answer’ 
+Undefined symbols for architecture x86_64: 
+"_answer", referenced from: 
+ _main in ccuzmRrm.o 
+ld: symbol(s) not found for architecture x86_64 
+collect2: ld returned 1 exit status 
+101
+
+[Slide 102] (79)
+answer.c: In function ‘main’: 
+answer.c:4: warning: implicit declaration of 
+function ‘answer’ 
+Undefined symbols for architecture x86_64: 
+"_answer", referenced from: 
+ _main in ccuzmRrm.o 
+ld: symbol(s) not found for architecture x86_64 
+collect2: ld returned 1 exit status 
+Compiler: “I don’t know what answer is. 
+I’ll assume it returns an int.” 
+102
+
+[Slide 103] (79)
+answer.c: In function ‘main’: 
+answer.c:4: warning: implicit declaration of 
+function ‘answer’ 
+Undefined symbols for architecture x86_64: 
+"_answer", referenced from: 
+ _main in ccuzmRrm.o 
+ld: symbol(s) not found for architecture x86_64 
+collect2: ld returned 1 exit status 
+103
+
+[Slide 104] (79)
+answer.c: In function ‘main’: 
+answer.c:4: warning: implicit declaration of 
+function ‘answer’ 
+Undefined symbols for architecture x86_64: 
+"_answer", referenced from: 
+ _main in ccuzmRrm.o 
+ld: symbol(s) not found for architecture x86_64 
+collect2: ld returned 1 exit status 
+Linker: “I looked in all the object files, 
+but I couldn’t find answer.” 
+104
+
+[Slide 105] (79)
+main.o 
+int main() 
+105
+
+[Slide 106] (79)
+main.o 
+answer.o 
+int main() 
+int answer() 
+106
+
+[Slide 107] (79)
+main.o 
+answer.o 
+int main() 
+int answer() 
+int main() {
+ printf("%d\n", answer());
+ return 0; 
+} 
+int answer() {
+ return 1337; 
+} 
+107
+
+[Slide 108] (79)
+main.o 
+answer.o 
+int main() 
+int answer() 
+108
+
+[Slide 109] (79)
+prog 
+gcc -o prog main.c answer.c 
+int main() 
+int answer() 
+109
+
+[Slide 110] (79)
+answer.c: In function ‘main’: 
+answer.c:4: warning: implicit declaration of 
+function ‘answer’ 
+110
+
+[Slide 111] (79)
+answer.c: In function ‘main’: 
+answer.c:4: warning: implicit declaration of 
+function ‘answer’ 
+Compiler: “I don’t know what answer is. 
+I’ll assume it returns an int.” 
+111
+
+[Slide 112] (79)
+answer.h 
+int answer(); 
+#include "answer.h" 
+int main() {
+main.c 
+printf("%d\n", answer()); 
+ return 0; 
+} 
+112
+
+[Slide 113] (79)
+answer.h 
+int answer(); 
+answer.c 
+#include "answer.h" 
+int answer() { 
+ return 1337; 
+} 
+113
+
+[Slide 114] (Summary)
+Summary 
+114
+
+[Slide 115] (Summary)
+answer.h 
+int answer(); 
+main.c 
+#include "answer.h" 
+int main() { 
+ printf("%d\n", answer()); 
+ return 0; 
+} 
+115
+
+[Slide 116] (Summary)
+Preprocess: gcc -E main.c 
+int answer(); 
+int main() { 
+ printf("%d\n", answer()); 
+ return 0; 
+} 
+116
+
+[Slide 117] (Summary)
+Compile: gcc -c main.c main.c 
+main.o 
+%!(*@ 
+answer.o 
+%!(*@ 
+117
+
+[Slide 118] (Summary)
+Link: gcc -o prog main.o main.o 
+prog 
+%!(*@ 
+118
+
+[Slide 119] (Summary)
+Pre-Process 
+Compile 
+Link 
+119
+
+[Slide 120] (MIT OpenCourseWare)
+MIT OpenCourseWare
+http://ocw.mit.edu
+6.S096 Introduction to C and C++
+IAP 2013
+For information about citing these materials or our Terms of Use, visit: http://ocw.mit.edu/terms.

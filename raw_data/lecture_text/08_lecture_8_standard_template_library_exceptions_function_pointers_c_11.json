@@ -1,0 +1,218 @@
+[
+  {
+    "page": 1,
+    "section": "",
+    "text": "6.S096: Introduction to C/C++ \nFrank Li, Tom Lieber, Kyle Murray \nLecture 8: \nLast Lecture \nHelter Skelter Fun! \nJanuary 31, 2012 \n1",
+    "has_code": false
+  },
+  {
+    "page": 2,
+    "section": "Today…",
+    "text": "Today… \n• Standard Template Library (STL) \n• Crazay Const \n• Exceptions \n• Function pointers \n• Brief intro to C++11 \n2",
+    "has_code": true
+  },
+  {
+    "page": 3,
+    "section": "Today…",
+    "text": "Today… \n• Standard Template Library (STL) \n• Crazay Const \n• Exceptions \n• Function pointers \n• Brief intro to C++11 \n3",
+    "has_code": true
+  },
+  {
+    "page": 4,
+    "section": "Today…",
+    "text": "Standard Template Library (STL) \n• “Included” w/ compiler \n• Contains containers/data structures, iterators, \nand algorithms \n• http://www.cplusplus.com/reference \n4",
+    "has_code": true
+  },
+  {
+    "page": 5,
+    "section": "Today…",
+    "text": "Vectors \n• Equivalent to array lists in other languages \n(dynamic size) \n#include <vector> \n… \nstd::vector<int> int_list; \nint_list.push_back(1); \nint tmp = int_list[0]; // tmp = 1 \nint_list.pop_back(); // int_list now empty \n5",
+    "has_code": true
+  },
+  {
+    "page": 6,
+    "section": "Today…",
+    "text": "Map \n• Like a dictionary in Python (tree \nimplementation). \n#include <map> \n… \nstd::map<char, int> letter_to_int; \nletter_to_int['a'] = 1; \nletter_to_int['b'] = 2; \nint pos = letter_to_int['a'] // pos = 1; \n6\nDi\nag\nra\nm \nsh\now\nin\ng\n \nthree ke\nys, a ha\nsh funct\nion,\n and \nthe resu\nlting b\nuckets.\nImage by MIT OpenCourseWare.",
+    "has_code": true
+  },
+  {
+    "page": 7,
+    "section": "Today…",
+    "text": "Others Containers \n• Other useful containers: \n– <array>: array w/ functions \n– <list>: doubly linked list \n– <set>: stores only unique elements, tree \nimplementation \n– <unordered_map>: actual hash table \n– <unordered_set>: stores only unique \nelements, hash table implementation \n– Look online for more! \n7",
+    "has_code": true
+  },
+  {
+    "page": 8,
+    "section": "Today…",
+    "text": "Iterators \n● Object that points to elements in a data \nstructure, and can iterate through. Like a \npointer. \n● Vector iterator: std::vector<int>::iterator it; \n● Access element at iterator: *it; \n● Can do add/subtract to iterators: it++, it-­\n8",
+    "has_code": true
+  },
+  {
+    "page": 9,
+    "section": "Today…",
+    "text": "Vector Iterators \n#include <vector> \n#include <iostream> \n... \nstd::vector<int> vec; \nfor (int i=1; i<=5; i++) \nvec.push_back(i); \nfor (std::vector<int>::iterator it = vec.begin(); \nit != vec.end(); ++it){ \nstd::cout << ' ' << *it; \n} \n//Will print: 1 2 3 4 5 \n9",
+    "has_code": true
+  },
+  {
+    "page": 10,
+    "section": "Today…",
+    "text": "Cool/Useful Algorithm \n● #include <algorithm> \n● Sort a vector: \n– std::sort(vec.begin(), vec.end()); \n● Reverse a vector: \n– std::reverse(vec.begin(), vec.end()); \n● Min/Max: \n– std::min(3,1) == 1 ; std::max(3,1) == 3 \n● So many more online! \n10",
+    "has_code": false
+  },
+  {
+    "page": 11,
+    "section": "Today…",
+    "text": "Today… \n• Standard Template Library (STL) \n• Crazay Const \n• Exceptions \n• Function pointers \n• Brief intro to C++11 \n11",
+    "has_code": true
+  },
+  {
+    "page": 12,
+    "section": "Today…",
+    "text": "Const Madness! \n● const int x == int const x; \n// Const int \n● const int * c1; \n// Pointer to const int \n● int const * c2; // Same as c1 \n● int * const c3; // Const pointer to variable int \n12",
+    "has_code": true
+  },
+  {
+    "page": 13,
+    "section": "Today…",
+    "text": "More Const Madness! \n● Const in function parameter \nbool cant_touch_this(const myobj & obj); \n//cant_touch_this can't modify obj \n● Const functions are safe for const objects, but can \nbe called by all objects. Non-const functions can \nonly be called by non-const objects. \nbool catch_change_this() const { \n... \n} \n13",
+    "has_code": true
+  },
+  {
+    "page": 14,
+    "section": "Today…",
+    "text": "When will the madness end!?!? \nconst int* const \ncrazay(const int* const & madness) const; \n14",
+    "has_code": true
+  },
+  {
+    "page": 15,
+    "section": "Today…",
+    "text": "Today… \n• Standard Template Library (STL) \n• Crazay Const \n• Exceptions \n• Function pointers \n• Brief intro to C++11 \n15",
+    "has_code": true
+  },
+  {
+    "page": 16,
+    "section": "Today…",
+    "text": "Exceptions \n● Exceptions are “error” objects that are “thrown” \nwhen things go bad. \n16",
+    "has_code": false
+  },
+  {
+    "page": 17,
+    "section": "Today…",
+    "text": "Exceptions \n● Exception parent object in std::exception \n– std::runtime_error \n– std::bad_alloc \n– std::bad_cast \n● Can create your own custom exceptions \nclass MyException : public exception{ \nconst char * what() const { \nreturn \"MyException\"; // human-readable \n} \n}; \n17",
+    "has_code": true
+  },
+  {
+    "page": 18,
+    "section": "Today…",
+    "text": "Try Catch \ntry { \n… // Protected code \nthrow MyError(); \n}catch( YourError e1 ){ \ncout << e1.what() << endl; \n}catch( MyError e2 ){ \ncout << e2.what() << endl; \n}catch(...) { \n… // handle all other exceptions \n} \n18",
+    "has_code": true
+  },
+  {
+    "page": 19,
+    "section": "Today…",
+    "text": "Throwing that Exceptions \n● Can throw a primitive as an exception \ntry{ \n... \nthrow 20; \n}catch(int e) { cout << “Error: ” << e << endl; } \n● Best way to catch your own exception: \ntry{ \nthrow MyException(); \n}catch(MyException & e) { \ncout << e.what() << endl; \n} \n19",
+    "has_code": true
+  },
+  {
+    "page": 20,
+    "section": "Today…",
+    "text": "Functions Throwing \n● Functions add throw(exceptions-thrown) at end \nof declaration. \nvoid ahh(int i) throw() { \n//This function assumed to not throw anything \n} \nvoid blahh(int i) throw(int) { \n//This function may throw int if there's an error \n} \n20",
+    "has_code": true
+  },
+  {
+    "page": 21,
+    "section": "Today…",
+    "text": "Today… \n• Standard Template Library (STL) \n• Crazay Const \n• Exceptions \n• Function pointers \n• Brief intro to C++11 \n21",
+    "has_code": true
+  },
+  {
+    "page": 22,
+    "section": "Today…",
+    "text": "Functions Pointers \n● void (*foo) (int); // Foo is pointer to void \nfunction that takes 1 int argument. \n● void *(*foo)(int *, char); //Any guesses? \n22",
+    "has_code": true
+  },
+  {
+    "page": 23,
+    "section": "Today…",
+    "text": "Functions Pointers \n● void (*foo) (int); // Foo is pointer to void \nfunction that takes 1 int argument. \n● void *(*foo)(int *, char); //Foo is a pointer to a \nfunction that takes 1 int* argument and 1 char \nargument, that returns void* \n23",
+    "has_code": true
+  },
+  {
+    "page": 24,
+    "section": "Today…",
+    "text": "Using Functions Pointers \n#include <iostream> \nvoid my_int_func(int x){ \nstd::cout << x << std::endl; \n} \nint main(){ \nvoid (*foo)(int); \nfoo = &my_int_func; // The ampersand is actually optional \n(*foo)(2); // Calls my_int_func \nfoo(2); // Same as above line \nreturn 0; \n} \n24",
+    "has_code": true
+  },
+  {
+    "page": 25,
+    "section": "Today…",
+    "text": "Functions Pointers Arguments \n#include <iostream> \nvoid call(int x){ \nstd::cout << x << std::endl; \n} \nvoid call_me_maybe(int number, void (*call_func)(int)) { \ncall_func(number); \n} \nint main(){ \nvoid (*foo)(int); \nfoo = call; \ncall_me_maybe(911, foo); \nreturn 0; \n} \n25",
+    "has_code": true
+  },
+  {
+    "page": 26,
+    "section": "Today…",
+    "text": "Functions Pointers Arguments \n#include <iostream> \nvoid call(int x){ \nstd::cout << x << std::endl; \n} \nvoid call_me_maybe(int number, void (*call_func)(int)) { \ncall_func(number); \n} \nint main(){ \ncall_me_maybe(911, call); \nreturn 0; \n} \n26",
+    "has_code": true
+  },
+  {
+    "page": 27,
+    "section": "Today…",
+    "text": "For_each \n#include <algorithm> // Header file need for for_each() \n#include <vector> \n#include <iostream> \nusing namespace std; \nvoid print (int i) { cout << ' ' << i; } \nint main(){ \nvector<int> myvector; \nmyvector.push_back(10); \nmyvector.push_back(20); \nfor_each (myvector.begin(), myvector.end(), print); \n... \n} // Prints out 10 20 \n27",
+    "has_code": true
+  },
+  {
+    "page": 28,
+    "section": "Today…",
+    "text": "Today… \n• Standard Template Library (STL) \n• Crazay Const \n• Exceptions \n• Function pointers \n• Brief intro to C++11 \n28",
+    "has_code": true
+  },
+  {
+    "page": 29,
+    "section": "Today…",
+    "text": "C++11 \n● Latest and “greatest” standard of C++ w/ fancy \nfeatures \n● Fancy feature 1: Auto typing \nint x = 1; \nauto y = x; \nvector<int> vec; \nauto itr = vec.begin(); //versus vector<int>::iterator \n29",
+    "has_code": true
+  },
+  {
+    "page": 30,
+    "section": "Today…",
+    "text": "C++11 \n● Latest and “greatest” standard of C++ w/ fancy \nfeatures \n● Fancy feature 2: Declare typing \nint x = 1; \ndecltype(x) y = x; //Makes y the same type as x \n30",
+    "has_code": true
+  },
+  {
+    "page": 31,
+    "section": "Today…",
+    "text": "C++11 \n● Latest and “greatest” standard of C++ w/ fancy \nfeatures \n● Fancy feature 3: Right angle brackets \n– Before C++11: \nvector<vector<int> > vector_of_int_vectors; \n– C++11: \nvector<vector<int>> vector_of_int_vectors; \n31",
+    "has_code": true
+  },
+  {
+    "page": 32,
+    "section": "Today…",
+    "text": "C++11 \n● Latest and “greatest” standard of C++ w/ fancy \nfeatures \n● Fancy feature 4: Range for loops \nvector<int> vec; \nvec.push_back( 1 ); \nvec.push_back( 2 ); \nfor (int& i : vec ) { \ni++; // increments the value in the vector \n} \n32",
+    "has_code": true
+  },
+  {
+    "page": 33,
+    "section": "Today…",
+    "text": "C++11 \n● Latest and “greatest” standard of C++ w/ fancy features \n● Fancy feature 5: Lambda functions!!! \n– Syntax: [] (arg_list) { func_definition } \n– Ex: \n#include <iostream> \nusing namespace std; \nint main(){ \nauto func = [] (int i) { cout << \"Hi \" << i << endl; }; \nfunc(1); // now call the function \n} \n33",
+    "has_code": true
+  },
+  {
+    "page": 34,
+    "section": "Today…",
+    "text": "C++11 \n● Many more fancy features (strongly typed \nenums, null pointer constant, etc)! \n\\(^_^) / \nYay!!! \n● Reference: \nhttp://www.cprogramming.com/tutorial.html#c++11 \nhttp://en.wikipedia.org/wiki/C%2B%2B11 \n34",
+    "has_code": true
+  },
+  {
+    "page": 35,
+    "section": "Today…",
+    "text": "It's about that time... \n● Introduced you to C and C++ syntax, features, and \nidoms. \n● Gave you some experience w/ writing C/C++ code \n● Much more to learn, best way is to simply code more! \n35",
+    "has_code": false
+  },
+  {
+    "page": 36,
+    "section": "MIT OpenCourseWare",
+    "text": "MIT OpenCourseWare\nhttp://ocw.mit.edu\n6.S096 Introduction to C and C++\nIAP 2013\nFor information about citing these materials or our Terms of Use, visit: http://ocw.mit.edu/terms.",
+    "has_code": true
+  }
+]

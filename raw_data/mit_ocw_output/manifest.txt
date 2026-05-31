@@ -1,0 +1,9 @@
+Course Index: https://mitocw.ups.edu.ec/courses/electrical-engineering-and-computer-science/6-s096-introduction-to-c-and-c-january-iap-2013/lectures-and-assignments/
+Saved files:
+  ./mit_ocw_output/00_index.txt
+  ./mit_ocw_output/01_compilation-pipeline.txt
+  ./mit_ocw_output/02_core-c-control-structures-variables-scope-and-uninitialized-memory.txt
+  ./mit_ocw_output/03_c-memory-management.txt
+  ./mit_ocw_output/04_data-structures-debugging.txt
+  ./mit_ocw_output/05_c-introduction-classes-and-templates.txt
+  ./mit_ocw_output/06_c-inheritance.txt
