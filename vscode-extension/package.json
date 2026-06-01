@@ -1,0 +1,59 @@
+{
+  "name": "socratic-ta",
+  "displayName": "Socratic TA",
+  "description": "C++ Socratic Teaching Assistant via Ollama",
+  "version": "0.0.1",
+  "publisher": "berkeley",
+  "repository": "https://github.com/berkeley/socratic-ta",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "*"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "socratic-ta-explorer",
+          "title": "Socratic TA",
+          "icon": "$(hubot)"
+        }
+      ]
+    },
+    "views": {
+      "socratic-ta-explorer": [
+        {
+          "type": "webview",
+          "id": "socratic-ta.chatView",
+          "name": "TA Chat"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "socratic-ta.startTerminal",
+        "title": "Socratic TA: Start Tracked Terminal"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "dependencies": {
+    "diff": "^9.0.0",
+    "node-pty": "^1.1.0"
+  },
+  "devDependencies": {
+    "@types/diff": "^7.0.2",
+    "@types/node": "18.x",
+    "@types/vscode": "^1.80.0",
+    "typescript": "^5.1.3"
+  }
+}

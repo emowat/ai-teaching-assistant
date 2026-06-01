@@ -1,4 +1,10 @@
 archive_scripts/
 .env
+.swp
 qdrant_local_data/
 __pycache__/
+
+# VS Code Extension build artifacts
+*.vsix
+node_modules/
+out/
