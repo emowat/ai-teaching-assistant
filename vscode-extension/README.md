@@ -35,3 +35,16 @@ When migrating to a cloud-based AWS infrastructure for production, the following
 ### 5. Centralize Anti-Cheat Telemetry
 **Why:** The copy/paste diff patches currently log to a local VS Code Output Channel, which instructors cannot see.
 **Action:** Modify the `PasteTracker` logic in `extension.ts` to push the unified diffs to a secure AWS telemetry/logging endpoint (e.g., CloudWatch or a DynamoDB table) so TAs and instructors can review flagged students asynchronously.
+
+## Testing & Deployment (For Teammates)
+
+We have provided an `assignment_template` directory containing the strict `.devcontainer` and `.vscode` configurations used to lock down the student environment and uninstall Copilot.
+
+To test the extension locally:
+1. Do **NOT** commit the `.vsix` binary to this source repository.
+2. Run the build script to compile the `.vsix` and automatically inject it into the template's dev container directory:
+   ```bash
+   ./build_vsix_linux.sh . ./assignment_template/.devcontainer
+   ```
+3. Open the `assignment_template` folder in VS Code.
+4. Click **"Reopen in Container"**. VS Code will automatically install the `.vsix` and apply the Hard Mode settings.

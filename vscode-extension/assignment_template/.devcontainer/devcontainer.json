@@ -1,0 +1,66 @@
+{
+    "name": "C++ Socratic TA Development Envrionment",
+    "build": {
+        "dockerfile": "Dockerfile"
+    },
+    "customizations": {
+        "vscode": {
+            "settings": {
+                "terminal.integrated.defaultProfile.linux": "bash",
+
+                // 1. Disable Copilot across all languages in this container
+                "github.copilot.enable": {
+                    "*": false
+                },
+                "github.copilot.chat.enable": false,
+                "chat.commandCenter.enabled": false,
+                "chat.editor.enable": false,
+                "inlineChat.enable": false,
+
+                // 2. Point Socratic TA to the Mac Host's Ollama Server instead of the container's localhost
+                "socraticTa.apiUrl": "http://host.docker.internal:11434/api/chat",
+
+                // 2. Disable the noisy C++ Doxygen lightbulbs and snippets
+                "C_Cpp.doxygen.generateOnType": false,
+                "C_Cpp.doxygen.generateOnCodeAction": false,
+                "C_Cpp.suggestSnippets": false,
+                "C_Cpp.intelliSenseEngine": "disabled",
+
+                // 3. Disable built-in VS Code quick fixes and snippets globally to enforce Socratic mode
+                "editor.suggest.showSnippets": false,
+                "editor.lightbulb.enabled": "off",
+                "editor.quickSuggestions": {
+                    "other": "off",
+                    "comments": "off",
+                    "strings": "off"
+                }
+            },
+            "extensions": [
+                "ms-vscode.cpptools",
+                "ms-vscode.cpptools-extension-pack",
+                "/workspace/.devcontainer/socratic-ta-0.0.1.vsix"
+            ]
+        }
+    },
+
+    // Keeps the container running in the background cleanly
+    "overrideCommand": true,
+
+    // Run permissions needed if you intend to attach debuggers like GDB locally
+    "runArgs": ["--cap-add=SYS_PTRACE", "--security-opt", "seccomp=unconfined"],
+
+    // Aggressively lock the extension directories BEFORE VS Code connects so it physically cannot install Copilot
+    "onCreateCommand": "mkdir -p ~/.vscode-server/extensions/github.copilot ~/.vscode-server/extensions/github.copilot-chat ~/.vscode-remote/extensions/github.copilot ~/.vscode-remote/extensions/github.copilot-chat && chmod 000 ~/.vscode-server/extensions/github.copilot ~/.vscode-server/extensions/github.copilot-chat ~/.vscode-remote/extensions/github.copilot ~/.vscode-remote/extensions/github.copilot-chat",
+
+    // Aggressively uninstall Copilot extensions after VS Code attaches by finding the hidden CLI executable
+    "postAttachCommand": "find ~/.vscode-server/bin -name 'code' -type f -executable -exec {} --uninstall-extension github.copilot --force \\; -exec {} --uninstall-extension github.copilot-chat --force \\; || true",
+
+    // Mounts the student's local directory directly to /workspace in the Linux container
+    "workspaceFolder": "/workspace",
+    "mounts": [
+        "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached"
+    ],
+
+    // Ensures the user inside the container is root for easy workspace setup during testing
+    "remoteUser": "root"
+}

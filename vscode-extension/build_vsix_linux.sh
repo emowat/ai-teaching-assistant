@@ -10,9 +10,20 @@ if [ "$#" -ne 2 ]; then
     exit 1
 fi
 
-# Convert paths to absolute paths for Docker volume mounting
+# Ensure destination directory exists and resolve absolute paths
 EXTENSION_DIR=$(cd "$1" && pwd)
+mkdir -p "$2"
 DEST_DIR=$(cd "$2" && pwd)
+ASSIGNMENT_ROOT=$(dirname "$DEST_DIR")
+
+# Automatically initialize assignment directory with templates if missing
+if [ ! -f "$DEST_DIR/devcontainer.json" ]; then
+    echo "Initializing assignment directory with Socratic TA templates..."
+    mkdir -p "$ASSIGNMENT_ROOT/.vscode"
+    cp "$EXTENSION_DIR/assignment_template/.devcontainer/devcontainer.json" "$DEST_DIR/"
+    cp "$EXTENSION_DIR/assignment_template/.devcontainer/Dockerfile" "$DEST_DIR/"
+    cp "$EXTENSION_DIR/assignment_template/.vscode/extensions.json" "$ASSIGNMENT_ROOT/.vscode/"
+fi
 
 echo "Spawning headless Linux Docker container to cross-compile native dependencies..."
 docker run --rm -v "$EXTENSION_DIR:/ext" node:18-bullseye /bin/bash -c "cd /ext && rm -rf node_modules && npm install"
