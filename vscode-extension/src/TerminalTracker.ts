@@ -30,7 +30,7 @@ export function trackTerminal() {
     const pseudoterminal: vscode.Pseudoterminal = {
         onDidWrite: writeEmitter.event,
         open: () => {
-            writeEmitter.fire('Socratic TA Tracked Console Started.\r\n');
+            writeEmitter.fire('CodingRabbit Tracked Console Started.\r\n');
         },
         close: () => {
             bashProcess.kill();

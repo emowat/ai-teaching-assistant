@@ -4,18 +4,20 @@
 
 | Metric | Evaluation Set | Training Set |
 | :--- | :--- | :--- |
-| **Total Transcripts** | 101 | 1049 |
-| **Homework Assist** | 81 (80.2%) | 897 (85.5%) |
-| **Study Assist** | 15 (14.9%) | 99 (9.4%) |
-| **Out-of-Scope** | 5 (5.0%) | 53 (5.1%) |
-| **Terminations `[END_CHAT]`** | 13 (12.9%) | 100 (9.5%) |
-| **Terminations (2 pivots)** | 8 (7.9%) | 47 (4.5%) |
-| **Style Flagged** | 20 (19.8%) | 203 (19.4%) |
+| **Total Transcripts** | 162 | 1292 |
+| **Homework Assist** | 142 (87.7%) | 1140 (88.2%) |
+| **Study Assist** | 15 (9.3%) | 99 (7.7%) |
+| **Out-of-Scope** | 5 (3.1%) | 53 (4.1%) |
+| **Terminations `[END_CHAT]`** | 14 (8.6%) | 101 (7.8%) |
+| **Terminations (2 pivots)** | 9 (5.6%) | 48 (3.7%) |
+| **Paste Detected** | 26 (16.0%) | 104 (8.0%) |
+| **Debug Ideas Unlocked** | 201 (total tags) | 2482 (total tags) |
+| **Style Flagged** | 11 (6.8%) | 149 (11.5%) |
 
 ## Code Leakage Evaluation
 
 | Metric | Evaluation Set | Training Set |
 | :--- | :--- | :--- |
-| **Transcripts Scanned** | 101 | 1049 |
+| **Transcripts Scanned** | 162 | 1292 |
 | **Safe Student Quotes** | 0 | 4 |
 | **True Code Leaks** | 0 | 0 |

@@ -1,7 +1,7 @@
 # RAG Pipeline
 
 Retrieval-Augmented Generation pipeline for the AI Teaching Assistant.
-Provides course-aware context to the **Socratic TA LLM** during student debugging / study sessions.
+Provides course-aware context to the **CodingRabbit LLM** during student debugging / study sessions.
 
 ---
 
@@ -49,7 +49,7 @@ Provides course-aware context to the **Socratic TA LLM** during student debuggin
                           │
                           ▼
                     TA Response
-              (Socratic, course-aware,
+              (CodingRabbit, course-aware,
                guided by context, powered by LLM)
 ```
 
@@ -63,7 +63,7 @@ Provides course-aware context to the **Socratic TA LLM** during student debuggin
 | `query_builder.py` | Fuses student NL + AST features + terminal output → dense embedding query string |
 | `retrievers.py` | Three parallel retrievers: syllabus (exact filter), semantic (vector), rules (vector + category filter + threshold) |
 | `reranker.py` | Post-processing: deduplicate → category weighting → MMR diversify → group by category |
-| `context_assembler.py` | Formats retrieval results into `[Vector_Database_Results]` block matching Socratic TA prompt format |
+| `context_assembler.py` | Formats retrieval results into `[Vector_Database_Results]` block matching CodingRabbit prompt format |
 | `pipeline.py` | Orchestrator: `run_retrieval(query) → RetrievalResult` (context only), `generate_response(query, llm) → str` (full TA answer) |
 | `setup_qdrant.py` | Vector DB: create collection, create payload indexes, call loader to index course materials |
 | `loader.py` | Course material loader: reads from `raw_data/` (future S3) → chunks by slide → heuristic classification → outputs `ChunkPayload` list |
@@ -122,7 +122,7 @@ raw_data/
 
 ### Chunking strategy
 
-- **One slide = one chunk** — natural boundary, already well-scoped. Not merging adjacent slides keeps retrieval granular enough for targeted Socratic nudges.
+- **One slide = one chunk** — natural boundary, already well-scoped. Not merging adjacent slides keeps retrieval granular enough for targeted CodingRabbit nudges.
 - **Content cap**: 2000 chars per chunk (lecture slides are rarely text-heavy).
 - **Section prefix**: slide `section` field prepended for retrieval context (e.g. `[Today…] Stack contains local variables...`).
 
@@ -247,7 +247,7 @@ Study Assist:
     Supplementary:       0.8   # extra material is valuable for learning
 ```
 
-**Rationale**: The Socratic TA needs "what NOT to do" boundaries (Syllabus Forbidden + Strict Rules) during debugging, but concept explanations take priority when a student is studying.
+**Rationale**: The CodingRabbit needs "what NOT to do" boundaries (Syllabus Forbidden + Strict Rules) during debugging, but concept explanations take priority when a student is studying.
 
 ---
 
@@ -359,7 +359,7 @@ For the current scale (2 tiers), the sentinel approach is sufficient.
 
 **Yes.** Retrieval filters constrain the **context**, not the **model weights**. The LLM still has full access to its pre-trained C++ knowledge. What changes is how the prompt instructs it to use that knowledge.
 
-This is not a bug — it's the intended design for a Socratic TA:
+This is not a bug — it's the intended design for a CodingRabbit:
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
@@ -378,12 +378,12 @@ This is not a bug — it's the intended design for a Socratic TA:
 │  LAYER 3: General C++ (LLM pre-trained weights)                  │
 │  Role: Reasoning backbone                                         │
 │  Example: "Segfault typically means...", "GDB backtrace shows..." │
-│  Prompt rule: Applied via Socratic questioning                    │
+│  Prompt rule: Applied via CodingRabbit questioning                    │
 │  (generate_dataset.py Rule 11, pipeline.py Rule 1-2)             │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-### Why this design for a Socratic TA
+### Why this design for a CodingRabbit
 
 A pure "closed-book" RAG (only use context, no pre-trained knowledge) would be wrong here because:
 

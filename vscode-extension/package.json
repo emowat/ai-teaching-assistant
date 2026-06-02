@@ -1,10 +1,10 @@
 {
-  "name": "socratic-ta",
-  "displayName": "Socratic TA",
-  "description": "C++ Socratic Teaching Assistant via Ollama",
-  "version": "0.0.1",
+  "name": "coding-rabbit",
+  "displayName": "CodingRabbit",
+  "description": "C++ CodingRabbit Teaching Assistant via Ollama",
+  "version": "0.0.3",
   "publisher": "berkeley",
-  "repository": "https://github.com/berkeley/socratic-ta",
+  "repository": "https://github.com/berkeley/coding-rabbit",
   "engines": {
     "vscode": "^1.80.0"
   },
@@ -16,28 +16,43 @@
   ],
   "main": "./out/extension.js",
   "contributes": {
+    "configuration": {
+      "title": "CodingRabbit",
+      "properties": {
+        "codingRabbit.apiUrl": {
+          "type": "string",
+          "default": "http://host.docker.internal:11434/api/chat",
+          "description": "The backend API URL for the CodingRabbit model."
+        },
+        "codingRabbit.modelName": {
+          "type": "string",
+          "default": "socratic-ta",
+          "description": "The name of the Ollama model to use."
+        }
+      }
+    },
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "socratic-ta-explorer",
-          "title": "Socratic TA",
-          "icon": "$(hubot)"
+          "id": "coding-rabbit-explorer",
+          "title": "CodingRabbit",
+          "icon": "media/rabbit.svg"
         }
       ]
     },
     "views": {
-      "socratic-ta-explorer": [
+      "coding-rabbit-explorer": [
         {
           "type": "webview",
-          "id": "socratic-ta.chatView",
+          "id": "coding-rabbit.chatView",
           "name": "TA Chat"
         }
       ]
     },
     "commands": [
       {
-        "command": "socratic-ta.startTerminal",
-        "title": "Socratic TA: Start Tracked Terminal"
+        "command": "coding-rabbit.startTerminal",
+        "title": "CodingRabbit: Start Tracked Terminal"
       }
     ]
   },
@@ -48,7 +63,8 @@
   },
   "dependencies": {
     "diff": "^9.0.0",
-    "node-pty": "^1.1.0"
+    "node-pty": "^1.1.0",
+    "web-tree-sitter": "^0.22.6"
   },
   "devDependencies": {
     "@types/diff": "^7.0.2",

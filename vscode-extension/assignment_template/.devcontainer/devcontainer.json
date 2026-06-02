@@ -1,5 +1,5 @@
 {
-    "name": "C++ Socratic TA Development Envrionment",
+    "name": "C++ CodingRabbit Development Environment",
     "build": {
         "dockerfile": "Dockerfile"
     },
@@ -17,8 +17,9 @@
                 "chat.editor.enable": false,
                 "inlineChat.enable": false,
 
-                // 2. Point Socratic TA to the Mac Host's Ollama Server instead of the container's localhost
-                "socraticTa.apiUrl": "http://host.docker.internal:11434/api/chat",
+                // 2. Point CodingRabbit to the Mac Host's Ollama Server instead of the container's localhost
+                "codingRabbit.apiUrl": "http://host.docker.internal:11434/api/chat",
+                "codingRabbit.modelName": "socratic-ta",
 
                 // 2. Disable the noisy C++ Doxygen lightbulbs and snippets
                 "C_Cpp.doxygen.generateOnType": false,
@@ -26,7 +27,7 @@
                 "C_Cpp.suggestSnippets": false,
                 "C_Cpp.intelliSenseEngine": "disabled",
 
-                // 3. Disable built-in VS Code quick fixes and snippets globally to enforce Socratic mode
+                // 3. Disable built-in VS Code quick fixes and snippets globally to enforce CodingRabbit mode
                 "editor.suggest.showSnippets": false,
                 "editor.lightbulb.enabled": "off",
                 "editor.quickSuggestions": {
@@ -38,7 +39,7 @@
             "extensions": [
                 "ms-vscode.cpptools",
                 "ms-vscode.cpptools-extension-pack",
-                "/workspace/.devcontainer/socratic-ta-0.0.1.vsix"
+                "/workspace/.devcontainer/coding-rabbit-0.0.3.vsix"
             ]
         }
     },

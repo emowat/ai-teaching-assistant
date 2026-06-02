@@ -8,9 +8,9 @@ export const pasteStatusByUri = new Map<string, boolean>();
 const previousTextByUri = new Map<string, string>();
 
 export function activate(context: vscode.ExtensionContext) {
-    console.log('Socratic TA extension activated.');
+    console.log('CodingRabbit extension activated.');
 
-    const provider = new TAChatViewProvider(context.extensionUri, pasteStatusByUri);
+    const provider = new TAChatViewProvider(context.extensionUri, pasteStatusByUri, context);
     context.subscriptions.push(
         vscode.window.registerWebviewViewProvider(TAChatViewProvider.viewType, provider)
     );
@@ -96,7 +96,7 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(output, openListener, closeListener, changeListener);
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('socratic-ta.startTerminal', () => {
+        vscode.commands.registerCommand('coding-rabbit.startTerminal', () => {
             trackTerminal();
         })
     );
@@ -114,7 +114,7 @@ export function activate(context: vscode.ExtensionContext) {
     }, 2000);
 
     // Automatically pop open the TA Chat window in the sidebar
-    vscode.commands.executeCommand('socratic-ta.chatView.focus');
+    vscode.commands.executeCommand('coding-rabbit.chatView.focus');
 }
 
 export function deactivate() {}

@@ -39,9 +39,14 @@ def pretty_print_jsonl(filename):
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Pretty print synthetic dataset.")
-    parser.add_argument("--mode", type=str, choices=["train", "eval"], default="train", help="train or eval mode to select input file")
+    parser.add_argument("--mode", type=str, choices=["train", "eval", "phase3"], default="train", help="train, eval mode or phase3 to select input file")
     args = parser.parse_args()
     
-    target_file = "synthetic_c_plus_plus_dataset.jsonl" if args.mode == "train" else "eval_c_plus_plus_dataset.jsonl"
+    if args.mode == "train":
+        target_file = "synthetic_c_plus_plus_dataset.jsonl" 
+    elif args.mode == "eval":
+        target_file = "eval_c_plus_plus_dataset.jsonl"
+    elif args.mode == "phase3":
+        target_file = "phase3_paste_transcripts.jsonl"
     
     pretty_print_jsonl(target_file)

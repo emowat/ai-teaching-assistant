@@ -7,9 +7,12 @@ def analyze_dataset(filepath):
     total_count = 0
     hw_assist_count = 0
     study_assist_count = 0
+    api_syntax_count = 0
     oos_count = 0
     termination_count = 0
     style_flagged_count = 0
+    paste_detected_count = 0
+    debug_ideas_count = 0
     
     with open(filepath, 'r') as f:
         for line in f:
@@ -21,17 +24,20 @@ def analyze_dataset(filepath):
             trigger = metadata.get("trigger", "")
             hidden_vuln = metadata.get("Hidden_Vulnerability", "")
             
+            messages = entry.get("messages", [])
+            system_prompt = messages[0].get("content", "") if len(messages) > 0 else ""
+            
             # Check for OOS
             if "Out-of-Scope" in trigger or "Out-of-Scope" in hidden_vuln or trigger == "Out-of-Scope":
                 oos_count += 1
             else:
-                messages = entry.get("messages", [])
-                if len(messages) > 0:
-                    system_prompt = messages[0].get("content", "")
-                    if "Mode: Homework Assist" in system_prompt:
+                if "Mode: Homework Assist" in system_prompt:
+                    if trigger == "homework_api_query":
+                        api_syntax_count += 1
+                    else:
                         hw_assist_count += 1
-                    elif "Mode: Study Assist" in system_prompt:
-                        study_assist_count += 1
+                elif "Mode: Study Assist" in system_prompt:
+                    study_assist_count += 1
             
             # Check for Terminations
             messages = entry.get("messages", [])
@@ -42,6 +48,15 @@ def analyze_dataset(filepath):
                     break
             if has_termination:
                 termination_count += 1
+                
+            # Check for Paste Detected
+            if "\nLikely_Paste_Detected: true\n" in system_prompt:
+                paste_detected_count += 1
+                
+            # Count Debug Ideas Unlocked tags
+            for msg in messages:
+                if msg.get("role") == "assistant":
+                    debug_ideas_count += msg.get("content", "").count("[DEBUG_IDEA_UNLOCKED]")
                 
             # Check for Style Flagged
             has_style_flag = False
@@ -56,12 +71,15 @@ def analyze_dataset(filepath):
 
     print("=== Dataset Statistics ===")
     print(f"Total Transcripts:      {total_count}")
-    print(f"Homework Assist:        {hw_assist_count} ({hw_assist_count/total_count:.1%})")
+    print(f"Homework Assist (Debug):{hw_assist_count} ({hw_assist_count/total_count:.1%})")
+    print(f"Homework Assist (API):  {api_syntax_count} ({api_syntax_count/total_count:.1%})")
     print(f"Study Assist:           {study_assist_count} ({study_assist_count/total_count:.1%})")
     print(f"Out-of-Scope:           {oos_count} ({oos_count/total_count:.1%})")
     print("-" * 26)
     print(f"Terminations [END_CHAT]: {termination_count} ({termination_count/total_count:.1%})")
     print(f"Terminations (2 pivots): {termination_count - oos_count} ({(termination_count - oos_count)/total_count:.1%})")
+    print(f"Paste Detected:         {paste_detected_count} ({paste_detected_count/total_count:.1%})")
+    print(f"Debug Ideas Unlocked:   {debug_ideas_count} (total tags)")
     print(f"Style Flagged:          {style_flagged_count} ({style_flagged_count/total_count:.1%})")
     print("\n")
 

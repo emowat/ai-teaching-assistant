@@ -1,13 +1,14 @@
-# Socratic TA VS Code Extension
+# CodingRabbit VS Code Extension
 
-This extension provides an interactive, Socratic Teaching Assistant directly inside VS Code to help students debug C++ code without leaking solutions.
+This extension provides an interactive, CodingRabbit Teaching Assistant directly inside VS Code to help students debug C++ code without leaking solutions.
 
 ## Features
-- **Socratic Chat UI**: A sidebar webview that interacts with the student. Now supports `Enter` to send and `Shift+Enter` for multiline formatting.
-- **Study Assist Mode**: A specialized mode that aggressively closes all active editors and terminal panels (`closeAllEditors` / `closePanel`), visually hiding code context so students can focus purely on conceptual questions. Dynamically overrides the LLM's Socratic rules to allow direct explanations.
+- **CodingRabbit Chat UI**: A sidebar webview that interacts with the student. Now supports `Enter` to send and `Shift+Enter` for multiline formatting.
+- **Study Assist Mode**: A specialized mode that aggressively closes all active editors and terminal panels (`closeAllEditors` / `closePanel`), visually hiding code context so students can focus purely on conceptual questions. Dynamically overrides the LLM's CodingRabbit rules to allow direct explanations.
 - **Context Injection**: Automatically grabs the student's active C++ code (`[Code_Context]`) and the output of their latest terminal run (`[Terminal_Context]`) to feed to the LLM.
 - **Anti-Cheat Tracking (MD5 Hashing)**: Detects large copy/paste events while smartly ignoring internal file restructuring via MD5 block hashing. It logs the unified diff to a local Output Channel ("TA Anti-Cheat Logs") and injects a `Likely_Paste_Detected: true` flag into the prompt so the TA can interrogate the student about pasted code.
 - **Hard Mode (Copilot Kill Switch)**: Aggressively checks for `github.copilot` and `github.copilot-chat` upon activation. If a student bypasses the Dev Container settings and installs Copilot locally, the TA will completely block all prompts and return an un-ignorable error until Copilot is manually disabled. Note: For deployment, ensure `.vscode/extensions.json` contains `"unwantedRecommendations": ["github.copilot", "github.copilot-chat"]` to actively prompt students to disable them.
+- **Gamified "Carrot" Tracking**: The UI maintains a dynamic "Carrot" token balance. Carrots are deducted when the student uses a `[DEBUG_IDEA_UNLOCKED]` hint or is penalized with an `[END_CHAT]` termination.
 - **Terminal Tracker**: Hooks into the VS Code terminal to silently buffer the output and exit code of the last compiled/run C++ binary.
 
 ## AWS Migration Checklist (Production Architecture)
