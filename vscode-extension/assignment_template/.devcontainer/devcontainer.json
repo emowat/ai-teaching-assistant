@@ -19,7 +19,7 @@
 
                 // 2. Point CodingRabbit to the Mac Host's Ollama Server instead of the container's localhost
                 "codingRabbit.apiUrl": "http://host.docker.internal:11434/api/chat",
-                "codingRabbit.modelName": "socratic-ta",
+                "codingRabbit.modelName": "codingrabbit-ta",
 
                 // 2. Disable the noisy C++ Doxygen lightbulbs and snippets
                 "C_Cpp.doxygen.generateOnType": false,
@@ -39,7 +39,7 @@
             "extensions": [
                 "ms-vscode.cpptools",
                 "ms-vscode.cpptools-extension-pack",
-                "/workspace/.devcontainer/coding-rabbit-0.0.3.vsix"
+                "/workspace/.devcontainer/coding-rabbit-0.0.4.vsix"
             ]
         }
     },

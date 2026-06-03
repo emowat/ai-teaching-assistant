@@ -151,6 +151,30 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
                 const matches = query.matches(tree.rootNode);
                 
                 let focusScope = "global";
+                const cursorPos = editor.selection.active;
+                let cursorNode: any = tree.rootNode.descendantForPosition({ row: cursorPos.line, column: cursorPos.character });
+                while (cursorNode) {
+                    if (cursorNode.type === "function_definition") {
+                        const decl = cursorNode.childForFieldName("declarator");
+                        if (decl) {
+                            const get_id = (n: any): string | null => {
+                                if (n.type === 'identifier') return n.text.split('::').pop() || n.text;
+                                for (let i = 0; i < n.childCount; i++) {
+                                    const res = get_id(n.child(i));
+                                    if (res) return res;
+                                }
+                                return null;
+                            };
+                            const defName = get_id(decl);
+                            if (defName) {
+                                focusScope = `function::${defName}`;
+                            }
+                        }
+                        break;
+                    }
+                    cursorNode = cursorNode.parent;
+                }
+                
                 const targetVariables = new Set<string>();
                 const features = {
                     Has_Loop: false,
@@ -171,9 +195,7 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
                         const text = node.text;
                         const cleanName = text.split("::").pop() || text;
 
-                        if (tag === "func_name") {
-                            focusScope = `function::${cleanName}`;
-                        } else if (tag === "call_id") {
+                        if (tag === "call_id") {
                             if (cleanName === "malloc") features.Has_Malloc = true;
                             if (cleanName === "free") features.Has_Free = true;
                             
@@ -232,6 +254,66 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
                     }
                 }
                 
+                const variableTypes: Record<string, string> = {};
+                const typeQueryStr = `
+                    (declaration) @decl
+                    (parameter_declaration) @decl
+                    (field_declaration) @decl
+                `;
+                const typeQuery = this._cppLanguage!.query(typeQueryStr);
+                const typeMatches = typeQuery.matches(tree.rootNode);
+                
+                for (const match of typeMatches) {
+                    const node = match.captures[0].node;
+                    const typeNode = node.childForFieldName('type');
+                    const declNode = node.childForFieldName('declarator');
+                    
+                    if (typeNode && declNode) {
+                        let typeStr = typeNode.text;
+                        
+                        let curr: any = declNode;
+                        let varName = "";
+                        while (curr) {
+                            if (curr.type === 'pointer_declarator') {
+                                typeStr += '*';
+                                curr = curr.childForFieldName('declarator');
+                            } else if (curr.type === 'array_declarator') {
+                                const sizeNode = curr.childForFieldName('size');
+                                typeStr += '[' + (sizeNode ? sizeNode.text : '') + ']';
+                                curr = curr.childForFieldName('declarator');
+                            } else if (curr.type === 'init_declarator') {
+                                curr = curr.childForFieldName('declarator');
+                            } else if (curr.type === 'reference_declarator') {
+                                typeStr += '&';
+                                curr = curr.childForFieldName('declarator');
+                            } else if (curr.type === 'identifier' || curr.type === 'field_identifier') {
+                                varName = curr.text;
+                                break;
+                            } else {
+                                // Default fallback: search descendants
+                                const findId = (n: any): any => {
+                                    if (n.type === 'identifier' || n.type === 'field_identifier') return n;
+                                    for (let i = 0; i < n.childCount; i++) {
+                                        const res = findId(n.child(i));
+                                        if (res) return res;
+                                    }
+                                    return null;
+                                };
+                                const idNode = findId(curr);
+                                if (idNode) {
+                                    varName = idNode.text;
+                                }
+                                break;
+                            }
+                        }
+                        
+                        // We only care about variables the LLM actually targets
+                        if (varName && targetVariables.has(varName)) {
+                            variableTypes[varName] = typeStr;
+                        }
+                    }
+                }
+                
                 // Also check for array as requested before
                 const arrayQuery = this._cppLanguage!.query(`(array_declarator) @is_array`);
                 if (arrayQuery.matches(tree.rootNode).length > 0) {
@@ -239,7 +321,7 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
                     // We'll leave it out of Features to strictly match python, but we can add it if needed.
                 }
                 
-                astMetadata = `AST_Metadata:\n- Focus_Scope: "${focusScope}"\n- Target_Variables: ${JSON.stringify(Array.from(targetVariables))}\n- Features: ${JSON.stringify(features)}`;
+                astMetadata = `AST_Metadata:\n- Focus_Scope: "${focusScope}"\n- Variable_Types: ${JSON.stringify(variableTypes)}\n- Features: ${JSON.stringify(features)}`;
             } catch (err) {
                 TAChatViewProvider.getOutputChannel().appendLine(`AST Parsing Error: ${err}`);
                 astMetadata = 'AST_Metadata: (Error Parsing AST)';
@@ -288,17 +370,15 @@ ${rule1}
 16. PASTE DETECTION: If \`Likely_Paste_Detected: true\` is present in the Code Context, the student has just pasted a large block of code. You MUST ask the student to explain the code they just pasted before providing any debugging help. If they explain they are just starting to edit a skeleton or boilerplate from GitHub, acknowledge it and proceed normally.
 ${modeSpecificRule}
 18. REWARDING DEBUG IDEAS: When the student successfully discovers a debug idea, answers your Socratic question correctly, or fixes a bug, you MUST append the exact string "[DEBUG_IDEA_UNLOCKED]" to the end of your response.
+19. CHAIN OF THOUGHT: Before generating your response, you MUST silently reason through the student's code and intent using a strictly formatted XML block. You must output this block first:
+<analysis>
+- Code_State: [State of the variables/code]
+- Student_Intent: [What they are asking]
+- Rule_Triggered: [Which rules apply]
+- Pedagogical_Action: [Your plan]
+</analysis>
+After the closing tag, provide your Socratic response.
 
-[Code_Context]
-Mode: ${mode}
-Likely_Paste_Detected: ${likelyPasteDetected}
-Raw_Code:
-${rawCode}
-${astMetadata}
-[Terminal_Context]
-Exit_Code: ${exitCode}
-Output:
-${terminalOutput}
 [Vector_Database_Results]
 [Style_Rules]
 - Indentation: 4 spaces
@@ -310,11 +390,32 @@ ${syllabusMatrix}
 Source: https://en.cppreference.com/mock
 Content: This is a mocked RAG response for local testing purposes. It indicates that std::vector is a dynamic array.`;
 
+        // The dynamic context that changes on every turn
+        const dynamicContext = `[Code_Context]
+Mode: ${mode}
+Likely_Paste_Detected: ${likelyPasteDetected}
+Raw_Code:
+${rawCode}
+${astMetadata}
+[Terminal_Context]
+Exit_Code: ${exitCode}
+Output:
+${terminalOutput}`;
+
         // We should send the message to the webview that we're thinking
         webviewView.webview.postMessage({ type: 'addResponse', text: "...", isThinking: true });
 
-        // Add user message to history
+        // Add pure user message to history
         this._conversationHistory.push({ role: "user", content: userMessage });
+        
+        // Prepare API messages
+        const apiMessages = [
+            { role: "system", content: systemPrompt },
+            ...this._conversationHistory
+        ];
+        
+        // Inject dynamic context into the very last user message for perfect KV caching
+        apiMessages[apiMessages.length - 1].content = `${dynamicContext}\n\n[Student_Question]\n${userMessage}`;
 
         // 3. Call Ollama API
         try {
@@ -328,19 +429,18 @@ Content: This is a mocked RAG response for local testing purposes. It indicates 
             outputChannel.appendLine(`[Terminal_Context]\nExit_Code: ${exitCode}\nOutput:\n${terminalOutput}`);
             outputChannel.appendLine(`---------------------------------------------------`);
 
-            // Because we're inside a dev container, localhost maps to the local environment.
-            // If Ollama is running on the Mac host, it's usually accessible at host.docker.internal
-            // Read backend API URL from VSCode Configuration (Fallback to default if not set)
             const apiUrl = vscode.workspace.getConfiguration('codingRabbit').get('apiUrl') || 'http://192.168.65.254:11434/api/chat';
             const modelName = vscode.workspace.getConfiguration('codingRabbit').get('modelName') || 'socratic-ta';
             
             const requestBody = {
-                model: modelName, // Tagged custom model name
-                messages: [
-                    { role: "system", content: systemPrompt },
-                    ...this._conversationHistory
-                ],
-                stream: false
+                model: modelName,
+                messages: apiMessages,
+                stream: false,
+                options: {
+                    temperature: 0.7,
+                    top_p: 0.9,
+                    num_ctx: 8192
+                }
             };
 
             // Using dynamic import for fetch since node-fetch isn't bundled
@@ -358,6 +458,14 @@ Content: This is a mocked RAG response for local testing purposes. It indicates 
             const data: any = await response.json();
             let taResponse = data.message?.content || "No response generated.";
             
+            // Strip the <analysis> block out of the text displayed to the user
+            const analysisMatch = taResponse.match(/<analysis>[\s\S]*?<\/analysis>/);
+            if (analysisMatch) {
+                // Log the hidden reasoning block to the Output window for debugging
+                outputChannel.appendLine(`\n[Hidden CoT Rationale]:\n${analysisMatch[0]}\n`);
+                taResponse = taResponse.replace(analysisMatch[0], '').trim();
+            }
+            
             if (taResponse.includes('[END_CHAT]')) {
                 taResponse = taResponse.replace(/\[END_CHAT\]/g, '').trim();
                 this._conversationHistory = [];
@@ -370,7 +478,8 @@ Content: This is a mocked RAG response for local testing purposes. It indicates 
                 }
                 webviewView.webview.postMessage({ type: 'addResponse', text: taResponse, isThinking: false });
             } else {
-                if (taResponse.includes('[DEBUG_IDEA_UNLOCKED]')) {
+                const affirmationRegex = /^(Exactly|Yes|Great catch|You nailed it|That's it|Perfect|Right on track|Brilliant deduction|Correct)\b/i;
+                if (taResponse.includes('[DEBUG_IDEA_UNLOCKED]') || affirmationRegex.test(taResponse)) {
                     taResponse = taResponse.replace(/\[DEBUG_IDEA_UNLOCKED\]/g, '').trim();
                     if (mode !== 'Study Assist') {
                         this._carrots -= 1;

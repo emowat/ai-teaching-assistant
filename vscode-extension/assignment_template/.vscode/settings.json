@@ -16,5 +16,5 @@
         "strings": "off"
     },
     "codingRabbit.apiUrl": "http://host.docker.internal:11434/api/chat",
-    "codingRabbit.modelName": "socratic-ta"
+    "codingRabbit.modelName": "codingrabbit-ta"
 }

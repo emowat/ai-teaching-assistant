@@ -12,3 +12,8 @@ out/
 .npm-cache/
 ast_test.log
 vscode-extension/media/wasm/
+
+# Large Datasets
+synthetic-transcripts/*.jsonl
+synthetic-transcripts/*.txt
+synthetic-transcripts/*.npy

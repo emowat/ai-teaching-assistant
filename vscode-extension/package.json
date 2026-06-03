@@ -2,7 +2,7 @@
   "name": "coding-rabbit",
   "displayName": "CodingRabbit",
   "description": "C++ CodingRabbit Teaching Assistant via Ollama",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "publisher": "berkeley",
   "repository": "https://github.com/berkeley/coding-rabbit",
   "engines": {
@@ -26,7 +26,7 @@
         },
         "codingRabbit.modelName": {
           "type": "string",
-          "default": "socratic-ta",
+          "default": "codingrabbit-ta",
           "description": "The name of the Ollama model to use."
         }
       }

@@ -41,7 +41,7 @@ cd "$EXTENSION_DIR"
 npm run compile
 
 echo "Packaging .vsix..."
-npx vsce package --allow-missing-repository
+npx vsce package --allow-missing-repository --allow-star-activation
 
 if [ -n "$API_URL" ]; then
     echo "Restoring original package.json..."
