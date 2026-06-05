@@ -13,6 +13,7 @@
   - `python -m rag_eng.cli rebuild-index`
 - Internal Gradio UI mounted at `/gradio`
 - `result_count` on `/query` and in the Gradio UI to control the final post-rerank document count
+- Pydantic query contract split into `QueryPayload` and `QueryResult` with OpenAPI examples
 
 ## Local setup
 

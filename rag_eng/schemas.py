@@ -2,17 +2,44 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from rag.schemas import QueryInput, RetrievalResult
 
 
-class QueryRequest(QueryInput):
-    """FastAPI request model for RAG queries.
+class QueryPayload(QueryInput):
+    """Typed request payload for the RAG query endpoint.
 
     `result_count` lets the UI/API request a different number of final retrieved
     documents without changing the underlying retrieval modes.
     """
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "student_message": "Why does my program crash?",
+                    "code_raw": "int* p; *p = 5;",
+                    "terminal_output": "Segmentation fault (core dumped)",
+                    "exit_code": 139,
+                    "week": 3,
+                    "mode": "Homework Assist",
+                    "result_count": 5,
+                    "ast_features": {
+                        "has_pointer": True,
+                        "has_reference": False,
+                        "has_loop": False,
+                        "has_new": False,
+                        "has_delete": False,
+                        "has_malloc": False,
+                        "has_free": False,
+                        "has_recursion": False,
+                        "target_variables": [],
+                    },
+                }
+            ]
+        }
+    )
 
     # Bound the override so the backend always knows the expected output size
     # stays in a sensible range for the UI and prompt formatting.
@@ -24,12 +51,34 @@ class QueryRequest(QueryInput):
     )
 
 
-class QueryResponse(BaseModel):
-    """FastAPI response for a query that includes answer and retrieval context."""
+class QueryRequest(QueryPayload):
+    """Compatibility alias for callers that still import the old request name."""
+
+
+class QueryResult(BaseModel):
+    """Typed response payload for a successful RAG query."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "answer": "Check the pointer before dereferencing it.",
+                    "retrieval_result": {
+                        "formatted_context": "[Pedagogical_Context]\\nPointers"
+                    },
+                    "formatted_context": "[Pedagogical_Context]\\nPointers",
+                }
+            ]
+        }
+    )
 
     answer: str
     retrieval_result: RetrievalResult
     formatted_context: str
+
+
+class QueryResponse(QueryResult):
+    """Compatibility alias for callers that still import the old response name."""
 
 
 class HealthResponse(BaseModel):

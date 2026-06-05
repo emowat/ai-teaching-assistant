@@ -9,8 +9,8 @@ from rag_eng.schemas import (
     HealthResponse,
     IndexEnsureResponse,
     IndexRebuildResponse,
-    QueryRequest,
-    QueryResponse,
+    QueryPayload,
+    QueryResult,
 )
 from rag_eng.service import (
     ensure_index_service,
@@ -40,8 +40,8 @@ def create_app() -> FastAPI:
     def health() -> HealthResponse:
         return get_health()
 
-    @app.post("/query", response_model=QueryResponse)
-    def query(payload: QueryRequest) -> QueryResponse:
+    @app.post("/query", response_model=QueryResult)
+    def query(payload: QueryPayload) -> QueryResult:
         try:
             return run_query(payload)
         except Exception as exc:
