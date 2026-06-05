@@ -8,7 +8,20 @@ from rag.schemas import QueryInput, RetrievalResult
 
 
 class QueryRequest(QueryInput):
-    """FastAPI request model for RAG queries."""
+    """FastAPI request model for RAG queries.
+
+    `result_count` lets the UI/API request a different number of final retrieved
+    documents without changing the underlying retrieval modes.
+    """
+
+    # Bound the override so the backend always knows the expected output size
+    # stays in a sensible range for the UI and prompt formatting.
+    result_count: int = Field(
+        default=5,
+        ge=1,
+        le=20,
+        description="Number of final retrieved documents to return.",
+    )
 
 
 class QueryResponse(BaseModel):

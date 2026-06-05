@@ -31,6 +31,7 @@ def _query_api(
     terminal_output: str,
     week: int,
     mode: str,
+    result_count: int,
     has_pointer: bool,
     has_reference: bool,
     has_loop: bool,
@@ -40,7 +41,11 @@ def _query_api(
     has_free: bool,
     has_recursion: bool,
 ) -> tuple[str, str, str, str]:
-    """Call the FastAPI `/query` endpoint and format its response."""
+    """Call the FastAPI `/query` endpoint and format its response.
+
+    The selected `result_count` is forwarded to the backend so the user can
+    control the final number of returned chunks without changing code.
+    """
     settings = get_settings()
     payload = {
         "student_message": student_message,
@@ -49,6 +54,7 @@ def _query_api(
         "exit_code": 0,
         "week": int(week),
         "mode": mode,
+        "result_count": int(result_count),
         "ast_features": {
             "has_pointer": has_pointer,
             "has_reference": has_reference,
@@ -117,6 +123,14 @@ def build_gradio_app(settings: Settings | None = None) -> gr.Blocks:
                 choices=[item.value for item in AssistMode],
                 value=AssistMode.HOMEWORK_ASSIST.value,
             )
+            # User-facing control for the final post-rerank result count.
+            result_count = gr.Slider(
+                label="Number of Results",
+                minimum=1,
+                maximum=10,
+                value=5,
+                step=1,
+            )
         with gr.Accordion("AST Flags", open=False):
             with gr.Row():
                 has_pointer = gr.Checkbox(label="Has Pointer", value=True)
@@ -147,6 +161,7 @@ def build_gradio_app(settings: Settings | None = None) -> gr.Blocks:
                 terminal_output,
                 week,
                 mode,
+                result_count,
                 has_pointer,
                 has_reference,
                 has_loop,

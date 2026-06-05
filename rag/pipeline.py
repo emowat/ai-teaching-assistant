@@ -15,6 +15,7 @@ That separation keeps the service layer from re-running retrieval when it only
 needs to format a prompt, and it makes the FastAPI/Gradio wrappers easier to
 test because they can reuse the retrieval result directly.
 """
+
 from __future__ import annotations
 
 from rag.schemas import AssistMode, QueryInput, RetrievalResult
@@ -30,14 +31,14 @@ from rag.context_assembler import build_retrieval_result
 
 MODE_PARAMS: dict[AssistMode, dict] = {
     AssistMode.HOMEWORK_ASSIST: {
-        "cumulative": False,      # current week only — stay focused
+        "cumulative": False,  # current week only — stay focused
         "semantic_top_k": 5,
         "rules_top_k": 3,
         "rules_threshold": 0.55,
         "final_k": 5,
     },
     AssistMode.STUDY_ASSIST: {
-        "cumulative": True,       # weeks 1..X — allow review of past concepts
+        "cumulative": True,  # weeks 1..X — allow review of past concepts
         "semantic_top_k": 8,
         "rules_top_k": 3,
         "rules_threshold": 0.45,  # relaxed — more conceptual material
@@ -57,18 +58,26 @@ def run_retrieval(query: QueryInput) -> RetrievalResult:
     5. Format into [Vector_Database_Results] block
     """
     params = MODE_PARAMS[query.mode]
+    # This keeps the mode defaults intact but lets the caller request a smaller
+    # or larger final diversified set for a specific query.
+    requested_final_k = getattr(query, "result_count", None)
+    final_k = params["final_k"]
+    if isinstance(requested_final_k, int) and requested_final_k > 0:
+        final_k = requested_final_k
 
     dense_query = build_query(query)
 
     # Three parallel retrievers
     syllabus = retrieve_syllabus(query.week)
     semantic = retrieve_semantic(
-        dense_query, query.week,
+        dense_query,
+        query.week,
         top_k=params["semantic_top_k"],
         cumulative=params["cumulative"],
     )
     rules = retrieve_strict_rules(
-        dense_query, query.week,
+        dense_query,
+        query.week,
         top_k=params["rules_top_k"],
         threshold=params["rules_threshold"],
         cumulative=params["cumulative"],
@@ -80,6 +89,7 @@ def run_retrieval(query: QueryInput) -> RetrievalResult:
         semantic=semantic,
         rules=rules,
         mode=query.mode,
+        final_k=final_k,
     )
 
     return build_retrieval_result(

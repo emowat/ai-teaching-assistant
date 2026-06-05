@@ -50,7 +50,7 @@ def test_query_endpoint_returns_answer(monkeypatch) -> None:
         json=QueryInput(
             student_message="Why does this crash?",
             week=3,
-        ).model_dump(),
+        ).model_dump() | {"result_count": 7},
     )
 
     assert response.status_code == 200
