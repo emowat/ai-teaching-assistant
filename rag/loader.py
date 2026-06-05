@@ -22,6 +22,10 @@ Category classification heuristic:
   - Slide text contains imperative/caution  → Strict_Rules
     keywords (must, always, never, remember, ensure, do not, avoid, forbidden, be careful)
   - Everything else                        → Pedagogical_Context
+
+The change in this file is intentionally narrow: chunk IDs are now
+deterministic instead of random so the indexing layer can safely upsert the
+same document repeatedly without creating duplicates in Qdrant Cloud.
 """
 
 from __future__ import annotations
@@ -30,7 +34,6 @@ import json
 import re
 import uuid
 from pathlib import Path
-from typing import Optional
 
 from rag.schemas import ChunkPayload, DocCategory, SourceDomain
 
@@ -105,6 +108,20 @@ CATEGORY_PRIORITY: dict[DocCategory, int] = {
 }
 
 
+_CHUNK_NAMESPACE = uuid.UUID("58dbf568-51bb-4d4e-8cf9-c6a8a797d065")
+
+
+def _stable_chunk_id(*parts: object) -> str:
+    """Return a deterministic UUID so repeated indexing upserts the same point.
+
+    The namespace is fixed and the input parts are chosen from stable document
+    attributes, which means the same source material will always produce the
+    same Qdrant point ID across runs.
+    """
+    normalized = "::".join(str(part) for part in parts)
+    return str(uuid.uuid5(_CHUNK_NAMESPACE, normalized))
+
+
 # ---------------------------------------------------------------------------
 # Loader
 # ---------------------------------------------------------------------------
@@ -176,7 +193,9 @@ class CourseMaterialLoader:
         # Create one chunk per week from the syllabus content + matrix metadata
         chunks: list[ChunkPayload] = []
         for week, info in SYLLABUS_MATRIX.items():
-            chunk_id = str(uuid.uuid4())
+            # A stable ID is important here because the same syllabus page is
+            # indexed every time the collection is rebuilt or refreshed.
+            chunk_id = _stable_chunk_id("syllabus", week, info["name"])
             syllabus_content = (
                 f"Week: {week} - {info['name']}\n"
                 f"Allowed: {info['allowed']}\n"
@@ -216,7 +235,14 @@ class CourseMaterialLoader:
                 if not text.strip():
                     continue
 
-                chunk_id = str(uuid.uuid4())
+                # Assignment solution chunks are keyed by file/page/content so
+                # re-running the bootstrap process updates the same record.
+                chunk_id = _stable_chunk_id(
+                    "assignment_solution",
+                    json_file.name,
+                    slide.get("page"),
+                    text[:2000],
+                )
                 chunks.append(ChunkPayload(
                     chunk_id=chunk_id,
                     content=text[:2000],  # cap long code solutions
@@ -256,7 +282,9 @@ class CourseMaterialLoader:
             page = slide.get("page")
 
             category = classify_category(text, has_code, source="lecture")
-            chunk_id = str(uuid.uuid4())
+            # Lecture chunks also need deterministic IDs so each slide remains
+            # a single logical record in the vector store even after retries.
+            chunk_id = _stable_chunk_id("lecture", json_file.name, page, section, text[:2000])
 
             # Prefix with section context for better retrieval
             content = f"[{section}] {text}" if section else text

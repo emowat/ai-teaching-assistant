@@ -3,38 +3,41 @@ Retrievers: three parallel retrieval strategies.
 1. SyllabusRetriever — exact lookup by week (payload filter, no vector search needed)
 2. SemanticRetriever — vector similarity with week filter, excludes syllabus
 3. RulesRetriever — vector similarity with week + Strict_Rules category filter + threshold cutoff
+
+The main change here is that the retrievers no longer hard-code a local
+filesystem Qdrant instance or a fixed collection/model name. Those values now
+come from `rag.runtime`, which lets the same retrieval code work in local mode
+and in the new cloud-backed `rag_eng` service without changing call sites.
 """
 from __future__ import annotations
 
-import os
-
-from qdrant_client import QdrantClient
-from qdrant_client.models import FieldCondition, Filter, MatchValue, Range
-from sentence_transformers import SentenceTransformer
-
 from rag.schemas import DocCategory, RetrievedDoc, SourceDomain
+from rag.runtime import create_qdrant_client, get_runtime_config
 
 # ---------------------------------------------------------------------------
 # Shared state (initialized once, reused across calls)
 # ---------------------------------------------------------------------------
-QDRANT_PATH = os.path.join(os.path.dirname(__file__), "..", "qdrant_local_data")
-COLLECTION_NAME = "course_knowledge"
-
-_client: QdrantClient | None = None
-_model: SentenceTransformer | None = None
+_client = None
+_model = None
 
 
-def _get_client() -> QdrantClient:
+def _get_client():
     global _client
     if _client is None:
-        _client = QdrantClient(path=QDRANT_PATH)
+        # Client construction is centralized so the rest of the retrievers do
+        # not need to know whether Qdrant is local-on-disk or remote/cloud.
+        _client = create_qdrant_client()
     return _client
 
 
-def _get_model() -> SentenceTransformer:
+def _get_model():
     global _model
     if _model is None:
-        _model = SentenceTransformer("sentence-transformers/multi-qa-mpnet-base-dot-v1")
+        # The model name is configurable so the service layer can override the
+        # embedding backend without rewriting retrieval code.
+        from sentence_transformers import SentenceTransformer
+
+        _model = SentenceTransformer(get_runtime_config().embedding_model)
     return _model
 
 
@@ -69,6 +72,10 @@ def _hit_to_doc(hit) -> RetrievedDoc:
 
 def _week_filter(week: int, *, cumulative: bool = False) -> Filter:
     """Include course material + external references (week 0)."""
+    from qdrant_client.models import FieldCondition, Filter, MatchValue, Range
+
+    # Homeworks stay narrow by default, while study mode can widen the search
+    # to all earlier weeks to support review and concept reinforcement.
     course_condition = (
         FieldCondition(key="week", range=Range(gte=1, lte=week))
         if cumulative
@@ -81,6 +88,10 @@ def _week_filter(week: int, *, cumulative: bool = False) -> Filter:
 
 
 def _syllabus_filter(week: int) -> Filter:
+    from qdrant_client.models import FieldCondition, Filter, MatchValue
+
+    # Syllabus retrieval remains an exact filter because we only need the
+    # single authoritative week entry, not a semantic search.
     return Filter(must=[
         FieldCondition(key="week", match=MatchValue(value=week)),
         FieldCondition(key="category", match=MatchValue(value="Syllabus")),
@@ -89,6 +100,10 @@ def _syllabus_filter(week: int) -> Filter:
 
 def _semantic_filter(week: int, *, cumulative: bool = False) -> Filter:
     """Course material + external refs (week 0), excluding syllabus."""
+    from qdrant_client.models import FieldCondition, Filter, MatchValue, Range
+
+    # Excluding syllabus from semantic search prevents the general retrieval
+    # pool from being dominated by policy text that should only appear once.
     course_condition = (
         FieldCondition(key="week", range=Range(gte=1, lte=week))
         if cumulative
@@ -107,6 +122,10 @@ def _semantic_filter(week: int, *, cumulative: bool = False) -> Filter:
 
 def _rules_filter(week: int, *, cumulative: bool = False) -> Filter:
     """Course Strict_Rules only (no external refs in Strict_Rules)."""
+    from qdrant_client.models import FieldCondition, Filter, MatchValue, Range
+
+    # Strict rules are a separate retrieval lane because they should be ranked
+    # and surfaced differently from conceptual lecture context.
     course_condition = (
         FieldCondition(key="week", range=Range(gte=1, lte=week))
         if cumulative
@@ -126,7 +145,9 @@ def retrieve_syllabus(week: int) -> RetrievedDoc | None:
     """Exact lookup of the syllabus document for a given week."""
     client = _get_client()
     records, _ = client.scroll(
-        collection_name=COLLECTION_NAME,
+        # The collection name is now config-driven so the same code can point
+        # at any hosted Qdrant collection without code changes.
+        collection_name=get_runtime_config().collection_name,
         scroll_filter=_syllabus_filter(week),
         limit=1,
     )
@@ -162,7 +183,9 @@ def retrieve_semantic(
     query_vector = model.encode(dense_query).tolist()
 
     hits = client.query_points(
-        collection_name=COLLECTION_NAME,
+        # Semantic retrieval shares the same collection as the other lanes; the
+        # filter is what separates concept text from rules and syllabus.
+        collection_name=get_runtime_config().collection_name,
         query=query_vector,
         query_filter=_semantic_filter(week, cumulative=cumulative),
         limit=top_k,
@@ -186,7 +209,9 @@ def retrieve_strict_rules(
     query_vector = model.encode(dense_query).tolist()
 
     hits = client.query_points(
-        collection_name=COLLECTION_NAME,
+        # Thresholding keeps low-similarity rules from leaking into the
+        # response when the student query is only weakly related to policy text.
+        collection_name=get_runtime_config().collection_name,
         query=query_vector,
         query_filter=_rules_filter(week, cumulative=cumulative),
         limit=top_k,

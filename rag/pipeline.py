@@ -9,11 +9,13 @@ Two entry points:
 Mode flows directly from QueryInput (user-selected, not auto-classified):
   - Homework Assist → exact week match, rules-heavy, tight top_k
   - Study Assist     → cumulative weeks 1..X, pedagogy-heavy, wide top_k
+
+The new helper functions below split prompt construction from model invocation.
+That separation keeps the service layer from re-running retrieval when it only
+needs to format a prompt, and it makes the FastAPI/Gradio wrappers easier to
+test because they can reuse the retrieval result directly.
 """
 from __future__ import annotations
-
-import os
-from typing import Optional
 
 from rag.schemas import AssistMode, QueryInput, RetrievalResult
 from rag.query_builder import build_query
@@ -105,6 +107,42 @@ RULES:
 """
 
 
+def build_prompt(
+    query: QueryInput,
+    result: RetrievalResult,
+    system_prompt: str | None = None,
+) -> str:
+    """Build the final prompt from a query and already-fetched retrieval result.
+
+    This is intentionally separate from `generate_response` so external callers
+    can inspect or reuse the final prompt without forcing a second retrieval.
+    """
+    return (
+        f"{system_prompt or BASE_TA_SYSTEM_PROMPT}\n\n"
+        f"{result.formatted_context}\n\n"
+        f"Student: {query.student_message}"
+    )
+
+
+def generate_response_from_result(
+    query: QueryInput,
+    result: RetrievalResult,
+    llm,
+    system_prompt: str | None = None,
+) -> str:
+    """Generate an answer from an existing retrieval result.
+
+    The caller is responsible for retrieval; this function only performs prompt
+    assembly and LLM invocation.
+    """
+    prompt = build_prompt(query=query, result=result, system_prompt=system_prompt)
+    response = llm.invoke(prompt)
+
+    if hasattr(response, "content"):
+        return response.content
+    return str(response)
+
+
 def generate_response(
     query: QueryInput,
     llm,  # ChatCohere or any LangChain-compatible chat model
@@ -115,19 +153,13 @@ def generate_response(
 
     Returns the Socratic TA's response string.
     """
-    # Step 1: Retrieval (Layer 1+2)
+    # Step 1: Retrieval (Layer 1+2). This keeps the public API intact for
+    # existing callers while allowing the service layer to reuse the lower-level
+    # prompt helper when it already has a retrieval result in hand.
     result = run_retrieval(query)
-
-    # Step 2: Build prompt
-    prompt = (
-        f"{system_prompt or BASE_TA_SYSTEM_PROMPT}\n\n"
-        f"{result.formatted_context}\n\n"
-        f"Student: {query.student_message}"
+    return generate_response_from_result(
+        query=query,
+        result=result,
+        llm=llm,
+        system_prompt=system_prompt,
     )
-
-    # Step 3: Generation (Layer 3)
-    response = llm.invoke(prompt)
-
-    if hasattr(response, "content"):
-        return response.content
-    return str(response)
