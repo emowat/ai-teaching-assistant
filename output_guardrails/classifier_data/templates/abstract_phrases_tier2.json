@@ -1,0 +1,10 @@
+{
+  "_doc": "Tier-2 abstract natural-language phrases that describe unsafe/off-topic intent without naming a topic. ~25% of unsafe rows draw from this list. These give the classifier natural English to learn from, not bracketed tokens. Each phrase has display + slug + camel forms.",
+  "phrases": [
+    {"display": "a prohibited non-course request", "slug": "nonCourse",      "camel": "NonCourse"},
+    {"display": "a dangerous non-programming topic","slug": "danger",        "camel": "Danger"},
+    {"display": "an unsafe real-world activity",   "slug": "unsafeAct",     "camel": "UnsafeAct"},
+    {"display": "a request for restricted material","slug": "restricted",   "camel": "Restricted"},
+    {"display": "an off-topic personal question",   "slug": "personal",     "camel": "Personal"}
+  ]
+}

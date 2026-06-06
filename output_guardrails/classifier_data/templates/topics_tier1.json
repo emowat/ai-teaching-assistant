@@ -1,0 +1,68 @@
+{
+  "_doc": "Tier-1 real harmless off-topic content. ~70% of unsafe rows draw from this list. Each topic has a display form (used in prose), a slug for variable names, and a CamelCase form for function names. NEVER add real harmful content here. Topics span: history, cooking, travel, sports, movies, anime, other-language programming, finance, music, general life advice.",
+  "topics": [
+    {"display": "the Roman Empire", "slug": "roman", "camel": "Roman"},
+    {"display": "Greek philosophers", "slug": "greek", "camel": "Greek"},
+    {"display": "World War II history", "slug": "wwii", "camel": "WWII"},
+    {"display": "the French Revolution", "slug": "frev", "camel": "FrenchRevolution"},
+    {"display": "ancient Egypt", "slug": "egypt", "camel": "Egypt"},
+    {"display": "the Cold War", "slug": "coldwar", "camel": "ColdWar"},
+
+    {"display": "pasta recipes", "slug": "pasta", "camel": "Pasta"},
+    {"display": "baking sourdough bread", "slug": "bread", "camel": "Bread"},
+    {"display": "knife skills for cooking", "slug": "knife", "camel": "Knife"},
+    {"display": "Thai curry recipes", "slug": "thai", "camel": "ThaiCurry"},
+    {"display": "fermenting kimchi", "slug": "kimchi", "camel": "Kimchi"},
+    {"display": "barbecue brisket techniques", "slug": "bbq", "camel": "BBQ"},
+
+    {"display": "a Paris vacation itinerary", "slug": "paris", "camel": "Paris"},
+    {"display": "hiking trails in Yosemite", "slug": "yose", "camel": "Yosemite"},
+    {"display": "backpacking through Southeast Asia", "slug": "sea", "camel": "Southeast"},
+    {"display": "a road trip down the Pacific Coast", "slug": "pch", "camel": "PCH"},
+    {"display": "Iceland travel tips", "slug": "iceland", "camel": "Iceland"},
+
+    {"display": "the World Cup", "slug": "wcup", "camel": "WorldCup"},
+    {"display": "NBA basketball stats", "slug": "nba", "camel": "NBA"},
+    {"display": "Formula 1 race strategy", "slug": "f1", "camel": "F1"},
+    {"display": "fantasy football lineups", "slug": "ffb", "camel": "Fantasy"},
+    {"display": "Olympics medal counts", "slug": "olym", "camel": "Olympics"},
+
+    {"display": "movie reviews of Inception", "slug": "movie", "camel": "Movie"},
+    {"display": "the best Studio Ghibli films", "slug": "ghibli", "camel": "Ghibli"},
+    {"display": "the Marvel Cinematic Universe timeline", "slug": "mcu", "camel": "MCU"},
+    {"display": "favorite anime series", "slug": "anime", "camel": "Anime"},
+    {"display": "Naruto fight scene rankings", "slug": "naruto", "camel": "Naruto"},
+
+    {"display": "writing a SQL query", "slug": "sql", "camel": "SQL"},
+    {"display": "an HTML form", "slug": "html", "camel": "HTML"},
+    {"display": "a JSX React component", "slug": "jsx", "camel": "JSX"},
+    {"display": "Python list comprehensions", "slug": "py", "camel": "Python"},
+    {"display": "a Django REST API", "slug": "django", "camel": "Django"},
+    {"display": "a Flask backend", "slug": "flask", "camel": "Flask"},
+    {"display": "Rust ownership rules", "slug": "rust", "camel": "Rust"},
+    {"display": "JavaScript promises", "slug": "js", "camel": "JS"},
+
+    {"display": "video game strategy", "slug": "game", "camel": "Game"},
+    {"display": "Elden Ring boss tips", "slug": "elden", "camel": "Elden"},
+    {"display": "competitive chess openings", "slug": "chess", "camel": "Chess"},
+
+    {"display": "stock investing for beginners", "slug": "stock", "camel": "Stock"},
+    {"display": "401k retirement planning", "slug": "401k", "camel": "Retirement"},
+    {"display": "cryptocurrency trends", "slug": "crypto", "camel": "Crypto"},
+    {"display": "personal budgeting advice", "slug": "budget", "camel": "Budget"},
+    {"display": "real estate market trends", "slug": "realestate", "camel": "RealEstate"},
+
+    {"display": "jazz improvisation theory", "slug": "jazz", "camel": "Jazz"},
+    {"display": "learning to play guitar", "slug": "guitar", "camel": "Guitar"},
+    {"display": "Taylor Swift album rankings", "slug": "tswift", "camel": "TSwift"},
+    {"display": "K-pop group trivia", "slug": "kpop", "camel": "Kpop"},
+    {"display": "classical music history", "slug": "classical", "camel": "Classical"},
+
+    {"display": "general dating advice", "slug": "dating", "camel": "Dating"},
+    {"display": "tips for managing stress", "slug": "stress", "camel": "Stress"},
+    {"display": "career change advice", "slug": "career", "camel": "Career"},
+    {"display": "how to make new friends as an adult", "slug": "friends", "camel": "Friends"},
+    {"display": "parenting tips for toddlers", "slug": "parent", "camel": "Parenting"},
+    {"display": "morning routine optimization", "slug": "morning", "camel": "Morning"}
+  ]
+}
