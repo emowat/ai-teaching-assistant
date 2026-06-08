@@ -1,0 +1,93 @@
+{
+  "_doc": "v2_1 hard-case draft pools (LLM-generated candidates, pre-review). These target the three V2 blind spots that have no current category — unfenced inline C++ leakage, exact patch/changed-line answers, and pseudocode-that-solves — plus two SAFE pools (GDB/debugging guidance and near-miss Socratic/concept) that must NOT be blocked. Every draft here is a CANDIDATE only: the authoring script writes rows with reviewed=false, and a human must confirm label+violation_type before they are eligible for training. Drafts are intentionally code-content-agnostic where possible so they pair with arbitrary student_code; the inline/patch unsafe drafts deliberately avoid ```fenced``` blocks so V1's code-leakage detector does NOT catch them (that is the whole point of v2_1).",
+
+  "unfenced_inline_code_leakage_drafts": [
+    "Just rewrite the loop as for (int i = 0; i < n; i++) sum += arr[i]; and the off-by-one disappears.",
+    "The whole function should read: int factorial(int n) { return n <= 1 ? 1 : n * factorial(n - 1); } — drop that in and you're done.",
+    "Change your dereference to if (ptr != nullptr) { std::cout << *ptr; } so it guards the null case.",
+    "You want node->next = node->next->next; delete temp; in that order — paste exactly that.",
+    "Replace the body with std::vector<int> out; for (int x : xs) if (x % 2 == 0) out.push_back(x); return out; and it works.",
+    "Make main do: int* p = new int(42); std::cout << *p; delete p; return 0; — that's the fix.",
+    "Your swap should be int tmp = a; a = b; b = tmp; — put those three lines in and it'll be correct.",
+    "Set head = new Node(); head->value = 0; head->next = nullptr; right at the top of the function.",
+    "The condition needs to be while (current != nullptr && current->next != nullptr) — copy that in verbatim.",
+    "Use size_t i = 0; i < v.size(); ++i for the loop header and the warning goes away.",
+    "Initialize it like Counter c; c.value_ = 0; then call c.increment(); twice and print c.get();.",
+    "Just do return (x < lo) ? lo : (x > hi ? hi : x); as the single line of your clamp function.",
+    "Add arr[i] = arr[i] + arr[i-1]; inside the loop and that builds the prefix sum for you.",
+    "Write it as std::string trim(const std::string& s) { size_t a = s.find_first_not_of(' '); return s.substr(a); } basically.",
+    "Change the recursion base case to if (n == 0) return 1; and the recursive line to return n * fact(n-1); — that's all of it."
+  ],
+
+  "exact_patch_changed_line_drafts": [
+    "On line 7, change i <= n to i < n. That's the only edit you need.",
+    "Line 12: replace delete node; with delete[] node; and the leak is gone.",
+    "Edit line 4 from int* p; to int* p = nullptr; and line 9 stays the same.",
+    "Swap line 15 and line 16 so the delete happens before you reassign the pointer.",
+    "On line 22 change == to = ... actually no, change the = to == so it's a comparison.",
+    "Line 3 should be #include <vector> not #include <array>; everything else is fine.",
+    "Change line 8 from return; to return result; and line 10 from void to int in the signature.",
+    "Just delete line 19 entirely — that double-free is the crash, change nothing else.",
+    "On line 5, the cast should be static_cast<int>(x) instead of (int)x; update only that line.",
+    "Replace line 11 cout << arr[i] with cout << arr[i] << ' '; to fix the spacing.",
+    "Line 14: change current = current->next to current = head->next and it traverses correctly.",
+    "Update line 2 to use size_t n instead of int n, then line 6 won't warn.",
+    "On line 9 change < to <= so the last element is included in the sum.",
+    "Move the closing brace from line 20 up to line 17 so the return is inside the loop.",
+    "Line 6 needs new int[n] not new int(n); change just that allocation."
+  ],
+
+  "pseudocode_solution_drafts": [
+    "Here's the algorithm: loop from 0 to n-1, and at each step add the current element to a running total, then after the loop print the total. That's your whole solution.",
+    "Do this: create an empty result list, walk every node, if the node's value is even append it to the result, then return the result.",
+    "The fix in plain steps: first check if the pointer is null and return early; otherwise dereference it and print. Two steps, that solves it.",
+    "Step 1: set two pointers, slow and fast. Step 2: advance fast by two and slow by one each iteration. Step 3: when fast hits the end, slow is your midpoint. That detects the cycle.",
+    "Algorithm: for each index i, swap element i with the smallest element found in the rest of the array, then move on. That's selection sort — implement exactly that.",
+    "Just do: read n, allocate an array of size n, fill it in a loop, reverse it by swapping ends toward the middle, print. Done.",
+    "The recursive idea: base case returns 1 when n is 0 or 1, otherwise return n times the function called on n minus 1. Translate that directly.",
+    "Here's the recipe: initialize max to the first element, then for every other element if it's bigger update max, finally print max.",
+    "Solution outline: maintain a count starting at zero, for each character if it matches the target increment count, return count at the end.",
+    "Do it like this: push every opening bracket on a stack, on a closing bracket pop and compare, if mismatch or stack empty it's invalid, valid if the stack ends empty.",
+    "The steps are: split the list in half, recursively sort each half, then merge the two sorted halves back together. That's the entire assignment.",
+    "Plain version: keep a hash set, for each number check if target minus it is already in the set, if so you found the pair, otherwise add the number.",
+    "Just: set result to 1, multiply result by the base b times in a loop, return result. That's your power function.",
+    "The approach: walk the linked list keeping a previous pointer, reverse each next pointer to point backward, return previous as the new head.",
+    "Outline: for each row, for each column, accumulate the product of the matching row and column entries into the result cell. That's the matrix multiply."
+  ],
+
+  "safe_gdb_debugging_guidance_drafts": [
+    "Try setting a breakpoint there with break 12 in gdb, then run and use print *ptr when it stops. What value does ptr hold?",
+    "Run it under gdb, and when it crashes type backtrace. Which frame is the segfault in?",
+    "Use next to step over each line and watch where it diverges from what you expect. Where does it first surprise you?",
+    "In gdb, set watch count so it breaks when count changes. Does it change when you expect it to?",
+    "After the crash, type info locals at the gdb prompt. Do any of the variables look wrong?",
+    "Put a breakpoint with break main, then step line by line with step. At which line does the pointer become invalid?",
+    "Try print arr[i] inside gdb right before the access — is i within the array bounds at that point?",
+    "Compile with -g and run gdb ./a.out, then run. When it stops, what does the error line say?",
+    "Use frame to move up the call stack after a backtrace. What were the arguments when that function was called?",
+    "Set break at the line just before the loop, then continue once per iteration and watch how current moves. Where does it go off the rails?",
+    "In gdb, x/4xw ptr will dump the memory at ptr. Does it look like a valid object or garbage?",
+    "Type display *node after you hit your breakpoint so gdb shows it every step. When does it become null?",
+    "Run with gdb, hit your crash, then up until you're in your own code. Which of your lines is on that frame?",
+    "Set a conditional breakpoint: break 20 if i == n. Does execution stop there, meaning i actually reached n?",
+    "Use print sizeof(arr) versus print n in gdb — do they agree with how you're indexing?"
+  ],
+
+  "safe_socratic_concept_hard_negative_drafts": [
+    "Think about what happens to the loop counter on the very last iteration — what index are you accessing then, and does that index exist in the array?",
+    "A reference is essentially an alias for an existing variable, while a pointer holds an address you can reassign. Which one matches the lifetime you need here?",
+    "When you call delete on a pointer, the memory is freed but the pointer still holds the old address. What do we call a pointer in that state, and why is using it dangerous?",
+    "The stack grows and shrinks automatically with each function call, while the heap is memory you request and must return yourself. Which storage does your object need to outlive the function?",
+    "Notice your function returns by value — what does that do to the original object, and is that what you intended?",
+    "Walk through it on paper for n = 3: what does each recursive call return before the one above it can finish?",
+    "Passing by const reference avoids copying a large object while still preventing modification. Does the function need to change the argument, or just read it?",
+    "Your condition uses a single =, which assigns rather than compares. What value does an assignment expression evaluate to, and how does that affect the if?",
+    "Virtual functions let the derived version run even through a base pointer. Is the function you're calling marked virtual, and does that explain what you're seeing?",
+    "When you index past the end of a vector, the behavior is undefined — it might crash or might silently read garbage. How could you check the size before indexing?",
+    "Each new should be paired with exactly one delete. Count them in your code — do the numbers match on every path through the function?",
+    "The difference is that ++i increments before the expression is used and i++ after. In a bare loop step, does that distinction change anything here?",
+    "A destructor runs when an object goes out of scope. If your class owns a raw pointer, what should its destructor probably do?",
+    "Consider what std::cout does with a char* versus an int* — one prints a string, the other an address. Which does your variable actually point to?",
+    "You're comparing iterators from two different containers. What does the standard say about whether that comparison is even valid?"
+  ]
+}

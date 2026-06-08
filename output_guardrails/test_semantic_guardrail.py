@@ -1,8 +1,13 @@
 """Tests for V2 semantic guardrail and the combined V1+V2 dispatcher.
 
-The CodeBERT model is never loaded in tests. Instead, set_predict_fn()
-injects a stub scorer so we can drive the threshold logic
-deterministically.
+Most tests never load the CodeBERT model: set_predict_fn() injects a stub
+scorer so we can drive the threshold logic deterministically, and the
+unavailable-model test forces the loader to report no model.
+
+The single exception is test_v2_real_checkpoint_scores_numerically, a
+smoke test gated on _checkpoint_present() that exercises the real model
+when the checkpoint AND torch/transformers are installed; it is skipped
+otherwise so the suite passes in both environments.
 """
 
 from __future__ import annotations
@@ -16,6 +21,7 @@ from output_guardrails import (
     set_predict_fn,
     set_thresholds,
 )
+from output_guardrails import semantic_guardrail as sg
 from output_guardrails.fallbacks import FALLBACKS
 
 
@@ -31,12 +37,36 @@ int main() {
 
 @pytest.fixture(autouse=True)
 def reset_v2_state():
-    """Each test starts with V2 in a clean state."""
+    """Each test starts with V2 in a clean state.
+
+    Besides thresholds and the injected predict fn, we also clear the
+    cached model/tokenizer singletons so a real checkpoint loaded by one
+    test cannot leak into another (and vice versa).
+    """
     set_thresholds(0.30, 0.70)
     set_predict_fn(None)
+    sg._model = None
+    sg._tokenizer = None
     yield
     set_thresholds(0.30, 0.70)
     set_predict_fn(None)
+    sg._model = None
+    sg._tokenizer = None
+
+
+def _checkpoint_present() -> bool:
+    """True only if the real CodeBERT checkpoint is on disk AND the ML
+    deps (torch/transformers) import. Used to gate the live smoke test so
+    the suite passes in both environments.
+    """
+    if not sg._DEFAULT_CHECKPOINT.exists():
+        return False
+    try:
+        import torch  # noqa: F401
+        import transformers  # noqa: F401
+    except Exception:  # noqa: BLE001
+        return False
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -89,8 +119,21 @@ def test_v2_short_circuits_on_end_chat():
     assert r["evidence"] == "terminal state"
 
 
-def test_v2_unavailable_model_passes_safely():
-    # No predict_fn injected, no checkpoint exists → score is None.
+def test_v2_unavailable_model_passes_safely(monkeypatch):
+    """Deterministic unavailable-model behavior.
+
+    We no longer rely on the checkpoint being absent (it may now be
+    installed). Instead we force the loader to report no model — the exact
+    state the runtime hits when torch/transformers or the checkpoint are
+    missing: _try_load_model() returns (None, None), so _real_predict()
+    returns None and predict_safety must pass safely.
+
+    NOTE: we patch _try_load_model rather than _DEFAULT_CHECKPOINT because
+    _try_load_model binds that path as a default-argument value at import
+    time, so reassigning the module global would not take effect.
+    """
+    monkeypatch.setattr(sg, "_try_load_model", lambda *a, **k: (None, None))
+
     r = predict_safety(
         "What is your guess about the pointer state?",
         "Why crash?", STUDENT_CODE, [],
@@ -98,6 +141,30 @@ def test_v2_unavailable_model_passes_safely():
     assert r["action"] == "pass"
     assert r["evidence"] == "v2 unavailable"
     assert r["v2_score"] == 0.0
+
+
+@pytest.mark.skipif(
+    not _checkpoint_present(),
+    reason="real CodeBERT checkpoint or torch/transformers not installed",
+)
+def test_v2_real_checkpoint_scores_numerically():
+    """Live smoke test (gated). When the checkpoint AND deps are present,
+    predict_safety must load the real model and return a numeric score
+    with 'v2 score=' evidence — NOT the 'v2 unavailable' fallback.
+
+    No predict_fn is injected, so this exercises the real model path.
+    """
+    r = predict_safety(
+        "What does ptr point to right before the dereference?",
+        "Why does my code crash?", STUDENT_CODE, [],
+    )
+    assert r["evidence"] != "v2 unavailable"
+    assert "v2 score=" in r["evidence"]
+    assert isinstance(r["v2_score"], float)
+    assert 0.0 <= r["v2_score"] <= 1.0
+    # A benign Socratic question should land in pass or, at worst, the
+    # uncertain log_only band — never a hard replace.
+    assert r["action"] in {"pass", "log_only"}
 
 
 def test_v2_threshold_tuning_works():

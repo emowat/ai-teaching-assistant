@@ -1,15 +1,36 @@
 """Evaluate a trained V2 CodeBERT checkpoint.
 
-Reports the metrics from plan section V2.10:
-  - accuracy / precision / recall / F1
+Reports:
+  - accuracy / precision / recall / F1 / ROC-AUC
+  - 2x2 confusion matrix (TN/FP/FN/TP) + explicit FP and FN row lists
   - FPR on safe rows
   - FNR on unsafe_content_embedded_in_code
-  - confusion matrix per violation_type
-  - the GO/NO-GO check: of the gold rows where V1 returned action="pass"
+  - per-violation_type confusion (TP/TN/FP/FN)
+  - threshold analysis at 0.50 / 0.60 / 0.70 / 0.80 (recall + FPR + F1)
+  - the GO/NO-GO check: of the rows where V1 returned action="pass"/"log_only"
     but the human label is unsafe, how many does V2 catch?
 
-Usage on Colab or locally with a checkpoint:
+Paths default to the v2_0 checkpoint and original gold/splits so existing
+behavior is unchanged. The production decision threshold stays 0.70.
+
+Usage (defaults reproduce v2_0-on-original-gold):
+    # v2_0 on original gold
     python -m output_guardrails.models.evaluate_codebert_classifier --gold
+
+    # v2_0 on the v2_1 hard gold set
+    python -m output_guardrails.models.evaluate_codebert_classifier \\
+        --gold-path output_guardrails/classifier_data/hard_gold_test_set_v2_1.jsonl
+
+    # v2_1 on original gold
+    python -m output_guardrails.models.evaluate_codebert_classifier --gold \\
+        --checkpoint-path output_guardrails/models/checkpoints/codebert_v2_1
+
+    # v2_1 on the v2_1 hard gold set
+    python -m output_guardrails.models.evaluate_codebert_classifier \\
+        --gold-path output_guardrails/classifier_data/hard_gold_test_set_v2_1.jsonl \\
+        --checkpoint-path output_guardrails/models/checkpoints/codebert_v2_1
+
+    # a split of a training dataset
     python -m output_guardrails.models.evaluate_codebert_classifier --split test
 """
 
@@ -31,10 +52,13 @@ from output_guardrails.models.tokenizer_utils import MODEL_NAME, encode_with_tru
 from output_guardrails import apply_output_guardrails
 
 
-DATA_PATH = PKG_ROOT / "classifier_data" / "classifier_dataset.jsonl"
-GOLD_PATH = PKG_ROOT / "classifier_data" / "gold_test_set.jsonl"
-SPLITS_PATH = PKG_ROOT / "classifier_data" / "splits.json"
-CHECKPOINT_DIR = PKG_ROOT / "models" / "checkpoints" / "codebert_v2_0"
+# Defaults reproduce v2_0 on the original gold/splits.
+DEFAULT_DATA_PATH = PKG_ROOT / "classifier_data" / "classifier_dataset.jsonl"
+DEFAULT_GOLD_PATH = PKG_ROOT / "classifier_data" / "gold_test_set.jsonl"
+DEFAULT_SPLITS_PATH = PKG_ROOT / "classifier_data" / "splits.json"
+DEFAULT_CHECKPOINT_PATH = PKG_ROOT / "models" / "checkpoints" / "codebert_v2_0"
+
+THRESHOLD_SWEEP = [0.50, 0.60, 0.70, 0.80]
 
 
 def load_jsonl(path):
@@ -52,9 +76,21 @@ def select_split(rows, splits, name):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--gold", action="store_true")
-    parser.add_argument("--split", choices=["train", "val", "test"], default="test")
-    parser.add_argument("--threshold", type=float, default=0.7)
+    parser.add_argument("--gold", action="store_true",
+                        help="evaluate on a gold set (see --gold-path)")
+    parser.add_argument("--split", choices=["train", "val", "test"], default="test",
+                        help="when not --gold, which split of --data-path to use")
+    parser.add_argument("--threshold", type=float, default=0.7,
+                        help="primary decision threshold (production = 0.70)")
+    parser.add_argument("--data-path", type=Path, default=DEFAULT_DATA_PATH,
+                        help="dataset jsonl for --split mode")
+    parser.add_argument("--gold-path", type=Path, default=DEFAULT_GOLD_PATH,
+                        help="gold jsonl for --gold mode (e.g. hard_gold_test_set_v2_1.jsonl)")
+    parser.add_argument("--splits-path", type=Path, default=DEFAULT_SPLITS_PATH,
+                        help="splits.json for --split mode")
+    parser.add_argument("--checkpoint-path", type=Path, default=DEFAULT_CHECKPOINT_PATH,
+                        help="checkpoint dir to load (default: codebert_v2_0)")
+    parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
     import torch
@@ -63,29 +99,36 @@ def main():
         accuracy_score, precision_score, recall_score, f1_score, roc_auc_score,
     )
 
-    if args.gold:
-        rows = load_jsonl(GOLD_PATH)
-        title = "gold test set"
-    else:
-        all_rows = load_jsonl(DATA_PATH)
-        splits = json.loads(SPLITS_PATH.read_text())
-        rows = select_split(all_rows, splits, args.split)
-        title = f"{args.split} split"
+    torch.manual_seed(args.seed)
 
+    # --gold-path implies gold mode even if --gold wasn't passed, so the
+    # hard-gold command line stays short.
+    use_gold = args.gold or (args.gold_path != DEFAULT_GOLD_PATH)
+    if use_gold:
+        rows = load_jsonl(args.gold_path)
+        title = f"gold set ({args.gold_path.name})"
+    else:
+        all_rows = load_jsonl(args.data_path)
+        splits = json.loads(args.splits_path.read_text())
+        rows = select_split(all_rows, splits, args.split)
+        title = f"{args.split} split ({args.data_path.name})"
+
+    checkpoint_dir = args.checkpoint_path
+    print(f"checkpoint:  {checkpoint_dir}")
     print(f"evaluating on {title}: {len(rows)} rows")
 
-    if not CHECKPOINT_DIR.exists():
-        print(f"[error] checkpoint not found at {CHECKPOINT_DIR}")
-        print("        train first: python -m models.train_codebert_classifier")
+    if not checkpoint_dir.exists():
+        print(f"[error] checkpoint not found at {checkpoint_dir}")
+        print("        train first: python -m output_guardrails.models.train_codebert_classifier")
         return
 
-    tokenizer = AutoTokenizer.from_pretrained(CHECKPOINT_DIR)
-    model = AutoModelForSequenceClassification.from_pretrained(CHECKPOINT_DIR)
+    tokenizer = AutoTokenizer.from_pretrained(checkpoint_dir)
+    model = AutoModelForSequenceClassification.from_pretrained(checkpoint_dir)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
     model.eval()
 
-    scores, preds, labels, vtypes = [], [], [], []
+    scores, preds, labels, vtypes, ids = [], [], [], [], []
     v1_actions = []
     with torch.no_grad():
         for r in rows:
@@ -100,6 +143,7 @@ def main():
             preds.append(1 if prob_unsafe >= args.threshold else 0)
             labels.append(int(r["label"]))
             vtypes.append(r["violation_type"])
+            ids.append(r.get("id", r.get("scenario_id", "?")))
             v1 = apply_output_guardrails(
                 r["assistant_draft"], r["user_query"], r["student_code"], []
             )
@@ -114,6 +158,17 @@ def main():
     if len(set(labels)) == 2:
         print(f"roc-auc:   {roc_auc_score(labels, scores):.3f}")
 
+    # 2x2 confusion matrix at the primary threshold.
+    tp = sum(1 for l, p in zip(labels, preds) if l == 1 and p == 1)
+    tn = sum(1 for l, p in zip(labels, preds) if l == 0 and p == 0)
+    fp = sum(1 for l, p in zip(labels, preds) if l == 0 and p == 1)
+    fn = sum(1 for l, p in zip(labels, preds) if l == 1 and p == 0)
+    print()
+    print("=== Confusion matrix (rows=actual, cols=pred) ===")
+    print(f"{'':>14s} {'pred safe':>10s} {'pred unsafe':>12s}")
+    print(f"{'actual safe':>14s} {tn:>10d} {fp:>12d}")
+    print(f"{'actual unsafe':>14s} {fn:>10d} {tp:>12d}")
+
     safe_idx = [i for i, l in enumerate(labels) if l == 0]
     if safe_idx:
         fpr = sum(1 for i in safe_idx if preds[i] == 1) / len(safe_idx)
@@ -123,6 +178,37 @@ def main():
     if embed_idx:
         fnr = sum(1 for i in embed_idx if preds[i] == 0) / len(embed_idx)
         print(f"FNR on unsafe_content_embedded_in_code: {fnr:.3f}")
+
+    # Explicit FP / FN row lists (id, violation_type, score) so failures
+    # are inspectable, not just counted.
+    fp_rows = [(ids[i], vtypes[i], scores[i]) for i in range(len(rows))
+               if labels[i] == 0 and preds[i] == 1]
+    fn_rows = [(ids[i], vtypes[i], scores[i]) for i in range(len(rows))
+               if labels[i] == 1 and preds[i] == 0]
+    print()
+    print(f"=== False positives ({len(fp_rows)}) — safe rows flagged unsafe ===")
+    for rid, vt, sc in fp_rows:
+        print(f"  {rid:<22s} {vt:<32s} score={sc:.3f}")
+    print(f"=== False negatives ({len(fn_rows)}) — unsafe rows missed ===")
+    for rid, vt, sc in fn_rows:
+        print(f"  {rid:<22s} {vt:<32s} score={sc:.3f}")
+
+    # Threshold sweep: recall (catch rate on unsafe) and FPR (over-block on
+    # safe) at each candidate cutoff. Production stays 0.70 — this is
+    # diagnostic only and does NOT change the runtime threshold.
+    print()
+    print("=== Threshold analysis (production threshold stays 0.70) ===")
+    print(f"{'thresh':>7s} {'recall':>8s} {'FPR':>8s} {'precision':>10s} {'f1':>7s}")
+    n_unsafe = sum(1 for l in labels if l == 1)
+    n_safe = sum(1 for l in labels if l == 0)
+    for t in THRESHOLD_SWEEP:
+        sweep_preds = [1 if s >= t else 0 for s in scores]
+        rec = (sum(1 for l, p in zip(labels, sweep_preds) if l == 1 and p == 1) / n_unsafe) if n_unsafe else 0.0
+        fpr_t = (sum(1 for l, p in zip(labels, sweep_preds) if l == 0 and p == 1) / n_safe) if n_safe else 0.0
+        prec_t = precision_score(labels, sweep_preds, zero_division=0)
+        f1_t = f1_score(labels, sweep_preds, zero_division=0)
+        marker = "  <- production" if abs(t - 0.70) < 1e-9 else ""
+        print(f"{t:>7.2f} {rec:>8.3f} {fpr_t:>8.3f} {prec_t:>10.3f} {f1_t:>7.3f}{marker}")
 
     print()
     print("=== Confusion by violation_type ===")

@@ -1,17 +1,30 @@
 """Fine-tune microsoft/codebert-base for binary safety classification.
 
 Designed for free Colab T4 / Kaggle. The script:
-    1. Loads classifier_dataset.jsonl + splits.json.
+    1. Loads a training jsonl + a splits.json (paths are CLI args).
     2. Tokenizes with the shared tokenizer_utils formatter.
     3. Fine-tunes for a small number of epochs with early stopping on
        the val split.
-    4. Saves the checkpoint to models/checkpoints/codebert_v2_0/.
+    4. Saves the best checkpoint to <output-dir>/<checkpoint-name>.
+
+Defaults reproduce the original v2_0 run exactly: training on
+classifier_dataset.jsonl with splits.json, writing to
+models/checkpoints/codebert_v2_0/. To train v2_1 WITHOUT overwriting
+v2_0, pass a different --checkpoint-name (and the merged dataset/splits).
 
 Usage on Colab:
     !git clone <this repo>
     %cd ai-teaching-assistant
     !pip install -q transformers datasets torch scikit-learn
+
+    # Reproduce v2_0 (default paths):
     !python -m output_guardrails.models.train_codebert_classifier --epochs 3
+
+    # Train v2_1 from the merged dataset into a NEW checkpoint dir:
+    !python -m output_guardrails.models.train_codebert_classifier --epochs 3 \\
+        --train-path output_guardrails/classifier_data/classifier_dataset_v2_1_merged.jsonl \\
+        --splits-path output_guardrails/classifier_data/splits_v2_1.json \\
+        --checkpoint-name codebert_v2_1
 
 Usage locally (CPU; very slow, only for sanity-check):
     python3 -m output_guardrails.models.train_codebert_classifier --epochs 1 --batch-size 4
@@ -39,18 +52,20 @@ from output_guardrails.models.tokenizer_utils import (
 )
 
 
-DATA_PATH = PKG_ROOT / "classifier_data" / "classifier_dataset.jsonl"
-SPLITS_PATH = PKG_ROOT / "classifier_data" / "splits.json"
-CHECKPOINT_DIR = PKG_ROOT / "models" / "checkpoints" / "codebert_v2_0"
+# Default paths reproduce the original v2_0 run.
+DEFAULT_DATA_PATH = PKG_ROOT / "classifier_data" / "classifier_dataset.jsonl"
+DEFAULT_SPLITS_PATH = PKG_ROOT / "classifier_data" / "splits.json"
+DEFAULT_OUTPUT_DIR = PKG_ROOT / "models" / "checkpoints"
+DEFAULT_CHECKPOINT_NAME = "codebert_v2_0"
 
 
-def load_rows():
+def load_rows(data_path: Path, splits_path: Path):
     rows = []
-    with DATA_PATH.open() as f:
+    with data_path.open() as f:
         for line in f:
             if line.strip():
                 rows.append(json.loads(line))
-    splits = json.loads(SPLITS_PATH.read_text())
+    splits = json.loads(splits_path.read_text())
     train, val, test = [], [], []
     for r in rows:
         s = splits.get(r["context_id"], "train")
@@ -80,7 +95,26 @@ def main():
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--lr", type=float, default=2e-5)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
+        "--train-path", type=Path, default=DEFAULT_DATA_PATH,
+        help="training jsonl (default: classifier_dataset.jsonl)",
+    )
+    parser.add_argument(
+        "--splits-path", type=Path, default=DEFAULT_SPLITS_PATH,
+        help="splits.json mapping context_id -> train/val/test",
+    )
+    parser.add_argument(
+        "--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR,
+        help="parent dir for checkpoints (default: models/checkpoints)",
+    )
+    parser.add_argument(
+        "--checkpoint-name", type=str, default=DEFAULT_CHECKPOINT_NAME,
+        help="checkpoint subdir name (default: codebert_v2_0). "
+             "Use codebert_v2_1 to avoid overwriting v2_0.",
+    )
     args = parser.parse_args()
+
+    checkpoint_dir = args.output_dir / args.checkpoint_name
 
     # Imports here so this file is importable for inspection without
     # transformers installed.
@@ -100,7 +134,10 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
 
-    train_rows, val_rows, test_rows = load_rows()
+    train_rows, val_rows, test_rows = load_rows(args.train_path, args.splits_path)
+    print(f"train data:  {args.train_path}")
+    print(f"splits:      {args.splits_path}")
+    print(f"checkpoint:  {checkpoint_dir}")
     print(f"train={len(train_rows)}  val={len(val_rows)}  test={len(test_rows)}")
 
     class JsonlDataset(Dataset):
@@ -145,7 +182,7 @@ def main():
     )
 
     best_f1 = -1.0
-    CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
     for epoch in range(args.epochs):
         model.train()
@@ -172,9 +209,9 @@ def main():
         print(f"epoch {epoch+1}: val precision={prec:.3f} recall={rec:.3f} f1={f1:.3f}")
         if f1 > best_f1:
             best_f1 = f1
-            model.save_pretrained(CHECKPOINT_DIR)
-            tokenizer.save_pretrained(CHECKPOINT_DIR)
-            print(f"  saved best checkpoint to {CHECKPOINT_DIR}")
+            model.save_pretrained(checkpoint_dir)
+            tokenizer.save_pretrained(checkpoint_dir)
+            print(f"  saved best checkpoint to {checkpoint_dir}")
 
     print(f"done. best val f1={best_f1:.3f}")
 

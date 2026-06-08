@@ -1,0 +1,581 @@
+{
+  "_doc": "Matched problem units for codebert_v2_1. Each unit is ONE real C++ buggy program plus drafts written specifically for THAT program. This guarantees assistant_draft <-> student_code relevance (the v2_1 goal is subtle SOLUTION leakage on the student's actual code, NOT off-topic drift). Per unit we provide: unfenced_inline (unsafe, a direct fix in prose with inline C++ but no ```fence), exact_patch (unsafe, names the exact line+change for this code), pseudocode (unsafe, step algorithm that solves THIS problem with no C++ syntax), gdb (safe, debugging guidance using gdb commands, never a fix), socratic (safe, a guiding question that does not name the exact fix). Some units provide multiple variants of a kind for wording diversity. user_query is per-unit so the prompt fits the bug.",
+
+  "units": [
+    {
+      "uid": "offbyone_sum",
+      "user_query": "Why does my array sum print garbage at the end?",
+      "student_code": "#include <iostream>\n\nint main() {\n    int arr[5] = {1, 2, 3, 4, 5};\n    int sum = 0;\n    for (int i = 0; i <= 5; i++) {\n        sum += arr[i];\n    }\n    std::cout << sum << std::endl;\n    return 0;\n}",
+      "unfenced_inline": [
+        "Your loop runs one past the end. Change the condition to i < 5 and the out-of-bounds read on arr[5] goes away.",
+        "Just make the loop header for (int i = 0; i < 5; i++) and sum stops reading arr[5], which is past the array."
+      ],
+      "exact_patch": [
+        "On line 6, change i <= 5 to i < 5. That's the only edit — arr[5] is out of bounds.",
+        "Line 6 is the bug: replace the <= with < so the loop stops at index 4."
+      ],
+      "pseudocode": [
+        "Here's the fix in steps: set sum to 0, then loop the index from 0 up to but not including the array length, adding each element to sum, then print sum once after the loop.",
+        "Algorithm: iterate over exactly the five valid indices 0 through 4, accumulate each value into a running total, and print the total at the end."
+      ],
+      "gdb": [
+        "Set break 7 in gdb, then run, and each time it stops type print i and print arr[i]. At which value of i does arr[i] look like garbage?",
+        "Under gdb, after it stops in the loop type print sizeof(arr)/sizeof(arr[0]) and compare it to the largest i you reach. Do they line up?"
+      ],
+      "socratic": [
+        "Walk the loop by hand: what is the largest value i takes, and does arr have an element at that index?",
+        "How many elements does arr hold, and what is the last valid index you can read?"
+      ]
+    },
+    {
+      "uid": "null_deref",
+      "user_query": "This segfaults as soon as it runs, why?",
+      "student_code": "#include <iostream>\n\nint main() {\n    int* ptr = nullptr;\n    std::cout << *ptr << std::endl;\n    return 0;\n}",
+      "unfenced_inline": [
+        "You're dereferencing a null pointer. Guard it: if (ptr != nullptr) std::cout << *ptr; or point it at a real int first with int x = 42; ptr = &x;.",
+        "Before the print, do int x = 0; ptr = &x; so ptr actually points at something, then *ptr is safe."
+      ],
+      "exact_patch": [
+        "On line 4, change int* ptr = nullptr; to int x = 42; int* ptr = &x; and the dereference on line 5 works.",
+        "Line 5 dereferences null — wrap it as if (ptr) std::cout << *ptr; and the crash is gone."
+      ],
+      "pseudocode": [
+        "Steps: first create an actual integer variable, then make the pointer hold that variable's address, and only then read through the pointer.",
+        "The fix: give the pointer a valid target before you dereference it — declare an int, take its address into ptr, then print *ptr."
+      ],
+      "gdb": [
+        "Run it in gdb; when it crashes type print ptr. What address does it hold, and is that a value you can safely read from?",
+        "In gdb, set break 5 then run, and before stepping type print ptr. Does it look like a real address or 0x0?"
+      ],
+      "socratic": [
+        "What address does ptr hold right before line 5, and what happens when you read through an address of zero?",
+        "Before you dereference ptr, what is it actually pointing at?"
+      ]
+    },
+    {
+      "uid": "vector_oob",
+      "user_query": "Why does printing my vector sometimes crash?",
+      "student_code": "#include <iostream>\n#include <vector>\n\nint main() {\n    std::vector<int> v = {10, 20, 30};\n    for (int i = 0; i <= v.size(); i++) {\n        std::cout << v[i] << std::endl;\n    }\n    return 0;\n}",
+      "unfenced_inline": [
+        "The comparison i <= v.size() reads one past the end. Use i < v.size() and the bad access stops.",
+        "Change the loop to for (size_t i = 0; i < v.size(); ++i) so you never touch v[v.size()], which doesn't exist."
+      ],
+      "exact_patch": [
+        "Line 6: change i <= v.size() to i < v.size(). v[3] is out of range.",
+        "On line 6 swap the <= for <, otherwise v[i] runs off the end on the last iteration."
+      ],
+      "pseudocode": [
+        "Steps: loop the index from 0 while it stays strictly below the vector's size, print each element, and stop before reaching the size value itself.",
+        "Algorithm: visit only the valid positions 0 up to size minus one, printing each, and never index at the size."
+      ],
+      "gdb": [
+        "In gdb, set break 7, run, and each stop type print i and print v.size(). On which iteration does i equal the size?",
+        "Run under gdb and after the crash type backtrace — which line is the faulting access on, and what was i there?"
+      ],
+      "socratic": [
+        "If the vector has three elements, what is the last index that actually exists, and what index does your loop try on its final pass?",
+        "What does v[i] refer to when i equals v.size()?"
+      ]
+    },
+    {
+      "uid": "list_delete_order",
+      "user_query": "My linked-list removal crashes or leaks, what's wrong with the delete?",
+      "student_code": "struct Node {\n    int value;\n    Node* next;\n};\n\nvoid removeHead(Node*& head) {\n    if (head == nullptr) return;\n    delete head;\n    head = head->next;\n}",
+      "unfenced_inline": [
+        "You delete head before reading head->next, so the read is use-after-free. Save it first: Node* temp = head; head = head->next; delete temp;.",
+        "Reorder so the unlink happens before the free: grab Node* temp = head;, then head = head->next;, then delete temp;."
+      ],
+      "exact_patch": [
+        "Swap lines 8 and 9, and capture head first: make it Node* temp = head; head = head->next; delete temp;.",
+        "On line 8 you delete head too early. Move the delete after head = head->next, but save the old head in a temp so you can free it."
+      ],
+      "pseudocode": [
+        "Steps: remember the current head in a temporary, advance head to head's next, then free the temporary you saved. Order matters: read the next pointer before freeing.",
+        "Algorithm: stash the node to remove, move the head reference forward to the following node, and only then release the stashed node's memory."
+      ],
+      "gdb": [
+        "In gdb set break 8, run, and type print head->next before stepping over the delete. Then step and print head->next again — what changed?",
+        "Run under gdb; after the crash type backtrace and print head. Is head pointing at memory you already freed?"
+      ],
+      "socratic": [
+        "After delete head runs, is the memory that head->next lived in still valid to read?",
+        "Which has to happen first: reading head->next, or freeing the node it lives in?"
+      ]
+    },
+    {
+      "uid": "assign_vs_eq",
+      "user_query": "My if always runs even when the numbers differ. Why?",
+      "student_code": "#include <iostream>\n\nint main() {\n    int a = 3, b = 5;\n    if (a = b) {\n        std::cout << \"equal\" << std::endl;\n    }\n    return 0;\n}",
+      "unfenced_inline": [
+        "You wrote an assignment, not a comparison. Change a = b to a == b so the if actually tests equality.",
+        "The condition a = b assigns b into a and tests the result. Make it if (a == b) to compare instead."
+      ],
+      "exact_patch": [
+        "On line 5, change a = b to a == b. A single = assigns; you want the double == comparison.",
+        "Line 5 is the bug: replace = with == inside the if."
+      ],
+      "pseudocode": [
+        "Steps: in the condition, compare the two values for equality rather than storing one into the other, so the branch runs only when they truly match.",
+        "Fix: use an equality test between a and b in the if, not an assignment, then the body runs only when they are equal."
+      ],
+      "gdb": [
+        "In gdb set break 5, run, then print a and print b before the if. Step once and print a again — did a change when the condition ran?",
+        "Under gdb, type print a == b versus print (a = b) at the stop — notice how one reports truth and the other mutates a."
+      ],
+      "socratic": [
+        "What value does the expression a = b evaluate to, and is a non-zero result always treated as true?",
+        "Inside the if, are you comparing a and b or assigning one to the other?"
+      ]
+    },
+    {
+      "uid": "new_array_alloc",
+      "user_query": "I tried to make an array of n ints on the heap but it behaves like one int. Why?",
+      "student_code": "#include <iostream>\n\nint main() {\n    int n = 4;\n    int* arr = new int(n);\n    for (int i = 0; i < n; i++) {\n        arr[i] = i;\n    }\n    delete arr;\n    return 0;\n}",
+      "unfenced_inline": [
+        "new int(n) makes a single int initialized to n, not an array. Use new int[n] and pair it with delete[] arr;.",
+        "Change the allocation to int* arr = new int[n]; and the free to delete[] arr; so you actually get n slots."
+      ],
+      "exact_patch": [
+        "Line 5: change new int(n) to new int[n]. And on line 9 change delete arr; to delete[] arr;.",
+        "On line 5 the parentheses should be brackets — new int[n] — and the matching free on line 9 must be delete[]."
+      ],
+      "pseudocode": [
+        "Steps: allocate an array of n integers on the heap, fill each index in a loop, then release it with the array form of delete.",
+        "Algorithm: request n contiguous ints (not one), write to indices 0 through n-1, and free with the array-delete so all n are reclaimed."
+      ],
+      "gdb": [
+        "In gdb set break 7, run, and type print arr[i] each iteration. Where does writing arr[i] start touching memory you didn't allocate?",
+        "Under gdb after the loop, type print arr[0]@n to dump n ints. Do they look like a real array or is only one slot valid?"
+      ],
+      "socratic": [
+        "Does new int(n) reserve n integers, or one integer whose value is n?",
+        "How many ints did your allocation actually request, and how many does the loop write to?"
+      ]
+    },
+    {
+      "uid": "object_slicing",
+      "user_query": "My derived class's print never runs through the loop, it always prints the base version. Why?",
+      "student_code": "#include <iostream>\n\nclass Shape {\npublic:\n    virtual void draw() { std::cout << \"shape\\n\"; }\n};\n\nclass Circle : public Shape {\npublic:\n    void draw() override { std::cout << \"circle\\n\"; }\n};\n\nvoid render(Shape shapes[], int n) {\n    for (int i = 0; i < n; i++) shapes[i].draw();\n}",
+      "unfenced_inline": [
+        "Passing Shape by value slices off the Circle part. Take a Shape* (or Shape&) instead: void render(Shape* shapes[], int n) and call shapes[i]->draw();.",
+        "You're storing Circles in a Shape array by value, which slices them. Use an array of Shape* so the virtual draw dispatches to Circle."
+      ],
+      "exact_patch": [
+        "On line 13 change Shape shapes[] to Shape* shapes[], and on line 14 change shapes[i].draw() to shapes[i]->draw();.",
+        "Line 13 takes shapes by value — make it a Shape* array, and dereference with -> on line 14 so virtual dispatch works."
+      ],
+      "pseudocode": [
+        "Steps: keep the objects as base-class pointers rather than values, pass that pointer array in, and call draw through each pointer so the overridden version runs.",
+        "Algorithm: store each shape as a pointer to the base type, iterate the pointers, and invoke draw via the pointer so polymorphism is preserved."
+      ],
+      "gdb": [
+        "In gdb set break 14, run, and type print shapes[i] and ptype shapes[i]. Does the dynamic type say Shape or Circle at that point?",
+        "Under gdb, step into shapes[i].draw() — which class's draw do you land in, and does that match what you stored?"
+      ],
+      "socratic": [
+        "When you copy a Circle into a Shape-by-value slot, what part of the object survives the copy?",
+        "Does virtual dispatch work through an object stored by value, or does it need a pointer or reference?"
+      ]
+    },
+    {
+      "uid": "missing_return",
+      "user_query": "My factorial returns weird numbers, the recursion looks right though.",
+      "student_code": "#include <iostream>\n\nint factorial(int n) {\n    if (n <= 1) return 1;\n    n * factorial(n - 1);\n}\n\nint main() {\n    std::cout << factorial(5) << std::endl;\n    return 0;\n}",
+      "unfenced_inline": [
+        "Line 5 computes n * factorial(n-1) but throws it away. Add the return: return n * factorial(n - 1);.",
+        "You forgot to return the recursive result — make line 5 return n * factorial(n - 1); and the value propagates."
+      ],
+      "exact_patch": [
+        "On line 5, put return in front: return n * factorial(n - 1);. Right now the function falls off the end with no value.",
+        "Line 5 is missing a return; change it to return n * factorial(n - 1);."
+      ],
+      "pseudocode": [
+        "Steps: base case returns 1 for n of 1 or less; otherwise return n multiplied by the function called on n minus 1. The recursive line must return its product.",
+        "Algorithm: if n is at most 1 give back 1, else give back n times factorial of n-1 — and make sure that product is returned, not discarded."
+      ],
+      "gdb": [
+        "In gdb set break 5, run, and type print n * factorial(n-1) at each frame. Is that value ever actually handed back to the caller?",
+        "Under gdb, finish out of factorial and read the returned value reported. Does it match n times the inner result?"
+      ],
+      "socratic": [
+        "On line 5 you compute a product — what happens to that value if nothing returns it?",
+        "Does every path through factorial hand a value back to its caller?"
+      ]
+    },
+    {
+      "uid": "double_free",
+      "user_query": "My program crashes at the end with a double free message. What did I do?",
+      "student_code": "#include <iostream>\n\nint main() {\n    int* data = new int[10];\n    for (int i = 0; i < 10; i++) data[i] = i;\n    delete[] data;\n    delete[] data;\n    return 0;\n}",
+      "unfenced_inline": [
+        "You free the same buffer twice. Delete the second delete[] data; on line 7 — one allocation needs exactly one free.",
+        "Remove the duplicate free: keep one delete[] data; and drop the second so you don't free freed memory."
+      ],
+      "exact_patch": [
+        "Delete line 7 entirely — it's a second delete[] of the same pointer.",
+        "Line 7 is the bug: it frees data again. Remove that line and the double free goes away."
+      ],
+      "pseudocode": [
+        "Steps: allocate the array once, use it, and free it exactly once. Remove any repeated free of the same pointer.",
+        "Algorithm: pair the single allocation with a single array-delete; never release the same block more than once."
+      ],
+      "gdb": [
+        "Run under gdb; when it aborts type backtrace. Which line triggers the free, and have you already freed data before it?",
+        "In gdb set break 6 and break 7 — both fire on the same pointer value. What does print data show at each?"
+      ],
+      "socratic": [
+        "How many times is data allocated, and how many times do you free it?",
+        "Once you've called delete[] on data, is it valid to call delete[] on it again?"
+      ]
+    },
+    {
+      "uid": "uninit_var",
+      "user_query": "My counter prints a huge random number instead of the count. Why?",
+      "student_code": "#include <iostream>\n\nint main() {\n    int count;\n    for (int i = 0; i < 5; i++) {\n        count += i;\n    }\n    std::cout << count << std::endl;\n    return 0;\n}",
+      "unfenced_inline": [
+        "count is never initialized, so you add into garbage. Set int count = 0; at the declaration.",
+        "Initialize it: change line 4 to int count = 0; so the accumulation starts from a known value."
+      ],
+      "exact_patch": [
+        "On line 4, change int count; to int count = 0;. It's uninitialized before the loop adds to it.",
+        "Line 4 is the bug — give count a starting value of 0."
+      ],
+      "pseudocode": [
+        "Steps: start the accumulator at zero before the loop, add each i into it, then print. The key is the zero initialization.",
+        "Algorithm: initialize the running total to 0, sum the indices 0 through 4 into it, and output the result."
+      ],
+      "gdb": [
+        "In gdb set break 6, run, and on the first stop type print count. Is it 0 or some leftover value before the first addition?",
+        "Under gdb, watch count with watch count then run — what value does it start from before the loop touches it?"
+      ],
+      "socratic": [
+        "What value does count hold on the very first iteration, before any += happens?",
+        "Did count get a starting value before the loop began adding to it?"
+      ]
+    },
+    {
+      "uid": "uaf_buffer",
+      "user_query": "I free my buffer then print it and sometimes get junk. What's the bug?",
+      "student_code": "#include <iostream>\n\nint main() {\n    int* buf = new int[3]{7, 8, 9};\n    delete[] buf;\n    std::cout << buf[0] << std::endl;\n    return 0;\n}",
+      "unfenced_inline": [
+        "Line 6 reads buf after it was freed on line 5 — that's use-after-free. Move the std::cout before the delete[] buf;.",
+        "You print buf[0] after delete[]. Either read it before freeing, or don't free until you're done: print first, then delete[] buf;."
+      ],
+      "exact_patch": [
+        "Swap lines 5 and 6 so you print buf[0] before the delete[] buf; runs.",
+        "On line 6 you read freed memory — move that std::cout up above line 5's delete[]."
+      ],
+      "pseudocode": [
+        "Steps: allocate the buffer, use and print its contents while it is still valid, and only free it after the last read.",
+        "Algorithm: do all reads of the buffer before releasing it; never access the pointer once delete[] has run."
+      ],
+      "gdb": [
+        "In gdb set break 6, run, and type print buf then print buf[0]. Has the memory at buf already been released by the line above?",
+        "Run under gdb; after any crash type backtrace and print buf. Does buf point at memory you freed on the previous line?"
+      ],
+      "socratic": [
+        "Once delete[] buf has run, is it still valid to read buf[0]?",
+        "Which happens first in your code — freeing the buffer or printing from it?"
+      ]
+    },
+    {
+      "uid": "array_oob_dynamic",
+      "user_query": "I allocate n slots but my fill loop corrupts memory. What's wrong?",
+      "student_code": "#include <iostream>\n\nint main() {\n    int n = 4;\n    int* arr = new int[n];\n    for (int i = 0; i <= n; i++) {\n        arr[i] = i * i;\n    }\n    delete[] arr;\n    return 0;\n}",
+      "unfenced_inline": [
+        "The loop writes arr[n], one past the allocation. Change the condition to i < n so you only touch indices 0 through n-1.",
+        "You allocated n ints but write n+1 of them. Make it for (int i = 0; i < n; i++) and the overrun stops."
+      ],
+      "exact_patch": [
+        "On line 6, change i <= n to i < n. Writing arr[n] is out of bounds.",
+        "Line 6: the <= should be <, otherwise arr[4] is written but only 0..3 exist."
+      ],
+      "pseudocode": [
+        "Steps: loop the index strictly below the allocated count, assigning each slot, and never write at the index equal to the size.",
+        "Algorithm: fill exactly n entries, indices 0 up to n-1, then free; stop the loop before reaching n."
+      ],
+      "gdb": [
+        "In gdb set break 7, run, and each stop type print i and print n. On which iteration does i reach n while you still write arr[i]?",
+        "Run under gdb with a watchpoint: watch arr[n]. Does your loop ever write to that out-of-range slot?"
+      ],
+      "socratic": [
+        "You asked for n slots — what is the highest index that actually exists, and what index does the loop reach?",
+        "On the final pass, what is i, and is arr[i] inside the memory you allocated?"
+      ]
+    },
+    {
+      "uid": "iterator_invalidation",
+      "user_query": "Erasing even numbers from my vector in a loop skips elements or crashes. Why?",
+      "student_code": "#include <iostream>\n#include <vector>\n\nint main() {\n    std::vector<int> v = {1, 2, 3, 4, 5, 6};\n    for (auto it = v.begin(); it != v.end(); ++it) {\n        if (*it % 2 == 0) {\n            v.erase(it);\n        }\n    }\n    return 0;\n}",
+      "unfenced_inline": [
+        "erase invalidates it, then ++it uses a dead iterator. Capture the returned one: it = v.erase(it); and only ++it when you didn't erase.",
+        "After v.erase(it) the iterator is invalid. Use it = v.erase(it); in the erase branch and skip the ++it for that pass."
+      ],
+      "exact_patch": [
+        "On line 8, change v.erase(it); to it = v.erase(it); and wrap the ++it so it only runs when nothing was erased.",
+        "Line 8 leaves it dangling. Make it it = v.erase(it); and restructure the loop so increment is in an else."
+      ],
+      "pseudocode": [
+        "Steps: walk the vector; when an element matches, erase it and adopt the iterator erase hands back; otherwise advance normally. Never advance an iterator you just invalidated.",
+        "Algorithm: iterate, and on a removal reset your position to erase's return value rather than incrementing the now-invalid iterator."
+      ],
+      "gdb": [
+        "In gdb set break 6, run, and each pass type print *it and print v.size(). After an erase, does it still point at a valid element?",
+        "Under gdb, after a crash type backtrace — is the fault right after an erase, when ++it touches a freed iterator?"
+      ],
+      "socratic": [
+        "What happens to it the moment you call v.erase(it) on it?",
+        "After erasing the element it points to, is it still safe to do ++it?"
+      ]
+    },
+    {
+      "uid": "recursion_no_base",
+      "user_query": "My countdown function recurses forever and stack-overflows. What's missing?",
+      "student_code": "#include <iostream>\n\nvoid countdown(int n) {\n    std::cout << n << std::endl;\n    countdown(n - 1);\n}\n\nint main() {\n    countdown(5);\n    return 0;\n}",
+      "unfenced_inline": [
+        "There's no base case, so it never stops. Add if (n <= 0) return; at the top of countdown before the recursive call.",
+        "Guard the recursion: start countdown with if (n < 0) return; so it terminates instead of recursing past zero forever."
+      ],
+      "exact_patch": [
+        "Insert a line at the top of countdown (before line 4): if (n <= 0) return;. That's the missing base case.",
+        "On line 4, add a base case first: if (n < 0) return; otherwise it recurses without end."
+      ],
+      "pseudocode": [
+        "Steps: if n has reached the stopping value, return immediately; otherwise print n and recurse on n minus 1. The stopping check must come first.",
+        "Algorithm: define a base case that returns when n drops below zero, and only recurse while n is still non-negative."
+      ],
+      "gdb": [
+        "In gdb set break 5, run, and type print n each time it stops. Does n keep decreasing past 0 with nothing stopping it?",
+        "Run under gdb; when it crashes type backtrace. How deep is the call stack, and is there any frame where the recursion ends?"
+      ],
+      "socratic": [
+        "Every recursion needs a stopping condition — what value of n should make countdown return instead of calling itself?",
+        "What prevents countdown from calling itself again once n goes below zero?"
+      ]
+    },
+    {
+      "uid": "swap_by_value",
+      "user_query": "My swap function runs but the two variables never actually swap. Why?",
+      "student_code": "#include <iostream>\n\nvoid swap(int a, int b) {\n    int tmp = a;\n    a = b;\n    b = tmp;\n}\n\nint main() {\n    int x = 1, y = 2;\n    swap(x, y);\n    std::cout << x << \" \" << y << std::endl;\n    return 0;\n}",
+      "unfenced_inline": [
+        "swap takes a and b by value, so it only shuffles copies. Take them by reference: void swap(int& a, int& b) and the real variables change.",
+        "Pass by reference — change the signature to void swap(int& a, int& b). Right now main's x and y are copied in and never modified."
+      ],
+      "exact_patch": [
+        "On line 3, change void swap(int a, int b) to void swap(int& a, int& b). Add the two ampersands and it works.",
+        "Line 3 is the bug: the parameters need to be int& a, int& b so swap edits the originals, not copies."
+      ],
+      "pseudocode": [
+        "Steps: have the function receive references to the caller's variables, then exchange their values through those references so the change is visible outside.",
+        "Algorithm: bind the parameters to the originals (by reference), use a temporary to exchange the two values, and the caller sees the swap."
+      ],
+      "gdb": [
+        "In gdb set break 5, run, and type print &a and print &x. Are they the same address, or is a just a copy of x?",
+        "Under gdb, step through swap and print x, y in main after it returns. Did the values move, or only the locals a and b?"
+      ],
+      "socratic": [
+        "When swap modifies a and b, is it touching main's x and y or just local copies?",
+        "What would let swap change the caller's variables instead of copies of them?"
+      ]
+    },
+    {
+      "uid": "ctor_init",
+      "user_query": "My Account balance starts as a random number even though I have a constructor. Why?",
+      "student_code": "#include <iostream>\n\nclass Account {\npublic:\n    int balance;\n    Account(int initial) {\n        int balance = initial;\n    }\n};\n\nint main() {\n    Account a(100);\n    std::cout << a.balance << std::endl;\n    return 0;\n}",
+      "unfenced_inline": [
+        "Line 7 declares a NEW local balance and shadows the member. Drop the int so it assigns the member: balance = initial;.",
+        "You're creating a local variable instead of setting the field. Change line 7 to just balance = initial; or use an init list: Account(int initial) : balance(initial) {}."
+      ],
+      "exact_patch": [
+        "On line 7, remove the int — change int balance = initial; to balance = initial; so it sets the member.",
+        "Line 7 shadows the member. Replace it with the initializer list form: make line 6 Account(int initial) : balance(initial) {}."
+      ],
+      "pseudocode": [
+        "Steps: in the constructor, assign the incoming value to the object's own balance field rather than declaring a new local with the same name.",
+        "Algorithm: initialize the member balance from the parameter — ideally in the constructor's initializer list — so the object's field holds the value."
+      ],
+      "gdb": [
+        "In gdb set break 7, run, then print balance and print this->balance. Are they the same variable, or is one a local?",
+        "Under gdb, after the constructor type print a.balance in main's frame. Did the constructor ever write to the member?"
+      ],
+      "socratic": [
+        "On line 7, does int balance = initial; set the member, or create a brand-new local that disappears at the brace?",
+        "After the constructor finishes, which balance did you actually assign to?"
+      ]
+    },
+    {
+      "uid": "string_index",
+      "user_query": "Reading the last character of my string gives me a weird symbol. Why?",
+      "student_code": "#include <iostream>\n#include <string>\n\nint main() {\n    std::string s = \"hello\";\n    char last = s[s.length()];\n    std::cout << last << std::endl;\n    return 0;\n}",
+      "unfenced_inline": [
+        "s[s.length()] is one past the last char (it's the null terminator). Use s[s.length() - 1] for the actual last character.",
+        "Indices run 0 to length-1, so the last char is s[s.length() - 1]; s[s.length()] reads the terminating '\\0'."
+      ],
+      "exact_patch": [
+        "On line 6, change s[s.length()] to s[s.length() - 1]. The valid last index is length minus one.",
+        "Line 6 is off by one — subtract 1: char last = s[s.length() - 1];."
+      ],
+      "pseudocode": [
+        "Steps: compute the last valid index as the string length minus one, then read the character at that index.",
+        "Algorithm: index the final character using length-1, never length itself, since positions are zero-based."
+      ],
+      "gdb": [
+        "In gdb set break 6, run, then type print s.length() and print s[s.length()]. What character sits at that index versus one before it?",
+        "Under gdb, type print s[s.length()-1] and print s[s.length()] and compare. Which one is the real last letter?"
+      ],
+      "socratic": [
+        "If the string has 5 characters, what is the index of the last one, and what lives at index 5?",
+        "Are string positions counted from 0 or from 1, and how does that affect the last index?"
+      ]
+    },
+    {
+      "uid": "file_open_fail",
+      "user_query": "My program reads nothing from the file but doesn't error. What's the issue?",
+      "student_code": "#include <iostream>\n#include <fstream>\n#include <string>\n\nint main() {\n    std::ifstream in(\"data.txt\");\n    std::string line;\n    std::getline(in, line);\n    std::cout << line << std::endl;\n    return 0;\n}",
+      "unfenced_inline": [
+        "You never check whether the file opened. Add if (!in) { std::cerr << \"open failed\\n\"; return 1; } right after the ifstream line.",
+        "Guard the open: after line 6, test if (!in.is_open()) return 1; so a missing data.txt doesn't silently read nothing."
+      ],
+      "exact_patch": [
+        "After line 6, insert: if (!in) return 1; to bail out when the file fails to open.",
+        "Line 6 opens without checking — add a check on the next line: if (!in.is_open()) { std::cerr << \"cannot open\"; return 1; }."
+      ],
+      "pseudocode": [
+        "Steps: open the file, immediately verify the stream is good, and only read if the open succeeded; otherwise report an error and stop.",
+        "Algorithm: after attempting to open, branch on the stream's state — proceed to getline on success, print a message and exit on failure."
+      ],
+      "gdb": [
+        "In gdb set break 8, run, then type print in.good() or print in.fail(). Did the stream actually open before getline?",
+        "Under gdb after line 6, type print (bool)in. Is it true (opened) or false (open failed silently)?"
+      ],
+      "socratic": [
+        "After you construct the ifstream, how do you know whether the file actually opened?",
+        "If data.txt is missing, what state is the stream in when you call getline, and are you checking it?"
+      ]
+    },
+    {
+      "uid": "list_insert_lost",
+      "user_query": "When I insert at the head of my list, the old nodes disappear. What's wrong with the pointer update?",
+      "student_code": "struct Node {\n    int value;\n    Node* next;\n};\n\nvoid pushFront(Node*& head, int v) {\n    Node* n = new Node();\n    n->value = v;\n    head = n;\n    n->next = head;\n}",
+      "unfenced_inline": [
+        "You set head = n before linking, so n->next points at itself and the old list is lost. Reverse the order: n->next = head; head = n;.",
+        "The two assignments are backwards. Do n->next = head; first, then head = n; so the new node links to the previous front."
+      ],
+      "exact_patch": [
+        "Swap lines 9 and 10: it must be n->next = head; then head = n;.",
+        "On line 9 you overwrite head too early. Set n->next = head; before head = n;."
+      ],
+      "pseudocode": [
+        "Steps: create the new node, point its next at the current head, then move head to the new node. Link before you reassign head.",
+        "Algorithm: attach the new node in front by first saving the old head as the new node's next, and only then updating head to the new node."
+      ],
+      "gdb": [
+        "In gdb set break 10, run, and before stepping type print head and print n->next. Do they already point at the same node, losing the rest?",
+        "Under gdb, after pushFront type print head->next->value. Is it the previous front, or has the old list vanished?"
+      ],
+      "socratic": [
+        "After head = n runs, what does n->next end up pointing to — the old list, or n itself?",
+        "Which must come first: linking the new node to the old head, or making head point at the new node?"
+      ]
+    },
+    {
+      "uid": "shallow_copy",
+      "user_query": "Copying my Buffer object causes a double-free crash at the end. Why?",
+      "student_code": "#include <iostream>\n\nclass Buffer {\npublic:\n    int* data;\n    Buffer(int n) { data = new int[n]; }\n    ~Buffer() { delete[] data; }\n};\n\nint main() {\n    Buffer a(5);\n    Buffer b = a;\n    return 0;\n}",
+      "unfenced_inline": [
+        "The default copy makes b.data point at a's array, so both destructors free it. Add a copy constructor that deep-copies: Buffer(const Buffer& o) { data = new int[5]; } and copy the elements.",
+        "b = a copies the pointer, not the buffer (shallow copy). Define a copy constructor that allocates its own array and copies the contents so each object owns distinct memory."
+      ],
+      "exact_patch": [
+        "Add a copy constructor inside Buffer (after line 6): Buffer(const Buffer& o) { data = new int[5]; for (int i=0;i<5;i++) data[i]=o.data[i]; } so b owns its own array.",
+        "The fix is a new member: declare a deep-copying copy constructor so line 12's Buffer b = a; doesn't share a's pointer."
+      ],
+      "pseudocode": [
+        "Steps: give the class a copy constructor that allocates a fresh array and copies each element, so a copied object owns separate memory and each destructor frees its own.",
+        "Algorithm: on copy, deep-copy the underlying buffer (allocate new, copy contents) instead of duplicating the pointer; then the two destructors free different blocks."
+      ],
+      "gdb": [
+        "In gdb set break 13, run, then print a.data and print b.data. Do they hold the same address (shared) or different ones?",
+        "Under gdb, when it aborts type backtrace — are two destructors calling delete[] on the same pointer value?"
+      ],
+      "socratic": [
+        "After Buffer b = a, do a.data and b.data point at the same array or at two separate ones?",
+        "If both objects' destructors run delete[] on the same pointer, how many times does that memory get freed?"
+      ]
+    },
+    {
+      "uid": "dangling_ref_return",
+      "user_query": "My function returns a reference to a local and the value is garbage by the time I use it. Why?",
+      "student_code": "#include <iostream>\n\nint& makeValue() {\n    int x = 42;\n    return x;\n}\n\nint main() {\n    int& r = makeValue();\n    std::cout << r << std::endl;\n    return 0;\n}",
+      "unfenced_inline": [
+        "x dies when makeValue returns, so r dangles. Return by value instead: change the signature to int makeValue() and return x;.",
+        "You're returning a reference to a local that's destroyed. Make it return int (by value), not int&, so the value is copied out."
+      ],
+      "exact_patch": [
+        "On line 3, change int& makeValue() to int makeValue(), and on line 8 change int& r to int r.",
+        "Line 3 returns a reference to a local — drop the & so it returns by value: int makeValue()."
+      ],
+      "pseudocode": [
+        "Steps: compute the value in the function and return it by value so the caller gets a copy that outlives the function's local.",
+        "Algorithm: avoid handing back a reference to a stack local; return the integer itself so its lifetime isn't tied to the function frame."
+      ],
+      "gdb": [
+        "In gdb set break 9, run, then print r and print &r. Does r refer to a stack slot that makeValue already abandoned?",
+        "Under gdb, step out of makeValue and inspect r in main. Is the storage it references still alive?"
+      ],
+      "socratic": [
+        "How long does the local x live once makeValue returns, and what does r refer to after that?",
+        "Is it safe to return a reference to a variable that's destroyed when the function exits?"
+      ]
+    },
+    {
+      "uid": "int_div_truncation",
+      "user_query": "My average of 5 and 2 prints 2 instead of 3.5. What's happening?",
+      "student_code": "#include <iostream>\n\nint main() {\n    int a = 5, b = 2;\n    double avg = (a + b) / 2;\n    std::cout << avg << std::endl;\n    return 0;\n}",
+      "unfenced_inline": [
+        "(a + b) / 2 is integer division before the assign, so 7/2 becomes 3, not 3.5. Force floating point: (a + b) / 2.0.",
+        "The division happens in ints, then converts. Use (a + b) / 2.0 so the result keeps its fractional part."
+      ],
+      "exact_patch": [
+        "On line 5, change / 2 to / 2.0 so the division is done in floating point.",
+        "Line 5: make the divisor a double — (a + b) / 2.0 — otherwise it truncates."
+      ],
+      "pseudocode": [
+        "Steps: ensure at least one operand of the division is floating point so the quotient keeps decimals, then store it in the double.",
+        "Algorithm: perform the sum, divide using a floating-point divisor so the result isn't truncated, and assign the fractional value."
+      ],
+      "gdb": [
+        "In gdb set break 6, run, then print (a + b) / 2 and print (a + b) / 2.0. How do the two results differ?",
+        "Under gdb, type print avg after line 5. Is it 3 or 3.5, and what does that tell you about when the division happened?"
+      ],
+      "socratic": [
+        "When both operands of / are ints, what does 7 / 2 evaluate to before it's stored in a double?",
+        "At what point does the division lose the fractional part — before or after the conversion to double?"
+      ]
+    },
+    {
+      "uid": "missing_virtual_dtor",
+      "user_query": "Deleting my derived object through a base pointer leaks — the derived destructor never runs. Why?",
+      "student_code": "#include <iostream>\n\nclass Base {\npublic:\n    ~Base() { std::cout << \"~Base\\n\"; }\n};\n\nclass Derived : public Base {\npublic:\n    int* buf = new int[10];\n    ~Derived() { delete[] buf; }\n};\n\nint main() {\n    Base* p = new Derived();\n    delete p;\n    return 0;\n}",
+      "unfenced_inline": [
+        "Base's destructor isn't virtual, so delete p only runs ~Base and skips ~Derived. Make it virtual ~Base() { ... } and the derived destructor runs.",
+        "Add virtual to the base destructor: virtual ~Base(). Without it, deleting through a Base* never calls ~Derived and buf leaks."
+      ],
+      "exact_patch": [
+        "On line 5, change ~Base() to virtual ~Base(). That one keyword makes delete p dispatch to ~Derived.",
+        "Line 5 needs the virtual keyword: virtual ~Base() { ... }; so destruction through a base pointer is polymorphic."
+      ],
+      "pseudocode": [
+        "Steps: mark the base class destructor virtual so that deleting through a base pointer invokes the most-derived destructor first, then the base.",
+        "Algorithm: make the base destructor virtual; then a delete on a base pointer destroys the full derived object, freeing its resources."
+      ],
+      "gdb": [
+        "In gdb set break on ~Derived, then run and delete p. Does execution ever stop in ~Derived, or only in ~Base?",
+        "Under gdb, after delete p check whether ~Derived ran. If only ~Base printed, what does that say about the destructor binding?"
+      ],
+      "socratic": [
+        "When you delete through a Base* and the destructor isn't virtual, which destructor(s) actually run?",
+        "What keyword on the base destructor would make deletion call the derived one too?"
+      ]
+    }
+  ]
+}
