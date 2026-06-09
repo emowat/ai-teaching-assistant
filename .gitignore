@@ -12,6 +12,11 @@ out/
 .npm-cache/
 ast_test.log
 vscode-extension/media/wasm/
+# vim files
+*.swp
+
+# orchestrator log for local back-end
+orchestrator.log
 
 # Large Datasets
 synthetic-transcripts/*.jsonl

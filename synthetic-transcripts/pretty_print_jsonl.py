@@ -67,15 +67,19 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Pretty print synthetic dataset.")
     parser.add_argument("--mode", type=str, choices=["train", "eval", "augment_train", "augment_eval"], default="train", help="Which file to print")
+    parser.add_argument("--file", type=str, help="Explicit file path to print, overrides mode.")
     args = parser.parse_args()
     
-    if args.mode == "train":
-        target_file = "synthetic_c_plus_plus_dataset.jsonl" 
-    elif args.mode == "eval":
-        target_file = "eval_c_plus_plus_dataset.jsonl"
-    elif args.mode == "augment_train":
-        target_file = "augmented_train_cot.jsonl"
-    elif args.mode == "augment_eval":
-        target_file = "augmented_eval_cot.jsonl"
+    if args.file:
+        target_file = args.file
+    else:
+        if args.mode == "train":
+            target_file = "synthetic_c_plus_plus_dataset.jsonl" 
+        elif args.mode == "eval":
+            target_file = "eval_c_plus_plus_dataset.jsonl"
+        elif args.mode == "augment_train":
+            target_file = "augmented_train_cot.jsonl"
+        elif args.mode == "augment_eval":
+            target_file = "augmented_eval_cot.jsonl"
     
     pretty_print_jsonl(target_file)

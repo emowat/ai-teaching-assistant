@@ -2,7 +2,7 @@
   "name": "coding-rabbit",
   "displayName": "CodingRabbit",
   "description": "C++ CodingRabbit Teaching Assistant via Ollama",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "publisher": "berkeley",
   "repository": "https://github.com/berkeley/coding-rabbit",
   "engines": {
@@ -21,7 +21,7 @@
       "properties": {
         "codingRabbit.apiUrl": {
           "type": "string",
-          "default": "http://host.docker.internal:11434/api/chat",
+          "default": "http://host.docker.internal:8000/api/chat",
           "description": "The backend API URL for the CodingRabbit model."
         },
         "codingRabbit.modelName": {

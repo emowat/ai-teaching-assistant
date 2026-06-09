@@ -6,7 +6,7 @@ set -e
 
 if [ "$#" -lt 2 ] || [ "$#" -gt 3 ]; then
     echo "Usage: $0 <EXTENSION_DIR> <DEST_DIR> [API_URL]"
-    echo "Example: $0 /path/to/vscode-extension /path/to/assignment5/.devcontainer http://host.docker.internal:11434/api/chat"
+    echo "Example: $0 /path/to/vscode-extension /path/to/assignment5/.devcontainer http://localhost:8000/api/chat"
     exit 1
 fi
 
@@ -30,7 +30,7 @@ fi
 if [ -n "$API_URL" ]; then
     echo "Injecting custom API URL into package.json: $API_URL"
     # Create backup and replace default API URL using | as delimiter
-    sed -i.bak "s|\"default\": \"http://192.168.65.254:11434/api/chat\"|\"default\": \"$API_URL\"|g" "$EXTENSION_DIR/package.json"
+    sed -i.bak "s|\"default\": \"http://host.docker.internal:8000/api/chat\"|\"default\": \"$API_URL\"|g" "$EXTENSION_DIR/package.json"
 fi
 
 echo "Spawning headless Linux Docker container to cross-compile native dependencies and fetch WASM binaries..."

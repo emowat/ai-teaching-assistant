@@ -1,0 +1,96 @@
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import StreamingResponse
+import httpx
+import uvicorn
+import json
+from prompts import get_system_prompt
+from rag_client import expand_query, retrieve_rag_context
+
+app = FastAPI(title="CodingRabbit Inference API")
+
+UPSTREAM_OLLAMA_URL = "http://localhost:11434/api/chat"
+
+@app.post("/api/chat")
+async def chat_endpoint(request: Request):
+    """
+    Thin Client Orchestrator:
+    1. Intercepts payload
+    2. Performs Query Expansion & RAG
+    3. Assembles prompt
+    4. Streams inference
+    """
+    try:
+        payload = await request.json()
+        messages = payload.get("messages", [])
+        
+        # In a real implementation, we would extract AST and Raw_Code from the VSCode payload.
+        # For now, we just mock the context extraction from the last user message.
+        last_user_msg = next((m for m in reversed(messages) if m["role"] == "user"), None)
+        
+        if last_user_msg:
+            content = last_user_msg["content"]
+            
+            # Determine mode
+            mode = "Homework Assist"
+            if "Mode: Study Assist" in content:
+                mode = "Study Assist"
+
+            # 1. Query Expansion
+            expanded_query = await expand_query(content, "Mocked AST Context")
+            
+            # 2. RAG Retrieval
+            rag_context = await retrieve_rag_context(expanded_query)
+            
+            # 3. Dynamic Prompt Assembly
+            # If the VSCode extension sent an old system prompt, we strip it out.
+            if messages and messages[0].get("role") == "system":
+                messages.pop(0)
+                
+            # Inject our fresh centralized system prompt with the RAG context
+            system_prompt_base = get_system_prompt(mode)
+            full_system_prompt = f"{system_prompt_base}\n{rag_context}"
+            messages.insert(0, {"role": "system", "content": full_system_prompt})
+            
+            payload["messages"] = messages
+            print("--- FINAL PAYLOAD SENT TO OLLAMA ---")
+            print(json.dumps(payload, indent=2))
+            print("------------------------------------")
+            
+            async def stream_generator():
+                full_llm_response = ""
+                async with httpx.AsyncClient() as client:
+                    async with client.stream("POST", UPSTREAM_OLLAMA_URL, json=payload, timeout=60.0) as response:
+                        if response.status_code != 200:
+                            yield json.dumps({"error": f"Upstream returned {response.status_code}"})
+                            return
+                        
+                        async for chunk in response.aiter_bytes():
+                            try:
+                                # Ollama returns NDJSON. Parse chunk to accumulate the assistant's message
+                                data = json.loads(chunk.decode("utf-8"))
+                                if "message" in data and "content" in data["message"]:
+                                    full_llm_response += data["message"]["content"]
+                            except:
+                                pass
+                            yield chunk
+                
+                # Write cleanly formatted log locally
+                with open("orchestrator.log", "a") as log_file:
+                    log_file.write(f"\n{'='*50}\n")
+                    log_file.write("--- INCOMING STUDENT REQUEST ---\n")
+                    log_file.write(last_user_msg["content"] + "\n\n")
+                    log_file.write("--- GENERATED TA RESPONSE ---\n")
+                    log_file.write(full_llm_response + "\n")
+                    log_file.write(f"{'='*50}\n")
+
+            return StreamingResponse(stream_generator(), media_type="application/x-ndjson")
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/health")
+def health_check():
+    return {"status": "ok"}
+
+if __name__ == "__main__":
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
