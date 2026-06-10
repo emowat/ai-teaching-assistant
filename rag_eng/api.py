@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 
+from rag_eng.auth.dependencies import require_authenticated_user
+from rag_eng.auth.models import MeResponse
 from rag_eng.config import Settings, get_settings
 from rag_eng.schemas import (
     HealthResponse,
@@ -39,6 +41,10 @@ def create_app() -> FastAPI:
     @app.get("/health", response_model=HealthResponse)
     def health() -> HealthResponse:
         return get_health()
+
+    @app.get("/me", response_model=MeResponse)
+    def me(current_user=Depends(require_authenticated_user)) -> MeResponse:
+        return MeResponse.from_current_user(current_user)
 
     @app.post("/query", response_model=QueryResult)
     def query(payload: QueryPayload) -> QueryResult:

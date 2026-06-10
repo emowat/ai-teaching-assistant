@@ -28,15 +28,43 @@ class Settings:
     admin_token: str | None
     log_level: str
     raw_data_path: str
+    cognito_region: str | None
+    cognito_user_pool_id: str | None
+    cognito_app_client_id: str | None
+    cognito_issuer: str | None
+    cognito_jwks_url: str | None
 
     @property
     def api_base_url(self) -> str:
         return f"http://127.0.0.1:{self.app_port}"
 
+    @property
+    def cognito_configured(self) -> bool:
+        return bool(
+            self.cognito_region
+            and self.cognito_user_pool_id
+            and self.cognito_app_client_id
+        )
+
 
 def get_settings() -> Settings:
     """Load settings from the environment."""
     repo_root = Path(__file__).resolve().parent.parent
+    cognito_region = os.getenv("COGNITO_REGION")
+    cognito_user_pool_id = os.getenv("COGNITO_USER_POOL_ID")
+    cognito_app_client_id = os.getenv("COGNITO_APP_CLIENT_ID")
+    cognito_issuer = os.getenv("COGNITO_ISSUER")
+    cognito_jwks_url = os.getenv("COGNITO_JWKS_URL")
+
+    if cognito_region and cognito_user_pool_id:
+        if not cognito_issuer:
+            cognito_issuer = (
+                f"https://cognito-idp.{cognito_region}.amazonaws.com/"
+                f"{cognito_user_pool_id}"
+            )
+        if not cognito_jwks_url:
+            cognito_jwks_url = f"{cognito_issuer}/.well-known/jwks.json"
+
     return Settings(
         qdrant_url=os.getenv("QDRANT_URL"),
         qdrant_api_key=os.getenv("QDRANT_API_KEY"),
@@ -59,4 +87,9 @@ def get_settings() -> Settings:
         admin_token=os.getenv("ADMIN_TOKEN"),
         log_level=os.getenv("LOG_LEVEL", "INFO"),
         raw_data_path=os.getenv("RAW_DATA_PATH", str(repo_root / "raw_data")),
+        cognito_region=cognito_region,
+        cognito_user_pool_id=cognito_user_pool_id,
+        cognito_app_client_id=cognito_app_client_id,
+        cognito_issuer=cognito_issuer,
+        cognito_jwks_url=cognito_jwks_url,
     )

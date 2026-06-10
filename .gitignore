@@ -1,5 +1,8 @@
 archive_scripts/
 .env
+
+# Local-only notes/docs (not shared via git)
+local_docs/
 .swp
 qdrant_local_data/
 __pycache__/
