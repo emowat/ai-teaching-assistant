@@ -21,6 +21,7 @@ class DocCategory(str, Enum):
     STRICT_RULES = "Strict_Rules"
     PEDAGOGICAL_CONTEXT = "Pedagogical_Context"
     SUPPLEMENTARY = "Supplementary"
+    GUIDELINE = "Guideline"
 
 
 class SourceDomain(str, Enum):
@@ -45,7 +46,7 @@ class ChunkPayload(BaseModel):
     chunk_id: str
     content: str
 
-    week: int = Field(ge=1, le=8, description="Course week 1-8")
+    week: int = Field(ge=0, le=8, description="Course week 1-8, or 0 for week-agnostic reference")
     category: DocCategory
     topic: str = ""                       # e.g. "pointer_arithmetic"
     priority: int = Field(default=2, ge=1, le=3, description="1=highest (Syllabus/Rules), 2=Pedagogical, 3=Supplementary")
@@ -109,6 +110,7 @@ class RetrievalResult(BaseModel):
     strict_rules: list[RetrievedDoc] = Field(default_factory=list)
     pedagogical: list[RetrievedDoc] = Field(default_factory=list)
     supplementary: list[RetrievedDoc] = Field(default_factory=list)
+    guidelines: list[RetrievedDoc] = Field(default_factory=list)
 
     # Pre-formatted context block ready for TA prompt injection
     formatted_context: str = ""

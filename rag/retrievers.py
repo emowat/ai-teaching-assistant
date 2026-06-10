@@ -219,3 +219,33 @@ def retrieve_strict_rules(
     ).points
 
     return [_hit_to_doc(h) for h in hits]
+
+
+# ---------------------------------------------------------------------------
+# Retriever D: C++ Core Guidelines (separate collection, no week filter)
+# ---------------------------------------------------------------------------
+
+def retrieve_guidelines(
+    dense_query: str,
+    top_k: int = 3,
+    threshold: float = 0.5,
+) -> list[RetrievedDoc]:
+    """Vector search against the C++ Core Guidelines collection.
+
+    Guidelines are week-agnostic; no week filter is applied.  They are queried
+    via a dedicated collection so that the syllabus-bound course search is never
+    polluted by advanced C++ concepts from outside the current week.
+    """
+    model = _get_model()
+    client = _get_client()
+
+    query_vector = model.encode(dense_query).tolist()
+
+    hits = client.query_points(
+        collection_name=get_runtime_config().guidelines_collection_name,
+        query=query_vector,
+        limit=top_k,
+        score_threshold=threshold,
+    ).points
+
+    return [_hit_to_doc(h) for h in hits]

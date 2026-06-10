@@ -15,6 +15,7 @@ def assemble_context(
     rules: list[RetrievedDoc],
     pedagogical: list[RetrievedDoc],
     supplementary: list[RetrievedDoc],
+    guidelines: list[RetrievedDoc] | None = None,
     mode: AssistMode = AssistMode.HOMEWORK_ASSIST,
 ) -> str:
     """
@@ -23,6 +24,7 @@ def assemble_context(
     Mirrors the structure produced by get_automated_context() in generate_dataset.py:
     - Syllabus chunk first (if present)
     - Then relevant pedagogical/supplementary/strict_rules chunks
+    - Guidelines last (separate collection, week-agnostic reference)
     - Each chunk tagged with its category
     """
     chunks: list[str] = []
@@ -43,6 +45,11 @@ def assemble_context(
     for doc in supplementary:
         chunks.append(f"[Supplementary]\nWeek: {doc.week}\nContent: {doc.content}")
 
+    # C++ Core Guidelines — separate collection, no week tag
+    if guidelines:
+        for doc in guidelines:
+            chunks.append(f"[CppCoreGuidelines]\nContent: {doc.content}")
+
     # If no RAG docs retrieved at all (syllabus-only or empty), avoid empty block
     if not chunks:
         return ""
@@ -55,6 +62,7 @@ def build_retrieval_result(
     rules: list[RetrievedDoc],
     pedagogical: list[RetrievedDoc],
     supplementary: list[RetrievedDoc],
+    guidelines: list[RetrievedDoc] | None = None,
     mode: AssistMode = AssistMode.HOMEWORK_ASSIST,
 ) -> RetrievalResult:
     """Build the complete RetrievalResult including formatted context."""
@@ -63,5 +71,8 @@ def build_retrieval_result(
         strict_rules=rules,
         pedagogical=pedagogical,
         supplementary=supplementary,
-        formatted_context=assemble_context(syllabus, rules, pedagogical, supplementary, mode),
+        guidelines=guidelines or [],
+        formatted_context=assemble_context(
+            syllabus, rules, pedagogical, supplementary, guidelines, mode,
+        ),
     )

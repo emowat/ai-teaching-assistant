@@ -28,6 +28,7 @@ class RagRuntimeConfig:
     qdrant_api_key: str | None
     qdrant_path: str
     collection_name: str
+    guidelines_collection_name: str
     embedding_model: str
     raw_data_path: str
 
@@ -54,6 +55,9 @@ def get_runtime_config() -> RagRuntimeConfig:
         qdrant_api_key=os.getenv("QDRANT_API_KEY"),
         qdrant_path=os.getenv("QDRANT_PATH", str(default_qdrant_path)),
         collection_name=os.getenv("QDRANT_COLLECTION_NAME", "course_knowledge"),
+        guidelines_collection_name=os.getenv(
+            "QDRANT_GUIDELINES_COLLECTION_NAME", "cpp_guidelines",
+        ),
         embedding_model=os.getenv(
             "EMBEDDING_MODEL",
             "sentence-transformers/multi-qa-mpnet-base-dot-v1",

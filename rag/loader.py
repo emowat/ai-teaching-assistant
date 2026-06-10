@@ -104,6 +104,7 @@ CATEGORY_PRIORITY: dict[DocCategory, int] = {
     DocCategory.SYLLABUS: 1,
     DocCategory.STRICT_RULES: 1,
     DocCategory.PEDAGOGICAL_CONTEXT: 2,
+    DocCategory.GUIDELINE: 2,
     DocCategory.SUPPLEMENTARY: 3,
 }
 
@@ -317,6 +318,110 @@ SYLLABUS_MATRIX: dict[int, dict[str, str]] = {
     7: {"name": "Algorithms & Complexity", "allowed": "recursion, sorting algorithms, Big O notation, binary search trees", "forbidden": "raw malloc/free, bare new/delete"},
     8: {"name": "Advanced Data Structures", "allowed": "hash tables, tries, queues, stacks, linked lists", "forbidden": "raw malloc/free, bare new/delete"},
 }
+
+
+# ---------------------------------------------------------------------------
+# C++ Core Guidelines loader
+# ---------------------------------------------------------------------------
+
+GUIDELINES_JSON_PATH = Path("cppcoreguidelines") / "cppcoreguidelines.json"
+
+
+class CppGuidelinesLoader:
+    """Loads C++ Core Guidelines from raw_data/cppcoreguidelines/cppcoreguidelines.json.
+
+    Chunking strategy:
+      - One chunk per h3-level rule (the actual enforceable guideline).
+      - Concatenates title, section path, reason, examples, notes, and enforcement
+        into a single structured content block.
+      - h1/h2 headings are used for section context but not indexed as chunks.
+
+    Usage:
+        loader = CppGuidelinesLoader("raw_data")
+        chunks = loader.load_all()
+    """
+
+    MAX_CONTENT_LENGTH = 4000
+
+    def __init__(self, raw_data_path: str | Path):
+        self.raw_data = Path(raw_data_path)
+        self.json_path = self.raw_data / GUIDELINES_JSON_PATH
+        if not self.json_path.exists():
+            raise FileNotFoundError(f"Guidelines JSON not found: {self.json_path}")
+
+    def load_all(self) -> list[ChunkPayload]:
+        """Parse the guidelines JSON and return one chunk per h3 rule."""
+        data = json.loads(self.json_path.read_text(encoding="utf-8"))
+        chunks: list[ChunkPayload] = []
+
+        for entry in data:
+            if entry.get("level") != 3:
+                continue
+
+            title = str(entry.get("title", ""))
+            rule_number = str(entry.get("rule_number", ""))
+            section = str(entry.get("section", ""))
+            subsection = str(entry.get("subsection", ""))
+            reason = str(entry.get("reason", ""))
+            notes = entry.get("notes", [])
+            enforcement = str(entry.get("enforcement", ""))
+            examples = entry.get("examples", [])
+
+            # Assemble a structured content block
+            parts: list[str] = []
+            if section:
+                parts.append(f"Section: {section}")
+            if subsection:
+                parts.append(f"Subsection: {subsection}")
+            parts.append(f"Rule: {title}")
+
+            if reason:
+                parts.append(f"Reason: {reason}")
+
+            for ex in examples:
+                label = ex.get("label", "Example")
+                desc = ex.get("description", "")
+                code = ex.get("code", "")
+                if desc:
+                    parts.append(f"{label}: {desc}")
+                if code:
+                    parts.append(f"{label} code:\n{code}")
+
+            for note in notes:
+                parts.append(f"Note: {note}")
+
+            if enforcement:
+                parts.append(f"Enforcement: {enforcement}")
+
+            content = "\n\n".join(parts)
+            if len(content) > self.MAX_CONTENT_LENGTH:
+                content = content[: self.MAX_CONTENT_LENGTH]
+
+            if not content.strip():
+                continue
+
+            chunk_id = _stable_chunk_id(
+                "cpp_guideline",
+                rule_number or title,
+                content[:500],
+            )
+
+            chunks.append(ChunkPayload(
+                chunk_id=chunk_id,
+                content=content,
+                week=0,  # guidelines are week-agnostic global reference
+                category=DocCategory.GUIDELINE,
+                topic=f"cpp_guideline::{rule_number}" if rule_number else "cpp_guideline",
+                priority=CATEGORY_PRIORITY[DocCategory.GUIDELINE]
+                if DocCategory.GUIDELINE in CATEGORY_PRIORITY
+                else 2,
+                source_domain=SourceDomain.CPP_CORE_GUIDELINES,
+                source_type="cpp_core_guideline",
+                page_number=None,
+            ))
+
+        print(f"  cppcoreguidelines.json: {len(chunks)} h3 rules indexed")
+        return chunks
 
 
 # ---------------------------------------------------------------------------

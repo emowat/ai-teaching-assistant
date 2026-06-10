@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from rag.schemas import AssistMode, QueryInput, RetrievalResult
 from rag.query_builder import build_query
-from rag.retrievers import retrieve_syllabus, retrieve_semantic, retrieve_strict_rules
+from rag.retrievers import retrieve_syllabus, retrieve_semantic, retrieve_strict_rules, retrieve_guidelines
 from rag.reranker import merge_and_rerank
 from rag.context_assembler import build_retrieval_result
 
@@ -35,6 +35,8 @@ MODE_PARAMS: dict[AssistMode, dict] = {
         "semantic_top_k": 5,
         "rules_top_k": 3,
         "rules_threshold": 0.55,
+        "guidelines_top_k": 2,
+        "guidelines_threshold": 0.6,   # high threshold — minimal distraction
         "final_k": 5,
     },
     AssistMode.STUDY_ASSIST: {
@@ -42,6 +44,8 @@ MODE_PARAMS: dict[AssistMode, dict] = {
         "semantic_top_k": 8,
         "rules_top_k": 3,
         "rules_threshold": 0.45,  # relaxed — more conceptual material
+        "guidelines_top_k": 4,
+        "guidelines_threshold": 0.45,  # lower threshold — deeper study
         "final_k": 8,
     },
 }
@@ -53,7 +57,7 @@ def run_retrieval(query: QueryInput) -> RetrievalResult:
 
     1. Build dense query from student NL, AST, terminal
     2. Mode-aware parameter selection
-    3. Parallel retrieval: syllabus (exact), semantic (vector), rules (vector+filter)
+    3. Parallel retrieval: syllabus (exact), semantic (vector), rules (vector+filter), guidelines (vector, separate collection)
     4. Merge, category-weight, MMR diversify
     5. Format into [Vector_Database_Results] block
     """
@@ -67,7 +71,7 @@ def run_retrieval(query: QueryInput) -> RetrievalResult:
 
     dense_query = build_query(query)
 
-    # Three parallel retrievers
+    # Four parallel retrievers
     syllabus = retrieve_syllabus(query.week)
     semantic = retrieve_semantic(
         dense_query,
@@ -82,12 +86,18 @@ def run_retrieval(query: QueryInput) -> RetrievalResult:
         threshold=params["rules_threshold"],
         cumulative=params["cumulative"],
     )
+    guidelines = retrieve_guidelines(
+        dense_query,
+        top_k=params["guidelines_top_k"],
+        threshold=params["guidelines_threshold"],
+    )
 
-    # Merge + rerank
-    syllabus, rules_out, pedagogical_out, supplementary_out = merge_and_rerank(
+    # Merge + rerank (now returns 5-tuple with guidelines)
+    syllabus, rules_out, pedagogical_out, supplementary_out, guidelines_out = merge_and_rerank(
         syllabus=syllabus,
         semantic=semantic,
         rules=rules,
+        guidelines=guidelines,
         mode=query.mode,
         final_k=final_k,
     )
@@ -97,6 +107,7 @@ def run_retrieval(query: QueryInput) -> RetrievalResult:
         rules=rules_out,
         pedagogical=pedagogical_out,
         supplementary=supplementary_out,
+        guidelines=guidelines_out,
         mode=query.mode,
     )
 

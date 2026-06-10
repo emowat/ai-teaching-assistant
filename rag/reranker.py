@@ -17,6 +17,7 @@ BASE_WEIGHTS: dict[DocCategory, float] = {
     DocCategory.SYLLABUS: 1.5,
     DocCategory.STRICT_RULES: 1.5,
     DocCategory.PEDAGOGICAL_CONTEXT: 1.0,
+    DocCategory.GUIDELINE: 0.8,
     DocCategory.SUPPLEMENTARY: 0.5,
 }
 
@@ -25,12 +26,14 @@ MODE_WEIGHTS: dict[AssistMode, dict[DocCategory, float]] = {
         DocCategory.SYLLABUS: 1.5,
         DocCategory.STRICT_RULES: 1.8,          # rules are critical during debugging
         DocCategory.PEDAGOGICAL_CONTEXT: 0.9,
+        DocCategory.GUIDELINE: 0.3,              # dim guidelines — stay focused on the bug
         DocCategory.SUPPLEMENTARY: 0.3,          # dampen distractions
     },
     AssistMode.STUDY_ASSIST: {
         DocCategory.SYLLABUS: 1.5,
         DocCategory.STRICT_RULES: 1.0,
         DocCategory.PEDAGOGICAL_CONTEXT: 1.5,    # concepts are the focus
+        DocCategory.GUIDELINE: 1.2,              # C++ Core Guidelines support deeper study
         DocCategory.SUPPLEMENTARY: 0.8,           # extra material is valuable
     },
 }
@@ -119,14 +122,15 @@ def merge_and_rerank(
     syllabus: RetrievedDoc | None,
     semantic: list[RetrievedDoc],
     rules: list[RetrievedDoc],
+    guidelines: list[RetrievedDoc] | None = None,
     mode: AssistMode = AssistMode.HOMEWORK_ASSIST,
     lambda_param: float = 0.7,
     final_k: int | None = None,
-) -> tuple[RetrievedDoc | None, list[RetrievedDoc], list[RetrievedDoc], list[RetrievedDoc]]:
+) -> tuple[RetrievedDoc | None, list[RetrievedDoc], list[RetrievedDoc], list[RetrievedDoc], list[RetrievedDoc]]:
     """
-    Merge results from three retrievers, apply mode-aware category weights, MMR diversify.
+    Merge results from retrievers, apply mode-aware category weights, MMR diversify.
 
-    Returns (syllabus, strict_rules, pedagogical, supplementary).
+    Returns (syllabus, strict_rules, pedagogical, supplementary, guidelines).
     """
     weights = MODE_WEIGHTS.get(mode, BASE_WEIGHTS)
     if final_k is None:
@@ -134,6 +138,8 @@ def merge_and_rerank(
 
     # Merge all non-syllabus docs
     all_docs: list[RetrievedDoc] = list(semantic) + list(rules)
+    if guidelines:
+        all_docs.extend(guidelines)
 
     # Deduplicate by chunk_id
     seen: set[str] = set()
@@ -153,5 +159,6 @@ def merge_and_rerank(
     rules_out = [d for d in diverse if d.category == DocCategory.STRICT_RULES]
     pedagogical_out = [d for d in diverse if d.category == DocCategory.PEDAGOGICAL_CONTEXT]
     supplementary_out = [d for d in diverse if d.category == DocCategory.SUPPLEMENTARY]
+    guidelines_out = [d for d in diverse if d.category == DocCategory.GUIDELINE]
 
-    return syllabus, rules_out, pedagogical_out, supplementary_out
+    return syllabus, rules_out, pedagogical_out, supplementary_out, guidelines_out

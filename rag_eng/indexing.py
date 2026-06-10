@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from rag.loader import CourseMaterialLoader
+from rag.loader import CourseMaterialLoader, CppGuidelinesLoader
 from rag.runtime import create_qdrant_client
 
 from rag_eng.config import get_settings
@@ -25,6 +25,10 @@ class IndexingResult:
 
 def _collection_name() -> str:
     return get_settings().qdrant_collection_name
+
+
+def _guidelines_collection_name() -> str:
+    return get_settings().qdrant_guidelines_collection_name
 
 
 def _embedding_model_name() -> str:
@@ -121,38 +125,124 @@ def _upsert_points(client, points) -> int:
     return len(points)
 
 
+def _build_guidelines_points():
+    """Load, embed, and convert C++ Core Guidelines chunks into Qdrant points."""
+    from qdrant_client.models import PointStruct
+    from sentence_transformers import SentenceTransformer
+
+    loader = CppGuidelinesLoader(_raw_data_path())
+    model = SentenceTransformer(_embedding_model_name())
+
+    points: list[PointStruct] = []
+    chunks = loader.load_all()
+    for chunk in chunks:
+        vector = model.encode(chunk.content).tolist()
+        payload = {
+            "chunk_id": chunk.chunk_id,
+            "content": chunk.content,
+            "week": chunk.week,
+            "category": chunk.category.value,
+            "topic": chunk.topic,
+            "priority": chunk.priority,
+            "parent_chunk_id": chunk.parent_chunk_id,
+            "source_domain": chunk.source_domain.value,
+            "source_type": chunk.source_type,
+            "page_number": chunk.page_number,
+        }
+        points.append(
+            PointStruct(
+                id=chunk.chunk_id,
+                vector=vector,
+                payload=payload,
+            )
+        )
+    return points
+
+
+def _ensure_guidelines_collection(client, *, recreate: bool) -> bool:
+    """Ensure the guidelines collection exists, optionally recreating it."""
+    from qdrant_client.models import Distance, PayloadSchemaType, VectorParams
+
+    coll_name = _guidelines_collection_name()
+    exists = client.collection_exists(coll_name)
+    if exists and recreate:
+        client.delete_collection(coll_name)
+        exists = False
+
+    if not exists:
+        client.create_collection(
+            collection_name=coll_name,
+            vectors_config=VectorParams(size=VECTOR_SIZE, distance=Distance.DOT),
+        )
+        # Only need source_domain index on the guidelines collection
+        try:
+            client.create_payload_index(
+                collection_name=coll_name,
+                field_name="source_domain",
+                field_schema=PayloadSchemaType.KEYWORD,
+            )
+        except Exception:
+            pass
+        return True
+    return False
+
+
+def _upsert_guidelines_points(client, points) -> int:
+    """Batch upsert guidelines points into the guidelines collection."""
+    batch_size = 100
+    for start in range(0, len(points), batch_size):
+        batch = points[start : start + batch_size]
+        client.upsert(collection_name=_guidelines_collection_name(), points=batch)
+    return len(points)
+
+
 def ensure_index() -> IndexingResult:
-    """Safely ensure the collection exists and upsert all indexed documents."""
+    """Safely ensure both collections exist and upsert all indexed documents."""
     client = create_qdrant_client()
     try:
-        created_collection = _ensure_collection(client, recreate=False)
+        created_course = _ensure_collection(client, recreate=False)
         _ensure_payload_indexes(client)
-        indexed_documents = _upsert_points(client, _build_points())
+        course_count = _upsert_points(client, _build_points())
+
+        created_guidelines = _ensure_guidelines_collection(client, recreate=False)
+        guidelines_count = _upsert_guidelines_points(client, _build_guidelines_points())
     finally:
         client.close()
 
-    message = "Collection ensured and documents upserted successfully."
+    total = course_count + guidelines_count
+    message = (
+        f"Collections ensured successfully. "
+        f"{course_count} course documents + {guidelines_count} guidelines = {total} total."
+    )
     return IndexingResult(
         collection_name=_collection_name(),
-        indexed_documents=indexed_documents,
-        created_collection=created_collection,
+        indexed_documents=total,
+        created_collection=created_course or created_guidelines,
         message=message,
     )
 
 
 def rebuild_index() -> IndexingResult:
-    """Explicitly rebuild the collection from scratch."""
+    """Explicitly rebuild both collections from scratch."""
     client = create_qdrant_client()
     try:
         _ensure_collection(client, recreate=True)
         _ensure_payload_indexes(client)
-        indexed_documents = _upsert_points(client, _build_points())
+        course_count = _upsert_points(client, _build_points())
+
+        _ensure_guidelines_collection(client, recreate=True)
+        guidelines_count = _upsert_guidelines_points(client, _build_guidelines_points())
     finally:
         client.close()
 
+    total = course_count + guidelines_count
+    message = (
+        f"Collections rebuilt successfully. "
+        f"{course_count} course documents + {guidelines_count} guidelines = {total} total."
+    )
     return IndexingResult(
         collection_name=_collection_name(),
-        indexed_documents=indexed_documents,
+        indexed_documents=total,
         created_collection=True,
-        message="Collection rebuilt and documents reindexed successfully.",
+        message=message,
     )
