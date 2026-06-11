@@ -86,10 +86,14 @@ def run_command(
 
 
 def write_files(files: dict[str, str], workspace: Path) -> None:
-    if workspace.exists():
-        shutil.rmtree(workspace)
-
     workspace.mkdir(parents=True, exist_ok=True)
+
+    # Do not rmtree the workspace root — it may be a Docker tmpfs mount point.
+    for child in workspace.iterdir():
+        if child.is_dir():
+            shutil.rmtree(child)
+        else:
+            child.unlink()
 
     for filename, content in files.items():
         rel = safe_rel_path(filename)

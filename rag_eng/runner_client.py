@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import tempfile
 import uuid
@@ -19,6 +20,13 @@ class RunnerError(RuntimeError):
 
 RUNNER_IMAGE_DEFAULT = "codingrabbit-cpp-runner:0.1"
 HOST_DOCKER_TIMEOUT_SEC = 12
+
+
+def _prepare_job_dir_for_container(job_dir: Path) -> None:
+    """Allow the non-root runner user (uid 10001) to read/write bind-mounted /job."""
+    os.chmod(job_dir, 0o777)
+    for path in job_dir.iterdir():
+        os.chmod(path, 0o666)
 
 
 def _docker_run(job_dir: Path, image: str) -> None:
@@ -106,6 +114,9 @@ def run_cpp_job(payload: dict[str, Any], settings: Settings | None = None) -> Ru
             json.dumps(payload, indent=2),
             encoding="utf-8",
         )
+
+        if settings.runner_mode == "docker":
+            _prepare_job_dir_for_container(job_dir)
 
         if settings.runner_mode == "subprocess":
             _subprocess_run(job_dir)
