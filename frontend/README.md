@@ -1,73 +1,93 @@
-# React + TypeScript + Vite
+# codingrabbit.dev — Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React 18 + Vite 8 + TypeScript SPA. Authenticates via AWS Cognito (OIDC), connects to the `rag_eng` FastAPI backend.
 
-Currently, two official plugins are available:
+## Stack
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+| Layer | Library |
+|---|---|
+| Framework | React 18, Vite 8 |
+| Language | TypeScript (strict) |
+| Auth | `react-oidc-context`, `oidc-client-ts` |
+| Editor | `@monaco-editor/react` (lazy-loaded) |
+| Charts | `recharts` |
+| Styling | Inline styles with design tokens (`src/design/tokens.ts`) |
 
-## React Compiler
+## Project structure
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```
+src/
+├── api/
+│   ├── gradioApi.ts      Gradio availability probe + URL helper
+│   └── runApi.ts         POST /run/compile client
+├── auth/
+│   ├── cognitoConfig.ts  OIDC config factory (WebStorageStateStore)
+│   ├── roleAccess.ts     Role → allowed views mapping + utilities
+│   ├── signOutCognito.ts Custom Cognito logout (logout_uri, not post_logout_redirect_uri)
+│   └── validateCognitoConfig.ts  Startup env-var validation
+├── components/
+│   ├── CodeEditor.tsx    Monaco wrapper (C++, VS Dark, line decorations)
+│   ├── ConsolePanel.tsx  Compiler output display (stdout/stderr/exit code)
+│   ├── FileExplorer.tsx  Collapsible file tree with add/delete
+│   ├── Sidebar.tsx       Tab sidebar (supports disabled + tooltip)
+│   └── TopBar.tsx        App bar with role switcher + sign-out
+├── demo/
+│   └── linkedListCpp.ts  Starter C++ file with intentional bugs
+├── design/
+│   ├── atoms.tsx         Reusable atoms: Tag, Btn, Card, Stat, Avatar, ProgressBar
+│   └── tokens.ts         Design tokens (colors, mono font shorthand)
+├── pages/
+│   ├── AdminDashboard.tsx    Metrics, AI models, RAG docs, RAG Query Console (Gradio)
+│   ├── AuthCallbackPage.tsx  OIDC redirect handler
+│   ├── LandingPage.tsx       Unauthenticated landing
+│   ├── ProfessorDashboard.tsx Professor view
+│   └── StudentInterface.tsx  IDE: file explorer + Monaco + console + Socratic chat
+├── types/
+│   └── navigation.ts     AppView union type
+└── App.tsx               Auth-aware router
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Local development
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
+npm run dev      # http://localhost:5173
+npm run build    # production build → dist/
+npm run lint
 ```
+
+Requires a `.env` at the repo root with Cognito and API variables. See `.env.example`.
+
+## Authentication flow
+
+1. Unauthenticated users see `LandingPage` with a "Sign in" button.
+2. Clicking sign-in redirects to the Cognito Hosted UI.
+3. Cognito redirects back to `/auth/callback`; `react-oidc-context` completes the OIDC handshake.
+4. `App.tsx` reads `custom:role` from the ID token, calls `getDefaultView(role)`, and renders the appropriate dashboard.
+5. Sign-out calls `signOutCognito`, which clears local session state then redirects to Cognito's `/logout?logout_uri=…`.
+
+## Role-based navigation
+
+`src/auth/roleAccess.ts` defines the hierarchy:
+
+```
+admin     → [admin, professor, student]
+professor → [professor, student]
+student   → [student]
+```
+
+`TopBar` renders a switcher button for each view in `allowedViews`. Dashboards receive `allowedViews` and `onSignOut` as props.
+
+## Student workspace
+
+`StudentInterface` maintains a `Record<string, string>` of filenames → content:
+- **FileExplorer** (left panel, 188 px, collapsible to 36 px): add files with `+`, delete with hover `×` + confirmation click. Clicking a file in collapsed mode auto-expands.
+- **Tab bar**: dynamically generated from the files map, scrollable for many open tabs.
+- **Monaco editor**: `key={activeFile}` forces a fresh instance per file; language is inferred from extension.
+- **ConsolePanel**: shows compile stdout/stderr, exit code, and elapsed time.
+
+## Admin Gradio tab
+
+The "RAG Query Console" tab in `AdminDashboard` probes `VITE_API_BASE_URL/gradio` every 30 seconds:
+- Enabled → embeds Gradio in an `<iframe>`.
+- Disabled or unreachable → tab is greyed out with a tooltip.
