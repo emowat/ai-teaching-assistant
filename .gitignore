@@ -21,6 +21,9 @@ vscode-extension/media/wasm/
 # orchestrator log for local back-end
 orchestrator.log
 
+# Frontend — build output (.env at repo root is already ignored above)
+frontend/dist/
+
 # Large Datasets
 synthetic-transcripts/*.jsonl
 synthetic-transcripts/*.txt
