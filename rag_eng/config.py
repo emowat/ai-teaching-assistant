@@ -33,6 +33,9 @@ class Settings:
     cognito_app_client_id: str | None
     cognito_issuer: str | None
     cognito_jwks_url: str | None
+    runner_mode: str
+    runner_image: str
+    cors_origins: tuple[str, ...]
 
     @property
     def api_base_url(self) -> str:
@@ -92,4 +95,14 @@ def get_settings() -> Settings:
         cognito_app_client_id=cognito_app_client_id,
         cognito_issuer=cognito_issuer,
         cognito_jwks_url=cognito_jwks_url,
+        runner_mode=os.getenv("RUNNER_MODE", "docker"),
+        runner_image=os.getenv("RUNNER_IMAGE", "codingrabbit-cpp-runner:0.1"),
+        cors_origins=tuple(
+            origin.strip()
+            for origin in os.getenv(
+                "CORS_ORIGINS",
+                "http://localhost:5173",
+            ).split(",")
+            if origin.strip()
+        ),
     )

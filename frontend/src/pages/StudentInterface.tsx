@@ -1,7 +1,15 @@
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
+import { useAuth } from "react-oidc-context";
+import { compileCode, type RunResult } from "../api/runApi";
+import { ConsolePanel } from "../components/ConsolePanel";
+
+const CodeEditor = lazy(() =>
+  import("../components/CodeEditor").then((m) => ({ default: m.CodeEditor }))
+);
 import { Btn, Tag } from "../design/atoms";
 import { D, mono } from "../design/tokens";
 import { TopBar } from "../components/TopBar";
+import { LINKED_LIST_CPP } from "../demo/linkedListCpp";
 import type { AppView } from "../types/navigation";
 
 interface StudentInterfaceProps {
@@ -14,13 +22,6 @@ interface ChatMessage {
   role: "bot" | "user";
   content: string;
 }
-
-// STUB — replace with VS Code extension code context in Sprint 4
-const codeLines = [
-  { n: 1, text: "#include <iostream>", fg: D.blue },
-  { n: 15, text: "    LinkedList() {}  // ← BUG: head never initialized", fg: "#FCD34D", bg: `${D.yellow}0C`, borderLeft: `2px solid ${D.yellow}` },
-  { n: 19, text: "        newNode->next = head->next;  // ← SEGFAULT HERE", fg: "#FCA5A5", bg: `${D.red}14`, borderLeft: `2px solid ${D.red}` },
-];
 
 // STUB — replace with POST /tutor/respond in Sprint 1
 const initialMessages: ChatMessage[] = [
@@ -40,19 +41,56 @@ const initialMessages: ChatMessage[] = [
   },
 ];
 
+const editorFiles = ["linked_list.cpp", "main.cpp"] as const;
+
 export function StudentInterface({
   onNavigate,
   allowedViews,
   onSignOut,
 }: StudentInterfaceProps) {
+  const auth = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
   const [input, setInput] = useState("");
+  const [code, setCode] = useState(LINKED_LIST_CPP);
+  const [activeFile, setActiveFile] = useState<(typeof editorFiles)[number]>(
+    "linked_list.cpp"
+  );
+  const [compileResult, setCompileResult] = useState<RunResult | null>(null);
+  const [compiling, setCompiling] = useState(false);
+  const [compileError, setCompileError] = useState<string | null>(null);
+
+  const handleCompile = () => {
+    const token = auth.user?.access_token;
+    if (!token) {
+      setCompileError("Sign in to compile your code.");
+      return;
+    }
+
+    setCompiling(true);
+    setCompileError(null);
+    void compileCode(
+      { [activeFile]: code },
+      token,
+      { entrypoint: activeFile }
+    )
+      .then((response) => {
+        setCompileResult(response.result);
+        if (!response.result?.compile.success) {
+          setCompileError(null);
+        }
+      })
+      .catch((err: unknown) => {
+        setCompileResult(null);
+        setCompileError(err instanceof Error ? err.message : "Compile failed.");
+      })
+      .finally(() => setCompiling(false));
+  };
 
   const send = () => {
     if (!input.trim()) return;
     const msg = input;
     setInput("");
-    // STUB — Sprint 1: call askTutor() with Bearer token
+    // STUB — Sprint 1: call askTutor() with Bearer token + code context
     setMessages((m) => [
       ...m,
       { role: "user", content: msg },
@@ -93,65 +131,120 @@ export function StudentInterface({
         }}
       >
         <Tag>CS101</Tag>
-        <span style={{ ...mono, fontSize: 12, color: D.text }}>linked_list.cpp</span>
-        <span style={{ ...mono, fontSize: 11, color: D.red }}>● 1 error</span>
+        <span style={{ ...mono, fontSize: 12, color: D.text }}>{activeFile}</span>
+        {compileResult && !compileResult.compile.success && (
+          <span style={{ ...mono, fontSize: 11, color: D.red }}>● build failed</span>
+        )}
+        {compileResult?.compile.success && (
+          <span style={{ ...mono, fontSize: 11, color: D.green }}>● build ok</span>
+        )}
         <div style={{ flex: 1 }} />
-        <Tag color={D.muted}>Editor STUB</Tag>
+        <Btn small onClick={handleCompile} disabled={compiling}>
+          {compiling ? "Compiling…" : "Compile"}
+        </Btn>
+        <span style={{ ...mono, fontSize: 10, color: D.muted }}>
+          Week 2 · Dynamic memory · C++17
+        </span>
       </div>
 
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
         <div
           style={{
             flex: 3,
+            display: "flex",
+            flexDirection: "column",
             background: "#1e1e1e",
-            overflow: "auto",
             borderRight: "1px solid #111",
+            minWidth: 0,
           }}
         >
-          <div style={{ background: "#252526", borderBottom: "1px solid #1a1a1a", display: "flex" }}>
-            <div
-              style={{
-                padding: "5px 16px",
-                fontSize: 12,
-                color: "#ccc",
-                background: "#1e1e1e",
-                borderRight: "1px solid #1a1a1a",
-                ...mono,
-              }}
-            >
-              <span style={{ color: D.red, marginRight: 4 }}>●</span>
-              linked_list.cpp
-            </div>
-          </div>
-          <div style={{ padding: "8px 0", ...mono, fontSize: 12.5, lineHeight: 1.65 }}>
-            {codeLines.map((l) => (
-              <div
-                key={l.n}
-                style={{
-                  display: "flex",
-                  background: l.bg || "transparent",
-                  borderLeft: l.borderLeft || "2px solid transparent",
-                }}
-              >
-                <span
+          <div
+            style={{
+              background: "#252526",
+              borderBottom: "1px solid #1a1a1a",
+              display: "flex",
+              flexShrink: 0,
+            }}
+          >
+            {editorFiles.map((file) => {
+              const isActive = activeFile === file;
+              return (
+                <button
+                  key={file}
+                  type="button"
+                  onClick={() => setActiveFile(file)}
                   style={{
-                    width: 44,
-                    textAlign: "right",
-                    paddingRight: 16,
-                    color: "#3d3d3d",
-                    fontSize: 11,
-                    userSelect: "none",
-                    flexShrink: 0,
+                    padding: "5px 16px",
+                    fontSize: 12,
+                    cursor: "pointer",
+                    color: isActive ? "#ccc" : "#666",
+                    background: isActive ? "#1e1e1e" : "#2d2d2d",
+                    border: "none",
+                    borderRight: "1px solid #1a1a1a",
+                    ...mono,
                   }}
                 >
-                  {l.n}
-                </span>
-                <span style={{ color: l.fg, whiteSpace: "pre" }}>{l.text}</span>
+                  {file === "linked_list.cpp" && (
+                    <span style={{ color: D.red, marginRight: 4 }}>●</span>
+                  )}
+                  {file}
+                </button>
+              );
+            })}
+          </div>
+
+          <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+            <div style={{ flex: 1, minHeight: 0 }}>
+            {activeFile === "linked_list.cpp" ? (
+              <Suspense
+                fallback={
+                  <div
+                    style={{
+                      height: "100%",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: D.muted,
+                      fontSize: 13,
+                      ...mono,
+                    }}
+                  >
+                    Loading editor...
+                  </div>
+                }
+              >
+                <CodeEditor
+                  value={code}
+                  onChange={setCode}
+                  language="cpp"
+                  highlightLines={[
+                    { line: 15, kind: "warning" },
+                    { line: 19, kind: "error" },
+                    { line: 35, kind: "error" },
+                  ]}
+                />
+              </Suspense>
+            ) : (
+              <div
+                style={{
+                  height: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: D.muted,
+                  fontSize: 13,
+                  ...mono,
+                }}
+              >
+                main.cpp — coming soon
               </div>
-            ))}
-            <div style={{ padding: "12px 60px", color: D.muted, fontSize: 11 }}>
-              ... full file shown in VS Code extension (Sprint 4)
+            )}
             </div>
+            <ConsolePanel
+              result={compileResult}
+              loading={compiling}
+              error={compileError}
+            />
           </div>
         </div>
 
