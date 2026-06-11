@@ -21,6 +21,8 @@ def analyze_dataset(filepath):
     adversarial_termination_count = 0
     two_pivot_termination_count = 0
     
+    vulnerability_distribution = {}
+    
     with open(filepath, 'r') as f:
         for line in f:
             total_count += 1
@@ -30,6 +32,8 @@ def analyze_dataset(filepath):
             metadata = entry.get("metadata", {})
             trigger = metadata.get("trigger", "")
             hidden_vuln = metadata.get("Hidden_Vulnerability", "")
+            if hidden_vuln:
+                vulnerability_distribution[hidden_vuln] = vulnerability_distribution.get(hidden_vuln, 0) + 1
             
             messages = entry.get("messages", [])
             system_prompt = messages[0].get("content", "") if len(messages) > 0 else ""
@@ -90,11 +94,8 @@ def analyze_dataset(filepath):
                             if "true" in analysis_block.split("- Paste_Detection_Check:")[1].split("\n")[0].lower() and "false" not in analysis_block.split("- Paste_Detection_Check:")[1].split("\n")[0].lower():
                                 paste_detected_count += 1
                                 
-                        # Parse Style_Violation_Check
-                        if "- Style_Violation_Check:" in analysis_block:
-                            style_line = analysis_block.split("- Style_Violation_Check:")[1].split("\n")[0].lower()
-                            if "violation" in style_line and "no " not in style_line and "not " not in style_line:
-                                style_flagged_count += 1
+                        if "[STYLE_NUDGE]" in content:
+                            style_flagged_count += 1
                                 
                         # Parse Reward_Check
                         if "- Reward_Check:" in analysis_block:
@@ -135,6 +136,10 @@ def analyze_dataset(filepath):
     print(f"Debug Ideas Unlocked:   {debug_ideas_count} (total tags)")
     print(f"Conceptual Questions:   {conceptual_questions_count} (via Pivot_Check)")
     print(f"Style Flagged:          {style_flagged_count} ({style_flagged_count/total_count:.1%})")
+    print("-" * 26)
+    print("Vulnerability Distribution:")
+    for v, count in sorted(vulnerability_distribution.items(), key=lambda x: x[1], reverse=True):
+        print(f" - {v[:50].ljust(50)} : {count}")
     print("\n")
 
 import argparse
@@ -149,6 +154,6 @@ if __name__ == "__main__":
     if args.filepath:
         target_file = args.filepath
     else:
-        target_file = "synthetic_c_plus_plus_dataset.jsonl" if args.mode == "train" else "eval_c_plus_plus_dataset.jsonl"
+        target_file = "homework_debug_dataset.jsonl"
         
     analyze_dataset(target_file)

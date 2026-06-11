@@ -1,6 +1,9 @@
 import * as vscode from 'vscode';
 import { terminalBuffer, lastExitCode } from './TerminalTracker';
 import * as Parser from 'web-tree-sitter';
+import * as marked from 'marked';
+import * as fs from 'fs';
+import * as path from 'path';
 
 export class TAChatViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'coding-rabbit.chatView';
@@ -12,7 +15,21 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
     private _chatRequestsSinceLastEdit: number = 0;
     private _lastDocumentVersion: number = -1;
     private _hasGivenStyleNudge: boolean = false;
+    private _hasSentWakeup: boolean = false;
+    private _hasProactivelyAskedAboutPaste: boolean = false;
     private _adversarialWarningCount: number = 0;
+    
+    private _totalElapsedSeconds: number = 0;
+    private _isStopwatchPaused: boolean = false;
+    
+    private _activeEditorSeconds: number = 0;
+    private _activeShellSeconds: number = 0;
+    private _activeChatSeconds: number = 0;
+    
+    private _lastActivityTime: number = Date.now();
+    private _lastActivityType: 'editor' | 'shell' | 'chat' = 'editor';
+    private _activityInterval: NodeJS.Timeout;
+    private _currentWebview?: vscode.Webview;
 
     private async getParser(): Promise<Parser> {
         if (this._parser && this._cppLanguage) {
@@ -37,7 +54,77 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
         private readonly _extensionUri: vscode.Uri,
         private readonly _pasteStatusByUri: Map<string, boolean>,
         private readonly _context: vscode.ExtensionContext
-    ) {}
+    ) {
+        // Activity listeners
+        vscode.window.onDidChangeTextEditorSelection((event) => {
+            if (event.textEditor.document.uri.scheme === 'file') {
+                this._recordActivity('editor');
+            }
+        }, null, this._context.subscriptions);
+        
+        let pasteTimeout: NodeJS.Timeout | undefined;
+        vscode.workspace.onDidChangeTextDocument((event) => {
+            if (event.document.uri.scheme !== 'file') return;
+            
+            this._recordActivity('editor');
+            const uri = event.document.uri.toString();
+            
+            if (pasteTimeout) clearTimeout(pasteTimeout);
+            
+            pasteTimeout = setTimeout(() => {
+                if (!this._hasProactivelyAskedAboutPaste && this._pasteStatusByUri.get(uri)) {
+                    this._hasProactivelyAskedAboutPaste = true; // Ask exactly once per session
+                    if (this._currentWebview) {
+                        this._handleAskTA("[IDE_EVENT: The student just pasted a large block of external code. Proactively ask them what part of it they are focusing on, or if they understand what it does. Do not give them the solution.]", "Homework Assist", { webview: this._currentWebview } as any, true);
+                    }
+                }
+            }, 2500);
+        }, null, this._context.subscriptions);
+        vscode.window.onDidChangeActiveTerminal(() => this._recordActivity('shell'), null, this._context.subscriptions);
+        vscode.window.onDidChangeTerminalState(() => this._recordActivity('shell'), null, this._context.subscriptions);
+        
+        // Auto-timer loop
+        this._activityInterval = setInterval(() => {
+            const timeSinceActivity = Date.now() - this._lastActivityTime;
+            const shouldBePaused = timeSinceActivity > 5000;
+            
+            if (!shouldBePaused) {
+                // Increment specific bucket
+                if (this._lastActivityType === 'editor') this._activeEditorSeconds++;
+                else if (this._lastActivityType === 'shell') this._activeShellSeconds++;
+                else if (this._lastActivityType === 'chat') this._activeChatSeconds++;
+                
+                this._totalElapsedSeconds = this._activeEditorSeconds + this._activeShellSeconds + this._activeChatSeconds;
+                
+                if (this._isStopwatchPaused) {
+                    this._isStopwatchPaused = false;
+                    this._notifyStopwatchState();
+                }
+            } else {
+                if (!this._isStopwatchPaused) {
+                    this._isStopwatchPaused = true;
+                    this._notifyStopwatchState();
+                }
+            }
+        }, 1000);
+    }
+    
+    private _notifyStopwatchState() {
+        if (this._currentWebview) {
+            this._currentWebview.postMessage({ 
+                type: 'syncStopwatch', 
+                isPaused: this._isStopwatchPaused, 
+                elapsedSeconds: this._totalElapsedSeconds 
+            });
+        }
+        const outputChannel = TAChatViewProvider.getOutputChannel();
+        outputChannel.appendLine(`[Telemetry] Auto-Stopwatch ${this._isStopwatchPaused ? 'paused' : 'resumed'} (Editor: ${this._activeEditorSeconds}s, Shell: ${this._activeShellSeconds}s, Chat: ${this._activeChatSeconds}s)`);
+    }
+    
+    private _recordActivity(type: 'editor' | 'shell' | 'chat') {
+        this._lastActivityTime = Date.now();
+        this._lastActivityType = type;
+    }
 
     private get _carrots(): number {
         this._checkCarrotReset();
@@ -66,7 +153,10 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
             localResourceRoots: [this._extensionUri]
         };
 
-        webviewView.webview.html = this._getHtmlForWebview(webviewView.webview, this._carrots);
+        let elapsed = this._totalElapsedSeconds;
+        
+        this._currentWebview = webviewView.webview;
+        webviewView.webview.html = this._getHtmlForWebview(webviewView.webview, this._carrots, elapsed, this._isStopwatchPaused);
 
         webviewView.webview.onDidReceiveMessage(async (data) => {
             switch (data.type) {
@@ -87,11 +177,151 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
                     }
                     break;
                 }
+                case 'exportChat': {
+                    this._exportChat();
+                    break;
+                }
+                case 'toggleStopwatch': {
+                    if (!data.isPaused) {
+                        this._recordActivity('chat'); // Manual resume triggers activity
+                    }
+                    break;
+                }
+                case 'webviewReady': {
+                    this._restoreChatHistory(webviewView.webview);
+                    this._prewarmModel();
+                    break;
+                }
             }
         });
     }
 
-    private async _handleAskTA(userMessage: string, mode: string, webviewView: vscode.WebviewView) {
+    private async _prewarmModel() {
+        if (this._hasSentWakeup) return;
+        this._hasSentWakeup = true;
+        try {
+            const apiUrl = vscode.workspace.getConfiguration('codingRabbit').get('apiUrl') || 'http://host.docker.internal:8000/api/chat';
+            const modelName = vscode.workspace.getConfiguration('codingRabbit').get('modelName') || 'codingrabbit-ta';
+            
+            TAChatViewProvider.getOutputChannel().appendLine("[Telemetry] Sending background wakeup ping to pre-warm SageMaker instance...");
+            
+            // Fire and forget - we don't care about the response, we just want to wake up the instance
+            fetch(apiUrl as string, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    model: modelName,
+                    messages: [{ role: "user", content: "[SYSTEM_EVENT: Wakeup SageMaker Instance]" }],
+                    stream: false,
+                    options: { num_predict: 2 } // Keep it extremely short
+                })
+            }).catch(() => { /* ignore network errors on prewarm */ });
+        } catch (e) {
+            TAChatViewProvider.getOutputChannel().appendLine(`[Telemetry] Pre-warm failed: ${e}`);
+        }
+    }
+
+    private async _restoreChatHistory(webview: vscode.Webview) {
+        if (this._conversationHistory.length > 0) {
+            webview.postMessage({ type: 'clearChat' });
+            
+            for (const msg of this._conversationHistory) {
+                let content = msg.content;
+                if (msg.role === 'user') {
+                    if (content.startsWith('[IDE_EVENT:')) {
+                        continue; // Do not show hidden IDE events in the chat history
+                    }
+                    const stateMatch = content.match(/\[State_Tracking\][\s\S]*?\[\/State_Tracking\]/);
+                    if (stateMatch) {
+                        content = content.replace(stateMatch[0], '').trim();
+                    }
+                    webview.postMessage({ type: 'addResponse', text: content, isHtml: false, isThinking: false, isUser: true });
+                } else {
+                    const analysisMatch = content.match(/<analysis>[\s\S]*?<\/analysis>/);
+                    if (analysisMatch) {
+                        content = content.replace(analysisMatch[0], '').trim();
+                    }
+                    
+                    const strayTags = [
+                        '[CONCEPTUAL_HINT]', '[VISUAL_SCAFFOLD]', '[DIRECT_SYNTAX_SCAFFOLD]', 
+                        '[ANALOGY_SCAFFOLD]', '[CONCEPTUAL_INTEGRATION]', '[DIRECT_THEORY_SCAFFOLD]',
+                        '[HIDDEN CoT RATIONALE]', '[STYLE_NUDGE]', '[ADVERSARIAL_WARNING]',
+                        '[DEBUG_IDEA_UNLOCKED]', '[END_CHAT]'
+                    ];
+                    for (const tag of strayTags) {
+                        content = content.split(tag).join('').trim();
+                    }
+                    
+                    const htmlContent = await marked.parse(content);
+                    webview.postMessage({ type: 'addResponse', html: htmlContent, isHtml: true, isThinking: false });
+                }
+            }
+        }
+    }
+
+    private async _exportChat() {
+        if (this._conversationHistory.length === 0) {
+            vscode.window.showInformationMessage("No chat history to export.");
+            return;
+        }
+
+        let markdownContent = "# Coding Rabbit Chat Export\n\n";
+        for (const msg of this._conversationHistory) {
+            const role = msg.role === 'user' ? '**Student**' : '**Coding Rabbit**';
+            let content = msg.content;
+            
+            if (msg.role === 'user' && content.startsWith('[IDE_EVENT:')) {
+                continue; // Do not export hidden IDE events
+            }
+            
+            // Strip out <analysis> tags if present in the TA's raw history
+            const analysisMatch = content.match(/<analysis>[\s\S]*?<\/analysis>/);
+            if (analysisMatch) {
+                content = content.replace(analysisMatch[0], '').trim();
+            }
+            
+            // Strip structural tags
+            const strayTags = [
+                '[CONCEPTUAL_HINT]', '[VISUAL_SCAFFOLD]', '[DIRECT_SYNTAX_SCAFFOLD]', 
+                '[ANALOGY_SCAFFOLD]', '[CONCEPTUAL_INTEGRATION]', '[DIRECT_THEORY_SCAFFOLD]',
+                '[HIDDEN CoT RATIONALE]', '[STYLE_NUDGE]', '[ADVERSARIAL_WARNING]',
+                '[DEBUG_IDEA_UNLOCKED]', '[END_CHAT]'
+            ];
+            for (const tag of strayTags) {
+                content = content.split(tag).join('').trim();
+            }
+
+            // Strip the [State_Tracking] injection from user messages
+            const stateMatch = content.match(/\[State_Tracking\][\s\S]*?\[\/State_Tracking\]/);
+            if (stateMatch) {
+                content = content.replace(stateMatch[0], '').trim();
+            }
+
+            markdownContent += `${role}:\n\n${content}\n\n---\n\n`;
+        }
+
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        let defaultUri: vscode.Uri | undefined;
+        if (workspaceFolders && workspaceFolders.length > 0) {
+            const dateStr = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+            defaultUri = vscode.Uri.joinPath(workspaceFolders[0].uri, `chat_export_${dateStr}.md`);
+        }
+
+        const uri = await vscode.window.showSaveDialog({
+            defaultUri,
+            filters: { 'Markdown': ['md'] },
+            title: 'Save Chat Export'
+        });
+
+        if (uri) {
+            await vscode.workspace.fs.writeFile(uri, Buffer.from(markdownContent, 'utf8'));
+            vscode.window.showInformationMessage("Chat exported successfully!");
+        }
+    }
+
+    private async _handleAskTA(userMessage: string, mode: string, webviewView: any, isHidden: boolean = false) {
+        this._recordActivity('chat');
+        
         if (this._carrots <= 0 && mode !== 'Study Assist') {
             webviewView.webview.postMessage({ type: 'addResponse', text: "Coding Rabbit ate all the carrots and is full and needs a break - Check in with your Human TA if you have more questions before then.", isThinking: false });
             return;
@@ -164,15 +394,17 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
                     (null) @null_val
                     (for_statement) @loop
                     (while_statement) @loop
+                    (return_statement) @return_stmt
+                    (binary_expression operator: ">>" left: (unary_expression operator: "!")) @bad_shift
                 `;
                 const query = this._cppLanguage!.query(queryStr);
-                const matches = query.matches(tree.rootNode);
-                
                 let focusScope = "global";
                 const cursorPos = editor.selection.active;
                 let cursorNode: any = tree.rootNode.descendantForPosition({ row: cursorPos.line, column: cursorPos.character });
+                let targetNode = tree.rootNode;
                 while (cursorNode) {
                     if (cursorNode.type === "function_definition") {
+                        targetNode = cursorNode;
                         const decl = cursorNode.childForFieldName("declarator");
                         if (decl) {
                             const get_id = (n: any): string | null => {
@@ -203,9 +435,12 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
                     Has_Malloc: false,
                     Has_Free: false,
                     Has_Nullptr: false,
-                    Has_Recursion: false
+                    Has_Recursion: false,
+                    Has_Early_Return: false,
+                    Has_Unexpected_Bitwise_Shift: false
                 };
                 
+                const matches = query.matches(targetNode);
                 for (const match of matches) {
                     for (const capture of match.captures) {
                         const tag = capture.name;
@@ -268,6 +503,10 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
                             features.Has_Nullptr = true;
                         } else if (tag === "loop") {
                             features.Has_Loop = true;
+                        } else if (tag === "return_stmt") {
+                            features.Has_Early_Return = true;
+                        } else if (tag === "bad_shift") {
+                            features.Has_Unexpected_Bitwise_Shift = true;
                         }
                     }
                 }
@@ -279,7 +518,7 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
                     (field_declaration) @decl
                 `;
                 const typeQuery = this._cppLanguage!.query(typeQueryStr);
-                const typeMatches = typeQuery.matches(tree.rootNode);
+                const typeMatches = typeQuery.matches(targetNode);
                 
                 for (const match of typeMatches) {
                     const node = match.captures[0].node;
@@ -334,12 +573,12 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
                 
                 // Also check for array as requested before
                 const arrayQuery = this._cppLanguage!.query(`(array_declarator) @is_array`);
-                if (arrayQuery.matches(tree.rootNode).length > 0) {
+                if (arrayQuery.matches(targetNode).length > 0) {
                     // Not officially in python script's Features block, but mentioned in prompt rules.
                     // We'll leave it out of Features to strictly match python, but we can add it if needed.
                 }
                 
-                astMetadata = `AST_Metadata:\n- Focus_Scope: "${focusScope}"\n- Variable_Types: ${JSON.stringify(variableTypes)}\n- Features: ${JSON.stringify(features)}`;
+                astMetadata = `AST_Metadata:\n- Focus_Scope: "${focusScope}"\n- Target_Variables: ${JSON.stringify(variableTypes)}\n- Features: ${JSON.stringify(features)}`;
             } catch (err) {
                 TAChatViewProvider.getOutputChannel().appendLine(`AST Parsing Error: ${err}`);
                 astMetadata = 'AST_Metadata: (Error Parsing AST)';
@@ -392,11 +631,17 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
 
         // The dynamic context that changes on every turn
         const pasteContext = likelyPasteDetected ? "Likely_Paste_Detected: true\n" : "Likely_Paste_Detected: false\n";
-        const dynamicContext = `[State_Tracking]
+        
+        let dynamicContext = `[State_Tracking]
 Session_Style_Nudged: ${this._hasGivenStyleNudge}
 Session_Adversarial_Warnings: ${this._adversarialWarningCount}
-[Code_Context]
-Mode: ${mode}
+Active_Editor_Time_Sec: ${this._activeEditorSeconds}
+Active_Shell_Time_Sec: ${this._activeShellSeconds}
+Active_Chat_Time_Sec: ${this._activeChatSeconds}
+Mode: ${mode}`;
+
+        if (mode !== 'Study Assist') {
+            dynamicContext += `\n[Code_Context]
 ${pasteContext}Raw_Code:
 ${rawCode}
 ${astMetadata}
@@ -404,6 +649,7 @@ ${astMetadata}
 Exit_Code: ${exitCode}
 Output:
 ${terminalOutput}`;
+        }
 
         // We should send the message to the webview that we're thinking
         webviewView.webview.postMessage({ type: 'addResponse', text: "...", isThinking: true });
@@ -418,7 +664,17 @@ ${terminalOutput}`;
         }
 
         // Prepare API messages
-        const apiMessages = windowedHistory.map(msg => ({ role: msg.role, content: msg.content }));
+        const apiMessages = windowedHistory.map(msg => {
+            let content = msg.content;
+            // If in Study Assist mode, aggressively blindfold the LLM from its past thoughts about the code
+            if (mode === 'Study Assist' && msg.role === 'assistant') {
+                const analysisMatch = content.match(/<analysis>[\s\S]*?<\/analysis>/);
+                if (analysisMatch) {
+                    content = content.replace(analysisMatch[0], '').trim();
+                }
+            }
+            return { role: msg.role, content: content };
+        });
         
         // Inject dynamic context into the very last user message for perfect KV caching
         apiMessages[apiMessages.length - 1].content = `${dynamicContext}\n\n[Student_Question]\n${userMessage}`;
@@ -467,9 +723,16 @@ ${terminalOutput}`;
             }
 
             const data: any = await response.json();
-            const rawTaResponse = data.message?.content || "No response generated.";
+            let rawTaResponse = data.message?.content || "No response generated.";
             
             let displayResponse = rawTaResponse;
+
+            if (rawTaResponse.toLowerCase().includes("style_violation_check") && rawTaResponse.toLowerCase().includes("nudge") && !this._hasGivenStyleNudge) {
+                if (!displayResponse.includes('[STYLE_NUDGE]')) {
+                    displayResponse += " [STYLE_NUDGE]";
+                    rawTaResponse += " [STYLE_NUDGE]";
+                }
+            }
             
             // Strip the <analysis> block out of the text displayed to the user UI
             const analysisMatch = displayResponse.match(/<analysis>[\s\S]*?<\/analysis>/);
@@ -510,7 +773,8 @@ ${terminalOutput}`;
                 } else {
                     displayResponse += `\n\n*(Session ended.)*`;
                 }
-                webviewView.webview.postMessage({ type: 'addResponse', text: displayResponse, isThinking: false });
+                const htmlContent = await marked.parse(displayResponse);
+                webviewView.webview.postMessage({ type: 'addResponse', html: htmlContent, isHtml: true, isThinking: false });
             } else {
                 if (displayResponse.includes('[DEBUG_IDEA_UNLOCKED]')) {
                     displayResponse = displayResponse.replace(/\[DEBUG_IDEA_UNLOCKED\]/g, '').trim();
@@ -531,12 +795,22 @@ ${terminalOutput}`;
                     this._conversationHistory = this._conversationHistory.slice(this._conversationHistory.length - 10);
                 }
                 
-                // Send the stripped response to the UI
-                webviewView.webview.postMessage({ type: 'addResponse', text: displayResponse, isThinking: false });
+                // Parse markdown to HTML
+                const htmlContent = await marked.parse(displayResponse);
+
+                // Send the stripped HTML response to the UI
+                webviewView.webview.postMessage({ type: 'addResponse', html: htmlContent, isHtml: true, isThinking: false });
             }
         } catch (err: any) {
             const outputChannel = TAChatViewProvider.getOutputChannel();
             outputChannel.appendLine(`\n[API ERROR]: ${err.message || err}`);
+            
+            // Critical Fix: Pop the user's message out of the history if the API request failed!
+            // If we don't do this, multiple timeouts/errors will stack multiple {"role": "user"} messages
+            // in a row without an intervening {"role": "assistant"} message, which causes Qwen to crash with a 500.
+            if (this._conversationHistory.length > 0 && this._conversationHistory[this._conversationHistory.length - 1].role === "user") {
+                this._conversationHistory.pop();
+            }
             
             webviewView.webview.postMessage({ 
                 type: 'addResponse', 
@@ -546,7 +820,7 @@ ${terminalOutput}`;
         }
     }
 
-    private _getHtmlForWebview(webview: vscode.Webview, carrots: number) {
+    private _getHtmlForWebview(webview: vscode.Webview, carrots: number, elapsed: number, isPaused: boolean) {
         return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -563,6 +837,9 @@ ${terminalOutput}`;
         textarea { width: 100%; box-sizing: border-box; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); padding: 8px; resize: vertical; min-height: 60px; font-family: inherit; }
         button, select { margin-top: 5px; width: 100%; padding: 8px; background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; cursor: pointer; }
         button:hover { background: var(--vscode-button-hoverBackground); }
+        pre { background-color: var(--vscode-textCodeBlock-background); padding: 8px; border-radius: 4px; overflow-x: auto; font-family: var(--vscode-editor-font-family); }
+        code { font-family: var(--vscode-editor-font-family); color: var(--vscode-textPreformat-foreground); }
+        p { margin: 8px 0; line-height: 1.4; }
     </style>
 </head>
 <body>
@@ -580,7 +857,11 @@ ${terminalOutput}`;
                 <option value="Study Assist">Mode: Study Assist</option>
             </select>
             <textarea id="chatInput" placeholder="Ask a question... (Enter to send, Shift+Enter for new line)"></textarea>
-            <button id="terminalBtn" style="background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); margin-top: 4px;">Start Tracked Terminal</button>
+            <div style="display: flex; gap: 4px; margin-top: 4px;">
+                <button id="terminalBtn" style="background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); flex: 1;">Start Tracked Terminal</button>
+                <button id="exportBtn" style="background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); flex: 1;">Export Chat</button>
+                <button id="stopwatchBtn" style="background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); flex: 1;">⏸ Pause Time</button>
+            </div>
         </div>
     </div>
     <script>
@@ -588,7 +869,41 @@ ${terminalOutput}`;
         const input = document.getElementById('chatInput');
         const modeSelect = document.getElementById('modeSelect');
         const terminalBtn = document.getElementById('terminalBtn');
+        const exportBtn = document.getElementById('exportBtn');
+        const stopwatchBtn = document.getElementById('stopwatchBtn');
         const messages = document.getElementById('messages');
+        
+        let isPaused = ${isPaused};
+        let elapsedSeconds = ${elapsed};
+        let timerInterval = null;
+
+        function formatTime(seconds) {
+            const h = Math.floor(seconds / 3600).toString().padStart(2, '0');
+            const m = Math.floor((seconds % 3600) / 60).toString().padStart(2, '0');
+            const s = (seconds % 60).toString().padStart(2, '0');
+            return h + ':' + m + ':' + s;
+        }
+
+        function updateStopwatchUI() {
+            if (isPaused) {
+                stopwatchBtn.innerText = '▶ Resume (' + formatTime(elapsedSeconds) + ')';
+            } else {
+                stopwatchBtn.innerText = '⏸ Pause (' + formatTime(elapsedSeconds) + ')';
+            }
+        }
+
+        function startTimer() {
+            if (timerInterval) clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                if (!isPaused) {
+                    elapsedSeconds++;
+                    updateStopwatchUI();
+                }
+            }, 1000);
+        }
+
+        updateStopwatchUI();
+        startTimer();
         
         let thinkingElement = null;
 
@@ -602,7 +917,24 @@ ${terminalOutput}`;
             vscode.postMessage({ type: 'startTerminal' });
         });
         
+        exportBtn.addEventListener('click', () => {
+            vscode.postMessage({ type: 'exportChat' });
+        });
+        
+        stopwatchBtn.addEventListener('click', () => {
+            // Manual toggle sends a fake activity burst if resuming, or force-sets state temporarily
+            // Note: Auto-timer will naturally override this after 5s of inactivity
+            isPaused = !isPaused;
+            updateStopwatchUI();
+            vscode.postMessage({ type: 'toggleStopwatch', isPaused, elapsedSeconds });
+        });
+        
+        // Signal that the webview DOM is fully loaded and ready to receive messages
+        vscode.postMessage({ type: 'webviewReady' });
+        
         input.addEventListener('keydown', (event) => {
+            // Typing is an activity
+            vscode.postMessage({ type: 'toggleStopwatch', isPaused: false, elapsedSeconds });
             if (event.key === 'Enter' && !event.shiftKey) {
                 event.preventDefault(); // Prevent default newline
                 const text = input.value.trim();
@@ -618,17 +950,33 @@ ${terminalOutput}`;
         window.addEventListener('message', event => {
             const message = event.data;
             switch (message.type) {
+                case 'syncStopwatch':
+                    isPaused = message.isPaused;
+                    elapsedSeconds = message.elapsedSeconds;
+                    updateStopwatchUI();
+                    break;
+                case 'clearChat':
+                    messages.innerHTML = '';
+                    break;
                 case 'addResponse':
                     if (message.isThinking) {
                         thinkingElement = addMessage(message.text, 'ta-message');
                     } else {
-                        if (thinkingElement) {
-                            thinkingElement.innerText = message.text;
+                        const content = message.isHtml ? message.html : message.text;
+                        const msgClass = message.isUser ? 'user-message' : 'ta-message';
+                        if (thinkingElement && !message.isUser) {
+                            if (message.isHtml) {
+                                thinkingElement.innerHTML = content;
+                            } else {
+                                thinkingElement.innerText = content;
+                            }
                             thinkingElement = null;
                         } else {
-                            addMessage(message.text, 'ta-message');
+                            addMessage(content, msgClass, message.isHtml);
                         }
                     }
+                    // Scroll to bottom
+                    messages.scrollTop = messages.scrollHeight;
                     break;
                 case 'updateCarrots':
                     const cc = document.getElementById('carrotCount');
@@ -637,10 +985,14 @@ ${terminalOutput}`;
             }
         });
 
-        function addMessage(text, className) {
+        function addMessage(content, className, isHtml = false) {
             const div = document.createElement('div');
             div.className = 'message ' + className;
-            div.innerText = text; // simple text rendering for now (no markdown parsing yet)
+            if (isHtml) {
+                div.innerHTML = content;
+            } else {
+                div.innerText = content;
+            }
             messages.appendChild(div);
             // Scroll to the bottom to ensure the user sees the latest response and carrot updates
             messages.scrollTop = messages.scrollHeight;

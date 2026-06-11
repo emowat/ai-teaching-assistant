@@ -56,36 +56,60 @@ async def chat_endpoint(request: Request):
             print(json.dumps(payload, indent=2))
             print("------------------------------------")
             
-            async def stream_generator():
-                full_llm_response = ""
+            is_streaming = payload.get("stream", True)
+            
+            if not is_streaming:
                 async with httpx.AsyncClient() as client:
-                    async with client.stream("POST", UPSTREAM_OLLAMA_URL, json=payload, timeout=60.0) as response:
-                        if response.status_code != 200:
-                            yield json.dumps({"error": f"Upstream returned {response.status_code}"})
-                            return
+                    response = await client.post(UPSTREAM_OLLAMA_URL, json=payload, timeout=300.0)
+                    if response.status_code != 200:
+                        print(f"OLLAMA HTTP {response.status_code} ERROR: {response.text}")
+                        raise HTTPException(status_code=response.status_code, detail=response.text)
+                    
+                    data = response.json()
+                    full_llm_response = data.get("message", {}).get("content", "")
+                    
+                    # Write cleanly formatted log locally
+                    with open("orchestrator.log", "a") as log_file:
+                        log_file.write(f"\n{'='*50}\n")
+                        log_file.write("--- INCOMING STUDENT REQUEST ---\n")
+                        log_file.write(last_user_msg["content"] + "\n\n")
+                        log_file.write("--- GENERATED TA RESPONSE ---\n")
+                        log_file.write(full_llm_response + "\n")
+                        log_file.write(f"{'='*50}\n")
                         
-                        async for chunk in response.aiter_bytes():
-                            try:
-                                # Ollama returns NDJSON. Parse chunk to accumulate the assistant's message
-                                data = json.loads(chunk.decode("utf-8"))
-                                if "message" in data and "content" in data["message"]:
-                                    full_llm_response += data["message"]["content"]
-                            except:
-                                pass
-                            yield chunk
-                
-                # Write cleanly formatted log locally
-                with open("orchestrator.log", "a") as log_file:
-                    log_file.write(f"\n{'='*50}\n")
-                    log_file.write("--- INCOMING STUDENT REQUEST ---\n")
-                    log_file.write(last_user_msg["content"] + "\n\n")
-                    log_file.write("--- GENERATED TA RESPONSE ---\n")
-                    log_file.write(full_llm_response + "\n")
-                    log_file.write(f"{'='*50}\n")
+                    return data
+            else:
+                async def stream_generator():
+                    full_llm_response = ""
+                    async with httpx.AsyncClient() as client:
+                        async with client.stream("POST", UPSTREAM_OLLAMA_URL, json=payload, timeout=300.0) as response:
+                            if response.status_code != 200:
+                                yield json.dumps({"error": f"Upstream returned {response.status_code}"})
+                                return
+                            
+                            async for chunk in response.aiter_bytes():
+                                try:
+                                    # Ollama returns NDJSON. Parse chunk to accumulate the assistant's message
+                                    data = json.loads(chunk.decode("utf-8"))
+                                    if "message" in data and "content" in data["message"]:
+                                        full_llm_response += data["message"]["content"]
+                                except:
+                                    pass
+                                yield chunk
+                    
+                    # Write cleanly formatted log locally
+                    with open("orchestrator.log", "a") as log_file:
+                        log_file.write(f"\n{'='*50}\n")
+                        log_file.write("--- INCOMING STUDENT REQUEST ---\n")
+                        log_file.write(last_user_msg["content"] + "\n\n")
+                        log_file.write("--- GENERATED TA RESPONSE ---\n")
+                        log_file.write(full_llm_response + "\n")
+                        log_file.write(f"{'='*50}\n")
 
-            return StreamingResponse(stream_generator(), media_type="application/x-ndjson")
+                return StreamingResponse(stream_generator(), media_type="application/x-ndjson")
 
     except Exception as e:
+        print(f"ERROR IN ORCHESTRATOR: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/health")

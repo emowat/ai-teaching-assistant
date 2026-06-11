@@ -78,6 +78,9 @@ export function activate(context: vscode.ExtensionContext) {
                 if (!isInternalCopy && !isInternalCut) {
                     likelyPaste = true;
                 }
+            } else if (change.rangeLength > 30 && change.text.trim().length === 0) {
+                // This is likely an Undo of a previous paste or a large deletion
+                pasteStatusByUri.set(uri, false);
             }
         }
 
