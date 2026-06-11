@@ -1,5 +1,10 @@
 import { useState } from "react";
 import { useAuth } from "react-oidc-context";
+import {
+  getRedirectOrigin,
+  getRedirectUri,
+  hasOriginMismatch,
+} from "../auth/cognitoConfig";
 import { Btn, Card, Tag } from "../design/atoms";
 import { D, mono } from "../design/tokens";
 import type { AppView } from "../types/navigation";
@@ -14,10 +19,6 @@ export function LandingPage({ onNavigate, demoMode = false }: LandingPageProps) 
   const [hover, setHover] = useState<string | null>(null);
 
   const handleLogin = () => {
-    if (demoMode) {
-      onNavigate("student");
-      return;
-    }
     void auth.signinRedirect();
   };
 
@@ -52,8 +53,31 @@ export function LandingPage({ onNavigate, demoMode = false }: LandingPageProps) 
           <span style={{ fontSize: 16 }}>🐇</span>
           <Tag>Beta</Tag>
         </div>
-        <Btn onClick={handleLogin}>Login →</Btn>
+        <Btn onClick={handleLogin} disabled={hasOriginMismatch()}>
+          Login →
+        </Btn>
       </nav>
+
+      {hasOriginMismatch() && (
+        <div
+          style={{
+            margin: "12px 48px 0",
+            padding: "12px 16px",
+            background: `${D.red}18`,
+            border: `1px solid ${D.red}40`,
+            borderRadius: 8,
+            fontSize: 13,
+            lineHeight: 1.5,
+          }}
+        >
+          <strong>Wrong URL for Cognito login.</strong> Open the app at{" "}
+          <a href={getRedirectOrigin()} style={{ color: D.orange }}>
+            {getRedirectOrigin()}
+          </a>{" "}
+          (configured callback: <code>{getRedirectUri()}</code>). You are on{" "}
+          <code>{window.location.origin}</code>.
+        </div>
+      )}
 
       <section
         style={{

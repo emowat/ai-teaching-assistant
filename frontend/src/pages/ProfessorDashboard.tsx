@@ -16,7 +16,8 @@ import type { AppView } from "../types/navigation";
 
 interface ProfessorDashboardProps {
   onNavigate: (view: AppView) => void;
-  demoMode?: boolean;
+  allowedViews: AppView[];
+  onSignOut: () => void;
 }
 
 // STUB — replace when GET /professor/sections/:id/students is available
@@ -52,7 +53,11 @@ const profTabs = [
   { key: "analytics", icon: "📊", label: "Analytics" },
 ];
 
-export function ProfessorDashboard({ onNavigate, demoMode = false }: ProfessorDashboardProps) {
+export function ProfessorDashboard({
+  onNavigate,
+  allowedViews,
+  onSignOut,
+}: ProfessorDashboardProps) {
   const [tab, setTab] = useState("overview");
   const [monitorId, setMonitorId] = useState<string | null>(null);
 
@@ -69,7 +74,12 @@ export function ProfessorDashboard({ onNavigate, demoMode = false }: ProfessorDa
         fontFamily: "system-ui, sans-serif",
       }}
     >
-      <TopBar view="professor" onNavigate={onNavigate} demoMode={demoMode} />
+      <TopBar
+        view="professor"
+        onNavigate={onNavigate}
+        allowedViews={allowedViews}
+        onSignOut={onSignOut}
+      />
       <div
         style={{
           padding: "9px 20px",

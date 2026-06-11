@@ -1,13 +1,22 @@
+import { getViewLabel } from "../auth/roleAccess";
 import { D, mono } from "../design/tokens";
 import type { AppView } from "../types/navigation";
 
 interface TopBarProps {
   view: AppView;
   onNavigate: (view: AppView) => void;
-  demoMode?: boolean;
+  allowedViews?: AppView[];
+  onSignOut?: () => void;
 }
 
-export function TopBar({ view, onNavigate, demoMode = false }: TopBarProps) {
+export function TopBar({
+  view,
+  onNavigate,
+  allowedViews = [],
+  onSignOut,
+}: TopBarProps) {
+  const showSwitcher = allowedViews.length > 1 && view !== "landing";
+
   return (
     <div
       style={{
@@ -40,35 +49,48 @@ export function TopBar({ view, onNavigate, demoMode = false }: TopBarProps) {
         <span style={{ fontSize: 14 }}>🐇</span>
       </button>
 
-      {demoMode && view !== "landing" && (
-        <div style={{ display: "flex", gap: 5 }}>
-          {(
-            [
-              { v: "admin" as const, label: "Admin" },
-              { v: "professor" as const, label: "Professor" },
-              { v: "student" as const, label: "Student" },
-            ] as const
-          ).map(({ v, label }) => (
-            <button
-              key={v}
-              type="button"
-              onClick={() => onNavigate(v)}
-              style={{
-                background: view === v ? D.orangeGlow : "transparent",
-                border: `1px solid ${view === v ? D.orangeBorder : D.border}`,
-                color: view === v ? D.orange : D.muted,
-                borderRadius: 6,
-                padding: "4px 11px",
-                cursor: "pointer",
-                fontSize: 12,
-                fontWeight: view === v ? 500 : 400,
-              }}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      )}
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        {showSwitcher && (
+          <div style={{ display: "flex", gap: 5 }}>
+            {allowedViews.map((v) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => onNavigate(v)}
+                style={{
+                  background: view === v ? D.orangeGlow : "transparent",
+                  border: `1px solid ${view === v ? D.orangeBorder : D.border}`,
+                  color: view === v ? D.orange : D.muted,
+                  borderRadius: 6,
+                  padding: "4px 11px",
+                  cursor: "pointer",
+                  fontSize: 12,
+                  fontWeight: view === v ? 500 : 400,
+                }}
+              >
+                {getViewLabel(v)}
+              </button>
+            ))}
+          </div>
+        )}
+        {onSignOut && (
+          <button
+            type="button"
+            onClick={onSignOut}
+            style={{
+              background: "transparent",
+              border: `1px solid ${D.border}`,
+              color: D.muted,
+              borderRadius: 6,
+              padding: "4px 11px",
+              cursor: "pointer",
+              fontSize: 12,
+            }}
+          >
+            Sign out
+          </button>
+        )}
+      </div>
     </div>
   );
 }

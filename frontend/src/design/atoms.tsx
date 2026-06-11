@@ -34,6 +34,7 @@ interface BtnProps {
   onClick?: () => void;
   variant?: BtnVariant;
   small?: boolean;
+  disabled?: boolean;
   style?: CSSProperties;
 }
 
@@ -42,6 +43,7 @@ export function Btn({
   onClick,
   variant = "primary",
   small,
+  disabled,
   style: sx = {},
 }: BtnProps) {
   const pad = small ? "5px 11px" : "8px 18px";
@@ -63,13 +65,15 @@ export function Btn({
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       style={{
         ...map[variant],
         borderRadius: 6,
         padding: pad,
         fontSize: fs,
         fontWeight: 500,
-        cursor: "pointer",
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.5 : 1,
         fontFamily: "inherit",
         ...sx,
       }}

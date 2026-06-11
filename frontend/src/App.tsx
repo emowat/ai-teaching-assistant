@@ -1,66 +1,97 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "react-oidc-context";
 import { getPrimaryRole, getUserGroups } from "./auth/getUserGroups";
+import {
+  canAccessView,
+  getAllowedViews,
+  getDefaultView,
+} from "./auth/roleAccess";
 import { AdminDashboard } from "./pages/AdminDashboard";
-import { AuthCallbackPage } from "./pages/AuthCallbackPage";
 import { LandingPage } from "./pages/LandingPage";
+import { signOutCognito } from "./auth/signOutCognito";
 import { ProfessorDashboard } from "./pages/ProfessorDashboard";
 import { StudentInterface } from "./pages/StudentInterface";
 import type { AppView } from "./types/navigation";
 import { D } from "./design/tokens";
+import { validateCognitoEnv } from "./auth/validateCognitoConfig";
 
-function roleToView(role: string | null): AppView {
-  if (role === "admin") return "admin";
-  if (role === "professor") return "professor";
-  if (role === "student") return "student";
-  return "landing";
-}
+const cognitoEnv = validateCognitoEnv();
 
 function App() {
   const auth = useAuth();
   const groups = getUserGroups(auth.user?.profile);
   const role = getPrimaryRole(groups);
-  const defaultView = roleToView(role);
+  const defaultView = getDefaultView(role);
+  const allowedViews = getAllowedViews(role);
 
   const demoMode = import.meta.env.DEV;
   const [viewOverride, setViewOverride] = useState<AppView | null>(null);
 
-  const isCallback =
-    window.location.pathname === "/auth/callback" ||
-    window.location.pathname.endsWith("/auth/callback");
-
   useEffect(() => {
-    if (auth.isAuthenticated && isCallback) {
-      window.history.replaceState({}, document.title, "/");
-    }
-  }, [auth.isAuthenticated, isCallback]);
-
-  useEffect(() => {
-    if (auth.isAuthenticated && !demoMode) {
+    if (viewOverride && !canAccessView(role, viewOverride)) {
       setViewOverride(null);
     }
-  }, [auth.isAuthenticated, role, demoMode]);
+  }, [role, viewOverride]);
 
   const activeView = useMemo(() => {
-    if (demoMode && viewOverride) return viewOverride;
+    if (viewOverride && canAccessView(role, viewOverride)) return viewOverride;
+    if (demoMode && viewOverride && !auth.isAuthenticated) return viewOverride;
     if (auth.isAuthenticated) return defaultView;
     return "landing";
-  }, [auth.isAuthenticated, defaultView, demoMode, viewOverride]);
+  }, [auth.isAuthenticated, defaultView, demoMode, role, viewOverride]);
+
+  const handleSignOut = () => {
+    void signOutCognito(auth);
+  };
 
   const navigate = (view: AppView) => {
-    if (demoMode) {
+    if (view === "landing" && auth.isAuthenticated) {
+      handleSignOut();
+      return;
+    }
+    if (auth.isAuthenticated && canAccessView(role, view)) {
       setViewOverride(view);
       return;
     }
-    if (view === "landing" && auth.isAuthenticated) {
-      void auth.signoutRedirect({
-        post_logout_redirect_uri: import.meta.env.VITE_COGNITO_LOGOUT_URI,
-      });
+    if (demoMode && !auth.isAuthenticated) {
+      setViewOverride(view);
     }
   };
 
-  if (isCallback) {
-    return <AuthCallbackPage />;
+  const dashboardProps = {
+    onNavigate: navigate,
+    allowedViews,
+    onSignOut: handleSignOut,
+  };
+
+  if (!cognitoEnv.ok) {
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          background: D.bg,
+          color: D.text,
+          fontFamily: "system-ui, sans-serif",
+          padding: 48,
+          maxWidth: 640,
+        }}
+      >
+        <h2 style={{ marginTop: 0 }}>Cognito not configured</h2>
+        <p style={{ color: D.muted }}>
+          Missing environment variables in the repo root <code>.env</code>:
+        </p>
+        <ul>
+          {cognitoEnv.missing.map((key) => (
+            <li key={key}>
+              <code>{key}</code>
+            </li>
+          ))}
+        </ul>
+        <p style={{ color: D.muted, fontSize: 14 }}>
+          Restart <code>npm run dev</code> after updating <code>.env</code>.
+        </p>
+      </div>
+    );
   }
 
   if (auth.isLoading) {
@@ -108,13 +139,13 @@ function App() {
   }
 
   if (activeView === "admin") {
-    return <AdminDashboard onNavigate={navigate} demoMode={demoMode} />;
+    return <AdminDashboard {...dashboardProps} />;
   }
   if (activeView === "professor") {
-    return <ProfessorDashboard onNavigate={navigate} demoMode={demoMode} />;
+    return <ProfessorDashboard {...dashboardProps} />;
   }
   if (activeView === "student") {
-    return <StudentInterface onNavigate={navigate} demoMode={demoMode} />;
+    return <StudentInterface {...dashboardProps} />;
   }
 
   return (
@@ -131,11 +162,7 @@ function App() {
       <p>No Cognito group assigned. Contact an administrator.</p>
       <button
         type="button"
-        onClick={() =>
-          auth.signoutRedirect({
-            post_logout_redirect_uri: import.meta.env.VITE_COGNITO_LOGOUT_URI,
-          })
-        }
+        onClick={handleSignOut}
         style={{
           marginTop: 16,
           background: D.orange,

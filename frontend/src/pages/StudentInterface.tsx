@@ -6,7 +6,8 @@ import type { AppView } from "../types/navigation";
 
 interface StudentInterfaceProps {
   onNavigate: (view: AppView) => void;
-  demoMode?: boolean;
+  allowedViews: AppView[];
+  onSignOut: () => void;
 }
 
 interface ChatMessage {
@@ -39,7 +40,11 @@ const initialMessages: ChatMessage[] = [
   },
 ];
 
-export function StudentInterface({ onNavigate, demoMode = false }: StudentInterfaceProps) {
+export function StudentInterface({
+  onNavigate,
+  allowedViews,
+  onSignOut,
+}: StudentInterfaceProps) {
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
   const [input, setInput] = useState("");
 
@@ -70,7 +75,12 @@ export function StudentInterface({ onNavigate, demoMode = false }: StudentInterf
         fontFamily: "system-ui, sans-serif",
       }}
     >
-      <TopBar view="student" onNavigate={onNavigate} demoMode={demoMode} />
+      <TopBar
+        view="student"
+        onNavigate={onNavigate}
+        allowedViews={allowedViews}
+        onSignOut={onSignOut}
+      />
 
       <div
         style={{

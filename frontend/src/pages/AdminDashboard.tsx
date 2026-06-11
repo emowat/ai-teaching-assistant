@@ -19,7 +19,8 @@ import type { AppView } from "../types/navigation";
 
 interface AdminDashboardProps {
   onNavigate: (view: AppView) => void;
-  demoMode?: boolean;
+  allowedViews: AppView[];
+  onSignOut: () => void;
 }
 
 // STUB — replace when analytics API is available
@@ -76,7 +77,11 @@ const adminTabs = [
   { key: "courses", icon: "🎓", label: "Courses" },
 ];
 
-export function AdminDashboard({ onNavigate, demoMode = false }: AdminDashboardProps) {
+export function AdminDashboard({
+  onNavigate,
+  allowedViews,
+  onSignOut,
+}: AdminDashboardProps) {
   const [tab, setTab] = useState("stats");
   const [healthOk, setHealthOk] = useState<boolean | null>(null);
 
@@ -114,7 +119,12 @@ export function AdminDashboard({ onNavigate, demoMode = false }: AdminDashboardP
         fontFamily: "system-ui, sans-serif",
       }}
     >
-      <TopBar view="admin" onNavigate={onNavigate} demoMode={demoMode} />
+      <TopBar
+        view="admin"
+        onNavigate={onNavigate}
+        allowedViews={allowedViews}
+        onSignOut={onSignOut}
+      />
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
         <Sidebar tabs={adminTabs} active={tab} onTab={setTab} footer={footer} />
 
