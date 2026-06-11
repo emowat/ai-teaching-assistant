@@ -1,0 +1,1088 @@
+[
+  {
+    "page": 11,
+    "section": "",
+    "text": "RGB",
+    "has_code": false
+  },
+  {
+    "page": 17,
+    "section": "",
+    "text": "0 1 2 3 4 5 6 7 8 9 A B C D E F",
+    "has_code": false
+  },
+  {
+    "page": 18,
+    "section": "",
+    "text": "0 1 2 3 4 5 6 7 8 9 A B C D E F",
+    "has_code": false
+  },
+  {
+    "page": 19,
+    "section": "",
+    "text": "0 1 2 3 4 5 6 7 8 9 a b c d e f",
+    "has_code": false
+  },
+  {
+    "page": 20,
+    "section": "",
+    "text": "0 1 2 3 4 5 6 7 8 9 A B C D E F",
+    "has_code": false
+  },
+  {
+    "page": 21,
+    "section": "",
+    "text": "hexadecimal",
+    "has_code": false
+  },
+  {
+    "page": 22,
+    "section": "",
+    "text": "base-16",
+    "has_code": false
+  },
+  {
+    "page": 23,
+    "section": "",
+    "text": "# #\n161\n160",
+    "has_code": false
+  },
+  {
+    "page": 24,
+    "section": "",
+    "text": "# #\n16\n1",
+    "has_code": false
+  },
+  {
+    "page": 25,
+    "section": "00",
+    "text": "00\n16\n1",
+    "has_code": false
+  },
+  {
+    "page": 26,
+    "section": "01",
+    "text": "01\n16\n1",
+    "has_code": false
+  },
+  {
+    "page": 27,
+    "section": "02",
+    "text": "02\n16\n1",
+    "has_code": false
+  },
+  {
+    "page": 28,
+    "section": "03",
+    "text": "03\n16\n1",
+    "has_code": false
+  },
+  {
+    "page": 29,
+    "section": "04",
+    "text": "04\n16\n1",
+    "has_code": false
+  },
+  {
+    "page": 30,
+    "section": "05",
+    "text": "05\n16\n1",
+    "has_code": false
+  },
+  {
+    "page": 31,
+    "section": "06",
+    "text": "06\n16\n1",
+    "has_code": false
+  },
+  {
+    "page": 32,
+    "section": "07",
+    "text": "07\n16\n1",
+    "has_code": false
+  },
+  {
+    "page": 33,
+    "section": "08",
+    "text": "08\n16\n1",
+    "has_code": false
+  },
+  {
+    "page": 34,
+    "section": "09",
+    "text": "09\n16\n1",
+    "has_code": false
+  },
+  {
+    "page": 35,
+    "section": "09",
+    "text": "0A\n16\n1",
+    "has_code": false
+  },
+  {
+    "page": 36,
+    "section": "09",
+    "text": "0B\n16\n1",
+    "has_code": false
+  },
+  {
+    "page": 37,
+    "section": "09",
+    "text": "0C\n16\n1",
+    "has_code": false
+  },
+  {
+    "page": 38,
+    "section": "09",
+    "text": "0D\n16\n1",
+    "has_code": false
+  },
+  {
+    "page": 39,
+    "section": "09",
+    "text": "0E\n16\n1",
+    "has_code": false
+  },
+  {
+    "page": 40,
+    "section": "09",
+    "text": "0F\n16\n1",
+    "has_code": false
+  },
+  {
+    "page": 41,
+    "section": "10",
+    "text": "10\n16\n1",
+    "has_code": false
+  },
+  {
+    "page": 42,
+    "section": "11",
+    "text": "11\n16\n1",
+    "has_code": false
+  },
+  {
+    "page": 43,
+    "section": "12",
+    "text": "12\n16\n1",
+    "has_code": false
+  },
+  {
+    "page": 44,
+    "section": "12",
+    "text": "…\n16\n1",
+    "has_code": false
+  },
+  {
+    "page": 45,
+    "section": "12",
+    "text": "FF\n16\n1",
+    "has_code": false
+  },
+  {
+    "page": 46,
+    "section": "12",
+    "text": "FF\n16\n1\n16 × F\n1 × F\n+",
+    "has_code": false
+  },
+  {
+    "page": 47,
+    "section": "12",
+    "text": "FF\n16\n1\n16 × 15\n1 × 15\n+",
+    "has_code": false
+  },
+  {
+    "page": 48,
+    "section": "12",
+    "text": "FF\n16\n1\n240\n15\n+",
+    "has_code": false
+  },
+  {
+    "page": 49,
+    "section": "12",
+    "text": "FF\n16\n1\n255",
+    "has_code": false
+  },
+  {
+    "page": 50,
+    "section": "12",
+    "text": "FF",
+    "has_code": false
+  },
+  {
+    "page": 51,
+    "section": "12",
+    "text": "F F",
+    "has_code": false
+  },
+  {
+    "page": 52,
+    "section": "12",
+    "text": "1111 1111",
+    "has_code": false
+  },
+  {
+    "page": 54,
+    "section": "0",
+    "text": "0\n1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15\n16\n17\n18\n19\n20\n21\n22\n23\n24\n25\n26\n27\n28\n29\n30\n31",
+    "has_code": false
+  },
+  {
+    "page": 55,
+    "section": "0",
+    "text": "0\n1\n2\n3\n4\n5\n6\n7\n8\n9\nA\nB\nC\nD\nE\nF\n10\n11\n12\n13\n14\n15\n16\n17\n18\n19\n1A\n1B\n1C\n1D\n1E\n1F",
+    "has_code": false
+  },
+  {
+    "page": 56,
+    "section": "0",
+    "text": "0\n1\n2\n3\n4\n5\n6\n7\n8\n9\nA\nB\nC\nD\nE\nF\n10\n11\n12\n13\n14\n15\n16\n17\n18\n19\n1A\n1B\n1C\n1D\n1E\n1F",
+    "has_code": false
+  },
+  {
+    "page": 57,
+    "section": "0",
+    "text": "0x0\n0x1\n0x2\n0x3\n0x4\n0x5\n0x6\n0x7\n0x8\n0x9\n0xA\n0xB\n0xC\n0xD\n0xE\n0xF\n0x10\n0x11\n0x12\n0x13\n0x14\n0x15\n0x16\n0x17\n0x18\n0x19\n0x1A\n0x1B\n0x1C\n0x1D\n0x1E\n0x1F",
+    "has_code": false
+  },
+  {
+    "page": 58,
+    "section": "0",
+    "text": "int n = 50;",
+    "has_code": true
+  },
+  {
+    "page": 60,
+    "section": "50",
+    "text": "50\nn",
+    "has_code": false
+  },
+  {
+    "page": 61,
+    "section": "50",
+    "text": "50\n0x123",
+    "has_code": false
+  },
+  {
+    "page": 62,
+    "section": "50",
+    "text": "&\n*",
+    "has_code": false
+  },
+  {
+    "page": 63,
+    "section": "50",
+    "text": "%p",
+    "has_code": false
+  },
+  {
+    "page": 64,
+    "section": "50",
+    "text": "pointers",
+    "has_code": false
+  },
+  {
+    "page": 65,
+    "section": "50",
+    "text": "int n = 50;\nint *p = &n;",
+    "has_code": true
+  },
+  {
+    "page": 66,
+    "section": "50",
+    "text": "int n = 50;\nint *p = &n;",
+    "has_code": true
+  },
+  {
+    "page": 67,
+    "section": "50",
+    "text": "int n = 50;\nint* p = &n;",
+    "has_code": true
+  },
+  {
+    "page": 68,
+    "section": "50",
+    "text": "int n = 50;\nint * p = &n;",
+    "has_code": true
+  },
+  {
+    "page": 69,
+    "section": "50",
+    "text": "int n = 50;\nint *p = &n;",
+    "has_code": true
+  },
+  {
+    "page": 71,
+    "section": "50",
+    "text": "50\nn",
+    "has_code": false
+  },
+  {
+    "page": 72,
+    "section": "50",
+    "text": "50\n0x123",
+    "has_code": false
+  },
+  {
+    "page": 73,
+    "section": "50",
+    "text": "0x123\np\n50\n0x123",
+    "has_code": false
+  },
+  {
+    "page": 74,
+    "section": "50",
+    "text": "0x123\np\n50\n0x123",
+    "has_code": false
+  },
+  {
+    "page": 75,
+    "section": "50",
+    "text": "p\n50\n0x123",
+    "has_code": false
+  },
+  {
+    "page": 76,
+    "section": "50",
+    "text": "string",
+    "has_code": false
+  },
+  {
+    "page": 77,
+    "section": "50",
+    "text": "string s = \"HI!\";",
+    "has_code": false
+  },
+  {
+    "page": 78,
+    "section": "50",
+    "text": "H\nI\n!\n\\0",
+    "has_code": false
+  },
+  {
+    "page": 79,
+    "section": "50",
+    "text": "H\ns[0]\nI\ns[1]\n!\ns[2]\n\\0\ns[3]",
+    "has_code": false
+  },
+  {
+    "page": 80,
+    "section": "50",
+    "text": "H\n0x123\nI\n0x124\n!\n0x125\n\\0\n0x126",
+    "has_code": false
+  },
+  {
+    "page": 81,
+    "section": "50",
+    "text": "s\nH\n0x123\nI\n0x124\n!\n0x125\n\\0\n0x126",
+    "has_code": false
+  },
+  {
+    "page": 82,
+    "section": "50",
+    "text": "0x123\ns\nH\n0x123\nI\n0x124\n!\n0x125\n\\0\n0x126",
+    "has_code": false
+  },
+  {
+    "page": 83,
+    "section": "50",
+    "text": "s\nH\n0x123\nI\n0x124\n!\n0x125\n\\0\n0x126\n0x127",
+    "has_code": false
+  },
+  {
+    "page": 84,
+    "section": "50",
+    "text": "string s = \"HI!\";",
+    "has_code": false
+  },
+  {
+    "page": 85,
+    "section": "50",
+    "text": "string s = \"HI!\";",
+    "has_code": false
+  },
+  {
+    "page": 86,
+    "section": "50",
+    "text": "char *s = \"HI!\";",
+    "has_code": true
+  },
+  {
+    "page": 87,
+    "section": "50",
+    "text": "typedef struct\n{\n string name;\n string number;\n} person;",
+    "has_code": true
+  },
+  {
+    "page": 88,
+    "section": "50",
+    "text": "typedef struct\n{\n string name;\n string number;\n} person;",
+    "has_code": true
+  },
+  {
+    "page": 89,
+    "section": "50",
+    "text": "typedef struct\n{\n string name;\n string number;\n} person;",
+    "has_code": true
+  },
+  {
+    "page": 90,
+    "section": "50",
+    "text": "typedef struct\n{\n string name;\n string number;\n} person;",
+    "has_code": true
+  },
+  {
+    "page": 91,
+    "section": "50",
+    "text": "typedef",
+    "has_code": false
+  },
+  {
+    "page": 92,
+    "section": "50",
+    "text": "typedef int",
+    "has_code": true
+  },
+  {
+    "page": 93,
+    "section": "50",
+    "text": "typedef int integer;",
+    "has_code": true
+  },
+  {
+    "page": 94,
+    "section": "50",
+    "text": "typedef",
+    "has_code": false
+  },
+  {
+    "page": 95,
+    "section": "50",
+    "text": "typedef char *",
+    "has_code": true
+  },
+  {
+    "page": 96,
+    "section": "50",
+    "text": "typedef char *string;",
+    "has_code": true
+  },
+  {
+    "page": 97,
+    "section": "50",
+    "text": "typedef char *string;",
+    "has_code": true
+  },
+  {
+    "page": 98,
+    "section": "50",
+    "text": "cs50.h",
+    "has_code": false
+  },
+  {
+    "page": 99,
+    "section": "50",
+    "text": "pointer arithmetic",
+    "has_code": false
+  },
+  {
+    "page": 100,
+    "section": "50",
+    "text": "0x123\ns\nH\n0x123\nI\n0x124\n!\n0x125\n\\0\n0x126",
+    "has_code": false
+  },
+  {
+    "page": 102,
+    "section": "50",
+    "text": "50\ni\n50\nj",
+    "has_code": false
+  },
+  {
+    "page": 103,
+    "section": "50",
+    "text": "strcmp",
+    "has_code": false
+  },
+  {
+    "page": 105,
+    "section": "50",
+    "text": "s",
+    "has_code": false
+  },
+  {
+    "page": 106,
+    "section": "50",
+    "text": "s\nH\nI\n!\n\\0",
+    "has_code": false
+  },
+  {
+    "page": 107,
+    "section": "50",
+    "text": "s\nH\n0x123\nI\n0x124\n!\n0x125\n\\0\n0x126",
+    "has_code": false
+  },
+  {
+    "page": 108,
+    "section": "50",
+    "text": "0x123\ns\nH\n0x123\nI\n0x124\n!\n0x125\n\\0\n0x126",
+    "has_code": false
+  },
+  {
+    "page": 109,
+    "section": "50",
+    "text": "0x123\ns\nt\nH\n0x123\nI\n0x124\n!\n0x125\n\\0\n0x126",
+    "has_code": false
+  },
+  {
+    "page": 110,
+    "section": "50",
+    "text": "0x123\ns\nt\nH\n0x123\nI\n0x124\n!\n0x125\n\\0\n0x126\nH\nI\n!\n\\0",
+    "has_code": false
+  },
+  {
+    "page": 111,
+    "section": "50",
+    "text": "0x123\ns\nt\nH\n0x123\nI\n0x124\n!\n0x125\n\\0\n0x126\nH\n0x456\nI\n0x457\n!\n0x458\n\\0\n0x459",
+    "has_code": false
+  },
+  {
+    "page": 112,
+    "section": "50",
+    "text": "0x123\ns\n0x456\nt\nH\n0x123\nI\n0x124\n!\n0x125\n\\0\n0x126\nH\n0x456\nI\n0x457\n!\n0x458\n\\0\n0x459",
+    "has_code": false
+  },
+  {
+    "page": 113,
+    "section": "50",
+    "text": "s\nt\nH\n0x123\nI\n0x124\n!\n0x125\n\\0\n0x126\nH\n0x456\nI\n0x457\n!\n0x458\n\\0\n0x459",
+    "has_code": false
+  },
+  {
+    "page": 115,
+    "section": "50",
+    "text": "s",
+    "has_code": false
+  },
+  {
+    "page": 116,
+    "section": "50",
+    "text": "s\nh\ni\n!\n\\0",
+    "has_code": false
+  },
+  {
+    "page": 117,
+    "section": "50",
+    "text": "s\nh\n0x123\ni\n0x124\n!\n0x125\n\\0\n0x126",
+    "has_code": false
+  },
+  {
+    "page": 118,
+    "section": "50",
+    "text": "0x123\ns\nh\n0x123\ni\n0x124\n!\n0x125\n\\0\n0x126",
+    "has_code": false
+  },
+  {
+    "page": 119,
+    "section": "50",
+    "text": "0x123\ns\nt\nh\n0x123\ni\n0x124\n!\n0x125\n\\0\n0x126",
+    "has_code": false
+  },
+  {
+    "page": 120,
+    "section": "50",
+    "text": "0x123\ns\n0x123\nt\nh\n0x123\ni\n0x124\n!\n0x125\n\\0\n0x126",
+    "has_code": false
+  },
+  {
+    "page": 121,
+    "section": "50",
+    "text": "s\nt\nh\n0x123\ni\n0x124\n!\n0x125\n\\0\n0x126",
+    "has_code": false
+  },
+  {
+    "page": 122,
+    "section": "50",
+    "text": "s\nt\nH\n0x123\ni\n0x124\n!\n0x125\n\\0\n0x126",
+    "has_code": false
+  },
+  {
+    "page": 123,
+    "section": "50",
+    "text": "malloc\nfree\n…",
+    "has_code": true
+  },
+  {
+    "page": 124,
+    "section": "50",
+    "text": "s\nh\n0x123\ni\n0x124\n!\n0x125\n\\0\n0x126",
+    "has_code": false
+  },
+  {
+    "page": 125,
+    "section": "50",
+    "text": "s\nt\nh\n0x123\ni\n0x124\n!\n0x125\n\\0\n0x126",
+    "has_code": false
+  },
+  {
+    "page": 126,
+    "section": "50",
+    "text": "s\nt\nh\n0x123\ni\n0x124\n!\n0x125\n\\0\n0x126\n0x456\n0x457\n0x458\n0x459",
+    "has_code": false
+  },
+  {
+    "page": 127,
+    "section": "50",
+    "text": "s\nt\nh\n0x123\ni\n0x124\n!\n0x125\n\\0\n0x126\n0x456\n0x457\n0x458\n0x459",
+    "has_code": false
+  },
+  {
+    "page": 128,
+    "section": "50",
+    "text": "s\nt\nh\n0x123\ni\n0x124\n!\n0x125\n\\0\n0x126\nh\n0x456\n0x457\n0x458\n0x459",
+    "has_code": false
+  },
+  {
+    "page": 129,
+    "section": "50",
+    "text": "s\nt\nh\n0x123\ni\n0x124\n!\n0x125\n\\0\n0x126\nh\n0x456\ni\n0x457\n0x458\n0x459",
+    "has_code": false
+  },
+  {
+    "page": 130,
+    "section": "50",
+    "text": "s\nt\nh\n0x123\ni\n0x124\n!\n0x125\n\\0\n0x126\nh\n0x456\ni\n0x457\n!\n0x458\n0x459",
+    "has_code": false
+  },
+  {
+    "page": 131,
+    "section": "50",
+    "text": "s\nt\nh\n0x123\ni\n0x124\n!\n0x125\n\\0\n0x126\nh\n0x456\ni\n0x457\n!\n0x458\n\\0\n0x459",
+    "has_code": false
+  },
+  {
+    "page": 132,
+    "section": "50",
+    "text": "s\nt\nh\n0x123\ni\n0x124\n!\n0x125\n\\0\n0x126\nH\n0x456\ni\n0x457\n!\n0x458\n\\0\n0x459",
+    "has_code": false
+  },
+  {
+    "page": 133,
+    "section": "50",
+    "text": "NULL",
+    "has_code": false
+  },
+  {
+    "page": 136,
+    "section": "50",
+    "text": "valgrind",
+    "has_code": false
+  },
+  {
+    "page": 137,
+    "section": "50",
+    "text": "garbage values",
+    "has_code": false
+  },
+  {
+    "page": 138,
+    "section": "50",
+    "text": "int main(void)\n{ \n int *x; \n int *y; \n x = malloc(sizeof(int)); \n *x = 42;\n *y = 13; \n y = x; \n *y = 13; \n}",
+    "has_code": true
+  },
+  {
+    "page": 139,
+    "section": "50",
+    "text": "int main(void)\n{ \n int *x; \n int *y; \n x = malloc(sizeof(int)); \n *x = 42;\n *y = 13; \n y = x; \n *y = 13; \n}",
+    "has_code": true
+  },
+  {
+    "page": 140,
+    "section": "50",
+    "text": "int main(void)\n{ \n int *x; \n int *y; \n x = malloc(sizeof(int)); \n *x = 42;\n *y = 13; \n y = x; \n *y = 13; \n}",
+    "has_code": true
+  },
+  {
+    "page": 141,
+    "section": "50",
+    "text": "int main(void)\n{ \n int *x; \n int *y; \n x = malloc(sizeof(int)); \n *x = 42;\n *y = 13; \n y = x; \n *y = 13; \n}",
+    "has_code": true
+  },
+  {
+    "page": 142,
+    "section": "50",
+    "text": "int main(void)\n{ \n int *x; \n int *y; \n x = malloc(sizeof(int)); \n *x = 42;\n *y = 13; \n y = x; \n *y = 13; \n}",
+    "has_code": true
+  },
+  {
+    "page": 143,
+    "section": "50",
+    "text": "int main(void)\n{ \n int *x; \n int *y; \n x = malloc(sizeof(int)); \n *x = 42;\n *y = 13; \n y = x; \n *y = 13; \n}",
+    "has_code": true
+  },
+  {
+    "page": 144,
+    "section": "50",
+    "text": "int main(void)\n{ \n int *x; \n int *y; \n x = malloc(sizeof(int)); \n *x = 42;\n *y = 13; \n y = x; \n *y = 13; \n}",
+    "has_code": true
+  },
+  {
+    "page": 145,
+    "section": "50",
+    "text": "int main(void)\n{ \n int *x; \n int *y; \n x = malloc(sizeof(int)); \n *x = 42;\n *y = 13; \n y = x; \n *y = 13; \n}",
+    "has_code": true
+  },
+  {
+    "page": 147,
+    "section": "50",
+    "text": "void swap(int a, int b)\n{\n \n}",
+    "has_code": true
+  },
+  {
+    "page": 148,
+    "section": "50",
+    "text": "void swap(int a, int b)\n{\n int tmp = a;\n a = b;\n b = tmp;\n}",
+    "has_code": true
+  },
+  {
+    "page": 149,
+    "section": "50",
+    "text": "void swap(int a, int b)\n{\n int tmp = a;\n a = b;\n b = tmp;\n}",
+    "has_code": true
+  },
+  {
+    "page": 150,
+    "section": "50",
+    "text": "scope",
+    "has_code": false
+  },
+  {
+    "page": 151,
+    "section": "50",
+    "text": "passing by value",
+    "has_code": false
+  },
+  {
+    "page": 156,
+    "section": "50",
+    "text": "↑\nstack",
+    "has_code": false
+  },
+  {
+    "page": 157,
+    "section": "50",
+    "text": "machine code\n↑\nstack",
+    "has_code": false
+  },
+  {
+    "page": 158,
+    "section": "50",
+    "text": "machine code\nglobals\nheap\n↓\n↑\nstack",
+    "has_code": false
+  },
+  {
+    "page": 159,
+    "section": "50",
+    "text": "machine code\nglobals\nheap\n↓\n↑\nstack",
+    "has_code": false
+  },
+  {
+    "page": 160,
+    "section": "50",
+    "text": "machine code\nglobals\nheap\n↓\n↑\nstack",
+    "has_code": false
+  },
+  {
+    "page": 161,
+    "section": "50",
+    "text": "machine code\nglobals\nheap\n↓\n↑\nstack",
+    "has_code": false
+  },
+  {
+    "page": 162,
+    "section": "50",
+    "text": "machine code\nglobals\nheap\n↓\n↑\nstack",
+    "has_code": false
+  },
+  {
+    "page": 163,
+    "section": "50",
+    "text": "↑\nstack",
+    "has_code": false
+  },
+  {
+    "page": 164,
+    "section": "50",
+    "text": "void swap(int a, int b)\n{\n int tmp = a;\n a = b;\n b = tmp;\n}",
+    "has_code": true
+  },
+  {
+    "page": 165,
+    "section": "50",
+    "text": "main",
+    "has_code": false
+  },
+  {
+    "page": 166,
+    "section": "50",
+    "text": "main\nswap",
+    "has_code": false
+  },
+  {
+    "page": 167,
+    "section": "50",
+    "text": "main",
+    "has_code": false
+  },
+  {
+    "page": 168,
+    "section": "50",
+    "text": "x\ny",
+    "has_code": false
+  },
+  {
+    "page": 169,
+    "section": "1",
+    "text": "1\nx\n2\ny\nint x = 1;\nint y = 2;",
+    "has_code": true
+  },
+  {
+    "page": 170,
+    "section": "1",
+    "text": "1\nx\n2\ny\nswap\nswap(x, y);",
+    "has_code": false
+  },
+  {
+    "page": 171,
+    "section": "1",
+    "text": "a\nb\ntmp\n1\nx\n2\ny\nswap(x, y);",
+    "has_code": false
+  },
+  {
+    "page": 172,
+    "section": "1",
+    "text": "1\na\n2\nb\ntmp\n1\nx\n2\ny\nvoid swap(int a, int b);",
+    "has_code": true
+  },
+  {
+    "page": 173,
+    "section": "1",
+    "text": "1\na\n2\nb\ntmp\n1\nx\n2\ny\nint tmp = a;\na = b;\nb = tmp;",
+    "has_code": true
+  },
+  {
+    "page": 174,
+    "section": "1",
+    "text": "1\na\n2\nb\n1\ntmp\n1\nx\n2\ny\nint tmp = a;\na = b;\nb = tmp;",
+    "has_code": true
+  },
+  {
+    "page": 175,
+    "section": "2",
+    "text": "2\na\n2\nb\n1\ntmp\n1\nx\n2\ny\nint tmp = a;\na = b;\nb = tmp;",
+    "has_code": true
+  },
+  {
+    "page": 176,
+    "section": "2",
+    "text": "2\na\n1\nb\n1\ntmp\n1\nx\n2\ny\nint tmp = a;\na = b;\nb = tmp;",
+    "has_code": true
+  },
+  {
+    "page": 177,
+    "section": "2",
+    "text": "2\na\n1\nb\n1\ntmp\n1\nx\n2\ny",
+    "has_code": false
+  },
+  {
+    "page": 178,
+    "section": "1",
+    "text": "1\nx\n2\ny",
+    "has_code": false
+  },
+  {
+    "page": 179,
+    "section": "1",
+    "text": "passing by reference",
+    "has_code": false
+  },
+  {
+    "page": 180,
+    "section": "1",
+    "text": "void swap(int a, int b)\n{\n int tmp = a;\n a = b;\n b = tmp;\n}",
+    "has_code": true
+  },
+  {
+    "page": 181,
+    "section": "1",
+    "text": "void swap(int *a, int *b)\n{\n int tmp = *a;\n *a = *b;\n *b = tmp;\n}",
+    "has_code": true
+  },
+  {
+    "page": 182,
+    "section": "1",
+    "text": "void swap(int *a, int *b)\n{\n int tmp = *a;\n *a = *b;\n *b = tmp;\n}",
+    "has_code": true
+  },
+  {
+    "page": 183,
+    "section": "1",
+    "text": "1\nx\n2\ny",
+    "has_code": false
+  },
+  {
+    "page": 184,
+    "section": "1",
+    "text": "1\nx\n2\ny\nswap\nswap(x, y);",
+    "has_code": false
+  },
+  {
+    "page": 185,
+    "section": "1",
+    "text": "a\nb\ntmp\n1\nx\n2\ny\nswap(x, y);",
+    "has_code": false
+  },
+  {
+    "page": 186,
+    "section": "1",
+    "text": "a\nb\ntmp\n1\nx\n2\ny\nvoid swap(int *a, int *b);",
+    "has_code": true
+  },
+  {
+    "page": 187,
+    "section": "1",
+    "text": "a\nb\ntmp\n1\nx\n2\ny\nint tmp = *a;\n*a = *b;\n*b = tmp;",
+    "has_code": true
+  },
+  {
+    "page": 188,
+    "section": "1",
+    "text": "a\nb\n1\ntmp\n1\nx\n2\ny\nint tmp = *a;\n*a = *b;\n*b = tmp;",
+    "has_code": true
+  },
+  {
+    "page": 189,
+    "section": "1",
+    "text": "a\nb\n1\ntmp\n2\nx\n2\ny\nint tmp = *a;\n*a = *b;\n*b = tmp;",
+    "has_code": true
+  },
+  {
+    "page": 190,
+    "section": "1",
+    "text": "a\nb\n1\ntmp\n2\nx\n1\ny\nint tmp = *a;\n*a = *b;\n*b = tmp;",
+    "has_code": true
+  },
+  {
+    "page": 191,
+    "section": "1",
+    "text": "a\nb\n1\ntmp\n2\nx\n1\ny",
+    "has_code": false
+  },
+  {
+    "page": 192,
+    "section": "2",
+    "text": "2\nx\n1\ny",
+    "has_code": false
+  },
+  {
+    "page": 193,
+    "section": "2",
+    "text": "void swap(int a, int b)\n{\n int tmp = a;\n a = b;\n b = tmp;\n}",
+    "has_code": true
+  },
+  {
+    "page": 194,
+    "section": "2",
+    "text": "void swap(int *a, int *b)\n{\n int tmp = *a;\n *a = *b;\n *b = tmp;\n}",
+    "has_code": true
+  },
+  {
+    "page": 195,
+    "section": "2",
+    "text": "machine code\nglobals\nheap\n↓\n↑\nstack",
+    "has_code": false
+  },
+  {
+    "page": 196,
+    "section": "2",
+    "text": "heap\n↓\n↑\nstack",
+    "has_code": false
+  },
+  {
+    "page": 197,
+    "section": "2",
+    "text": "heap overflow\nstack overflow",
+    "has_code": false
+  },
+  {
+    "page": 198,
+    "section": "2",
+    "text": "buffer overflow",
+    "has_code": false
+  },
+  {
+    "page": 199,
+    "section": "2",
+    "text": "get_char\nget_double\nget_float\nget_int\nget_long\nget_string\n...",
+    "has_code": false
+  },
+  {
+    "page": 200,
+    "section": "2",
+    "text": "get_int",
+    "has_code": false
+  },
+  {
+    "page": 201,
+    "section": "2",
+    "text": "scanf\n…",
+    "has_code": true
+  },
+  {
+    "page": 203,
+    "section": "50",
+    "text": "50\nn",
+    "has_code": false
+  },
+  {
+    "page": 205,
+    "section": "50",
+    "text": "s",
+    "has_code": false
+  },
+  {
+    "page": 206,
+    "section": "50",
+    "text": "s",
+    "has_code": false
+  },
+  {
+    "page": 207,
+    "section": "50",
+    "text": "s",
+    "has_code": false
+  },
+  {
+    "page": 209,
+    "section": "50",
+    "text": "s",
+    "has_code": false
+  },
+  {
+    "page": 210,
+    "section": "50",
+    "text": "file I/O",
+    "has_code": false
+  },
+  {
+    "page": 211,
+    "section": "50",
+    "text": "fopen\nfclose\nfprintf\nfscanf\nfread\nfwrite\nfseek\n…",
+    "has_code": false
+  },
+  {
+    "page": 213,
+    "section": "50",
+    "text": "BMP",
+    "has_code": false
+  }
+]

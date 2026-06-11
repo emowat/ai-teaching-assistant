@@ -1,0 +1,62 @@
+[
+  {
+    "week": 0,
+    "week_title": "Week 0 Scratch",
+    "week_url": "https://cs50.harvard.edu/x/weeks/0/",
+    "notes_url": "https://cs50.harvard.edu/x/notes/0/",
+    "slides_pdf_url": "https://cdn.cs50.net/2025/fall/lectures/0/lecture0.pdf",
+    "local_html_path": "Harvard/cs50_output/html/notes_0.html",
+    "local_pdf_path": "Harvard/cs50_lecture_notes/lecture0.pdf",
+    "num_sections": 17
+  },
+  {
+    "week": 1,
+    "week_title": "Week 1 C",
+    "week_url": "https://cs50.harvard.edu/x/weeks/1/",
+    "notes_url": "https://cs50.harvard.edu/x/notes/1/",
+    "slides_pdf_url": "https://cdn.cs50.net/2025/fall/lectures/1/lecture1.pdf",
+    "local_html_path": "Harvard/cs50_output/html/notes_1.html",
+    "local_pdf_path": "Harvard/cs50_lecture_notes/lecture1.pdf",
+    "num_sections": 20
+  },
+  {
+    "week": 2,
+    "week_title": "Week 2 Arrays",
+    "week_url": "https://cs50.harvard.edu/x/weeks/2/",
+    "notes_url": "https://cs50.harvard.edu/x/notes/2/",
+    "slides_pdf_url": "https://cdn.cs50.net/2025/fall/lectures/2/lecture2.pdf",
+    "local_html_path": "Harvard/cs50_output/html/notes_2.html",
+    "local_pdf_path": "Harvard/cs50_lecture_notes/lecture2.pdf",
+    "num_sections": 10
+  },
+  {
+    "week": 3,
+    "week_title": "Week 3 Algorithms",
+    "week_url": "https://cs50.harvard.edu/x/weeks/3/",
+    "notes_url": "https://cs50.harvard.edu/x/notes/3/",
+    "slides_pdf_url": "https://cdn.cs50.net/2025/fall/lectures/3/lecture3.pdf",
+    "local_html_path": "Harvard/cs50_output/html/notes_3.html",
+    "local_pdf_path": "Harvard/cs50_lecture_notes/lecture3.pdf",
+    "num_sections": 12
+  },
+  {
+    "week": 4,
+    "week_title": "Week 4 Memory",
+    "week_url": "https://cs50.harvard.edu/x/weeks/4/",
+    "notes_url": "https://cs50.harvard.edu/x/notes/4/",
+    "slides_pdf_url": "https://cdn.cs50.net/2025/fall/lectures/4/lecture4.pdf",
+    "local_html_path": "Harvard/cs50_output/html/notes_4.html",
+    "local_pdf_path": "Harvard/cs50_lecture_notes/lecture4.pdf",
+    "num_sections": 17
+  },
+  {
+    "week": 5,
+    "week_title": "Week 5 Data Structures",
+    "week_url": "https://cs50.harvard.edu/x/weeks/5/",
+    "notes_url": "https://cs50.harvard.edu/x/notes/5/",
+    "slides_pdf_url": "https://cdn.cs50.net/2025/fall/lectures/5/lecture5.pdf",
+    "local_html_path": "Harvard/cs50_output/html/notes_5.html",
+    "local_pdf_path": "Harvard/cs50_lecture_notes/lecture5.pdf",
+    "num_sections": 11
+  }
+]

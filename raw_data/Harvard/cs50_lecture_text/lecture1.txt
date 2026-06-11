@@ -1,0 +1,660 @@
+[Slide 4]
+#include <stdio.h>
+int main(void)
+{
+ printf("hello, world\n");
+}
+
+[Slide 5]
+#include <stdio.h>
+int main(void)
+{
+ printf("hello, world\n");
+}
+
+[Slide 6]
+source code
+
+[Slide 7]
+01111111 01000101 01001100 01000110 00000010 00000001 00000001 00000000
+00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+00000010 00000000 00111110 00000000 00000001 00000000 00000000 00000000
+10110000 00000101 01000000 00000000 00000000 00000000 00000000 00000000
+01000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+11010000 00010011 00000000 00000000 00000000 00000000 00000000 00000000
+00000000 00000000 00000000 00000000 01000000 00000000 00111000 00000000
+00001001 00000000 01000000 00000000 00100100 00000000 00100001 00000000
+00000110 00000000 00000000 00000000 00000101 00000000 00000000 00000000
+01000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+01000000 00000000 01000000 00000000 00000000 00000000 00000000 00000000
+01000000 00000000 01000000 00000000 00000000 00000000 00000000 00000000
+11111000 00000001 00000000 00000000 00000000 00000000 00000000 00000000
+11111000 00000001 00000000 00000000 00000000 00000000 00000000 00000000
+00001000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+00000011 00000000 00000000 00000000 00000100 00000000 00000000 00000000
+00111000 00000010 00000000 00000000 00000000 00000000 00000000 00000000
+...
+
+[Slide 8]
+machine code
+
+[Slide 9]
+input → 
+ → output
+
+[Slide 11]
+source code →
+
+[Slide 12]
+source code → 
+ → machine code
+
+[Slide 13]
+source code → 
+ → machine code
+compiler
+
+[Slide 14]
+Visual Studio Code for CS50
+cs50.dev
+
+[Slide 21]
+graphical user interface
+
+[Slide 22]
+GUI
+
+[Slide 24]
+command-line interface
+
+[Slide 25]
+CLI
+
+[Slide 27]
+#include <stdio.h>
+int main(void)
+{
+ printf("hello, world\n");
+}
+
+[Slide 28]
+code hello.c
+make hello
+./hello
+
+[Slide 30]
+#include <stdio.h>
+int main(void)
+{
+ printf("hello, world\n");
+}
+
+[Slide 31]
+printf("hello, world\n");
+
+[Slide 32]
+printf("hello, world\n");
+
+[Slide 33]
+printf("hello, world\n");
+
+[Slide 34]
+printf("hello, world\n");
+
+[Slide 35]
+printf("hello, world\n");
+
+[Slide 36]
+printf("hello, world\n");
+
+[Slide 37]
+printf("hello, world\n");
+
+[Slide 39]
+input → 
+ → output
+
+[Slide 40]
+function
+arguments → 
+ → side effects
+
+[Slide 41]
+→ 
+ →
+
+[Slide 42]
+escape sequences
+
+[Slide 43]
+\n
+\r
+\"
+\'
+\\
+…
+
+[Slide 44]
+header files
+
+[Slide 45]
+libraries
+
+[Slide 46]
+stdio.h
+
+[Slide 47]
+Manual Pages
+manual.cs50.io
+
+[Slide 48]
+manual.cs50.io/#stdio.h
+
+[Slide 49]
+manual.cs50.io/3/printf
+
+[Slide 50]
+cs50.h
+
+[Slide 51]
+manual.cs50.io/#cs50.h
+
+[Slide 52]
+get_char
+get_double
+get_float
+get_int
+get_long
+get_string
+...
+
+[Slide 53]
+get_char
+get_double
+get_float
+get_int
+get_long
+get_string
+...
+
+[Slide 55]
+input → 
+ → output
+
+[Slide 56]
+function
+arguments → 
+ → return value
+
+[Slide 57]
+→ 
+ →
+
+[Slide 59]
+string answer = get_string( );
+printf("hello, %s", answer);
+
+[Slide 60]
+string answer = get_string("What's your name? ");
+printf("hello, %s", answer);
+
+[Slide 61]
+string answer = get_string("What's your name? ");
+printf("hello, %s", answer);
+
+[Slide 62]
+string answer = get_string("What's your name? ");
+printf("hello, %s", answer);
+
+[Slide 63]
+string answer = get_string("What's your name? ");
+printf("hello, %s", answer);
+
+[Slide 64]
+string answer = get_string("What's your name? ");
+printf("hello, %s", answer);
+
+[Slide 65]
+printf("hello, %s", answer);
+
+[Slide 66]
+printf("hello, %s\n", answer);
+
+[Slide 67]
+printf("hello, %s\n", answer);
+
+[Slide 68]
+printf("hello, %s\n", answer);
+
+[Slide 69]
+printf("hello, %s\n", answer);
+
+[Slide 70]
+printf("hello, %s\n", answer);
+
+[Slide 71]
+Linux
+
+[Slide 72]
+cd
+cp
+ls
+mkdir
+mv
+rm
+rmdir
+...
+
+[Slide 73]
+conditionals
+
+[Slide 74]
+if (x < y)
+{
+ printf("x is less than y\n");
+}
+
+[Slide 75]
+if (x < y)
+{
+ printf("x is less than y\n");
+}
+
+[Slide 76]
+if (x < y)
+{
+ printf("x is less than y\n");
+}
+
+[Slide 77]
+if (x < y)
+{
+ printf("x is less than y\n");
+}
+else
+{
+ printf("x is not less than y\n");
+}
+
+[Slide 78]
+if (x < y)
+{
+ printf("x is less than y\n");
+}
+else
+{
+ printf("x is not less than y\n");
+}
+
+[Slide 79]
+if (x < y)
+{
+ printf("x is less than y\n");
+}
+else
+{
+ printf("x is not less than y\n");
+}
+
+[Slide 80]
+if (x < y)
+{
+ printf("x is less than y\n");
+}
+else if (x > y)
+{
+ printf("x is greater than y\n");
+}
+else if (x == y)
+{
+ printf("x is equal to y\n");
+}
+
+[Slide 81]
+if (x < y)
+{
+ printf("x is less than y\n");
+}
+else if (x > y)
+{
+ printf("x is greater than y\n");
+}
+else if (x == y)
+{
+ printf("x is equal to y\n");
+}
+
+[Slide 82]
+if (x < y)
+{
+ printf("x is less than y\n");
+}
+else if (x > y)
+{
+ printf("x is greater than y\n");
+}
+else if (x == y)
+{
+ printf("x is equal to y\n");
+}
+
+[Slide 83]
+if (x < y)
+{
+ printf("x is less than y\n");
+}
+else if (x > y)
+{
+ printf("x is greater than y\n");
+}
+else
+{
+ printf("x is equal to y\n");
+}
+
+[Slide 84]
+operators
+
+[Slide 85]
+=
+<
+<=
+>
+>=
+==
+!=
+…
+
+[Slide 86]
+types
+
+[Slide 87]
+bool
+char
+double
+float
+int
+long
+string
+...
+
+[Slide 88]
+bool
+char
+double
+float
+int
+long
+string
+...
+
+[Slide 89]
+cs50.h
+
+[Slide 90]
+get_char
+get_double
+get_float
+get_int
+get_long
+get_string
+...
+
+[Slide 91]
+get_char
+get_double
+get_float
+get_int
+get_long
+get_string
+...
+
+[Slide 92]
+format codes
+
+[Slide 93]
+%c
+%f
+%i
+%li
+%s
+
+[Slide 94]
+%c
+%f
+%i
+%li
+%s
+
+[Slide 95]
+variables
+
+[Slide 96]
+int counter = 0;
+
+[Slide 97]
+int counter = 0;
+
+[Slide 98]
+int counter = 0;
+
+[Slide 99]
+int counter = 0;
+
+[Slide 100]
+counter = counter + 1;
+
+[Slide 101]
+counter = counter + 1;;
+
+[Slide 102]
+counter += 1;
+
+[Slide 103]
+counter++;
+
+[Slide 104]
+counter--;
+
+[Slide 110]
+bool
+char
+double
+float
+int
+long
+string
+...
+
+[Slide 111]
+get_char
+get_double
+get_float
+get_int
+get_long
+get_string
+...
+
+[Slide 112]
+loops
+
+[Slide 114]
+int i = 3;
+while (i > 0)
+{
+ printf("meow\n");
+ i--;
+}
+
+[Slide 115]
+int i = 3;
+while (i > 0)
+{
+ printf("meow\n");
+ i--;
+}
+
+[Slide 116]
+int i = 0;
+while (i < 3)
+{
+ printf("meow\n");
+ i++;
+}
+
+[Slide 118]
+for (int i = 0; i < 3; i++)
+{
+ printf("meow\n");
+}
+
+[Slide 120]
+while (true)
+{
+ printf("meow\n");
+}
+
+[Slide 121]
+while ( )
+{
+}
+
+[Slide 122]
+while (true)
+{
+}
+
+[Slide 123]
+while (true)
+{
+ printf("meow\n");
+}
+
+[Slide 125]
+control-c
+
+[Slide 126]
+scope
+
+[Slide 129]
+void meow(void)
+{
+ printf("meow\n");
+}
+
+[Slide 131]
+int main(void)
+{
+ for (int i = 0; i < 3; i++)
+ {
+ meow();
+ }
+}
+
+[Slide 133]
+void meow(int n)
+{
+ for (int i = 0; i < n; i++)
+ {
+ printf("meow\n");
+ }
+}
+
+[Slide 135]
+int main(void)
+{
+ meow(3);
+}
+
+[Slide 136]
+scope
+
+[Slide 137]
+correctness, design, style
+
+[Slide 138]
+check50, design50, style50
+
+[Slide 139]
+function
+arguments → 
+ → side effects
+
+[Slide 147]
+constants
+
+[Slide 148]
+function
+arguments → 
+ → return value
+
+[Slide 149]
++
+-
+*
+/
+%
+…
+
+[Slide 150]
+integer overflow
+
+[Slide 152] (0000)
+0000
+
+[Slide 153] (0001)
+0001
+
+[Slide 154] (0010)
+0010
+
+[Slide 155] (0011)
+0011
+
+[Slide 156] (0100)
+0100
+
+[Slide 157] (0101)
+0101
+
+[Slide 158] (0110)
+0110
+
+[Slide 159] (0111)
+0111
+
+[Slide 160] (1000)
+1000
+
+[Slide 161] (1000)
+1000
+
+[Slide 164] (1000)
+truncation
+
+[Slide 165] (1000)
+floating-point imprecision
+
+[Slide 166] (1000)
+Year 2000 Problem
+
+[Slide 167] (1999)
+1999
+
+[Slide 168] (1999)
+1999
+
+[Slide 169] (1900)
+1900
+
+[Slide 170] (1900)
+Year 2038 Problem
+
+[Slide 171] (1900)
+19 January 2038
+
+[Slide 172] (1900)
+13 December 1901
+
+[Slide 173] (1900)
+19 January 2038

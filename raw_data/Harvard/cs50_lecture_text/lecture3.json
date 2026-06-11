@@ -1,0 +1,1178 @@
+[
+  {
+    "page": 2,
+    "section": "",
+    "text": "1.\nStand up and think of the number 1.",
+    "has_code": false
+  },
+  {
+    "page": 3,
+    "section": "",
+    "text": "1.\nStand up and think of the number 1.\n2.\nPair off with someone standing, add their number to yours, and remember the sum.",
+    "has_code": false
+  },
+  {
+    "page": 4,
+    "section": "",
+    "text": "1.\nStand up and think of the number 1.\n2.\nPair off with someone standing, add their number to yours, and remember the sum.\n3.\nOne of you should then sit down.",
+    "has_code": false
+  },
+  {
+    "page": 5,
+    "section": "",
+    "text": "1.\nStand up and think of the number 1.\n2.\nPair off with someone standing, add their number to yours, and remember the sum.\n3.\nOne of you should then sit down.\n4.\nIf still standing, go back to step 2.",
+    "has_code": true
+  },
+  {
+    "page": 9,
+    "section": "",
+    "text": "n",
+    "has_code": false
+  },
+  {
+    "page": 10,
+    "section": "",
+    "text": "n/2\nn",
+    "has_code": false
+  },
+  {
+    "page": 11,
+    "section": "",
+    "text": "n/2\nn\nlog2 n",
+    "has_code": false
+  },
+  {
+    "page": 16,
+    "section": "1",
+    "text": "1\n5\n10\n20\n50 100 500",
+    "has_code": false
+  },
+  {
+    "page": 18,
+    "section": "1",
+    "text": "[0]\n[1]\n[2]\n[3]\n[4]\n[5]\n[6]",
+    "has_code": false
+  },
+  {
+    "page": 19,
+    "section": "1",
+    "text": "[0]\n[1]\n[2]\n[3]\n[4]\n[5]\n[6]",
+    "has_code": false
+  },
+  {
+    "page": 20,
+    "section": "1",
+    "text": "searching",
+    "has_code": false
+  },
+  {
+    "page": 21,
+    "section": "1",
+    "text": "input → \n → output",
+    "has_code": false
+  },
+  {
+    "page": 22,
+    "section": "1",
+    "text": "→ \n → output",
+    "has_code": false
+  },
+  {
+    "page": 23,
+    "section": "1",
+    "text": "→ bool\n→",
+    "has_code": false
+  },
+  {
+    "page": 24,
+    "section": "1",
+    "text": "algorithm",
+    "has_code": false
+  },
+  {
+    "page": 27,
+    "section": "1",
+    "text": "linear search",
+    "has_code": false
+  },
+  {
+    "page": 28,
+    "section": "1",
+    "text": "For each door from left to right\n If 50 is behind door\n Return true\nReturn false",
+    "has_code": true
+  },
+  {
+    "page": 29,
+    "section": "1",
+    "text": "For each door from left to right\n If 50 is behind door\n Return true\n Else\n Return false",
+    "has_code": true
+  },
+  {
+    "page": 30,
+    "section": "1",
+    "text": "For each door from left to right\n If 50 is behind door\n Return true\nReturn false",
+    "has_code": true
+  },
+  {
+    "page": 31,
+    "section": "1",
+    "text": "For i from 0 to n-1\n If 50 is behind doors[i]\n Return true\nReturn false",
+    "has_code": true
+  },
+  {
+    "page": 33,
+    "section": "1",
+    "text": "binary search",
+    "has_code": false
+  },
+  {
+    "page": 34,
+    "section": "1",
+    "text": "If 50 is behind middle door\n Return true\nElse if 50 < middle door\n Search left half\nElse if 50 > middle door\n Search right half",
+    "has_code": true
+  },
+  {
+    "page": 35,
+    "section": "1",
+    "text": "If no doors left\nIf 50 is behind middle door\n Return true\nElse if 50 < middle door\n Search left half\nElse if 50 > middle door\n Search right half",
+    "has_code": true
+  },
+  {
+    "page": 36,
+    "section": "1",
+    "text": "If no doors left\n Return false\nIf 50 is behind middle door\n Return true\nElse if 50 < middle door\n Search left half\nElse if 50 > middle door\n Search right half",
+    "has_code": true
+  },
+  {
+    "page": 37,
+    "section": "1",
+    "text": "If no doors left\n Return false\nIf 50 is behind doors[middle]\n Return true\nElse if 50 < doors[middle]\n Search doors[0] through doors[middle - 1]\nElse if 50 > doors[middle]\n Search doors[middle + 1] through doors[n - 1]",
+    "has_code": true
+  },
+  {
+    "page": 38,
+    "section": "1",
+    "text": "running time",
+    "has_code": false
+  },
+  {
+    "page": 39,
+    "section": "1",
+    "text": "size of problem\ntime to solve",
+    "has_code": false
+  },
+  {
+    "page": 40,
+    "section": "1",
+    "text": "size of problem\ntime to solve\nO(n) O(n/2)\nO(log2n)",
+    "has_code": false
+  },
+  {
+    "page": 41,
+    "section": "1",
+    "text": "size of problem\ntime to solve\nO(n) O(n/2)\nO(log2n)",
+    "has_code": false
+  },
+  {
+    "page": 42,
+    "section": "1",
+    "text": "size of problem\ntime to solve\nO(n) O(n)\nO(log2n)",
+    "has_code": false
+  },
+  {
+    "page": 43,
+    "section": "1",
+    "text": "size of problem\ntime to solve\nO(n) O(n)\nO(log n)",
+    "has_code": false
+  },
+  {
+    "page": 44,
+    "section": "1",
+    "text": "size of problem\ntime to solve\nO(n)\nO(log n)",
+    "has_code": false
+  },
+  {
+    "page": 45,
+    "section": "1",
+    "text": "O",
+    "has_code": false
+  },
+  {
+    "page": 46,
+    "section": "1",
+    "text": "O(n2)\nO(n log n)\nO(n) \nO(log n) \nO(1)",
+    "has_code": false
+  },
+  {
+    "page": 47,
+    "section": "1",
+    "text": "O(n2)\nO(n log n)\nO(n) linear search\nO(log n) \nO(1)",
+    "has_code": false
+  },
+  {
+    "page": 48,
+    "section": "1",
+    "text": "O(n2)\nO(n log n)\nO(n) linear search\nO(log n) binary search\nO(1)",
+    "has_code": false
+  },
+  {
+    "page": 49,
+    "section": "1",
+    "text": "Ω",
+    "has_code": false
+  },
+  {
+    "page": 50,
+    "section": "1",
+    "text": "Ω(n2)\nΩ(n log n)\nΩ(n) \nΩ(log n) \nΩ(1)",
+    "has_code": false
+  },
+  {
+    "page": 51,
+    "section": "1",
+    "text": "Ω(n2)\nΩ(n log n)\nΩ(n) \nΩ(log n) \nΩ(1) linear search",
+    "has_code": false
+  },
+  {
+    "page": 52,
+    "section": "1",
+    "text": "Ω(n2)\nΩ(n log n)\nΩ(n) \nΩ(log n) \nΩ(1) linear search, binary search",
+    "has_code": false
+  },
+  {
+    "page": 53,
+    "section": "1",
+    "text": "Θ",
+    "has_code": false
+  },
+  {
+    "page": 54,
+    "section": "1",
+    "text": "Θ(n2)\nΘ(n log n)\nΘ(n) \nΘ(log n) \nΘ(1)",
+    "has_code": false
+  },
+  {
+    "page": 55,
+    "section": "1",
+    "text": "asymptotic notation",
+    "has_code": false
+  },
+  {
+    "page": 56,
+    "section": "1",
+    "text": "linear search",
+    "has_code": false
+  },
+  {
+    "page": 57,
+    "section": "1",
+    "text": "string.h",
+    "has_code": false
+  },
+  {
+    "page": 58,
+    "section": "1",
+    "text": "manual.cs50.io/#string.h",
+    "has_code": false
+  },
+  {
+    "page": 59,
+    "section": "1",
+    "text": "strcmp",
+    "has_code": false
+  },
+  {
+    "page": 60,
+    "section": "1",
+    "text": "data structures",
+    "has_code": false
+  },
+  {
+    "page": 61,
+    "section": "1",
+    "text": "person people[2];",
+    "has_code": false
+  },
+  {
+    "page": 62,
+    "section": "1",
+    "text": "string name;\n string number;",
+    "has_code": false
+  },
+  {
+    "page": 63,
+    "section": "1",
+    "text": "typedef struct\n{\n string name;\n string number;\n}\nperson;",
+    "has_code": true
+  },
+  {
+    "page": 64,
+    "section": "1",
+    "text": "typedef struct\n{\n string name;\n string number;\n} person;",
+    "has_code": true
+  },
+  {
+    "page": 65,
+    "section": "1",
+    "text": "sorting",
+    "has_code": false
+  },
+  {
+    "page": 66,
+    "section": "1",
+    "text": "input → \n → output",
+    "has_code": false
+  },
+  {
+    "page": 67,
+    "section": "1",
+    "text": "unsorted → \n → output",
+    "has_code": false
+  },
+  {
+    "page": 68,
+    "section": "1",
+    "text": "unsorted → \n → sorted",
+    "has_code": false
+  },
+  {
+    "page": 69,
+    "section": "1",
+    "text": "→ \n → sorted\n7 2 5 4 1 6 0 3",
+    "has_code": false
+  },
+  {
+    "page": 70,
+    "section": "1",
+    "text": "→ \n → \n7 2 5 4 1 6 0 3\n0 1 2 3 4 5 6 7",
+    "has_code": false
+  },
+  {
+    "page": 72,
+    "section": "1",
+    "text": "7 2 5 4 1 6 0 3",
+    "has_code": false
+  },
+  {
+    "page": 73,
+    "section": "1",
+    "text": "selection sort",
+    "has_code": false
+  },
+  {
+    "page": 74,
+    "section": "1",
+    "text": "[0]\n[1]\n[2]\n...\n[n-3]\n[n-2]\n[n-1]",
+    "has_code": false
+  },
+  {
+    "page": 75,
+    "section": "1",
+    "text": "For i from 0 to n-1\n Find smallest number between numbers[i] and numbers[n-1]\n Swap smallest number with numbers[i]",
+    "has_code": true
+  },
+  {
+    "page": 76,
+    "section": "1",
+    "text": "7 2 5 4 1 6 0 3",
+    "has_code": false
+  },
+  {
+    "page": 77,
+    "section": "1",
+    "text": "7 2 5 4 1 6 0 3\n[i]",
+    "has_code": false
+  },
+  {
+    "page": 78,
+    "section": "1",
+    "text": "7 2 5 4 1 6 0 3\n[i]\n[i]\n[n-1]",
+    "has_code": false
+  },
+  {
+    "page": 79,
+    "section": "1",
+    "text": "7 2 5 4 1 6 0 3\n[i]\n[i]\n[n-1]",
+    "has_code": false
+  },
+  {
+    "page": 80,
+    "section": "1",
+    "text": "7 2 5 4 1 6 0 3\n[i]\n[i]\n[n-1]",
+    "has_code": false
+  },
+  {
+    "page": 81,
+    "section": "1",
+    "text": "7 2 5 4 1 6 0 3\n[i]\n[i]\n[n-1]",
+    "has_code": false
+  },
+  {
+    "page": 82,
+    "section": "1",
+    "text": "7 2 5 4 1 6 0 3\n[i]\n[i]\n[n-1]",
+    "has_code": false
+  },
+  {
+    "page": 83,
+    "section": "1",
+    "text": "7 2 5 4 1 6 0 3\n[i]\n[i]\n[n-1]",
+    "has_code": false
+  },
+  {
+    "page": 84,
+    "section": "1",
+    "text": "0 2 5 4 1 6 7 3\n[i]\n[i]\n[n-1]",
+    "has_code": false
+  },
+  {
+    "page": 85,
+    "section": "1",
+    "text": "0 2 5 4 1 6 7 3\n[i]\n[i]\n[n-1]",
+    "has_code": false
+  },
+  {
+    "page": 86,
+    "section": "1",
+    "text": "0 2 5 4 1 6 7 3\n[i]\n[i]\n[n-1]",
+    "has_code": false
+  },
+  {
+    "page": 87,
+    "section": "1",
+    "text": "0 2 5 4 1 6 7 3\n[i]\n[n-1]",
+    "has_code": false
+  },
+  {
+    "page": 88,
+    "section": "1",
+    "text": "(n – 1)",
+    "has_code": false
+  },
+  {
+    "page": 89,
+    "section": "1",
+    "text": "(n – 1) + (n – 2)",
+    "has_code": false
+  },
+  {
+    "page": 90,
+    "section": "1",
+    "text": "(n – 1) + (n – 2) + (n – 3)",
+    "has_code": false
+  },
+  {
+    "page": 91,
+    "section": "1",
+    "text": "(n – 1) + (n – 2) + (n – 3) + ... + 1",
+    "has_code": false
+  },
+  {
+    "page": 92,
+    "section": "1",
+    "text": "(n – 1) + (n – 2) + (n – 3) + ... + 1\nn(n – 1)/2",
+    "has_code": false
+  },
+  {
+    "page": 93,
+    "section": "1",
+    "text": "(n – 1) + (n – 2) + (n – 3) + ... + 1\nn(n – 1)/2\n(n2 – n)/2",
+    "has_code": false
+  },
+  {
+    "page": 94,
+    "section": "1",
+    "text": "(n – 1) + (n – 2) + (n – 3) + ... + 1\nn(n – 1)/2\n(n2 – n)/2\nn2/2 – n/2",
+    "has_code": false
+  },
+  {
+    "page": 95,
+    "section": "1",
+    "text": "(n – 1) + (n – 2) + (n – 3) + ... + 1\nn(n – 1)/2\n(n2 – n)/2\nn2/2 – n/2\nO(n2)",
+    "has_code": false
+  },
+  {
+    "page": 96,
+    "section": "1",
+    "text": "O(n2) \nO(n log n)\nO(n) \nO(log n) \nO(1)",
+    "has_code": false
+  },
+  {
+    "page": 97,
+    "section": "1",
+    "text": "O(n2) selection sort\nO(n log n)\nO(n) \nO(log n) \nO(1)",
+    "has_code": false
+  },
+  {
+    "page": 98,
+    "section": "1",
+    "text": "For i from 0 to n-1\n Find smallest number between numbers[i] and numbers[n-1]\n Swap smallest number with numbers[i]",
+    "has_code": true
+  },
+  {
+    "page": 99,
+    "section": "1",
+    "text": "[0]\n[1]\n[2]\n...\n[n-3]\n[n-2]\n[n-1]",
+    "has_code": false
+  },
+  {
+    "page": 100,
+    "section": "1",
+    "text": "Ω(n2) \nΩ(n log n)\nΩ(n) \nΩ(log n) \nΩ(1)",
+    "has_code": false
+  },
+  {
+    "page": 101,
+    "section": "1",
+    "text": "Ω(n2) selection sort\nΩ(n log n)\nΩ(n) \nΩ(log n) \nΩ(1)",
+    "has_code": false
+  },
+  {
+    "page": 102,
+    "section": "1",
+    "text": "Θ(n2) \nΘ(n log n) \nΘ(n) \nΘ(log n) \nΘ(1)",
+    "has_code": false
+  },
+  {
+    "page": 103,
+    "section": "1",
+    "text": "Θ(n2) selection sort\nΘ(n log n) \nΘ(n) \nΘ(log n) \nΘ(1)",
+    "has_code": false
+  },
+  {
+    "page": 104,
+    "section": "1",
+    "text": "bubble sort",
+    "has_code": false
+  },
+  {
+    "page": 105,
+    "section": "1",
+    "text": "[0]\n[1]\n[2]\n...\n[n-3]\n[n-2]\n[n-1]",
+    "has_code": false
+  },
+  {
+    "page": 106,
+    "section": "1",
+    "text": "Repeat n times\n For i from 0 to n-2\n If numbers[i] and numbers[i+1] out of order\n Swap them",
+    "has_code": true
+  },
+  {
+    "page": 107,
+    "section": "1",
+    "text": "Repeat n-1 times\n For i from 0 to n-2\n If numbers[i] and numbers[i+1] out of order\n Swap them",
+    "has_code": true
+  },
+  {
+    "page": 108,
+    "section": "1",
+    "text": "7 2 5 4 1 6 0 3",
+    "has_code": false
+  },
+  {
+    "page": 109,
+    "section": "1",
+    "text": "7 2 5 4 1 6 0 3\n[i] [i+1]",
+    "has_code": false
+  },
+  {
+    "page": 110,
+    "section": "1",
+    "text": "2 7 5 4 1 6 0 3\n[i] [i+1]",
+    "has_code": false
+  },
+  {
+    "page": 111,
+    "section": "1",
+    "text": "2 7 5 4 1 6 0 3\n[i] [i+1]",
+    "has_code": false
+  },
+  {
+    "page": 112,
+    "section": "1",
+    "text": "2 5 7 4 1 6 0 3\n[i] [i+1]",
+    "has_code": false
+  },
+  {
+    "page": 113,
+    "section": "1",
+    "text": "2 5 7 4 1 6 0 3\n[i] [i+1]",
+    "has_code": false
+  },
+  {
+    "page": 114,
+    "section": "1",
+    "text": "2 5 4 7 1 6 0 3\n[i] [i+1]",
+    "has_code": false
+  },
+  {
+    "page": 115,
+    "section": "1",
+    "text": "2 5 4 7 1 6 0 3\n[i] [i+1]",
+    "has_code": false
+  },
+  {
+    "page": 116,
+    "section": "1",
+    "text": "2 5 4 1 7 6 0 3\n[i] [i+1]",
+    "has_code": false
+  },
+  {
+    "page": 117,
+    "section": "1",
+    "text": "2 5 4 1 7 6 0 3\n[i] [i+1]",
+    "has_code": false
+  },
+  {
+    "page": 118,
+    "section": "1",
+    "text": "2 5 4 1 6 7 0 3\n[i] [i+1]",
+    "has_code": false
+  },
+  {
+    "page": 119,
+    "section": "1",
+    "text": "2 5 4 1 6 7 0 3\n[i] [i+1]",
+    "has_code": false
+  },
+  {
+    "page": 120,
+    "section": "1",
+    "text": "2 5 4 1 6 0 7 3\n[i] [i+1]",
+    "has_code": false
+  },
+  {
+    "page": 121,
+    "section": "1",
+    "text": "2 5 4 1 6 0 7 3\n[i] [i+1]",
+    "has_code": false
+  },
+  {
+    "page": 122,
+    "section": "1",
+    "text": "2 5 4 1 6 0 3 7\n[i] [i+1]",
+    "has_code": false
+  },
+  {
+    "page": 123,
+    "section": "1",
+    "text": "2 5 4 1 6 0 3 7\n[i] [i+1]",
+    "has_code": false
+  },
+  {
+    "page": 124,
+    "section": "1",
+    "text": "Repeat n-1 times\n For i from 0 to n-2\n If numbers[i] and numbers[i+1] out of order\n Swap them",
+    "has_code": true
+  },
+  {
+    "page": 125,
+    "section": "1",
+    "text": "Repeat n-1 times n-1\n For i from 0 to n-2\n If numbers[i] and numbers[i+1] out of order\n Swap them",
+    "has_code": true
+  },
+  {
+    "page": 126,
+    "section": "1",
+    "text": "Repeat n-1 times n-1\n For i from 0 to n-2 n-1\n If numbers[i] and numbers[i+1] out of order\n Swap them",
+    "has_code": true
+  },
+  {
+    "page": 127,
+    "section": "1",
+    "text": "Repeat n-1 times n-1\n For i from 0 to n-2 n-1\n If numbers[i] and numbers[i+1] out of order 1\n Swap them",
+    "has_code": true
+  },
+  {
+    "page": 128,
+    "section": "1",
+    "text": "Repeat n-1 times n-1\n For i from 0 to n-2 n-1\n If numbers[i] and numbers[i+1] out of order 4\n Swap them",
+    "has_code": true
+  },
+  {
+    "page": 129,
+    "section": "1",
+    "text": "Repeat n-1 times n-1\n For i from 0 to n-2 n-1\n If numbers[i] and numbers[i+1] out of order\n Swap them",
+    "has_code": true
+  },
+  {
+    "page": 130,
+    "section": "1",
+    "text": "(n – 1) × (n – 1)",
+    "has_code": false
+  },
+  {
+    "page": 131,
+    "section": "1",
+    "text": "(n – 1) × (n – 1)\nn2 – 1n – 1n + 1",
+    "has_code": false
+  },
+  {
+    "page": 132,
+    "section": "1",
+    "text": "(n – 1) × (n – 1)\nn2 – 1n – 1n + 1\nn2 – 2n + 1",
+    "has_code": false
+  },
+  {
+    "page": 133,
+    "section": "1",
+    "text": "(n – 1) × (n – 1)\nn2 – 1n – 1n + 1\nn2 – 2n + 1\nO(n2)",
+    "has_code": false
+  },
+  {
+    "page": 134,
+    "section": "1",
+    "text": "O(n2) \nO(n log n)\nO(n) \nO(log n) \nO(1)",
+    "has_code": false
+  },
+  {
+    "page": 135,
+    "section": "1",
+    "text": "O(n2) bubble sort\nO(n log n)\nO(n) \nO(log n) \nO(1)",
+    "has_code": false
+  },
+  {
+    "page": 136,
+    "section": "1",
+    "text": "Repeat n-1 times\n For i from 0 to n-2\n If numbers[i] and numbers[i+1] out of order\n Swap them",
+    "has_code": true
+  },
+  {
+    "page": 137,
+    "section": "1",
+    "text": "Repeat n-1 times\n For i from 0 to n-2\n If numbers[i] and numbers[i+1] out of order\n Swap them\n If no swaps\n Quit",
+    "has_code": true
+  },
+  {
+    "page": 138,
+    "section": "1",
+    "text": "Ω(n2) \nΩ(n log n)\nΩ(n) \nΩ(log n) \nΩ(1)",
+    "has_code": false
+  },
+  {
+    "page": 139,
+    "section": "1",
+    "text": "Ω(n2) \nΩ(n log n)\nΩ(n) bubble sort\nΩ(log n) \nΩ(1)",
+    "has_code": false
+  },
+  {
+    "page": 140,
+    "section": "1",
+    "text": "recursion",
+    "has_code": false
+  },
+  {
+    "page": 141,
+    "section": "1",
+    "text": "If no doors left\n Return false\nIf number behind middle door\n Return true\nElse if number < middle door\n Search left half\nElse if number > middle door\n Search right half",
+    "has_code": true
+  },
+  {
+    "page": 142,
+    "section": "1",
+    "text": "If no doors left\n Return false\nIf number behind middle door\n Return true\nElse if number < middle door\n Search left half\nElse if number > middle door\n Search right half",
+    "has_code": true
+  },
+  {
+    "page": 143,
+    "section": "1",
+    "text": "1 Pick up phone book\n2 Open to middle of phone book\n3 Look at page\n4 If person is on page\n5 Call person\n6 Else if person is earlier in book\n7 Open to middle of left half of book\n8 Go back to line 3\n9 Else if person is later in book\n10 Open to middle of right half of book\n11 Go back to line 3\n12 Else\n13 Quit",
+    "has_code": true
+  },
+  {
+    "page": 144,
+    "section": "1",
+    "text": "1 Pick up phone book\n2 Open to middle of phone book\n3 Look at page\n4 If person is on page\n5 Call person\n6 Else if person is earlier in book\n7 Open to middle of left half of book\n8 Go back to line 3\n9 Else if person is later in book\n10 Open to middle of right half of book\n11 Go back to line 3\n12 Else\n13 Quit",
+    "has_code": true
+  },
+  {
+    "page": 145,
+    "section": "1",
+    "text": "1 Pick up phone book\n2 Open to middle of phone book\n3 Look at page\n4 If person is on page\n5 Call person\n6 Else if person is earlier in book\n7 Open to middle of left half of book\n8 Go back to line 3\n9 Else if person is later in book\n10 Open to middle of right half of book\n11 Go back to line 3\n12 Else\n13 Quit",
+    "has_code": true
+  },
+  {
+    "page": 146,
+    "section": "1",
+    "text": "1 Pick up phone book\n2 Open to middle of phone book\n3 Look at page\n4 If person is on page\n5 Call person\n6 Else if person is earlier in book\n7 Search left half of book\n8 \n9 Else if person is later in book\n10 Search right half of book\n11 \n12 Else\n13 Quit",
+    "has_code": true
+  },
+  {
+    "page": 147,
+    "section": "1",
+    "text": "1 Pick up phone book\n2 Open to middle of phone book\n3 Look at page\n4 If person is on page\n5 Call person\n6 Else if person is earlier in book\n7 Search left half of book\n8 Else if person is later in book\n9 Search right half of book\n10 Else\n11 Quit",
+    "has_code": true
+  },
+  {
+    "page": 154,
+    "section": "1",
+    "text": "google.com/search?q=recursion",
+    "has_code": false
+  },
+  {
+    "page": 155,
+    "section": "1",
+    "text": "merge sort",
+    "has_code": false
+  },
+  {
+    "page": 156,
+    "section": "1",
+    "text": "Sort left half of numbers\n Sort right half of numbers\n Merge sorted halves",
+    "has_code": false
+  },
+  {
+    "page": 157,
+    "section": "1",
+    "text": "If only one number\n Quit\nElse\n Sort left half of numbers\n Sort right half of numbers\n Merge sorted halves",
+    "has_code": true
+  },
+  {
+    "page": 158,
+    "section": "1",
+    "text": "If only one number\n Quit\nElse\n Sort left half of numbers\n Sort right half of numbers\n Merge sorted halves",
+    "has_code": true
+  },
+  {
+    "page": 159,
+    "section": "1",
+    "text": "1 3 4 6 0 2 5 7",
+    "has_code": false
+  },
+  {
+    "page": 160,
+    "section": "1",
+    "text": "If only one number\n Quit\nElse\n Sort left half of numbers\n Sort right half of numbers\n Merge sorted halves",
+    "has_code": true
+  },
+  {
+    "page": 161,
+    "section": "1",
+    "text": "6 3 4 1 5 2 7 0",
+    "has_code": false
+  },
+  {
+    "page": 162,
+    "section": "1",
+    "text": "6 3 4 1 5 2 7 0",
+    "has_code": false
+  },
+  {
+    "page": 163,
+    "section": "1",
+    "text": "6 3 4 1 5 2 7 0",
+    "has_code": false
+  },
+  {
+    "page": 164,
+    "section": "1",
+    "text": "5 2 7 0\n6 3 4 1",
+    "has_code": false
+  },
+  {
+    "page": 165,
+    "section": "1",
+    "text": "5 2 7 0\n4 1\n6 3",
+    "has_code": false
+  },
+  {
+    "page": 166,
+    "section": "1",
+    "text": "5 2 7 0\n4 1\n3\n6",
+    "has_code": false
+  },
+  {
+    "page": 167,
+    "section": "1",
+    "text": "5 2 7 0\n4 1\n6\n3",
+    "has_code": false
+  },
+  {
+    "page": 168,
+    "section": "1",
+    "text": "5 2 7 0\n4 1\n3\n6",
+    "has_code": false
+  },
+  {
+    "page": 169,
+    "section": "1",
+    "text": "5 2 7 0\n4 1\n3 6",
+    "has_code": false
+  },
+  {
+    "page": 170,
+    "section": "1",
+    "text": "5 2 7 0\n3 6\n4 1",
+    "has_code": false
+  },
+  {
+    "page": 171,
+    "section": "1",
+    "text": "5 2 7 0\n \n3 6\n 1\n4",
+    "has_code": false
+  },
+  {
+    "page": 172,
+    "section": "1",
+    "text": "5 2 7 0\n \n3 6\n \n4\n1",
+    "has_code": false
+  },
+  {
+    "page": 173,
+    "section": "1",
+    "text": "5 2 7 0\n \n3 6\n1\n4",
+    "has_code": false
+  },
+  {
+    "page": 174,
+    "section": "1",
+    "text": "5 2 7 0\n \n3 6\n1 4",
+    "has_code": false
+  },
+  {
+    "page": 175,
+    "section": "1",
+    "text": "5 2 7 0\n1\n3 6\n4",
+    "has_code": false
+  },
+  {
+    "page": 176,
+    "section": "1",
+    "text": "5 2 7 0\n1 3\n6\n4",
+    "has_code": false
+  },
+  {
+    "page": 177,
+    "section": "1",
+    "text": "5 2 7 0\n1 3 4\n6",
+    "has_code": false
+  },
+  {
+    "page": 178,
+    "section": "1",
+    "text": "5 2 7 0\n1 3 4 6",
+    "has_code": false
+  },
+  {
+    "page": 179,
+    "section": "1",
+    "text": "1 3 4 6\n5 2 7 0",
+    "has_code": false
+  },
+  {
+    "page": 180,
+    "section": "1",
+    "text": "1 3 4 6\n 7 0\n5 2",
+    "has_code": false
+  },
+  {
+    "page": 181,
+    "section": "1",
+    "text": "1 3 4 6\n 7 0\n 2\n5",
+    "has_code": false
+  },
+  {
+    "page": 182,
+    "section": "1",
+    "text": "1 3 4 6\n 7 0\n \n5\n2",
+    "has_code": false
+  },
+  {
+    "page": 183,
+    "section": "1",
+    "text": "1 3 4 6\n 7 0 \n2\n5",
+    "has_code": false
+  },
+  {
+    "page": 184,
+    "section": "1",
+    "text": "1 3 4 6\n 7 0\n2 5",
+    "has_code": false
+  },
+  {
+    "page": 185,
+    "section": "1",
+    "text": "1 3 4 6\n \n2 5\n7 0",
+    "has_code": false
+  },
+  {
+    "page": 186,
+    "section": "1",
+    "text": "1 3 4 6\n \n2 5\n 0\n7",
+    "has_code": false
+  },
+  {
+    "page": 187,
+    "section": "1",
+    "text": "1 3 4 6\n \n2 5\n \n7\n0",
+    "has_code": false
+  },
+  {
+    "page": 188,
+    "section": "1",
+    "text": "1 3 4 6\n \n2 5\n0\n7",
+    "has_code": false
+  },
+  {
+    "page": 189,
+    "section": "1",
+    "text": "1 3 4 6\n \n2 5\n0 7",
+    "has_code": false
+  },
+  {
+    "page": 190,
+    "section": "1",
+    "text": "1 3 4 6\n0\n2 5\n7",
+    "has_code": false
+  },
+  {
+    "page": 191,
+    "section": "1",
+    "text": "1 3 4 6\n0 2\n5\n7",
+    "has_code": false
+  },
+  {
+    "page": 192,
+    "section": "1",
+    "text": "1 3 4 6\n0 2 5\n7",
+    "has_code": false
+  },
+  {
+    "page": 193,
+    "section": "1",
+    "text": "1 3 4 6\n0 2 5 7",
+    "has_code": false
+  },
+  {
+    "page": 194,
+    "section": "0",
+    "text": "0\n1 3 4 6\n2 5 7",
+    "has_code": false
+  },
+  {
+    "page": 195,
+    "section": "0",
+    "text": "0 1\n3 4 6\n2 5 7",
+    "has_code": false
+  },
+  {
+    "page": 196,
+    "section": "0",
+    "text": "0 1 2\n3 4 6\n5 7",
+    "has_code": false
+  },
+  {
+    "page": 197,
+    "section": "0",
+    "text": "0 1 2 3\n4 6\n5 7",
+    "has_code": false
+  },
+  {
+    "page": 198,
+    "section": "0",
+    "text": "0 1 2 3 4\n6\n5 7",
+    "has_code": false
+  },
+  {
+    "page": 199,
+    "section": "0",
+    "text": "0 1 2 3 4 5\n6\n7",
+    "has_code": false
+  },
+  {
+    "page": 200,
+    "section": "0",
+    "text": "0 1 2 3 4 5 6\n7",
+    "has_code": false
+  },
+  {
+    "page": 201,
+    "section": "0",
+    "text": "0 1 2 3 4 5 6 7",
+    "has_code": false
+  },
+  {
+    "page": 202,
+    "section": "0",
+    "text": "0 1 2 3 4 5 6 7",
+    "has_code": false
+  },
+  {
+    "page": 203,
+    "section": "0",
+    "text": "O(n2) \nO(n log n)\nO(n) \nO(log n) \nO(1)",
+    "has_code": false
+  },
+  {
+    "page": 204,
+    "section": "0",
+    "text": "6 3 4 1 5 2 7 0\n6 3 4 1\n6 3\n6\n3\n4 1\n4\n1\n5 2 7 0\n5 2\n5\n2\n7 0\n7\n0",
+    "has_code": false
+  },
+  {
+    "page": 205,
+    "section": "0",
+    "text": "6 3 4 1 5 2 7 0\n6 3 4 1\n6 3\n6\n3\n4 1\n4\n1\n5 2 7 0\n5 2\n5\n2\n7 0\n7\n0",
+    "has_code": false
+  },
+  {
+    "page": 206,
+    "section": "0",
+    "text": "log2 n",
+    "has_code": false
+  },
+  {
+    "page": 207,
+    "section": "0",
+    "text": "log2 8",
+    "has_code": false
+  },
+  {
+    "page": 208,
+    "section": "0",
+    "text": "log2 23",
+    "has_code": false
+  },
+  {
+    "page": 209,
+    "section": "3",
+    "text": "3",
+    "has_code": false
+  },
+  {
+    "page": 210,
+    "section": "3",
+    "text": "6 3 4 1 5 2 7 0\n6 3 4 1\n6 3\n6\n3\n4 1\n4\n1\n5 2 7 0\n5 2\n5\n2\n7 0\n7\n0",
+    "has_code": false
+  },
+  {
+    "page": 211,
+    "section": "3",
+    "text": "n log2 n",
+    "has_code": false
+  },
+  {
+    "page": 212,
+    "section": "3",
+    "text": "n log n",
+    "has_code": false
+  },
+  {
+    "page": 213,
+    "section": "3",
+    "text": "O(n2) \nO(n log n) merge sort\nO(n) \nO(log n) \nO(1)",
+    "has_code": false
+  },
+  {
+    "page": 214,
+    "section": "3",
+    "text": "Ω(n2) \nΩ(n log n) merge sort\nΩ(n) \nΩ(log n) \nΩ(1)",
+    "has_code": false
+  },
+  {
+    "page": 215,
+    "section": "3",
+    "text": "Θ(n2) \nΘ(n log n) merge sort\nΘ(n) \nΘ(log n) \nΘ(1)",
+    "has_code": false
+  }
+]
