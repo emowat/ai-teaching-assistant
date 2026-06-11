@@ -1,0 +1,1022 @@
+[
+  {
+    "page": 2,
+    "section": "",
+    "text": "data structures",
+    "has_code": false
+  },
+  {
+    "page": 4,
+    "section": "",
+    "text": "abstract data types",
+    "has_code": false
+  },
+  {
+    "page": 5,
+    "section": "",
+    "text": "queues",
+    "has_code": false
+  },
+  {
+    "page": 6,
+    "section": "",
+    "text": "FIFO",
+    "has_code": false
+  },
+  {
+    "page": 7,
+    "section": "",
+    "text": "enqueue\ndequeue",
+    "has_code": false
+  },
+  {
+    "page": 8,
+    "section": "",
+    "text": "const int CAPACITY = 50;\ntypedef struct\n{\n person people[CAPACITY];\n int size;\n} queue;",
+    "has_code": true
+  },
+  {
+    "page": 9,
+    "section": "",
+    "text": "stacks",
+    "has_code": false
+  },
+  {
+    "page": 10,
+    "section": "",
+    "text": "LIFO",
+    "has_code": false
+  },
+  {
+    "page": 11,
+    "section": "",
+    "text": "push\npop",
+    "has_code": false
+  },
+  {
+    "page": 12,
+    "section": "",
+    "text": "const int CAPACITY = 50;\ntypedef struct\n{\n person people[CAPACITY];\n int size;\n} stack;",
+    "has_code": true
+  },
+  {
+    "page": 13,
+    "section": "",
+    "text": "dictionaries",
+    "has_code": false
+  },
+  {
+    "page": 15,
+    "section": "",
+    "text": "word\ndefinition",
+    "has_code": false
+  },
+  {
+    "page": 16,
+    "section": "",
+    "text": "name\nnumber",
+    "has_code": false
+  },
+  {
+    "page": 17,
+    "section": "",
+    "text": "key\nvalue",
+    "has_code": false
+  },
+  {
+    "page": 20,
+    "section": "",
+    "text": "arrays",
+    "has_code": false
+  },
+  {
+    "page": 22,
+    "section": "1",
+    "text": "1\n2\n3",
+    "has_code": false
+  },
+  {
+    "page": 23,
+    "section": "1",
+    "text": "1\n2\n3",
+    "has_code": false
+  },
+  {
+    "page": 24,
+    "section": "1",
+    "text": "1\n2\n3",
+    "has_code": false
+  },
+  {
+    "page": 25,
+    "section": "1",
+    "text": "1\n2\n3\nh\ne\nl\nl\no\n,\nw\no\nr\nl\nd\n\\0",
+    "has_code": false
+  },
+  {
+    "page": 26,
+    "section": "1",
+    "text": "1\n2\n3",
+    "has_code": false
+  },
+  {
+    "page": 27,
+    "section": "1",
+    "text": "1\n2\n3\n1",
+    "has_code": false
+  },
+  {
+    "page": 28,
+    "section": "1",
+    "text": "1\n2\n3\n1\n2",
+    "has_code": false
+  },
+  {
+    "page": 29,
+    "section": "1",
+    "text": "1\n2\n3\n1\n2\n3",
+    "has_code": false
+  },
+  {
+    "page": 30,
+    "section": "1",
+    "text": "1\n2\n3\n1\n2\n3\n4",
+    "has_code": false
+  },
+  {
+    "page": 31,
+    "section": "1",
+    "text": "1\n2\n3\n4",
+    "has_code": false
+  },
+  {
+    "page": 32,
+    "section": "1",
+    "text": "data structures",
+    "has_code": false
+  },
+  {
+    "page": 33,
+    "section": "1",
+    "text": "struct\n.\n*",
+    "has_code": true
+  },
+  {
+    "page": 34,
+    "section": "1",
+    "text": "struct\n->",
+    "has_code": true
+  },
+  {
+    "page": 35,
+    "section": "1",
+    "text": "linked lists",
+    "has_code": false
+  },
+  {
+    "page": 37,
+    "section": "1",
+    "text": "1\n0x123",
+    "has_code": false
+  },
+  {
+    "page": 38,
+    "section": "1",
+    "text": "1\n0x123\n2\n0x456",
+    "has_code": false
+  },
+  {
+    "page": 39,
+    "section": "1",
+    "text": "1\n0x123\n2\n0x456\n3\n0x789",
+    "has_code": false
+  },
+  {
+    "page": 40,
+    "section": "1",
+    "text": "1\n0x123\n2\n0x456\n3\n0x789",
+    "has_code": false
+  },
+  {
+    "page": 41,
+    "section": "1",
+    "text": "1\n0x123\n0x456\n2\n0x456\n3\n0x789",
+    "has_code": false
+  },
+  {
+    "page": 42,
+    "section": "1",
+    "text": "1\n0x123\n0x456\n2\n0x456\n0x789\n3\n0x789",
+    "has_code": false
+  },
+  {
+    "page": 43,
+    "section": "1",
+    "text": "1\n0x123\n0x456\n2\n0x456\n0x789\n3\n0x789\n0x0",
+    "has_code": false
+  },
+  {
+    "page": 44,
+    "section": "1",
+    "text": "1\n0x123\n0x456\n2\n0x456\n0x789\n3\n0x789\nNULL",
+    "has_code": false
+  },
+  {
+    "page": 45,
+    "section": "1",
+    "text": "1\n0x123\n0x456\n2\n0x456\n0x123\n0x789\n3\n0x789\nNULL",
+    "has_code": false
+  },
+  {
+    "page": 46,
+    "section": "1",
+    "text": "1\n2\n3",
+    "has_code": false
+  },
+  {
+    "page": 47,
+    "section": "1",
+    "text": "typedef struct\n{\n string name;\n string number;\n} person;",
+    "has_code": true
+  },
+  {
+    "page": 48,
+    "section": "1",
+    "text": "typedef struct\n{\n char *name;\n char *number;\n} person;",
+    "has_code": true
+  },
+  {
+    "page": 49,
+    "section": "1",
+    "text": "typedef struct\n{\n} person;",
+    "has_code": true
+  },
+  {
+    "page": 50,
+    "section": "1",
+    "text": "typedef struct\n{\n} node;",
+    "has_code": true
+  },
+  {
+    "page": 51,
+    "section": "1",
+    "text": "typedef struct\n{\n int number;\n} node;",
+    "has_code": true
+  },
+  {
+    "page": 52,
+    "section": "1",
+    "text": "typedef struct\n{\n int number;\n node *next;\n} node;",
+    "has_code": true
+  },
+  {
+    "page": 53,
+    "section": "1",
+    "text": "typedef struct node\n{\n int number;\n node *next;\n} node;",
+    "has_code": true
+  },
+  {
+    "page": 54,
+    "section": "1",
+    "text": "typedef struct node\n{\n int number;\n struct node *next;\n} node;",
+    "has_code": true
+  },
+  {
+    "page": 56,
+    "section": "1",
+    "text": "node *list;",
+    "has_code": false
+  },
+  {
+    "page": 57,
+    "section": "1",
+    "text": "list\nnode *list;",
+    "has_code": false
+  },
+  {
+    "page": 58,
+    "section": "1",
+    "text": "list\nnode *list = NULL;",
+    "has_code": false
+  },
+  {
+    "page": 59,
+    "section": "1",
+    "text": "list\nnode *list = NULL;",
+    "has_code": false
+  },
+  {
+    "page": 60,
+    "section": "1",
+    "text": "list\nnode *n = malloc(sizeof(node));",
+    "has_code": true
+  },
+  {
+    "page": 61,
+    "section": "1",
+    "text": "list\nnode *n = malloc(sizeof(node));\nn",
+    "has_code": true
+  },
+  {
+    "page": 62,
+    "section": "1",
+    "text": "list\nnode *n = malloc(sizeof(node));\nn\nnumber\nnext",
+    "has_code": true
+  },
+  {
+    "page": 63,
+    "section": "1",
+    "text": "list\nnode *n = malloc(sizeof(node));\nn\nnumber\nnext",
+    "has_code": true
+  },
+  {
+    "page": 64,
+    "section": "1",
+    "text": "list\n(*n).number = 1;\nn\nnumber\nnext",
+    "has_code": false
+  },
+  {
+    "page": 65,
+    "section": "1",
+    "text": "list\n1\n(*n).number = 1;\nn\nnumber\nnext",
+    "has_code": false
+  },
+  {
+    "page": 66,
+    "section": "1",
+    "text": "list\n1\nn->number = 1;\nn\nnumber\nnext",
+    "has_code": false
+  },
+  {
+    "page": 67,
+    "section": "1",
+    "text": "list\n1\nn->next = NULL;\nn\nnumber\nnext",
+    "has_code": false
+  },
+  {
+    "page": 68,
+    "section": "1",
+    "text": "list\n1\nn->next = NULL;\nn\nnumber\nnext",
+    "has_code": false
+  },
+  {
+    "page": 69,
+    "section": "1",
+    "text": "list\n1\nlist = n;\nn\nnumber\nnext",
+    "has_code": false
+  },
+  {
+    "page": 70,
+    "section": "1",
+    "text": "list\n1\nlist = n;\nn\nnumber\nnext",
+    "has_code": false
+  },
+  {
+    "page": 71,
+    "section": "1",
+    "text": "list\n1",
+    "has_code": false
+  },
+  {
+    "page": 72,
+    "section": "1",
+    "text": "list\n1\nnode *n = malloc(sizeof(node));",
+    "has_code": true
+  },
+  {
+    "page": 73,
+    "section": "1",
+    "text": "list\n1\nnode *n = malloc(sizeof(node)); \nn",
+    "has_code": true
+  },
+  {
+    "page": 74,
+    "section": "1",
+    "text": "list\n1\nnode *n = malloc(sizeof(node)); \nn",
+    "has_code": true
+  },
+  {
+    "page": 75,
+    "section": "1",
+    "text": "list\n1\nnode *n = malloc(sizeof(node)); \nn",
+    "has_code": true
+  },
+  {
+    "page": 76,
+    "section": "1",
+    "text": "list\n1\nn->number = 2;\nn",
+    "has_code": false
+  },
+  {
+    "page": 77,
+    "section": "1",
+    "text": "list\n1\nn->number = 2;\n2\nn",
+    "has_code": false
+  },
+  {
+    "page": 78,
+    "section": "1",
+    "text": "list\n1\nn->next = NULL;\n2\nn",
+    "has_code": false
+  },
+  {
+    "page": 79,
+    "section": "1",
+    "text": "list\n1\nn->next = NULL;\n2\nn",
+    "has_code": false
+  },
+  {
+    "page": 80,
+    "section": "1",
+    "text": "list\n1\n \n2\nn",
+    "has_code": false
+  },
+  {
+    "page": 81,
+    "section": "1",
+    "text": "list\n1\nlist = n;\n2\nn",
+    "has_code": false
+  },
+  {
+    "page": 82,
+    "section": "1",
+    "text": "list\n1\nlist = n;\n2\nn",
+    "has_code": false
+  },
+  {
+    "page": 83,
+    "section": "1",
+    "text": "list\n1\nlist = n;\n2\nn",
+    "has_code": false
+  },
+  {
+    "page": 84,
+    "section": "1",
+    "text": "list\n1\n \n2\nn",
+    "has_code": false
+  },
+  {
+    "page": 85,
+    "section": "1",
+    "text": "list\n1\nn->next = list;\n2\nn",
+    "has_code": false
+  },
+  {
+    "page": 86,
+    "section": "1",
+    "text": "list\n1\nn->next = list;\n2\nn",
+    "has_code": false
+  },
+  {
+    "page": 87,
+    "section": "1",
+    "text": "list\n1\nlist = n;\n2\nn",
+    "has_code": false
+  },
+  {
+    "page": 88,
+    "section": "1",
+    "text": "list\n1\nlist = n;\n2\nn",
+    "has_code": false
+  },
+  {
+    "page": 89,
+    "section": "1",
+    "text": "list\n1\n \n2",
+    "has_code": false
+  },
+  {
+    "page": 90,
+    "section": "2",
+    "text": "2\nlist\n3\n1",
+    "has_code": false
+  },
+  {
+    "page": 91,
+    "section": "2",
+    "text": "2\nlist\n3\n1\nptr",
+    "has_code": false
+  },
+  {
+    "page": 92,
+    "section": "2",
+    "text": "2\nlist\n3\n1\nptr",
+    "has_code": false
+  },
+  {
+    "page": 93,
+    "section": "2",
+    "text": "2\nlist\n3\n1\nptr",
+    "has_code": false
+  },
+  {
+    "page": 94,
+    "section": "2",
+    "text": "2\nlist\n3\n1\nptr",
+    "has_code": false
+  },
+  {
+    "page": 95,
+    "section": "2",
+    "text": "2\nlist\n3\n1",
+    "has_code": false
+  },
+  {
+    "page": 96,
+    "section": "2",
+    "text": "O(n2)\nO(n log n)\nO(n) \nO(log n) \nO(1)",
+    "has_code": false
+  },
+  {
+    "page": 97,
+    "section": "2",
+    "text": "list",
+    "has_code": false
+  },
+  {
+    "page": 98,
+    "section": "2",
+    "text": "list\n1",
+    "has_code": false
+  },
+  {
+    "page": 99,
+    "section": "2",
+    "text": "list\n1\n2",
+    "has_code": false
+  },
+  {
+    "page": 100,
+    "section": "2",
+    "text": "2\nlist\n3\n1",
+    "has_code": false
+  },
+  {
+    "page": 101,
+    "section": "2",
+    "text": "O(n2)\nO(n log n)\nO(n) \nO(log n) \nO(1)",
+    "has_code": false
+  },
+  {
+    "page": 102,
+    "section": "2",
+    "text": "O(n2)\nO(n log n)\nO(n) \nO(log n) \nO(1)",
+    "has_code": false
+  },
+  {
+    "page": 103,
+    "section": "2",
+    "text": "list",
+    "has_code": false
+  },
+  {
+    "page": 104,
+    "section": "1",
+    "text": "1\nlist",
+    "has_code": false
+  },
+  {
+    "page": 105,
+    "section": "1",
+    "text": "1\nlist\n2",
+    "has_code": false
+  },
+  {
+    "page": 106,
+    "section": "1",
+    "text": "1\nlist\n2\n3",
+    "has_code": false
+  },
+  {
+    "page": 107,
+    "section": "1",
+    "text": "O(n2)\nO(n log n)\nO(n) \nO(log n) \nO(1)",
+    "has_code": false
+  },
+  {
+    "page": 108,
+    "section": "1",
+    "text": "list",
+    "has_code": false
+  },
+  {
+    "page": 109,
+    "section": "2",
+    "text": "2\nlist",
+    "has_code": false
+  },
+  {
+    "page": 110,
+    "section": "2",
+    "text": "2\nlist\n1",
+    "has_code": false
+  },
+  {
+    "page": 111,
+    "section": "2",
+    "text": "2\nlist\n1\n4",
+    "has_code": false
+  },
+  {
+    "page": 112,
+    "section": "2",
+    "text": "2\nlist\n1\n4\n3",
+    "has_code": false
+  },
+  {
+    "page": 113,
+    "section": "2",
+    "text": "O(n2)\nO(n log n)\nO(n) \nO(log n) \nO(1)",
+    "has_code": false
+  },
+  {
+    "page": 115,
+    "section": "2",
+    "text": "arrays",
+    "has_code": false
+  },
+  {
+    "page": 116,
+    "section": "2",
+    "text": "linked lists",
+    "has_code": false
+  },
+  {
+    "page": 117,
+    "section": "2",
+    "text": "trees",
+    "has_code": false
+  },
+  {
+    "page": 118,
+    "section": "2",
+    "text": "binary search trees",
+    "has_code": false
+  },
+  {
+    "page": 119,
+    "section": "1",
+    "text": "1\n2\n3\n4\n5\n6\n7",
+    "has_code": false
+  },
+  {
+    "page": 120,
+    "section": "1",
+    "text": "1\n2\n3\n4\n5\n6\n7",
+    "has_code": false
+  },
+  {
+    "page": 121,
+    "section": "1",
+    "text": "1\n2\n3\n4\n5\n6\n7",
+    "has_code": false
+  },
+  {
+    "page": 122,
+    "section": "1",
+    "text": "1\n2\n3\n4\n5\n6\n7",
+    "has_code": false
+  },
+  {
+    "page": 123,
+    "section": "4",
+    "text": "4\n2\n6\n1\n3\n5\n7",
+    "has_code": false
+  },
+  {
+    "page": 124,
+    "section": "4",
+    "text": "4\n2\n6\n1\n3\n5\n7",
+    "has_code": false
+  },
+  {
+    "page": 125,
+    "section": "4",
+    "text": "typedef struct node\n{\n int number;\n struct node *next;\n} node;",
+    "has_code": true
+  },
+  {
+    "page": 126,
+    "section": "4",
+    "text": "typedef struct node\n{\n int number;\n} node;",
+    "has_code": true
+  },
+  {
+    "page": 127,
+    "section": "4",
+    "text": "typedef struct node\n{\n int number;\n} node;",
+    "has_code": true
+  },
+  {
+    "page": 128,
+    "section": "4",
+    "text": "typedef struct node\n{\n int number;\n struct node *left;\n struct node *right;\n} node;",
+    "has_code": true
+  },
+  {
+    "page": 129,
+    "section": "4",
+    "text": "4\n2\n6\n1\n3\n5\n7",
+    "has_code": false
+  },
+  {
+    "page": 130,
+    "section": "4",
+    "text": "bool search(node *tree, int number)\n{\n if (tree == NULL)\n {\n return false;\n }\n else if (number < tree->number)\n {\n return search(tree->left, number);\n }\n else if (number > tree->number)\n {\n return search(tree->right, number);\n }\n else if (number == tree->number)\n {\n return true;\n }\n}",
+    "has_code": true
+  },
+  {
+    "page": 131,
+    "section": "4",
+    "text": "bool search(node *tree, int number)\n{\n if (tree == NULL)\n {\n return false;\n }\n else if (number < tree->number)\n {\n return search(tree->left, number);\n }\n else if (number > tree->number)\n {\n return search(tree->right, number);\n }\n else if (number == tree->number)\n {\n return true;\n }\n}",
+    "has_code": true
+  },
+  {
+    "page": 132,
+    "section": "4",
+    "text": "bool search(node *tree, int number)\n{\n if (tree == NULL)\n {\n return false;\n }\n else if (number < tree->number)\n {\n return search(tree->left, number);\n }\n else if (number > tree->number)\n {\n return search(tree->right, number);\n }\n else if (number == tree->number)\n {\n return true;\n }\n}",
+    "has_code": true
+  },
+  {
+    "page": 133,
+    "section": "4",
+    "text": "bool search(node *tree, int number)\n{\n if (tree == NULL)\n {\n return false;\n }\n else if (number < tree->number)\n {\n return search(tree->left, number);\n }\n else if (number > tree->number)\n {\n return search(tree->right, number);\n }\n else if (number == tree->number)\n {\n return true;\n }\n}",
+    "has_code": true
+  },
+  {
+    "page": 134,
+    "section": "4",
+    "text": "bool search(node *tree, int number)\n{\n if (tree == NULL)\n {\n return false;\n }\n else if (number < tree->number)\n {\n return search(tree->left, number);\n }\n else if (number > tree->number)\n {\n return search(tree->right, number);\n }\n else if (number == tree->number)\n {\n return true;\n }\n}",
+    "has_code": true
+  },
+  {
+    "page": 135,
+    "section": "4",
+    "text": "bool search(node *tree, int number)\n{\n if (tree == NULL)\n {\n return false;\n }\n else if (number < tree->number)\n {\n return search(tree->left, number);\n }\n else if (number > tree->number)\n {\n return search(tree->right, number);\n }\n else if (number == tree->number)\n {\n return true;\n }\n}",
+    "has_code": true
+  },
+  {
+    "page": 136,
+    "section": "4",
+    "text": "4\n2\n6\n1\n3\n5\n7",
+    "has_code": false
+  },
+  {
+    "page": 138,
+    "section": "2",
+    "text": "2",
+    "has_code": false
+  },
+  {
+    "page": 139,
+    "section": "2",
+    "text": "2\n1",
+    "has_code": false
+  },
+  {
+    "page": 140,
+    "section": "2",
+    "text": "2\n1\n3",
+    "has_code": false
+  },
+  {
+    "page": 142,
+    "section": "1",
+    "text": "1",
+    "has_code": false
+  },
+  {
+    "page": 143,
+    "section": "1",
+    "text": "1\n2",
+    "has_code": false
+  },
+  {
+    "page": 144,
+    "section": "1",
+    "text": "1\n2\n3",
+    "has_code": false
+  },
+  {
+    "page": 145,
+    "section": "1",
+    "text": "O(n2)\nO(n log n)\nO(n) \nO(log n) \nO(1)",
+    "has_code": false
+  },
+  {
+    "page": 146,
+    "section": "1",
+    "text": "O(n2)\nO(n log n)\nO(n) \nO(log n) \nO(1)",
+    "has_code": false
+  },
+  {
+    "page": 147,
+    "section": "1",
+    "text": "size of problem\ntime to solve\nO(n)\nO(log n)",
+    "has_code": false
+  },
+  {
+    "page": 148,
+    "section": "1",
+    "text": "size of problem\ntime to solve\nO(n)\nO(log n)\nO(1)",
+    "has_code": false
+  },
+  {
+    "page": 149,
+    "section": "1",
+    "text": "hashing",
+    "has_code": false
+  },
+  {
+    "page": 150,
+    "section": "1",
+    "text": "hash function",
+    "has_code": false
+  },
+  {
+    "page": 152,
+    "section": "1",
+    "text": "input → \n → output",
+    "has_code": false
+  },
+  {
+    "page": 153,
+    "section": "1",
+    "text": "hash function",
+    "has_code": false
+  },
+  {
+    "page": 154,
+    "section": "1",
+    "text": "Mario → \n → 12",
+    "has_code": false
+  },
+  {
+    "page": 155,
+    "section": "1",
+    "text": "Luigi → \n → 11",
+    "has_code": false
+  },
+  {
+    "page": 156,
+    "section": "1",
+    "text": "#include <ctype.h>\nint hash(char *name)\n{\n return toupper(name[0]) - 'A';\n}",
+    "has_code": true
+  },
+  {
+    "page": 157,
+    "section": "1",
+    "text": "#include <ctype.h>\nint hash(const char *name)\n{\n return toupper(name[0]) - 'A';\n}",
+    "has_code": true
+  },
+  {
+    "page": 158,
+    "section": "1",
+    "text": "#include <ctype.h>\nunsigned int hash(const char *name)\n{\n return toupper(name[0]) - 'A';\n}",
+    "has_code": true
+  },
+  {
+    "page": 159,
+    "section": "1",
+    "text": "hash tables",
+    "has_code": false
+  },
+  {
+    "page": 160,
+    "section": "1",
+    "text": "node *table[26];",
+    "has_code": false
+  },
+  {
+    "page": 161,
+    "section": "1",
+    "text": "typedef struct\n{\n char *name;\n char *number;\n} person;",
+    "has_code": true
+  },
+  {
+    "page": 162,
+    "section": "1",
+    "text": "typedef struct node\n{\n char *name;\n struct node *next;\n} node;",
+    "has_code": true
+  },
+  {
+    "page": 164,
+    "section": "0",
+    "text": "0\n1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15\n16\n17\n18\n19\n20\n21\n22\n23\n24\n25",
+    "has_code": false
+  },
+  {
+    "page": 165,
+    "section": "0",
+    "text": "A\nB\nC\nD\nE\nF\nG\nH\nI\nJ\nK\nL\nM\nN\nO\nP\nQ\nR\nS\nT\nU\nV\nW\nX\nY\nZ",
+    "has_code": false
+  },
+  {
+    "page": 167,
+    "section": "0",
+    "text": "Mario",
+    "has_code": false
+  },
+  {
+    "page": 168,
+    "section": "0",
+    "text": "Luigi\nMario",
+    "has_code": false
+  },
+  {
+    "page": 169,
+    "section": "0",
+    "text": "Peach\nLuigi\nMario",
+    "has_code": false
+  },
+  {
+    "page": 170,
+    "section": "0",
+    "text": "Goomba\nRosalina\nZelda\nShy Guy\nPeach\nDaisy\nLuigi\nKing Boo\nMario\nToad\nYoshi\nBirdo\nWario\nIsabelle",
+    "has_code": false
+  },
+  {
+    "page": 171,
+    "section": "0",
+    "text": "Goomba\nRosalina\nZelda\nShy Guy\nPeach\nDaisy\nLuigi\nKing Boo\nMario\nLakitu\nToad\nYoshi\nBirdo\nWario\nIsabelle",
+    "has_code": false
+  },
+  {
+    "page": 172,
+    "section": "0",
+    "text": "Goomba\nRosalina\nZelda\nShy Guy\nPeach\nDaisy\nLuigi\nKing Boo\nMario\nLakitu\nLink\nToad\nYoshi\nBirdo\nWario\nIsabelle",
+    "has_code": false
+  },
+  {
+    "page": 173,
+    "section": "0",
+    "text": "Goomba\nRosalina\nZelda\nShy Guy\nPeach\nDaisy\nLuigi\nKing Boo\nMario\nSpike\nGanon\nLakitu\nLink\nToad\nToadette\nYoshi\nBirdo\nDonkey Kong\nDiddy Kong\nBowser\nBowser Jr.\nWario\nWaluigi\nPetey Piranha\nDry Bones\nTom Nook\nK.K. Slider\nIsabelle",
+    "has_code": false
+  },
+  {
+    "page": 174,
+    "section": "0",
+    "text": "O(n2)\nO(n log n)\nO(n) \nO(log n) \nO(1)",
+    "has_code": false
+  },
+  {
+    "page": 175,
+    "section": "0",
+    "text": "O(n2)\nO(n log n)\nO(n) \nO(log n) \nO(1)",
+    "has_code": false
+  },
+  {
+    "page": 176,
+    "section": "0",
+    "text": "Laa\nLab\nLac\nLad\nLae\nLaf\nLag\nLah\nLai\nLaj\nLak\n...\nLim\nLin\nLio\n...\nLuh\nLui\nLuj\nLuigi\nLink\nLakitu",
+    "has_code": false
+  },
+  {
+    "page": 177,
+    "section": "0",
+    "text": "O(n)",
+    "has_code": false
+  },
+  {
+    "page": 178,
+    "section": "0",
+    "text": "O(n/k)",
+    "has_code": false
+  },
+  {
+    "page": 179,
+    "section": "0",
+    "text": "O(n)",
+    "has_code": false
+  },
+  {
+    "page": 180,
+    "section": "0",
+    "text": "O(1)",
+    "has_code": false
+  },
+  {
+    "page": 181,
+    "section": "0",
+    "text": "tries",
+    "has_code": false
+  },
+  {
+    "page": 193,
+    "section": "0",
+    "text": "typedef struct node\n{\n struct node *children[26];\n char *number;\n} node;",
+    "has_code": true
+  },
+  {
+    "page": 194,
+    "section": "0",
+    "text": "node *trie;",
+    "has_code": false
+  },
+  {
+    "page": 195,
+    "section": "0",
+    "text": "O(n2)\nO(n log n)\nO(n) \nO(log n) \nO(1)",
+    "has_code": false
+  }
+]

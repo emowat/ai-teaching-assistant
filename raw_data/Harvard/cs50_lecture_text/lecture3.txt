@@ -1,0 +1,1124 @@
+[Slide 2]
+1.
+Stand up and think of the number 1.
+
+[Slide 3]
+1.
+Stand up and think of the number 1.
+2.
+Pair off with someone standing, add their number to yours, and remember the sum.
+
+[Slide 4]
+1.
+Stand up and think of the number 1.
+2.
+Pair off with someone standing, add their number to yours, and remember the sum.
+3.
+One of you should then sit down.
+
+[Slide 5]
+1.
+Stand up and think of the number 1.
+2.
+Pair off with someone standing, add their number to yours, and remember the sum.
+3.
+One of you should then sit down.
+4.
+If still standing, go back to step 2.
+
+[Slide 9]
+n
+
+[Slide 10]
+n/2
+n
+
+[Slide 11]
+n/2
+n
+log2 n
+
+[Slide 16] (1)
+1
+5
+10
+20
+50 100 500
+
+[Slide 18] (1)
+[0]
+[1]
+[2]
+[3]
+[4]
+[5]
+[6]
+
+[Slide 19] (1)
+[0]
+[1]
+[2]
+[3]
+[4]
+[5]
+[6]
+
+[Slide 20] (1)
+searching
+
+[Slide 21] (1)
+input → 
+ → output
+
+[Slide 22] (1)
+→ 
+ → output
+
+[Slide 23] (1)
+→ bool
+→
+
+[Slide 24] (1)
+algorithm
+
+[Slide 27] (1)
+linear search
+
+[Slide 28] (1)
+For each door from left to right
+ If 50 is behind door
+ Return true
+Return false
+
+[Slide 29] (1)
+For each door from left to right
+ If 50 is behind door
+ Return true
+ Else
+ Return false
+
+[Slide 30] (1)
+For each door from left to right
+ If 50 is behind door
+ Return true
+Return false
+
+[Slide 31] (1)
+For i from 0 to n-1
+ If 50 is behind doors[i]
+ Return true
+Return false
+
+[Slide 33] (1)
+binary search
+
+[Slide 34] (1)
+If 50 is behind middle door
+ Return true
+Else if 50 < middle door
+ Search left half
+Else if 50 > middle door
+ Search right half
+
+[Slide 35] (1)
+If no doors left
+If 50 is behind middle door
+ Return true
+Else if 50 < middle door
+ Search left half
+Else if 50 > middle door
+ Search right half
+
+[Slide 36] (1)
+If no doors left
+ Return false
+If 50 is behind middle door
+ Return true
+Else if 50 < middle door
+ Search left half
+Else if 50 > middle door
+ Search right half
+
+[Slide 37] (1)
+If no doors left
+ Return false
+If 50 is behind doors[middle]
+ Return true
+Else if 50 < doors[middle]
+ Search doors[0] through doors[middle - 1]
+Else if 50 > doors[middle]
+ Search doors[middle + 1] through doors[n - 1]
+
+[Slide 38] (1)
+running time
+
+[Slide 39] (1)
+size of problem
+time to solve
+
+[Slide 40] (1)
+size of problem
+time to solve
+O(n) O(n/2)
+O(log2n)
+
+[Slide 41] (1)
+size of problem
+time to solve
+O(n) O(n/2)
+O(log2n)
+
+[Slide 42] (1)
+size of problem
+time to solve
+O(n) O(n)
+O(log2n)
+
+[Slide 43] (1)
+size of problem
+time to solve
+O(n) O(n)
+O(log n)
+
+[Slide 44] (1)
+size of problem
+time to solve
+O(n)
+O(log n)
+
+[Slide 45] (1)
+O
+
+[Slide 46] (1)
+O(n2)
+O(n log n)
+O(n) 
+O(log n) 
+O(1)
+
+[Slide 47] (1)
+O(n2)
+O(n log n)
+O(n) linear search
+O(log n) 
+O(1)
+
+[Slide 48] (1)
+O(n2)
+O(n log n)
+O(n) linear search
+O(log n) binary search
+O(1)
+
+[Slide 49] (1)
+Ω
+
+[Slide 50] (1)
+Ω(n2)
+Ω(n log n)
+Ω(n) 
+Ω(log n) 
+Ω(1)
+
+[Slide 51] (1)
+Ω(n2)
+Ω(n log n)
+Ω(n) 
+Ω(log n) 
+Ω(1) linear search
+
+[Slide 52] (1)
+Ω(n2)
+Ω(n log n)
+Ω(n) 
+Ω(log n) 
+Ω(1) linear search, binary search
+
+[Slide 53] (1)
+Θ
+
+[Slide 54] (1)
+Θ(n2)
+Θ(n log n)
+Θ(n) 
+Θ(log n) 
+Θ(1)
+
+[Slide 55] (1)
+asymptotic notation
+
+[Slide 56] (1)
+linear search
+
+[Slide 57] (1)
+string.h
+
+[Slide 58] (1)
+manual.cs50.io/#string.h
+
+[Slide 59] (1)
+strcmp
+
+[Slide 60] (1)
+data structures
+
+[Slide 61] (1)
+person people[2];
+
+[Slide 62] (1)
+string name;
+ string number;
+
+[Slide 63] (1)
+typedef struct
+{
+ string name;
+ string number;
+}
+person;
+
+[Slide 64] (1)
+typedef struct
+{
+ string name;
+ string number;
+} person;
+
+[Slide 65] (1)
+sorting
+
+[Slide 66] (1)
+input → 
+ → output
+
+[Slide 67] (1)
+unsorted → 
+ → output
+
+[Slide 68] (1)
+unsorted → 
+ → sorted
+
+[Slide 69] (1)
+→ 
+ → sorted
+7 2 5 4 1 6 0 3
+
+[Slide 70] (1)
+→ 
+ → 
+7 2 5 4 1 6 0 3
+0 1 2 3 4 5 6 7
+
+[Slide 72] (1)
+7 2 5 4 1 6 0 3
+
+[Slide 73] (1)
+selection sort
+
+[Slide 74] (1)
+[0]
+[1]
+[2]
+...
+[n-3]
+[n-2]
+[n-1]
+
+[Slide 75] (1)
+For i from 0 to n-1
+ Find smallest number between numbers[i] and numbers[n-1]
+ Swap smallest number with numbers[i]
+
+[Slide 76] (1)
+7 2 5 4 1 6 0 3
+
+[Slide 77] (1)
+7 2 5 4 1 6 0 3
+[i]
+
+[Slide 78] (1)
+7 2 5 4 1 6 0 3
+[i]
+[i]
+[n-1]
+
+[Slide 79] (1)
+7 2 5 4 1 6 0 3
+[i]
+[i]
+[n-1]
+
+[Slide 80] (1)
+7 2 5 4 1 6 0 3
+[i]
+[i]
+[n-1]
+
+[Slide 81] (1)
+7 2 5 4 1 6 0 3
+[i]
+[i]
+[n-1]
+
+[Slide 82] (1)
+7 2 5 4 1 6 0 3
+[i]
+[i]
+[n-1]
+
+[Slide 83] (1)
+7 2 5 4 1 6 0 3
+[i]
+[i]
+[n-1]
+
+[Slide 84] (1)
+0 2 5 4 1 6 7 3
+[i]
+[i]
+[n-1]
+
+[Slide 85] (1)
+0 2 5 4 1 6 7 3
+[i]
+[i]
+[n-1]
+
+[Slide 86] (1)
+0 2 5 4 1 6 7 3
+[i]
+[i]
+[n-1]
+
+[Slide 87] (1)
+0 2 5 4 1 6 7 3
+[i]
+[n-1]
+
+[Slide 88] (1)
+(n – 1)
+
+[Slide 89] (1)
+(n – 1) + (n – 2)
+
+[Slide 90] (1)
+(n – 1) + (n – 2) + (n – 3)
+
+[Slide 91] (1)
+(n – 1) + (n – 2) + (n – 3) + ... + 1
+
+[Slide 92] (1)
+(n – 1) + (n – 2) + (n – 3) + ... + 1
+n(n – 1)/2
+
+[Slide 93] (1)
+(n – 1) + (n – 2) + (n – 3) + ... + 1
+n(n – 1)/2
+(n2 – n)/2
+
+[Slide 94] (1)
+(n – 1) + (n – 2) + (n – 3) + ... + 1
+n(n – 1)/2
+(n2 – n)/2
+n2/2 – n/2
+
+[Slide 95] (1)
+(n – 1) + (n – 2) + (n – 3) + ... + 1
+n(n – 1)/2
+(n2 – n)/2
+n2/2 – n/2
+O(n2)
+
+[Slide 96] (1)
+O(n2) 
+O(n log n)
+O(n) 
+O(log n) 
+O(1)
+
+[Slide 97] (1)
+O(n2) selection sort
+O(n log n)
+O(n) 
+O(log n) 
+O(1)
+
+[Slide 98] (1)
+For i from 0 to n-1
+ Find smallest number between numbers[i] and numbers[n-1]
+ Swap smallest number with numbers[i]
+
+[Slide 99] (1)
+[0]
+[1]
+[2]
+...
+[n-3]
+[n-2]
+[n-1]
+
+[Slide 100] (1)
+Ω(n2) 
+Ω(n log n)
+Ω(n) 
+Ω(log n) 
+Ω(1)
+
+[Slide 101] (1)
+Ω(n2) selection sort
+Ω(n log n)
+Ω(n) 
+Ω(log n) 
+Ω(1)
+
+[Slide 102] (1)
+Θ(n2) 
+Θ(n log n) 
+Θ(n) 
+Θ(log n) 
+Θ(1)
+
+[Slide 103] (1)
+Θ(n2) selection sort
+Θ(n log n) 
+Θ(n) 
+Θ(log n) 
+Θ(1)
+
+[Slide 104] (1)
+bubble sort
+
+[Slide 105] (1)
+[0]
+[1]
+[2]
+...
+[n-3]
+[n-2]
+[n-1]
+
+[Slide 106] (1)
+Repeat n times
+ For i from 0 to n-2
+ If numbers[i] and numbers[i+1] out of order
+ Swap them
+
+[Slide 107] (1)
+Repeat n-1 times
+ For i from 0 to n-2
+ If numbers[i] and numbers[i+1] out of order
+ Swap them
+
+[Slide 108] (1)
+7 2 5 4 1 6 0 3
+
+[Slide 109] (1)
+7 2 5 4 1 6 0 3
+[i] [i+1]
+
+[Slide 110] (1)
+2 7 5 4 1 6 0 3
+[i] [i+1]
+
+[Slide 111] (1)
+2 7 5 4 1 6 0 3
+[i] [i+1]
+
+[Slide 112] (1)
+2 5 7 4 1 6 0 3
+[i] [i+1]
+
+[Slide 113] (1)
+2 5 7 4 1 6 0 3
+[i] [i+1]
+
+[Slide 114] (1)
+2 5 4 7 1 6 0 3
+[i] [i+1]
+
+[Slide 115] (1)
+2 5 4 7 1 6 0 3
+[i] [i+1]
+
+[Slide 116] (1)
+2 5 4 1 7 6 0 3
+[i] [i+1]
+
+[Slide 117] (1)
+2 5 4 1 7 6 0 3
+[i] [i+1]
+
+[Slide 118] (1)
+2 5 4 1 6 7 0 3
+[i] [i+1]
+
+[Slide 119] (1)
+2 5 4 1 6 7 0 3
+[i] [i+1]
+
+[Slide 120] (1)
+2 5 4 1 6 0 7 3
+[i] [i+1]
+
+[Slide 121] (1)
+2 5 4 1 6 0 7 3
+[i] [i+1]
+
+[Slide 122] (1)
+2 5 4 1 6 0 3 7
+[i] [i+1]
+
+[Slide 123] (1)
+2 5 4 1 6 0 3 7
+[i] [i+1]
+
+[Slide 124] (1)
+Repeat n-1 times
+ For i from 0 to n-2
+ If numbers[i] and numbers[i+1] out of order
+ Swap them
+
+[Slide 125] (1)
+Repeat n-1 times n-1
+ For i from 0 to n-2
+ If numbers[i] and numbers[i+1] out of order
+ Swap them
+
+[Slide 126] (1)
+Repeat n-1 times n-1
+ For i from 0 to n-2 n-1
+ If numbers[i] and numbers[i+1] out of order
+ Swap them
+
+[Slide 127] (1)
+Repeat n-1 times n-1
+ For i from 0 to n-2 n-1
+ If numbers[i] and numbers[i+1] out of order 1
+ Swap them
+
+[Slide 128] (1)
+Repeat n-1 times n-1
+ For i from 0 to n-2 n-1
+ If numbers[i] and numbers[i+1] out of order 4
+ Swap them
+
+[Slide 129] (1)
+Repeat n-1 times n-1
+ For i from 0 to n-2 n-1
+ If numbers[i] and numbers[i+1] out of order
+ Swap them
+
+[Slide 130] (1)
+(n – 1) × (n – 1)
+
+[Slide 131] (1)
+(n – 1) × (n – 1)
+n2 – 1n – 1n + 1
+
+[Slide 132] (1)
+(n – 1) × (n – 1)
+n2 – 1n – 1n + 1
+n2 – 2n + 1
+
+[Slide 133] (1)
+(n – 1) × (n – 1)
+n2 – 1n – 1n + 1
+n2 – 2n + 1
+O(n2)
+
+[Slide 134] (1)
+O(n2) 
+O(n log n)
+O(n) 
+O(log n) 
+O(1)
+
+[Slide 135] (1)
+O(n2) bubble sort
+O(n log n)
+O(n) 
+O(log n) 
+O(1)
+
+[Slide 136] (1)
+Repeat n-1 times
+ For i from 0 to n-2
+ If numbers[i] and numbers[i+1] out of order
+ Swap them
+
+[Slide 137] (1)
+Repeat n-1 times
+ For i from 0 to n-2
+ If numbers[i] and numbers[i+1] out of order
+ Swap them
+ If no swaps
+ Quit
+
+[Slide 138] (1)
+Ω(n2) 
+Ω(n log n)
+Ω(n) 
+Ω(log n) 
+Ω(1)
+
+[Slide 139] (1)
+Ω(n2) 
+Ω(n log n)
+Ω(n) bubble sort
+Ω(log n) 
+Ω(1)
+
+[Slide 140] (1)
+recursion
+
+[Slide 141] (1)
+If no doors left
+ Return false
+If number behind middle door
+ Return true
+Else if number < middle door
+ Search left half
+Else if number > middle door
+ Search right half
+
+[Slide 142] (1)
+If no doors left
+ Return false
+If number behind middle door
+ Return true
+Else if number < middle door
+ Search left half
+Else if number > middle door
+ Search right half
+
+[Slide 143] (1)
+1 Pick up phone book
+2 Open to middle of phone book
+3 Look at page
+4 If person is on page
+5 Call person
+6 Else if person is earlier in book
+7 Open to middle of left half of book
+8 Go back to line 3
+9 Else if person is later in book
+10 Open to middle of right half of book
+11 Go back to line 3
+12 Else
+13 Quit
+
+[Slide 144] (1)
+1 Pick up phone book
+2 Open to middle of phone book
+3 Look at page
+4 If person is on page
+5 Call person
+6 Else if person is earlier in book
+7 Open to middle of left half of book
+8 Go back to line 3
+9 Else if person is later in book
+10 Open to middle of right half of book
+11 Go back to line 3
+12 Else
+13 Quit
+
+[Slide 145] (1)
+1 Pick up phone book
+2 Open to middle of phone book
+3 Look at page
+4 If person is on page
+5 Call person
+6 Else if person is earlier in book
+7 Open to middle of left half of book
+8 Go back to line 3
+9 Else if person is later in book
+10 Open to middle of right half of book
+11 Go back to line 3
+12 Else
+13 Quit
+
+[Slide 146] (1)
+1 Pick up phone book
+2 Open to middle of phone book
+3 Look at page
+4 If person is on page
+5 Call person
+6 Else if person is earlier in book
+7 Search left half of book
+8 
+9 Else if person is later in book
+10 Search right half of book
+11 
+12 Else
+13 Quit
+
+[Slide 147] (1)
+1 Pick up phone book
+2 Open to middle of phone book
+3 Look at page
+4 If person is on page
+5 Call person
+6 Else if person is earlier in book
+7 Search left half of book
+8 Else if person is later in book
+9 Search right half of book
+10 Else
+11 Quit
+
+[Slide 154] (1)
+google.com/search?q=recursion
+
+[Slide 155] (1)
+merge sort
+
+[Slide 156] (1)
+Sort left half of numbers
+ Sort right half of numbers
+ Merge sorted halves
+
+[Slide 157] (1)
+If only one number
+ Quit
+Else
+ Sort left half of numbers
+ Sort right half of numbers
+ Merge sorted halves
+
+[Slide 158] (1)
+If only one number
+ Quit
+Else
+ Sort left half of numbers
+ Sort right half of numbers
+ Merge sorted halves
+
+[Slide 159] (1)
+1 3 4 6 0 2 5 7
+
+[Slide 160] (1)
+If only one number
+ Quit
+Else
+ Sort left half of numbers
+ Sort right half of numbers
+ Merge sorted halves
+
+[Slide 161] (1)
+6 3 4 1 5 2 7 0
+
+[Slide 162] (1)
+6 3 4 1 5 2 7 0
+
+[Slide 163] (1)
+6 3 4 1 5 2 7 0
+
+[Slide 164] (1)
+5 2 7 0
+6 3 4 1
+
+[Slide 165] (1)
+5 2 7 0
+4 1
+6 3
+
+[Slide 166] (1)
+5 2 7 0
+4 1
+3
+6
+
+[Slide 167] (1)
+5 2 7 0
+4 1
+6
+3
+
+[Slide 168] (1)
+5 2 7 0
+4 1
+3
+6
+
+[Slide 169] (1)
+5 2 7 0
+4 1
+3 6
+
+[Slide 170] (1)
+5 2 7 0
+3 6
+4 1
+
+[Slide 171] (1)
+5 2 7 0
+ 
+3 6
+ 1
+4
+
+[Slide 172] (1)
+5 2 7 0
+ 
+3 6
+ 
+4
+1
+
+[Slide 173] (1)
+5 2 7 0
+ 
+3 6
+1
+4
+
+[Slide 174] (1)
+5 2 7 0
+ 
+3 6
+1 4
+
+[Slide 175] (1)
+5 2 7 0
+1
+3 6
+4
+
+[Slide 176] (1)
+5 2 7 0
+1 3
+6
+4
+
+[Slide 177] (1)
+5 2 7 0
+1 3 4
+6
+
+[Slide 178] (1)
+5 2 7 0
+1 3 4 6
+
+[Slide 179] (1)
+1 3 4 6
+5 2 7 0
+
+[Slide 180] (1)
+1 3 4 6
+ 7 0
+5 2
+
+[Slide 181] (1)
+1 3 4 6
+ 7 0
+ 2
+5
+
+[Slide 182] (1)
+1 3 4 6
+ 7 0
+ 
+5
+2
+
+[Slide 183] (1)
+1 3 4 6
+ 7 0 
+2
+5
+
+[Slide 184] (1)
+1 3 4 6
+ 7 0
+2 5
+
+[Slide 185] (1)
+1 3 4 6
+ 
+2 5
+7 0
+
+[Slide 186] (1)
+1 3 4 6
+ 
+2 5
+ 0
+7
+
+[Slide 187] (1)
+1 3 4 6
+ 
+2 5
+ 
+7
+0
+
+[Slide 188] (1)
+1 3 4 6
+ 
+2 5
+0
+7
+
+[Slide 189] (1)
+1 3 4 6
+ 
+2 5
+0 7
+
+[Slide 190] (1)
+1 3 4 6
+0
+2 5
+7
+
+[Slide 191] (1)
+1 3 4 6
+0 2
+5
+7
+
+[Slide 192] (1)
+1 3 4 6
+0 2 5
+7
+
+[Slide 193] (1)
+1 3 4 6
+0 2 5 7
+
+[Slide 194] (0)
+0
+1 3 4 6
+2 5 7
+
+[Slide 195] (0)
+0 1
+3 4 6
+2 5 7
+
+[Slide 196] (0)
+0 1 2
+3 4 6
+5 7
+
+[Slide 197] (0)
+0 1 2 3
+4 6
+5 7
+
+[Slide 198] (0)
+0 1 2 3 4
+6
+5 7
+
+[Slide 199] (0)
+0 1 2 3 4 5
+6
+7
+
+[Slide 200] (0)
+0 1 2 3 4 5 6
+7
+
+[Slide 201] (0)
+0 1 2 3 4 5 6 7
+
+[Slide 202] (0)
+0 1 2 3 4 5 6 7
+
+[Slide 203] (0)
+O(n2) 
+O(n log n)
+O(n) 
+O(log n) 
+O(1)
+
+[Slide 204] (0)
+6 3 4 1 5 2 7 0
+6 3 4 1
+6 3
+6
+3
+4 1
+4
+1
+5 2 7 0
+5 2
+5
+2
+7 0
+7
+0
+
+[Slide 205] (0)
+6 3 4 1 5 2 7 0
+6 3 4 1
+6 3
+6
+3
+4 1
+4
+1
+5 2 7 0
+5 2
+5
+2
+7 0
+7
+0
+
+[Slide 206] (0)
+log2 n
+
+[Slide 207] (0)
+log2 8
+
+[Slide 208] (0)
+log2 23
+
+[Slide 209] (3)
+3
+
+[Slide 210] (3)
+6 3 4 1 5 2 7 0
+6 3 4 1
+6 3
+6
+3
+4 1
+4
+1
+5 2 7 0
+5 2
+5
+2
+7 0
+7
+0
+
+[Slide 211] (3)
+n log2 n
+
+[Slide 212] (3)
+n log n
+
+[Slide 213] (3)
+O(n2) 
+O(n log n) merge sort
+O(n) 
+O(log n) 
+O(1)
+
+[Slide 214] (3)
+Ω(n2) 
+Ω(n log n) merge sort
+Ω(n) 
+Ω(log n) 
+Ω(1)
+
+[Slide 215] (3)
+Θ(n2) 
+Θ(n log n) merge sort
+Θ(n) 
+Θ(log n) 
+Θ(1)

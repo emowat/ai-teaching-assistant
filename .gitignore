@@ -25,3 +25,14 @@ orchestrator.log
 synthetic-transcripts/*.jsonl
 synthetic-transcripts/*.txt
 synthetic-transcripts/*.npy
+
+# macOS
+.DS_Store
+**/.DS_Store
+
+# Local Python environments
+.venv/
+.venv311/
+
+# Local model checkpoints
+output_guardrails/models/checkpoints/

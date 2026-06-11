@@ -1,0 +1,1203 @@
+[Slide 2]
+data structures
+
+[Slide 4]
+abstract data types
+
+[Slide 5]
+queues
+
+[Slide 6]
+FIFO
+
+[Slide 7]
+enqueue
+dequeue
+
+[Slide 8]
+const int CAPACITY = 50;
+typedef struct
+{
+ person people[CAPACITY];
+ int size;
+} queue;
+
+[Slide 9]
+stacks
+
+[Slide 10]
+LIFO
+
+[Slide 11]
+push
+pop
+
+[Slide 12]
+const int CAPACITY = 50;
+typedef struct
+{
+ person people[CAPACITY];
+ int size;
+} stack;
+
+[Slide 13]
+dictionaries
+
+[Slide 15]
+word
+definition
+
+[Slide 16]
+name
+number
+
+[Slide 17]
+key
+value
+
+[Slide 20]
+arrays
+
+[Slide 22] (1)
+1
+2
+3
+
+[Slide 23] (1)
+1
+2
+3
+
+[Slide 24] (1)
+1
+2
+3
+
+[Slide 25] (1)
+1
+2
+3
+h
+e
+l
+l
+o
+,
+w
+o
+r
+l
+d
+\0
+
+[Slide 26] (1)
+1
+2
+3
+
+[Slide 27] (1)
+1
+2
+3
+1
+
+[Slide 28] (1)
+1
+2
+3
+1
+2
+
+[Slide 29] (1)
+1
+2
+3
+1
+2
+3
+
+[Slide 30] (1)
+1
+2
+3
+1
+2
+3
+4
+
+[Slide 31] (1)
+1
+2
+3
+4
+
+[Slide 32] (1)
+data structures
+
+[Slide 33] (1)
+struct
+.
+*
+
+[Slide 34] (1)
+struct
+->
+
+[Slide 35] (1)
+linked lists
+
+[Slide 37] (1)
+1
+0x123
+
+[Slide 38] (1)
+1
+0x123
+2
+0x456
+
+[Slide 39] (1)
+1
+0x123
+2
+0x456
+3
+0x789
+
+[Slide 40] (1)
+1
+0x123
+2
+0x456
+3
+0x789
+
+[Slide 41] (1)
+1
+0x123
+0x456
+2
+0x456
+3
+0x789
+
+[Slide 42] (1)
+1
+0x123
+0x456
+2
+0x456
+0x789
+3
+0x789
+
+[Slide 43] (1)
+1
+0x123
+0x456
+2
+0x456
+0x789
+3
+0x789
+0x0
+
+[Slide 44] (1)
+1
+0x123
+0x456
+2
+0x456
+0x789
+3
+0x789
+NULL
+
+[Slide 45] (1)
+1
+0x123
+0x456
+2
+0x456
+0x123
+0x789
+3
+0x789
+NULL
+
+[Slide 46] (1)
+1
+2
+3
+
+[Slide 47] (1)
+typedef struct
+{
+ string name;
+ string number;
+} person;
+
+[Slide 48] (1)
+typedef struct
+{
+ char *name;
+ char *number;
+} person;
+
+[Slide 49] (1)
+typedef struct
+{
+} person;
+
+[Slide 50] (1)
+typedef struct
+{
+} node;
+
+[Slide 51] (1)
+typedef struct
+{
+ int number;
+} node;
+
+[Slide 52] (1)
+typedef struct
+{
+ int number;
+ node *next;
+} node;
+
+[Slide 53] (1)
+typedef struct node
+{
+ int number;
+ node *next;
+} node;
+
+[Slide 54] (1)
+typedef struct node
+{
+ int number;
+ struct node *next;
+} node;
+
+[Slide 56] (1)
+node *list;
+
+[Slide 57] (1)
+list
+node *list;
+
+[Slide 58] (1)
+list
+node *list = NULL;
+
+[Slide 59] (1)
+list
+node *list = NULL;
+
+[Slide 60] (1)
+list
+node *n = malloc(sizeof(node));
+
+[Slide 61] (1)
+list
+node *n = malloc(sizeof(node));
+n
+
+[Slide 62] (1)
+list
+node *n = malloc(sizeof(node));
+n
+number
+next
+
+[Slide 63] (1)
+list
+node *n = malloc(sizeof(node));
+n
+number
+next
+
+[Slide 64] (1)
+list
+(*n).number = 1;
+n
+number
+next
+
+[Slide 65] (1)
+list
+1
+(*n).number = 1;
+n
+number
+next
+
+[Slide 66] (1)
+list
+1
+n->number = 1;
+n
+number
+next
+
+[Slide 67] (1)
+list
+1
+n->next = NULL;
+n
+number
+next
+
+[Slide 68] (1)
+list
+1
+n->next = NULL;
+n
+number
+next
+
+[Slide 69] (1)
+list
+1
+list = n;
+n
+number
+next
+
+[Slide 70] (1)
+list
+1
+list = n;
+n
+number
+next
+
+[Slide 71] (1)
+list
+1
+
+[Slide 72] (1)
+list
+1
+node *n = malloc(sizeof(node));
+
+[Slide 73] (1)
+list
+1
+node *n = malloc(sizeof(node)); 
+n
+
+[Slide 74] (1)
+list
+1
+node *n = malloc(sizeof(node)); 
+n
+
+[Slide 75] (1)
+list
+1
+node *n = malloc(sizeof(node)); 
+n
+
+[Slide 76] (1)
+list
+1
+n->number = 2;
+n
+
+[Slide 77] (1)
+list
+1
+n->number = 2;
+2
+n
+
+[Slide 78] (1)
+list
+1
+n->next = NULL;
+2
+n
+
+[Slide 79] (1)
+list
+1
+n->next = NULL;
+2
+n
+
+[Slide 80] (1)
+list
+1
+ 
+2
+n
+
+[Slide 81] (1)
+list
+1
+list = n;
+2
+n
+
+[Slide 82] (1)
+list
+1
+list = n;
+2
+n
+
+[Slide 83] (1)
+list
+1
+list = n;
+2
+n
+
+[Slide 84] (1)
+list
+1
+ 
+2
+n
+
+[Slide 85] (1)
+list
+1
+n->next = list;
+2
+n
+
+[Slide 86] (1)
+list
+1
+n->next = list;
+2
+n
+
+[Slide 87] (1)
+list
+1
+list = n;
+2
+n
+
+[Slide 88] (1)
+list
+1
+list = n;
+2
+n
+
+[Slide 89] (1)
+list
+1
+ 
+2
+
+[Slide 90] (2)
+2
+list
+3
+1
+
+[Slide 91] (2)
+2
+list
+3
+1
+ptr
+
+[Slide 92] (2)
+2
+list
+3
+1
+ptr
+
+[Slide 93] (2)
+2
+list
+3
+1
+ptr
+
+[Slide 94] (2)
+2
+list
+3
+1
+ptr
+
+[Slide 95] (2)
+2
+list
+3
+1
+
+[Slide 96] (2)
+O(n2)
+O(n log n)
+O(n) 
+O(log n) 
+O(1)
+
+[Slide 97] (2)
+list
+
+[Slide 98] (2)
+list
+1
+
+[Slide 99] (2)
+list
+1
+2
+
+[Slide 100] (2)
+2
+list
+3
+1
+
+[Slide 101] (2)
+O(n2)
+O(n log n)
+O(n) 
+O(log n) 
+O(1)
+
+[Slide 102] (2)
+O(n2)
+O(n log n)
+O(n) 
+O(log n) 
+O(1)
+
+[Slide 103] (2)
+list
+
+[Slide 104] (1)
+1
+list
+
+[Slide 105] (1)
+1
+list
+2
+
+[Slide 106] (1)
+1
+list
+2
+3
+
+[Slide 107] (1)
+O(n2)
+O(n log n)
+O(n) 
+O(log n) 
+O(1)
+
+[Slide 108] (1)
+list
+
+[Slide 109] (2)
+2
+list
+
+[Slide 110] (2)
+2
+list
+1
+
+[Slide 111] (2)
+2
+list
+1
+4
+
+[Slide 112] (2)
+2
+list
+1
+4
+3
+
+[Slide 113] (2)
+O(n2)
+O(n log n)
+O(n) 
+O(log n) 
+O(1)
+
+[Slide 115] (2)
+arrays
+
+[Slide 116] (2)
+linked lists
+
+[Slide 117] (2)
+trees
+
+[Slide 118] (2)
+binary search trees
+
+[Slide 119] (1)
+1
+2
+3
+4
+5
+6
+7
+
+[Slide 120] (1)
+1
+2
+3
+4
+5
+6
+7
+
+[Slide 121] (1)
+1
+2
+3
+4
+5
+6
+7
+
+[Slide 122] (1)
+1
+2
+3
+4
+5
+6
+7
+
+[Slide 123] (4)
+4
+2
+6
+1
+3
+5
+7
+
+[Slide 124] (4)
+4
+2
+6
+1
+3
+5
+7
+
+[Slide 125] (4)
+typedef struct node
+{
+ int number;
+ struct node *next;
+} node;
+
+[Slide 126] (4)
+typedef struct node
+{
+ int number;
+} node;
+
+[Slide 127] (4)
+typedef struct node
+{
+ int number;
+} node;
+
+[Slide 128] (4)
+typedef struct node
+{
+ int number;
+ struct node *left;
+ struct node *right;
+} node;
+
+[Slide 129] (4)
+4
+2
+6
+1
+3
+5
+7
+
+[Slide 130] (4)
+bool search(node *tree, int number)
+{
+ if (tree == NULL)
+ {
+ return false;
+ }
+ else if (number < tree->number)
+ {
+ return search(tree->left, number);
+ }
+ else if (number > tree->number)
+ {
+ return search(tree->right, number);
+ }
+ else if (number == tree->number)
+ {
+ return true;
+ }
+}
+
+[Slide 131] (4)
+bool search(node *tree, int number)
+{
+ if (tree == NULL)
+ {
+ return false;
+ }
+ else if (number < tree->number)
+ {
+ return search(tree->left, number);
+ }
+ else if (number > tree->number)
+ {
+ return search(tree->right, number);
+ }
+ else if (number == tree->number)
+ {
+ return true;
+ }
+}
+
+[Slide 132] (4)
+bool search(node *tree, int number)
+{
+ if (tree == NULL)
+ {
+ return false;
+ }
+ else if (number < tree->number)
+ {
+ return search(tree->left, number);
+ }
+ else if (number > tree->number)
+ {
+ return search(tree->right, number);
+ }
+ else if (number == tree->number)
+ {
+ return true;
+ }
+}
+
+[Slide 133] (4)
+bool search(node *tree, int number)
+{
+ if (tree == NULL)
+ {
+ return false;
+ }
+ else if (number < tree->number)
+ {
+ return search(tree->left, number);
+ }
+ else if (number > tree->number)
+ {
+ return search(tree->right, number);
+ }
+ else if (number == tree->number)
+ {
+ return true;
+ }
+}
+
+[Slide 134] (4)
+bool search(node *tree, int number)
+{
+ if (tree == NULL)
+ {
+ return false;
+ }
+ else if (number < tree->number)
+ {
+ return search(tree->left, number);
+ }
+ else if (number > tree->number)
+ {
+ return search(tree->right, number);
+ }
+ else if (number == tree->number)
+ {
+ return true;
+ }
+}
+
+[Slide 135] (4)
+bool search(node *tree, int number)
+{
+ if (tree == NULL)
+ {
+ return false;
+ }
+ else if (number < tree->number)
+ {
+ return search(tree->left, number);
+ }
+ else if (number > tree->number)
+ {
+ return search(tree->right, number);
+ }
+ else if (number == tree->number)
+ {
+ return true;
+ }
+}
+
+[Slide 136] (4)
+4
+2
+6
+1
+3
+5
+7
+
+[Slide 138] (2)
+2
+
+[Slide 139] (2)
+2
+1
+
+[Slide 140] (2)
+2
+1
+3
+
+[Slide 142] (1)
+1
+
+[Slide 143] (1)
+1
+2
+
+[Slide 144] (1)
+1
+2
+3
+
+[Slide 145] (1)
+O(n2)
+O(n log n)
+O(n) 
+O(log n) 
+O(1)
+
+[Slide 146] (1)
+O(n2)
+O(n log n)
+O(n) 
+O(log n) 
+O(1)
+
+[Slide 147] (1)
+size of problem
+time to solve
+O(n)
+O(log n)
+
+[Slide 148] (1)
+size of problem
+time to solve
+O(n)
+O(log n)
+O(1)
+
+[Slide 149] (1)
+hashing
+
+[Slide 150] (1)
+hash function
+
+[Slide 152] (1)
+input → 
+ → output
+
+[Slide 153] (1)
+hash function
+
+[Slide 154] (1)
+Mario → 
+ → 12
+
+[Slide 155] (1)
+Luigi → 
+ → 11
+
+[Slide 156] (1)
+#include <ctype.h>
+int hash(char *name)
+{
+ return toupper(name[0]) - 'A';
+}
+
+[Slide 157] (1)
+#include <ctype.h>
+int hash(const char *name)
+{
+ return toupper(name[0]) - 'A';
+}
+
+[Slide 158] (1)
+#include <ctype.h>
+unsigned int hash(const char *name)
+{
+ return toupper(name[0]) - 'A';
+}
+
+[Slide 159] (1)
+hash tables
+
+[Slide 160] (1)
+node *table[26];
+
+[Slide 161] (1)
+typedef struct
+{
+ char *name;
+ char *number;
+} person;
+
+[Slide 162] (1)
+typedef struct node
+{
+ char *name;
+ struct node *next;
+} node;
+
+[Slide 164] (0)
+0
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+
+[Slide 165] (0)
+A
+B
+C
+D
+E
+F
+G
+H
+I
+J
+K
+L
+M
+N
+O
+P
+Q
+R
+S
+T
+U
+V
+W
+X
+Y
+Z
+
+[Slide 167] (0)
+Mario
+
+[Slide 168] (0)
+Luigi
+Mario
+
+[Slide 169] (0)
+Peach
+Luigi
+Mario
+
+[Slide 170] (0)
+Goomba
+Rosalina
+Zelda
+Shy Guy
+Peach
+Daisy
+Luigi
+King Boo
+Mario
+Toad
+Yoshi
+Birdo
+Wario
+Isabelle
+
+[Slide 171] (0)
+Goomba
+Rosalina
+Zelda
+Shy Guy
+Peach
+Daisy
+Luigi
+King Boo
+Mario
+Lakitu
+Toad
+Yoshi
+Birdo
+Wario
+Isabelle
+
+[Slide 172] (0)
+Goomba
+Rosalina
+Zelda
+Shy Guy
+Peach
+Daisy
+Luigi
+King Boo
+Mario
+Lakitu
+Link
+Toad
+Yoshi
+Birdo
+Wario
+Isabelle
+
+[Slide 173] (0)
+Goomba
+Rosalina
+Zelda
+Shy Guy
+Peach
+Daisy
+Luigi
+King Boo
+Mario
+Spike
+Ganon
+Lakitu
+Link
+Toad
+Toadette
+Yoshi
+Birdo
+Donkey Kong
+Diddy Kong
+Bowser
+Bowser Jr.
+Wario
+Waluigi
+Petey Piranha
+Dry Bones
+Tom Nook
+K.K. Slider
+Isabelle
+
+[Slide 174] (0)
+O(n2)
+O(n log n)
+O(n) 
+O(log n) 
+O(1)
+
+[Slide 175] (0)
+O(n2)
+O(n log n)
+O(n) 
+O(log n) 
+O(1)
+
+[Slide 176] (0)
+Laa
+Lab
+Lac
+Lad
+Lae
+Laf
+Lag
+Lah
+Lai
+Laj
+Lak
+...
+Lim
+Lin
+Lio
+...
+Luh
+Lui
+Luj
+Luigi
+Link
+Lakitu
+
+[Slide 177] (0)
+O(n)
+
+[Slide 178] (0)
+O(n/k)
+
+[Slide 179] (0)
+O(n)
+
+[Slide 180] (0)
+O(1)
+
+[Slide 181] (0)
+tries
+
+[Slide 193] (0)
+typedef struct node
+{
+ struct node *children[26];
+ char *number;
+} node;
+
+[Slide 194] (0)
+node *trie;
+
+[Slide 195] (0)
+O(n2)
+O(n log n)
+O(n) 
+O(log n) 
+O(1)

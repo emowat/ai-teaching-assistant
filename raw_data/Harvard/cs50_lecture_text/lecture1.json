@@ -1,0 +1,800 @@
+[
+  {
+    "page": 4,
+    "section": "",
+    "text": "#include <stdio.h>\nint main(void)\n{\n printf(\"hello, world\\n\");\n}",
+    "has_code": true
+  },
+  {
+    "page": 5,
+    "section": "",
+    "text": "#include <stdio.h>\nint main(void)\n{\n printf(\"hello, world\\n\");\n}",
+    "has_code": true
+  },
+  {
+    "page": 6,
+    "section": "",
+    "text": "source code",
+    "has_code": false
+  },
+  {
+    "page": 7,
+    "section": "",
+    "text": "01111111 01000101 01001100 01000110 00000010 00000001 00000001 00000000\n00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000\n00000010 00000000 00111110 00000000 00000001 00000000 00000000 00000000\n10110000 00000101 01000000 00000000 00000000 00000000 00000000 00000000\n01000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000\n11010000 00010011 00000000 00000000 00000000 00000000 00000000 00000000\n00000000 00000000 00000000 00000000 01000000 00000000 00111000 00000000\n00001001 00000000 01000000 00000000 00100100 00000000 00100001 00000000\n00000110 00000000 00000000 00000000 00000101 00000000 00000000 00000000\n01000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000\n01000000 00000000 01000000 00000000 00000000 00000000 00000000 00000000\n01000000 00000000 01000000 00000000 00000000 00000000 00000000 00000000\n11111000 00000001 00000000 00000000 00000000 00000000 00000000 00000000\n11111000 00000001 00000000 00000000 00000000 00000000 00000000 00000000\n00001000 00000000 00000000 00000000 00000000 00000000 00000000 00000000\n00000011 00000000 00000000 00000000 00000100 00000000 00000000 00000000\n00111000 00000010 00000000 00000000 00000000 00000000 00000000 00000000\n...",
+    "has_code": false
+  },
+  {
+    "page": 8,
+    "section": "",
+    "text": "machine code",
+    "has_code": false
+  },
+  {
+    "page": 9,
+    "section": "",
+    "text": "input → \n → output",
+    "has_code": false
+  },
+  {
+    "page": 11,
+    "section": "",
+    "text": "source code →",
+    "has_code": false
+  },
+  {
+    "page": 12,
+    "section": "",
+    "text": "source code → \n → machine code",
+    "has_code": false
+  },
+  {
+    "page": 13,
+    "section": "",
+    "text": "source code → \n → machine code\ncompiler",
+    "has_code": false
+  },
+  {
+    "page": 14,
+    "section": "",
+    "text": "Visual Studio Code for CS50\ncs50.dev",
+    "has_code": true
+  },
+  {
+    "page": 21,
+    "section": "",
+    "text": "graphical user interface",
+    "has_code": false
+  },
+  {
+    "page": 22,
+    "section": "",
+    "text": "GUI",
+    "has_code": false
+  },
+  {
+    "page": 24,
+    "section": "",
+    "text": "command-line interface",
+    "has_code": false
+  },
+  {
+    "page": 25,
+    "section": "",
+    "text": "CLI",
+    "has_code": false
+  },
+  {
+    "page": 27,
+    "section": "",
+    "text": "#include <stdio.h>\nint main(void)\n{\n printf(\"hello, world\\n\");\n}",
+    "has_code": true
+  },
+  {
+    "page": 28,
+    "section": "",
+    "text": "code hello.c\nmake hello\n./hello",
+    "has_code": false
+  },
+  {
+    "page": 30,
+    "section": "",
+    "text": "#include <stdio.h>\nint main(void)\n{\n printf(\"hello, world\\n\");\n}",
+    "has_code": true
+  },
+  {
+    "page": 31,
+    "section": "",
+    "text": "printf(\"hello, world\\n\");",
+    "has_code": true
+  },
+  {
+    "page": 32,
+    "section": "",
+    "text": "printf(\"hello, world\\n\");",
+    "has_code": true
+  },
+  {
+    "page": 33,
+    "section": "",
+    "text": "printf(\"hello, world\\n\");",
+    "has_code": true
+  },
+  {
+    "page": 34,
+    "section": "",
+    "text": "printf(\"hello, world\\n\");",
+    "has_code": true
+  },
+  {
+    "page": 35,
+    "section": "",
+    "text": "printf(\"hello, world\\n\");",
+    "has_code": true
+  },
+  {
+    "page": 36,
+    "section": "",
+    "text": "printf(\"hello, world\\n\");",
+    "has_code": true
+  },
+  {
+    "page": 37,
+    "section": "",
+    "text": "printf(\"hello, world\\n\");",
+    "has_code": true
+  },
+  {
+    "page": 39,
+    "section": "",
+    "text": "input → \n → output",
+    "has_code": false
+  },
+  {
+    "page": 40,
+    "section": "",
+    "text": "function\narguments → \n → side effects",
+    "has_code": false
+  },
+  {
+    "page": 41,
+    "section": "",
+    "text": "→ \n →",
+    "has_code": false
+  },
+  {
+    "page": 42,
+    "section": "",
+    "text": "escape sequences",
+    "has_code": false
+  },
+  {
+    "page": 43,
+    "section": "",
+    "text": "\\n\n\\r\n\\\"\n\\'\n\\\\\n…",
+    "has_code": false
+  },
+  {
+    "page": 44,
+    "section": "",
+    "text": "header files",
+    "has_code": false
+  },
+  {
+    "page": 45,
+    "section": "",
+    "text": "libraries",
+    "has_code": false
+  },
+  {
+    "page": 46,
+    "section": "",
+    "text": "stdio.h",
+    "has_code": false
+  },
+  {
+    "page": 47,
+    "section": "",
+    "text": "Manual Pages\nmanual.cs50.io",
+    "has_code": false
+  },
+  {
+    "page": 48,
+    "section": "",
+    "text": "manual.cs50.io/#stdio.h",
+    "has_code": false
+  },
+  {
+    "page": 49,
+    "section": "",
+    "text": "manual.cs50.io/3/printf",
+    "has_code": true
+  },
+  {
+    "page": 50,
+    "section": "",
+    "text": "cs50.h",
+    "has_code": false
+  },
+  {
+    "page": 51,
+    "section": "",
+    "text": "manual.cs50.io/#cs50.h",
+    "has_code": false
+  },
+  {
+    "page": 52,
+    "section": "",
+    "text": "get_char\nget_double\nget_float\nget_int\nget_long\nget_string\n...",
+    "has_code": false
+  },
+  {
+    "page": 53,
+    "section": "",
+    "text": "get_char\nget_double\nget_float\nget_int\nget_long\nget_string\n...",
+    "has_code": false
+  },
+  {
+    "page": 55,
+    "section": "",
+    "text": "input → \n → output",
+    "has_code": false
+  },
+  {
+    "page": 56,
+    "section": "",
+    "text": "function\narguments → \n → return value",
+    "has_code": true
+  },
+  {
+    "page": 57,
+    "section": "",
+    "text": "→ \n →",
+    "has_code": false
+  },
+  {
+    "page": 59,
+    "section": "",
+    "text": "string answer = get_string( );\nprintf(\"hello, %s\", answer);",
+    "has_code": true
+  },
+  {
+    "page": 60,
+    "section": "",
+    "text": "string answer = get_string(\"What's your name? \");\nprintf(\"hello, %s\", answer);",
+    "has_code": true
+  },
+  {
+    "page": 61,
+    "section": "",
+    "text": "string answer = get_string(\"What's your name? \");\nprintf(\"hello, %s\", answer);",
+    "has_code": true
+  },
+  {
+    "page": 62,
+    "section": "",
+    "text": "string answer = get_string(\"What's your name? \");\nprintf(\"hello, %s\", answer);",
+    "has_code": true
+  },
+  {
+    "page": 63,
+    "section": "",
+    "text": "string answer = get_string(\"What's your name? \");\nprintf(\"hello, %s\", answer);",
+    "has_code": true
+  },
+  {
+    "page": 64,
+    "section": "",
+    "text": "string answer = get_string(\"What's your name? \");\nprintf(\"hello, %s\", answer);",
+    "has_code": true
+  },
+  {
+    "page": 65,
+    "section": "",
+    "text": "printf(\"hello, %s\", answer);",
+    "has_code": true
+  },
+  {
+    "page": 66,
+    "section": "",
+    "text": "printf(\"hello, %s\\n\", answer);",
+    "has_code": true
+  },
+  {
+    "page": 67,
+    "section": "",
+    "text": "printf(\"hello, %s\\n\", answer);",
+    "has_code": true
+  },
+  {
+    "page": 68,
+    "section": "",
+    "text": "printf(\"hello, %s\\n\", answer);",
+    "has_code": true
+  },
+  {
+    "page": 69,
+    "section": "",
+    "text": "printf(\"hello, %s\\n\", answer);",
+    "has_code": true
+  },
+  {
+    "page": 70,
+    "section": "",
+    "text": "printf(\"hello, %s\\n\", answer);",
+    "has_code": true
+  },
+  {
+    "page": 71,
+    "section": "",
+    "text": "Linux",
+    "has_code": false
+  },
+  {
+    "page": 72,
+    "section": "",
+    "text": "cd\ncp\nls\nmkdir\nmv\nrm\nrmdir\n...",
+    "has_code": false
+  },
+  {
+    "page": 73,
+    "section": "",
+    "text": "conditionals",
+    "has_code": false
+  },
+  {
+    "page": 74,
+    "section": "",
+    "text": "if (x < y)\n{\n printf(\"x is less than y\\n\");\n}",
+    "has_code": true
+  },
+  {
+    "page": 75,
+    "section": "",
+    "text": "if (x < y)\n{\n printf(\"x is less than y\\n\");\n}",
+    "has_code": true
+  },
+  {
+    "page": 76,
+    "section": "",
+    "text": "if (x < y)\n{\n printf(\"x is less than y\\n\");\n}",
+    "has_code": true
+  },
+  {
+    "page": 77,
+    "section": "",
+    "text": "if (x < y)\n{\n printf(\"x is less than y\\n\");\n}\nelse\n{\n printf(\"x is not less than y\\n\");\n}",
+    "has_code": true
+  },
+  {
+    "page": 78,
+    "section": "",
+    "text": "if (x < y)\n{\n printf(\"x is less than y\\n\");\n}\nelse\n{\n printf(\"x is not less than y\\n\");\n}",
+    "has_code": true
+  },
+  {
+    "page": 79,
+    "section": "",
+    "text": "if (x < y)\n{\n printf(\"x is less than y\\n\");\n}\nelse\n{\n printf(\"x is not less than y\\n\");\n}",
+    "has_code": true
+  },
+  {
+    "page": 80,
+    "section": "",
+    "text": "if (x < y)\n{\n printf(\"x is less than y\\n\");\n}\nelse if (x > y)\n{\n printf(\"x is greater than y\\n\");\n}\nelse if (x == y)\n{\n printf(\"x is equal to y\\n\");\n}",
+    "has_code": true
+  },
+  {
+    "page": 81,
+    "section": "",
+    "text": "if (x < y)\n{\n printf(\"x is less than y\\n\");\n}\nelse if (x > y)\n{\n printf(\"x is greater than y\\n\");\n}\nelse if (x == y)\n{\n printf(\"x is equal to y\\n\");\n}",
+    "has_code": true
+  },
+  {
+    "page": 82,
+    "section": "",
+    "text": "if (x < y)\n{\n printf(\"x is less than y\\n\");\n}\nelse if (x > y)\n{\n printf(\"x is greater than y\\n\");\n}\nelse if (x == y)\n{\n printf(\"x is equal to y\\n\");\n}",
+    "has_code": true
+  },
+  {
+    "page": 83,
+    "section": "",
+    "text": "if (x < y)\n{\n printf(\"x is less than y\\n\");\n}\nelse if (x > y)\n{\n printf(\"x is greater than y\\n\");\n}\nelse\n{\n printf(\"x is equal to y\\n\");\n}",
+    "has_code": true
+  },
+  {
+    "page": 84,
+    "section": "",
+    "text": "operators",
+    "has_code": false
+  },
+  {
+    "page": 85,
+    "section": "",
+    "text": "=\n<\n<=\n>\n>=\n==\n!=\n…",
+    "has_code": false
+  },
+  {
+    "page": 86,
+    "section": "",
+    "text": "types",
+    "has_code": false
+  },
+  {
+    "page": 87,
+    "section": "",
+    "text": "bool\nchar\ndouble\nfloat\nint\nlong\nstring\n...",
+    "has_code": true
+  },
+  {
+    "page": 88,
+    "section": "",
+    "text": "bool\nchar\ndouble\nfloat\nint\nlong\nstring\n...",
+    "has_code": true
+  },
+  {
+    "page": 89,
+    "section": "",
+    "text": "cs50.h",
+    "has_code": false
+  },
+  {
+    "page": 90,
+    "section": "",
+    "text": "get_char\nget_double\nget_float\nget_int\nget_long\nget_string\n...",
+    "has_code": false
+  },
+  {
+    "page": 91,
+    "section": "",
+    "text": "get_char\nget_double\nget_float\nget_int\nget_long\nget_string\n...",
+    "has_code": false
+  },
+  {
+    "page": 92,
+    "section": "",
+    "text": "format codes",
+    "has_code": false
+  },
+  {
+    "page": 93,
+    "section": "",
+    "text": "%c\n%f\n%i\n%li\n%s",
+    "has_code": false
+  },
+  {
+    "page": 94,
+    "section": "",
+    "text": "%c\n%f\n%i\n%li\n%s",
+    "has_code": false
+  },
+  {
+    "page": 95,
+    "section": "",
+    "text": "variables",
+    "has_code": false
+  },
+  {
+    "page": 96,
+    "section": "",
+    "text": "int counter = 0;",
+    "has_code": true
+  },
+  {
+    "page": 97,
+    "section": "",
+    "text": "int counter = 0;",
+    "has_code": true
+  },
+  {
+    "page": 98,
+    "section": "",
+    "text": "int counter = 0;",
+    "has_code": true
+  },
+  {
+    "page": 99,
+    "section": "",
+    "text": "int counter = 0;",
+    "has_code": true
+  },
+  {
+    "page": 100,
+    "section": "",
+    "text": "counter = counter + 1;",
+    "has_code": false
+  },
+  {
+    "page": 101,
+    "section": "",
+    "text": "counter = counter + 1;;",
+    "has_code": false
+  },
+  {
+    "page": 102,
+    "section": "",
+    "text": "counter += 1;",
+    "has_code": false
+  },
+  {
+    "page": 103,
+    "section": "",
+    "text": "counter++;",
+    "has_code": false
+  },
+  {
+    "page": 104,
+    "section": "",
+    "text": "counter--;",
+    "has_code": false
+  },
+  {
+    "page": 110,
+    "section": "",
+    "text": "bool\nchar\ndouble\nfloat\nint\nlong\nstring\n...",
+    "has_code": true
+  },
+  {
+    "page": 111,
+    "section": "",
+    "text": "get_char\nget_double\nget_float\nget_int\nget_long\nget_string\n...",
+    "has_code": false
+  },
+  {
+    "page": 112,
+    "section": "",
+    "text": "loops",
+    "has_code": false
+  },
+  {
+    "page": 114,
+    "section": "",
+    "text": "int i = 3;\nwhile (i > 0)\n{\n printf(\"meow\\n\");\n i--;\n}",
+    "has_code": true
+  },
+  {
+    "page": 115,
+    "section": "",
+    "text": "int i = 3;\nwhile (i > 0)\n{\n printf(\"meow\\n\");\n i--;\n}",
+    "has_code": true
+  },
+  {
+    "page": 116,
+    "section": "",
+    "text": "int i = 0;\nwhile (i < 3)\n{\n printf(\"meow\\n\");\n i++;\n}",
+    "has_code": true
+  },
+  {
+    "page": 118,
+    "section": "",
+    "text": "for (int i = 0; i < 3; i++)\n{\n printf(\"meow\\n\");\n}",
+    "has_code": true
+  },
+  {
+    "page": 120,
+    "section": "",
+    "text": "while (true)\n{\n printf(\"meow\\n\");\n}",
+    "has_code": true
+  },
+  {
+    "page": 121,
+    "section": "",
+    "text": "while ( )\n{\n}",
+    "has_code": true
+  },
+  {
+    "page": 122,
+    "section": "",
+    "text": "while (true)\n{\n}",
+    "has_code": true
+  },
+  {
+    "page": 123,
+    "section": "",
+    "text": "while (true)\n{\n printf(\"meow\\n\");\n}",
+    "has_code": true
+  },
+  {
+    "page": 125,
+    "section": "",
+    "text": "control-c",
+    "has_code": false
+  },
+  {
+    "page": 126,
+    "section": "",
+    "text": "scope",
+    "has_code": false
+  },
+  {
+    "page": 129,
+    "section": "",
+    "text": "void meow(void)\n{\n printf(\"meow\\n\");\n}",
+    "has_code": true
+  },
+  {
+    "page": 131,
+    "section": "",
+    "text": "int main(void)\n{\n for (int i = 0; i < 3; i++)\n {\n meow();\n }\n}",
+    "has_code": true
+  },
+  {
+    "page": 133,
+    "section": "",
+    "text": "void meow(int n)\n{\n for (int i = 0; i < n; i++)\n {\n printf(\"meow\\n\");\n }\n}",
+    "has_code": true
+  },
+  {
+    "page": 135,
+    "section": "",
+    "text": "int main(void)\n{\n meow(3);\n}",
+    "has_code": true
+  },
+  {
+    "page": 136,
+    "section": "",
+    "text": "scope",
+    "has_code": false
+  },
+  {
+    "page": 137,
+    "section": "",
+    "text": "correctness, design, style",
+    "has_code": false
+  },
+  {
+    "page": 138,
+    "section": "",
+    "text": "check50, design50, style50",
+    "has_code": false
+  },
+  {
+    "page": 139,
+    "section": "",
+    "text": "function\narguments → \n → side effects",
+    "has_code": false
+  },
+  {
+    "page": 147,
+    "section": "",
+    "text": "constants",
+    "has_code": false
+  },
+  {
+    "page": 148,
+    "section": "",
+    "text": "function\narguments → \n → return value",
+    "has_code": true
+  },
+  {
+    "page": 149,
+    "section": "",
+    "text": "+\n-\n*\n/\n%\n…",
+    "has_code": false
+  },
+  {
+    "page": 150,
+    "section": "",
+    "text": "integer overflow",
+    "has_code": false
+  },
+  {
+    "page": 152,
+    "section": "0000",
+    "text": "0000",
+    "has_code": false
+  },
+  {
+    "page": 153,
+    "section": "0001",
+    "text": "0001",
+    "has_code": false
+  },
+  {
+    "page": 154,
+    "section": "0010",
+    "text": "0010",
+    "has_code": false
+  },
+  {
+    "page": 155,
+    "section": "0011",
+    "text": "0011",
+    "has_code": false
+  },
+  {
+    "page": 156,
+    "section": "0100",
+    "text": "0100",
+    "has_code": false
+  },
+  {
+    "page": 157,
+    "section": "0101",
+    "text": "0101",
+    "has_code": false
+  },
+  {
+    "page": 158,
+    "section": "0110",
+    "text": "0110",
+    "has_code": false
+  },
+  {
+    "page": 159,
+    "section": "0111",
+    "text": "0111",
+    "has_code": false
+  },
+  {
+    "page": 160,
+    "section": "1000",
+    "text": "1000",
+    "has_code": false
+  },
+  {
+    "page": 161,
+    "section": "1000",
+    "text": "1000",
+    "has_code": false
+  },
+  {
+    "page": 164,
+    "section": "1000",
+    "text": "truncation",
+    "has_code": false
+  },
+  {
+    "page": 165,
+    "section": "1000",
+    "text": "floating-point imprecision",
+    "has_code": false
+  },
+  {
+    "page": 166,
+    "section": "1000",
+    "text": "Year 2000 Problem",
+    "has_code": false
+  },
+  {
+    "page": 167,
+    "section": "1999",
+    "text": "1999",
+    "has_code": false
+  },
+  {
+    "page": 168,
+    "section": "1999",
+    "text": "1999",
+    "has_code": false
+  },
+  {
+    "page": 169,
+    "section": "1900",
+    "text": "1900",
+    "has_code": false
+  },
+  {
+    "page": 170,
+    "section": "1900",
+    "text": "Year 2038 Problem",
+    "has_code": false
+  },
+  {
+    "page": 171,
+    "section": "1900",
+    "text": "19 January 2038",
+    "has_code": false
+  },
+  {
+    "page": 172,
+    "section": "1900",
+    "text": "13 December 1901",
+    "has_code": false
+  },
+  {
+    "page": 173,
+    "section": "1900",
+    "text": "19 January 2038",
+    "has_code": false
+  }
+]

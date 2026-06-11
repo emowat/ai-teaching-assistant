@@ -1,0 +1,1428 @@
+[Slide 11]
+RGB
+
+[Slide 17]
+0 1 2 3 4 5 6 7 8 9 A B C D E F
+
+[Slide 18]
+0 1 2 3 4 5 6 7 8 9 A B C D E F
+
+[Slide 19]
+0 1 2 3 4 5 6 7 8 9 a b c d e f
+
+[Slide 20]
+0 1 2 3 4 5 6 7 8 9 A B C D E F
+
+[Slide 21]
+hexadecimal
+
+[Slide 22]
+base-16
+
+[Slide 23]
+# #
+161
+160
+
+[Slide 24]
+# #
+16
+1
+
+[Slide 25] (00)
+00
+16
+1
+
+[Slide 26] (01)
+01
+16
+1
+
+[Slide 27] (02)
+02
+16
+1
+
+[Slide 28] (03)
+03
+16
+1
+
+[Slide 29] (04)
+04
+16
+1
+
+[Slide 30] (05)
+05
+16
+1
+
+[Slide 31] (06)
+06
+16
+1
+
+[Slide 32] (07)
+07
+16
+1
+
+[Slide 33] (08)
+08
+16
+1
+
+[Slide 34] (09)
+09
+16
+1
+
+[Slide 35] (09)
+0A
+16
+1
+
+[Slide 36] (09)
+0B
+16
+1
+
+[Slide 37] (09)
+0C
+16
+1
+
+[Slide 38] (09)
+0D
+16
+1
+
+[Slide 39] (09)
+0E
+16
+1
+
+[Slide 40] (09)
+0F
+16
+1
+
+[Slide 41] (10)
+10
+16
+1
+
+[Slide 42] (11)
+11
+16
+1
+
+[Slide 43] (12)
+12
+16
+1
+
+[Slide 44] (12)
+…
+16
+1
+
+[Slide 45] (12)
+FF
+16
+1
+
+[Slide 46] (12)
+FF
+16
+1
+16 × F
+1 × F
++
+
+[Slide 47] (12)
+FF
+16
+1
+16 × 15
+1 × 15
++
+
+[Slide 48] (12)
+FF
+16
+1
+240
+15
++
+
+[Slide 49] (12)
+FF
+16
+1
+255
+
+[Slide 50] (12)
+FF
+
+[Slide 51] (12)
+F F
+
+[Slide 52] (12)
+1111 1111
+
+[Slide 54] (0)
+0
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+
+[Slide 55] (0)
+0
+1
+2
+3
+4
+5
+6
+7
+8
+9
+A
+B
+C
+D
+E
+F
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+1A
+1B
+1C
+1D
+1E
+1F
+
+[Slide 56] (0)
+0
+1
+2
+3
+4
+5
+6
+7
+8
+9
+A
+B
+C
+D
+E
+F
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+1A
+1B
+1C
+1D
+1E
+1F
+
+[Slide 57] (0)
+0x0
+0x1
+0x2
+0x3
+0x4
+0x5
+0x6
+0x7
+0x8
+0x9
+0xA
+0xB
+0xC
+0xD
+0xE
+0xF
+0x10
+0x11
+0x12
+0x13
+0x14
+0x15
+0x16
+0x17
+0x18
+0x19
+0x1A
+0x1B
+0x1C
+0x1D
+0x1E
+0x1F
+
+[Slide 58] (0)
+int n = 50;
+
+[Slide 60] (50)
+50
+n
+
+[Slide 61] (50)
+50
+0x123
+
+[Slide 62] (50)
+&
+*
+
+[Slide 63] (50)
+%p
+
+[Slide 64] (50)
+pointers
+
+[Slide 65] (50)
+int n = 50;
+int *p = &n;
+
+[Slide 66] (50)
+int n = 50;
+int *p = &n;
+
+[Slide 67] (50)
+int n = 50;
+int* p = &n;
+
+[Slide 68] (50)
+int n = 50;
+int * p = &n;
+
+[Slide 69] (50)
+int n = 50;
+int *p = &n;
+
+[Slide 71] (50)
+50
+n
+
+[Slide 72] (50)
+50
+0x123
+
+[Slide 73] (50)
+0x123
+p
+50
+0x123
+
+[Slide 74] (50)
+0x123
+p
+50
+0x123
+
+[Slide 75] (50)
+p
+50
+0x123
+
+[Slide 76] (50)
+string
+
+[Slide 77] (50)
+string s = "HI!";
+
+[Slide 78] (50)
+H
+I
+!
+\0
+
+[Slide 79] (50)
+H
+s[0]
+I
+s[1]
+!
+s[2]
+\0
+s[3]
+
+[Slide 80] (50)
+H
+0x123
+I
+0x124
+!
+0x125
+\0
+0x126
+
+[Slide 81] (50)
+s
+H
+0x123
+I
+0x124
+!
+0x125
+\0
+0x126
+
+[Slide 82] (50)
+0x123
+s
+H
+0x123
+I
+0x124
+!
+0x125
+\0
+0x126
+
+[Slide 83] (50)
+s
+H
+0x123
+I
+0x124
+!
+0x125
+\0
+0x126
+0x127
+
+[Slide 84] (50)
+string s = "HI!";
+
+[Slide 85] (50)
+string s = "HI!";
+
+[Slide 86] (50)
+char *s = "HI!";
+
+[Slide 87] (50)
+typedef struct
+{
+ string name;
+ string number;
+} person;
+
+[Slide 88] (50)
+typedef struct
+{
+ string name;
+ string number;
+} person;
+
+[Slide 89] (50)
+typedef struct
+{
+ string name;
+ string number;
+} person;
+
+[Slide 90] (50)
+typedef struct
+{
+ string name;
+ string number;
+} person;
+
+[Slide 91] (50)
+typedef
+
+[Slide 92] (50)
+typedef int
+
+[Slide 93] (50)
+typedef int integer;
+
+[Slide 94] (50)
+typedef
+
+[Slide 95] (50)
+typedef char *
+
+[Slide 96] (50)
+typedef char *string;
+
+[Slide 97] (50)
+typedef char *string;
+
+[Slide 98] (50)
+cs50.h
+
+[Slide 99] (50)
+pointer arithmetic
+
+[Slide 100] (50)
+0x123
+s
+H
+0x123
+I
+0x124
+!
+0x125
+\0
+0x126
+
+[Slide 102] (50)
+50
+i
+50
+j
+
+[Slide 103] (50)
+strcmp
+
+[Slide 105] (50)
+s
+
+[Slide 106] (50)
+s
+H
+I
+!
+\0
+
+[Slide 107] (50)
+s
+H
+0x123
+I
+0x124
+!
+0x125
+\0
+0x126
+
+[Slide 108] (50)
+0x123
+s
+H
+0x123
+I
+0x124
+!
+0x125
+\0
+0x126
+
+[Slide 109] (50)
+0x123
+s
+t
+H
+0x123
+I
+0x124
+!
+0x125
+\0
+0x126
+
+[Slide 110] (50)
+0x123
+s
+t
+H
+0x123
+I
+0x124
+!
+0x125
+\0
+0x126
+H
+I
+!
+\0
+
+[Slide 111] (50)
+0x123
+s
+t
+H
+0x123
+I
+0x124
+!
+0x125
+\0
+0x126
+H
+0x456
+I
+0x457
+!
+0x458
+\0
+0x459
+
+[Slide 112] (50)
+0x123
+s
+0x456
+t
+H
+0x123
+I
+0x124
+!
+0x125
+\0
+0x126
+H
+0x456
+I
+0x457
+!
+0x458
+\0
+0x459
+
+[Slide 113] (50)
+s
+t
+H
+0x123
+I
+0x124
+!
+0x125
+\0
+0x126
+H
+0x456
+I
+0x457
+!
+0x458
+\0
+0x459
+
+[Slide 115] (50)
+s
+
+[Slide 116] (50)
+s
+h
+i
+!
+\0
+
+[Slide 117] (50)
+s
+h
+0x123
+i
+0x124
+!
+0x125
+\0
+0x126
+
+[Slide 118] (50)
+0x123
+s
+h
+0x123
+i
+0x124
+!
+0x125
+\0
+0x126
+
+[Slide 119] (50)
+0x123
+s
+t
+h
+0x123
+i
+0x124
+!
+0x125
+\0
+0x126
+
+[Slide 120] (50)
+0x123
+s
+0x123
+t
+h
+0x123
+i
+0x124
+!
+0x125
+\0
+0x126
+
+[Slide 121] (50)
+s
+t
+h
+0x123
+i
+0x124
+!
+0x125
+\0
+0x126
+
+[Slide 122] (50)
+s
+t
+H
+0x123
+i
+0x124
+!
+0x125
+\0
+0x126
+
+[Slide 123] (50)
+malloc
+free
+…
+
+[Slide 124] (50)
+s
+h
+0x123
+i
+0x124
+!
+0x125
+\0
+0x126
+
+[Slide 125] (50)
+s
+t
+h
+0x123
+i
+0x124
+!
+0x125
+\0
+0x126
+
+[Slide 126] (50)
+s
+t
+h
+0x123
+i
+0x124
+!
+0x125
+\0
+0x126
+0x456
+0x457
+0x458
+0x459
+
+[Slide 127] (50)
+s
+t
+h
+0x123
+i
+0x124
+!
+0x125
+\0
+0x126
+0x456
+0x457
+0x458
+0x459
+
+[Slide 128] (50)
+s
+t
+h
+0x123
+i
+0x124
+!
+0x125
+\0
+0x126
+h
+0x456
+0x457
+0x458
+0x459
+
+[Slide 129] (50)
+s
+t
+h
+0x123
+i
+0x124
+!
+0x125
+\0
+0x126
+h
+0x456
+i
+0x457
+0x458
+0x459
+
+[Slide 130] (50)
+s
+t
+h
+0x123
+i
+0x124
+!
+0x125
+\0
+0x126
+h
+0x456
+i
+0x457
+!
+0x458
+0x459
+
+[Slide 131] (50)
+s
+t
+h
+0x123
+i
+0x124
+!
+0x125
+\0
+0x126
+h
+0x456
+i
+0x457
+!
+0x458
+\0
+0x459
+
+[Slide 132] (50)
+s
+t
+h
+0x123
+i
+0x124
+!
+0x125
+\0
+0x126
+H
+0x456
+i
+0x457
+!
+0x458
+\0
+0x459
+
+[Slide 133] (50)
+NULL
+
+[Slide 136] (50)
+valgrind
+
+[Slide 137] (50)
+garbage values
+
+[Slide 138] (50)
+int main(void)
+{ 
+ int *x; 
+ int *y; 
+ x = malloc(sizeof(int)); 
+ *x = 42;
+ *y = 13; 
+ y = x; 
+ *y = 13; 
+}
+
+[Slide 139] (50)
+int main(void)
+{ 
+ int *x; 
+ int *y; 
+ x = malloc(sizeof(int)); 
+ *x = 42;
+ *y = 13; 
+ y = x; 
+ *y = 13; 
+}
+
+[Slide 140] (50)
+int main(void)
+{ 
+ int *x; 
+ int *y; 
+ x = malloc(sizeof(int)); 
+ *x = 42;
+ *y = 13; 
+ y = x; 
+ *y = 13; 
+}
+
+[Slide 141] (50)
+int main(void)
+{ 
+ int *x; 
+ int *y; 
+ x = malloc(sizeof(int)); 
+ *x = 42;
+ *y = 13; 
+ y = x; 
+ *y = 13; 
+}
+
+[Slide 142] (50)
+int main(void)
+{ 
+ int *x; 
+ int *y; 
+ x = malloc(sizeof(int)); 
+ *x = 42;
+ *y = 13; 
+ y = x; 
+ *y = 13; 
+}
+
+[Slide 143] (50)
+int main(void)
+{ 
+ int *x; 
+ int *y; 
+ x = malloc(sizeof(int)); 
+ *x = 42;
+ *y = 13; 
+ y = x; 
+ *y = 13; 
+}
+
+[Slide 144] (50)
+int main(void)
+{ 
+ int *x; 
+ int *y; 
+ x = malloc(sizeof(int)); 
+ *x = 42;
+ *y = 13; 
+ y = x; 
+ *y = 13; 
+}
+
+[Slide 145] (50)
+int main(void)
+{ 
+ int *x; 
+ int *y; 
+ x = malloc(sizeof(int)); 
+ *x = 42;
+ *y = 13; 
+ y = x; 
+ *y = 13; 
+}
+
+[Slide 147] (50)
+void swap(int a, int b)
+{
+ 
+}
+
+[Slide 148] (50)
+void swap(int a, int b)
+{
+ int tmp = a;
+ a = b;
+ b = tmp;
+}
+
+[Slide 149] (50)
+void swap(int a, int b)
+{
+ int tmp = a;
+ a = b;
+ b = tmp;
+}
+
+[Slide 150] (50)
+scope
+
+[Slide 151] (50)
+passing by value
+
+[Slide 156] (50)
+↑
+stack
+
+[Slide 157] (50)
+machine code
+↑
+stack
+
+[Slide 158] (50)
+machine code
+globals
+heap
+↓
+↑
+stack
+
+[Slide 159] (50)
+machine code
+globals
+heap
+↓
+↑
+stack
+
+[Slide 160] (50)
+machine code
+globals
+heap
+↓
+↑
+stack
+
+[Slide 161] (50)
+machine code
+globals
+heap
+↓
+↑
+stack
+
+[Slide 162] (50)
+machine code
+globals
+heap
+↓
+↑
+stack
+
+[Slide 163] (50)
+↑
+stack
+
+[Slide 164] (50)
+void swap(int a, int b)
+{
+ int tmp = a;
+ a = b;
+ b = tmp;
+}
+
+[Slide 165] (50)
+main
+
+[Slide 166] (50)
+main
+swap
+
+[Slide 167] (50)
+main
+
+[Slide 168] (50)
+x
+y
+
+[Slide 169] (1)
+1
+x
+2
+y
+int x = 1;
+int y = 2;
+
+[Slide 170] (1)
+1
+x
+2
+y
+swap
+swap(x, y);
+
+[Slide 171] (1)
+a
+b
+tmp
+1
+x
+2
+y
+swap(x, y);
+
+[Slide 172] (1)
+1
+a
+2
+b
+tmp
+1
+x
+2
+y
+void swap(int a, int b);
+
+[Slide 173] (1)
+1
+a
+2
+b
+tmp
+1
+x
+2
+y
+int tmp = a;
+a = b;
+b = tmp;
+
+[Slide 174] (1)
+1
+a
+2
+b
+1
+tmp
+1
+x
+2
+y
+int tmp = a;
+a = b;
+b = tmp;
+
+[Slide 175] (2)
+2
+a
+2
+b
+1
+tmp
+1
+x
+2
+y
+int tmp = a;
+a = b;
+b = tmp;
+
+[Slide 176] (2)
+2
+a
+1
+b
+1
+tmp
+1
+x
+2
+y
+int tmp = a;
+a = b;
+b = tmp;
+
+[Slide 177] (2)
+2
+a
+1
+b
+1
+tmp
+1
+x
+2
+y
+
+[Slide 178] (1)
+1
+x
+2
+y
+
+[Slide 179] (1)
+passing by reference
+
+[Slide 180] (1)
+void swap(int a, int b)
+{
+ int tmp = a;
+ a = b;
+ b = tmp;
+}
+
+[Slide 181] (1)
+void swap(int *a, int *b)
+{
+ int tmp = *a;
+ *a = *b;
+ *b = tmp;
+}
+
+[Slide 182] (1)
+void swap(int *a, int *b)
+{
+ int tmp = *a;
+ *a = *b;
+ *b = tmp;
+}
+
+[Slide 183] (1)
+1
+x
+2
+y
+
+[Slide 184] (1)
+1
+x
+2
+y
+swap
+swap(x, y);
+
+[Slide 185] (1)
+a
+b
+tmp
+1
+x
+2
+y
+swap(x, y);
+
+[Slide 186] (1)
+a
+b
+tmp
+1
+x
+2
+y
+void swap(int *a, int *b);
+
+[Slide 187] (1)
+a
+b
+tmp
+1
+x
+2
+y
+int tmp = *a;
+*a = *b;
+*b = tmp;
+
+[Slide 188] (1)
+a
+b
+1
+tmp
+1
+x
+2
+y
+int tmp = *a;
+*a = *b;
+*b = tmp;
+
+[Slide 189] (1)
+a
+b
+1
+tmp
+2
+x
+2
+y
+int tmp = *a;
+*a = *b;
+*b = tmp;
+
+[Slide 190] (1)
+a
+b
+1
+tmp
+2
+x
+1
+y
+int tmp = *a;
+*a = *b;
+*b = tmp;
+
+[Slide 191] (1)
+a
+b
+1
+tmp
+2
+x
+1
+y
+
+[Slide 192] (2)
+2
+x
+1
+y
+
+[Slide 193] (2)
+void swap(int a, int b)
+{
+ int tmp = a;
+ a = b;
+ b = tmp;
+}
+
+[Slide 194] (2)
+void swap(int *a, int *b)
+{
+ int tmp = *a;
+ *a = *b;
+ *b = tmp;
+}
+
+[Slide 195] (2)
+machine code
+globals
+heap
+↓
+↑
+stack
+
+[Slide 196] (2)
+heap
+↓
+↑
+stack
+
+[Slide 197] (2)
+heap overflow
+stack overflow
+
+[Slide 198] (2)
+buffer overflow
+
+[Slide 199] (2)
+get_char
+get_double
+get_float
+get_int
+get_long
+get_string
+...
+
+[Slide 200] (2)
+get_int
+
+[Slide 201] (2)
+scanf
+…
+
+[Slide 203] (50)
+50
+n
+
+[Slide 205] (50)
+s
+
+[Slide 206] (50)
+s
+
+[Slide 207] (50)
+s
+
+[Slide 209] (50)
+s
+
+[Slide 210] (50)
+file I/O
+
+[Slide 211] (50)
+fopen
+fclose
+fprintf
+fscanf
+fread
+fwrite
+fseek
+…
+
+[Slide 213] (50)
+BMP
