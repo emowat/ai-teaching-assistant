@@ -2,6 +2,7 @@ import { lazy, Suspense, useState } from "react";
 import { useAuth } from "react-oidc-context";
 import { compileCode, type RunResult } from "../api/runApi";
 import { ConsolePanel } from "../components/ConsolePanel";
+import { FileExplorer } from "../components/FileExplorer";
 
 const CodeEditor = lazy(() =>
   import("../components/CodeEditor").then((m) => ({ default: m.CodeEditor }))
@@ -23,6 +24,11 @@ interface ChatMessage {
   content: string;
 }
 
+const INITIAL_FILES: Record<string, string> = {
+  "linked_list.cpp": LINKED_LIST_CPP,
+  "main.cpp": '#include <iostream>\nusing namespace std;\n\nint main() {\n    return 0;\n}\n',
+};
+
 // STUB — replace with POST /tutor/respond in Sprint 1
 const initialMessages: ChatMessage[] = [
   {
@@ -41,7 +47,13 @@ const initialMessages: ChatMessage[] = [
   },
 ];
 
-const editorFiles = ["linked_list.cpp", "main.cpp"] as const;
+function langFromFilename(name: string): string {
+  if (name.endsWith(".cpp") || name.endsWith(".cc") || name.endsWith(".cxx")) return "cpp";
+  if (name.endsWith(".h") || name.endsWith(".hpp")) return "cpp";
+  if (name.endsWith(".py")) return "python";
+  if (name.endsWith(".txt")) return "plaintext";
+  return "plaintext";
+}
 
 export function StudentInterface({
   onNavigate,
@@ -49,35 +61,56 @@ export function StudentInterface({
   onSignOut,
 }: StudentInterfaceProps) {
   const auth = useAuth();
-  const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
-  const [input, setInput] = useState("");
-  const [code, setCode] = useState(LINKED_LIST_CPP);
-  const [activeFile, setActiveFile] = useState<(typeof editorFiles)[number]>(
-    "linked_list.cpp"
-  );
+
+  // --- workspace state ---
+  const [files, setFiles] = useState<Record<string, string>>(INITIAL_FILES);
+  const [activeFile, setActiveFile] = useState("linked_list.cpp");
+
+  // --- compile state ---
   const [compileResult, setCompileResult] = useState<RunResult | null>(null);
   const [compiling, setCompiling] = useState(false);
   const [compileError, setCompileError] = useState<string | null>(null);
 
+  // --- chat state ---
+  const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
+  const [input, setInput] = useState("");
+
+  // --- file operations ---
+  const handleSelectFile = (name: string) => setActiveFile(name);
+
+  const handleAddFile = (name: string) => {
+    setFiles((prev) => ({ ...prev, [name]: "" }));
+    setActiveFile(name);
+  };
+
+  const handleDeleteFile = (name: string) => {
+    setFiles((prev) => {
+      const next = { ...prev };
+      delete next[name];
+      return next;
+    });
+    if (activeFile === name) {
+      const remaining = Object.keys(files).filter((f) => f !== name);
+      setActiveFile(remaining[0] ?? "");
+    }
+  };
+
+  const handleFileChange = (value: string) => {
+    setFiles((prev) => ({ ...prev, [activeFile]: value }));
+  };
+
+  // --- compile ---
   const handleCompile = () => {
     const token = auth.user?.access_token;
     if (!token) {
       setCompileError("Sign in to compile your code.");
       return;
     }
-
     setCompiling(true);
     setCompileError(null);
-    void compileCode(
-      { [activeFile]: code },
-      token,
-      { entrypoint: activeFile }
-    )
+    void compileCode(files, token, { entrypoint: activeFile })
       .then((response) => {
         setCompileResult(response.result);
-        if (!response.result?.compile.success) {
-          setCompileError(null);
-        }
       })
       .catch((err: unknown) => {
         setCompileResult(null);
@@ -86,6 +119,7 @@ export function StudentInterface({
       .finally(() => setCompiling(false));
   };
 
+  // --- chat ---
   const send = () => {
     if (!input.trim()) return;
     const msg = input;
@@ -101,6 +135,9 @@ export function StudentInterface({
       },
     ]);
   };
+
+  const activeCode = files[activeFile] ?? "";
+  const buildOk = compileResult?.compile.success ?? null;
 
   return (
     <div
@@ -120,6 +157,7 @@ export function StudentInterface({
         onSignOut={onSignOut}
       />
 
+      {/* IDE chrome bar */}
       <div
         style={{
           padding: "5px 16px",
@@ -128,14 +166,15 @@ export function StudentInterface({
           alignItems: "center",
           gap: 12,
           background: "#1a1a1a",
+          flexShrink: 0,
         }}
       >
         <Tag>CS101</Tag>
         <span style={{ ...mono, fontSize: 12, color: D.text }}>{activeFile}</span>
-        {compileResult && !compileResult.compile.success && (
+        {buildOk === false && (
           <span style={{ ...mono, fontSize: 11, color: D.red }}>● build failed</span>
         )}
-        {compileResult?.compile.success && (
+        {buildOk === true && (
           <span style={{ ...mono, fontSize: 11, color: D.green }}>● build ok</span>
         )}
         <div style={{ flex: 1 }} />
@@ -147,7 +186,20 @@ export function StudentInterface({
         </span>
       </div>
 
+      {/* Main 3-column layout */}
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
+
+        {/* Left: file explorer */}
+        <FileExplorer
+          files={files}
+          activeFile={activeFile}
+          onSelectFile={handleSelectFile}
+          onAddFile={handleAddFile}
+          onDeleteFile={handleDeleteFile}
+          projectName="cs101 / week-02"
+        />
+
+        {/* Center: editor + console */}
         <div
           style={{
             flex: 3,
@@ -158,21 +210,23 @@ export function StudentInterface({
             minWidth: 0,
           }}
         >
+          {/* Tab bar */}
           <div
             style={{
               background: "#252526",
               borderBottom: "1px solid #1a1a1a",
               display: "flex",
               flexShrink: 0,
+              overflowX: "auto",
             }}
           >
-            {editorFiles.map((file) => {
-              const isActive = activeFile === file;
+            {Object.keys(files).map((name) => {
+              const isActive = name === activeFile;
               return (
                 <button
-                  key={file}
+                  key={name}
                   type="button"
-                  onClick={() => setActiveFile(file)}
+                  onClick={() => setActiveFile(name)}
                   style={{
                     padding: "5px 16px",
                     fontSize: 12,
@@ -181,64 +235,60 @@ export function StudentInterface({
                     background: isActive ? "#1e1e1e" : "#2d2d2d",
                     border: "none",
                     borderRight: "1px solid #1a1a1a",
+                    whiteSpace: "nowrap",
+                    flexShrink: 0,
                     ...mono,
                   }}
                 >
-                  {file === "linked_list.cpp" && (
-                    <span style={{ color: D.red, marginRight: 4 }}>●</span>
-                  )}
-                  {file}
+                  {name}
                 </button>
               );
             })}
           </div>
 
+          {/* Monaco + console */}
           <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
             <div style={{ flex: 1, minHeight: 0 }}>
-            {activeFile === "linked_list.cpp" ? (
-              <Suspense
-                fallback={
-                  <div
-                    style={{
-                      height: "100%",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      color: D.muted,
-                      fontSize: 13,
-                      ...mono,
-                    }}
-                  >
-                    Loading editor...
-                  </div>
-                }
-              >
-                <CodeEditor
-                  value={code}
-                  onChange={setCode}
-                  language="cpp"
-                  highlightLines={[
-                    { line: 15, kind: "warning" },
-                    { line: 19, kind: "error" },
-                    { line: 35, kind: "error" },
-                  ]}
-                />
-              </Suspense>
-            ) : (
-              <div
-                style={{
-                  height: "100%",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: D.muted,
-                  fontSize: 13,
-                  ...mono,
-                }}
-              >
-                main.cpp — coming soon
-              </div>
-            )}
+              {activeFile ? (
+                <Suspense
+                  fallback={
+                    <div
+                      style={{
+                        height: "100%",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        color: D.muted,
+                        fontSize: 13,
+                        ...mono,
+                      }}
+                    >
+                      Loading editor...
+                    </div>
+                  }
+                >
+                  <CodeEditor
+                    key={activeFile}
+                    value={activeCode}
+                    onChange={handleFileChange}
+                    language={langFromFilename(activeFile)}
+                  />
+                </Suspense>
+              ) : (
+                <div
+                  style={{
+                    height: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: D.muted,
+                    fontSize: 13,
+                    ...mono,
+                  }}
+                >
+                  No files. Create one with the + button.
+                </div>
+              )}
             </div>
             <ConsolePanel
               result={compileResult}
@@ -248,6 +298,7 @@ export function StudentInterface({
           </div>
         </div>
 
+        {/* Right: chat panel */}
         <div
           style={{
             flex: 2,
@@ -302,7 +353,8 @@ export function StudentInterface({
                   style={{
                     maxWidth: "90%",
                     padding: "9px 13px",
-                    borderRadius: m.role === "user" ? "12px 12px 3px 12px" : "12px 12px 12px 3px",
+                    borderRadius:
+                      m.role === "user" ? "12px 12px 3px 12px" : "12px 12px 12px 3px",
                     background: m.role === "user" ? D.orange : D.card,
                     border: m.role === "user" ? "none" : `1px solid ${D.border}`,
                     color: D.text,
