@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { checkGradioAvailable, getGradioUrl } from "../api/gradioApi";
 import {
   Area,
   AreaChart,
@@ -13,7 +14,7 @@ import {
 } from "recharts";
 import { Avatar, Btn, Card, Stat, Tag } from "../design/atoms";
 import { chartTooltipStyle, D, mono } from "../design/tokens";
-import { Sidebar } from "../components/Sidebar";
+import { Sidebar, type SidebarTab } from "../components/Sidebar";
 import { TopBar } from "../components/TopBar";
 import type { AppView } from "../types/navigation";
 
@@ -69,7 +70,7 @@ const docs = [
   { name: "CS101_Week3_OOP.pdf", course: "CS101", size: "3.1 MB", status: "indexing" },
 ];
 
-const adminTabs = [
+const baseAdminTabs: SidebarTab[] = [
   { key: "stats", icon: "📊", label: "Evaluation" },
   { key: "models", icon: "🤖", label: "AI Models" },
   { key: "rag", icon: "📚", label: "RAG Docs" },
@@ -84,6 +85,8 @@ export function AdminDashboard({
 }: AdminDashboardProps) {
   const [tab, setTab] = useState("stats");
   const [healthOk, setHealthOk] = useState<boolean | null>(null);
+  const [gradioAvailable, setGradioAvailable] = useState<boolean | null>(null);
+  const gradioUrl = getGradioUrl();
 
   useEffect(() => {
     const base = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8001";
@@ -92,6 +95,50 @@ export function AdminDashboard({
       .then((data: { ready?: boolean }) => setHealthOk(Boolean(data.ready)))
       .catch(() => setHealthOk(false));
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const probeGradio = () => {
+      void checkGradioAvailable().then((ok) => {
+        if (!cancelled) setGradioAvailable(ok);
+      });
+    };
+
+    probeGradio();
+    const intervalId = window.setInterval(probeGradio, 30_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (tab === "interrogator" && gradioAvailable === false) {
+      setTab("stats");
+    }
+  }, [gradioAvailable, tab]);
+
+  const adminTabs = useMemo<SidebarTab[]>(() => {
+    const interrogatorTab: SidebarTab = {
+      key: "interrogator",
+      icon: "🔬",
+      label: "RAG Query Console",
+      disabled: gradioAvailable !== true,
+      title:
+        gradioAvailable === null
+          ? "Checking Gradio availability..."
+          : gradioAvailable
+            ? "Open Gradio RAG query console"
+            : "Gradio is not running — start rag_eng to enable",
+    };
+    const ragIndex = baseAdminTabs.findIndex((t) => t.key === "rag");
+    return [
+      ...baseAdminTabs.slice(0, ragIndex + 1),
+      interrogatorTab,
+      ...baseAdminTabs.slice(ragIndex + 1),
+    ];
+  }, [gradioAvailable]);
 
   const footer = (
     <Card style={{ padding: "10px 12px", marginTop: 12, borderRadius: 8 }}>
@@ -128,7 +175,48 @@ export function AdminDashboard({
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
         <Sidebar tabs={adminTabs} active={tab} onTab={setTab} footer={footer} />
 
-        <div style={{ flex: 1, overflow: "auto", padding: 22 }}>
+        <div
+          style={{
+            flex: 1,
+            overflow: "auto",
+            padding: tab === "interrogator" ? 0 : 22,
+          }}
+        >
+          {tab === "interrogator" && gradioAvailable && (
+            <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  padding: "12px 22px",
+                  borderBottom: `1px solid ${D.border}`,
+                  flexShrink: 0,
+                }}
+              >
+                <div style={{ fontSize: 16, fontWeight: 600 }}>RAG Query Console</div>
+                <Btn
+                  small
+                  variant="ghost"
+                  onClick={() => window.open(gradioUrl, "_blank", "noopener,noreferrer")}
+                >
+                  Open in new tab ↗
+                </Btn>
+              </div>
+              <iframe
+                src={gradioUrl}
+                title="RAG Query Console"
+                style={{
+                  flex: 1,
+                  width: "100%",
+                  border: "none",
+                  minHeight: 480,
+                  background: D.surface,
+                }}
+              />
+            </div>
+          )}
+
           {tab === "stats" && (
             <div>
               <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 18 }}>

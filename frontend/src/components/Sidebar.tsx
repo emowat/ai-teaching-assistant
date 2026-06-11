@@ -5,6 +5,8 @@ export interface SidebarTab {
   key: string;
   icon: string;
   label: string;
+  disabled?: boolean;
+  title?: string;
 }
 
 interface SidebarProps {
@@ -28,30 +30,38 @@ export function Sidebar({ tabs, active, onTab, footer }: SidebarProps) {
       }}
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-        {tabs.map((t) => (
+        {tabs.map((t) => {
+          const isDisabled = Boolean(t.disabled);
+          return (
           <button
             key={t.key}
             type="button"
-            onClick={() => onTab(t.key)}
+            title={t.title}
+            disabled={isDisabled}
+            onClick={() => {
+              if (!isDisabled) onTab(t.key);
+            }}
             style={{
               background: active === t.key ? D.orangeGlow : "transparent",
               border: `1px solid ${active === t.key ? D.orangeBorder : "transparent"}`,
-              color: active === t.key ? D.orange : D.muted,
+              color: active === t.key ? D.orange : isDisabled ? D.dim : D.muted,
               borderRadius: 7,
               padding: "9px 11px",
-              cursor: "pointer",
+              cursor: isDisabled ? "not-allowed" : "pointer",
               textAlign: "left",
               fontSize: 13,
               fontWeight: active === t.key ? 500 : 400,
               display: "flex",
               alignItems: "center",
               gap: 8,
+              opacity: isDisabled ? 0.45 : 1,
             }}
           >
             <span style={{ fontSize: 14 }}>{t.icon}</span>
             <span>{t.label}</span>
           </button>
-        ))}
+          );
+        })}
       </div>
       <div style={{ flex: 1 }} />
       {footer}
