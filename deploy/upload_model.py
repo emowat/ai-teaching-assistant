@@ -12,6 +12,12 @@ Usage:
     # Only download (inspect before uploading):
     python deploy/upload_model.py download
 
+    # Resume after a dropped connection (skips completed files):
+    python deploy/upload_model.py download --resume
+
+    # Delete local copy and download everything again:
+    python deploy/upload_model.py download --force-redownload
+
     # Only package an existing local download:
     python deploy/upload_model.py package --local-dir ./model_download
 
@@ -33,6 +39,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 import sys
 import tarfile
 from pathlib import Path
@@ -59,6 +66,9 @@ S3_MODEL_KEY = "models/qwen-finetuned/model.tar.gz"
 AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
 AWS_PROFILE = os.getenv("AWS_PROFILE") or None
 
+# gdown may leave partial transfers with these suffixes
+_PARTIAL_SUFFIXES = (".part", ".tmp", ".crdownload")
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -70,20 +80,181 @@ def _require_gdown() -> None:
         sys.exit(1)
 
 
-def download(output_dir: Path) -> None:
+def _format_size(num_bytes: int) -> str:
+    if num_bytes >= 1024**3:
+        return f"{num_bytes / 1024**3:.2f} GB"
+    if num_bytes >= 1024**2:
+        return f"{num_bytes / 1024**2:.0f} MB"
+    return f"{num_bytes / 1024:.0f} KB"
+
+
+def _scan_download_dir(output_dir: Path) -> dict:
+    """Summarize what is already on disk (completed + partial files)."""
+    file_count = 0
+    partial_count = 0
+    total_bytes = 0
+    top_level: list[str] = []
+
+    if not output_dir.exists():
+        return {
+            "exists": False,
+            "file_count": 0,
+            "partial_count": 0,
+            "total_bytes": 0,
+            "top_level": [],
+        }
+
+    for path in output_dir.rglob("*"):
+        if not path.is_file():
+            continue
+        file_count += 1
+        total_bytes += path.stat().st_size
+        if any(path.name.endswith(s) for s in _PARTIAL_SUFFIXES):
+            partial_count += 1
+
+    try:
+        top_level = sorted(p.name for p in output_dir.iterdir())
+    except OSError:
+        top_level = []
+
+    return {
+        "exists": file_count > 0 or output_dir.exists(),
+        "file_count": file_count,
+        "partial_count": partial_count,
+        "total_bytes": total_bytes,
+        "top_level": top_level,
+    }
+
+
+def _print_download_status(output_dir: Path, stats: dict) -> None:
+    print(f"Local directory: {output_dir.resolve()}")
+    if stats["file_count"] == 0:
+        print("  (empty — starting a fresh download)")
+        return
+
+    print(f"  Files on disk:   {stats['file_count']}")
+    print(f"  Total size:      {_format_size(stats['total_bytes'])}")
+    if stats["partial_count"]:
+        print(f"  Partial/temp:    {stats['partial_count']} (resume will reuse these)")
+    if stats["top_level"]:
+        preview = ", ".join(stats["top_level"][:8])
+        if len(stats["top_level"]) > 8:
+            preview += f", … (+{len(stats['top_level']) - 8} more)"
+        print(f"  Top-level items: {preview}")
+
+
+def _clear_download_dir(output_dir: Path) -> None:
+    """Remove all contents so a full re-download starts clean."""
+    if not output_dir.exists():
+        return
+    print(f"Removing existing contents of {output_dir} …")
+    for child in output_dir.iterdir():
+        if child.is_dir():
+            shutil.rmtree(child)
+        else:
+            child.unlink()
+
+
+def _prompt_download_mode(stats: dict) -> str:
+    """Ask whether to resume or re-download. Returns 'resume' | 'redownload' | 'quit'."""
+    if stats["file_count"] == 0:
+        return "resume"
+
+    print("\nExisting download detected.")
+    print("  [R] Resume      — skip completed files, continue partial transfers (default)")
+    print("  [F] Re-download — delete local copy and fetch everything again")
+    print("  [Q] Quit        — exit without changes\n")
+
+    if not sys.stdin.isatty():
+        print("Non-interactive shell: defaulting to resume.")
+        return "resume"
+
+    while True:
+        try:
+            choice = input("Choice [R/f/q]: ").strip().lower() or "r"
+        except (EOFError, KeyboardInterrupt):
+            print("\nCancelled.")
+            return "quit"
+
+        if choice in ("r", "resume", ""):
+            return "resume"
+        if choice in ("f", "force", "redownload", "full"):
+            return "redownload"
+        if choice in ("q", "quit", "cancel", "n", "no"):
+            return "quit"
+        print("  Enter R, F, or Q.")
+
+
+def _resolve_download_mode(
+    stats: dict,
+    *,
+    resume_flag: bool,
+    force_redownload: bool,
+) -> str:
+    if force_redownload and resume_flag:
+        print("ERROR: Use only one of --resume or --force-redownload.")
+        sys.exit(1)
+    if force_redownload:
+        return "redownload"
+    if resume_flag:
+        return "resume"
+    if stats["file_count"] > 0:
+        return _prompt_download_mode(stats)
+    return "resume"
+
+
+def download(
+    output_dir: Path,
+    *,
+    resume_flag: bool = False,
+    force_redownload: bool = False,
+) -> None:
     """Download the Drive folder to a local directory."""
     _require_gdown()
     output_dir.mkdir(parents=True, exist_ok=True)
-    print(f"Downloading Google Drive folder {DRIVE_FOLDER_ID} → {output_dir}")
-    print("(This may take several minutes for a 14B model.)\n")
+
+    stats = _scan_download_dir(output_dir)
+    _print_download_status(output_dir, stats)
+
+    mode = _resolve_download_mode(
+        stats,
+        resume_flag=resume_flag,
+        force_redownload=force_redownload,
+    )
+    if mode == "quit":
+        print("Download cancelled.")
+        sys.exit(0)
+
+    use_resume = False
+    if mode == "redownload":
+        if stats["file_count"] > 0:
+            if sys.stdin.isatty() and not force_redownload:
+                confirm = input(
+                    "Delete all files in this folder and re-download? [y/N]: "
+                ).strip().lower()
+                if confirm not in ("y", "yes"):
+                    print("Cancelled.")
+                    sys.exit(0)
+            _clear_download_dir(output_dir)
+        print("\nStarting full download from Google Drive …")
+    else:
+        use_resume = True
+        print("\nResuming download (completed files skipped, partial transfers reused) …")
+
+    print(f"Folder ID: {DRIVE_FOLDER_ID} → {output_dir}")
+    print("(Large models can take a long time. You can re-run with --resume if interrupted.)\n")
+
     gdown.download_folder(
         id=DRIVE_FOLDER_ID,
         output=str(output_dir),
         quiet=False,
         use_cookies=False,
+        resume=use_resume,
     )
-    files = list(output_dir.rglob("*"))
-    print(f"\nDownloaded {len(files)} files to {output_dir}")
+
+    final_stats = _scan_download_dir(output_dir)
+    print(f"\nDownload finished: {final_stats['file_count']} files, "
+          f"{_format_size(final_stats['total_bytes'])} in {output_dir}")
 
 
 def package(local_dir: Path, tar_path: Path) -> None:
@@ -99,13 +270,21 @@ def package(local_dir: Path, tar_path: Path) -> None:
 
     # Warn if required HF files are missing
     required = {"config.json", "tokenizer_config.json"}
-    found_names = {f.name for f in model_files}
+    found_names = {f.name for f in model_files if f.is_file()}
     missing = required - found_names
     if missing:
         print(f"WARNING: Potentially missing HuggingFace files: {missing}")
         print("  Continuing anyway — verify the model directory is complete.")
 
-    print(f"Packaging {len(model_files)} files → {tar_path}")
+    partial = [
+        f for f in model_files
+        if f.is_file() and any(f.name.endswith(s) for s in _PARTIAL_SUFFIXES)
+    ]
+    if partial:
+        print(f"WARNING: {len(partial)} partial/temp file(s) still present.")
+        print("  Run:  python deploy/upload_model.py download --resume")
+
+    print(f"Packaging {len(model_files)} paths → {tar_path}")
     with tarfile.open(tar_path, "w:gz") as tar:
         for file_path in model_files:
             if file_path.is_file():
@@ -152,7 +331,11 @@ class _UploadProgress:
     def __call__(self, bytes_transferred: int) -> None:
         self._uploaded += bytes_transferred
         pct = self._uploaded / self._total * 100
-        print(f"\r  {pct:.1f}%  ({self._uploaded / 1024**2:.0f} / {self._total / 1024**2:.0f} MB)", end="", flush=True)
+        print(
+            f"\r  {pct:.1f}%  ({self._uploaded / 1024**2:.0f} / {self._total / 1024**2:.0f} MB)",
+            end="",
+            flush=True,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -179,13 +362,27 @@ def main() -> None:
     parser.add_argument("--key", default=S3_MODEL_KEY, help="S3 object key for model.tar.gz")
     parser.add_argument("--region", default=AWS_REGION)
     parser.add_argument("--profile", default=AWS_PROFILE)
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Resume partial download (skip completed files; reuse partial temp files)",
+    )
+    parser.add_argument(
+        "--force-redownload",
+        action="store_true",
+        help="Delete existing local files and download the full folder again",
+    )
     args = parser.parse_args()
 
     local_dir = Path(args.local_dir)
     tar_path = Path(args.tar)
 
     if args.action in ("download", "upload"):
-        download(local_dir)
+        download(
+            local_dir,
+            resume_flag=args.resume,
+            force_redownload=args.force_redownload,
+        )
 
     if args.action in ("package", "upload"):
         package(local_dir, tar_path)

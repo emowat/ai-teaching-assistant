@@ -39,3 +39,7 @@ synthetic-transcripts/*.npy
 
 # Local model checkpoints
 output_guardrails/models/checkpoints/
+
+# SageMaker deploy artifacts (upload_model.py)
+model_download/
+model.tar.gz
