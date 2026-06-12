@@ -226,7 +226,11 @@ export function LandingPage({ onNavigate, demoMode = false }: LandingPageProps) 
             }}
           >
             {[
-              { label: "Student interface", view: "student" as const, desc: "Monaco editor + AI chat" },
+              {
+                label: "Student interface",
+                view: "student" as const,
+                desc: "Codespaces + VS Code extension",
+              },
               { label: "Professor dashboard", view: "professor" as const, desc: "Class & material management" },
               { label: "Admin panel", view: "admin" as const, desc: "Models, RAG, users, courses" },
             ].map((r) => (

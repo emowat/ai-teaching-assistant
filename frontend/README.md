@@ -9,7 +9,7 @@ React 18 + Vite 8 + TypeScript SPA. Authenticates via AWS Cognito (OIDC), connec
 | Framework | React 18, Vite 8 |
 | Language | TypeScript (strict) |
 | Auth | `react-oidc-context`, `oidc-client-ts` |
-| Editor | `@monaco-editor/react` (lazy-loaded) |
+| Editor | Legacy Monaco components kept only for fallback/demo use |
 | Charts | `recharts` |
 | Styling | Inline styles with design tokens (`src/design/tokens.ts`) |
 
@@ -26,9 +26,9 @@ src/
 │   ├── signOutCognito.ts Custom Cognito logout (logout_uri, not post_logout_redirect_uri)
 │   └── validateCognitoConfig.ts  Startup env-var validation
 ├── components/
-│   ├── CodeEditor.tsx    Monaco wrapper (C++, VS Dark, line decorations)
-│   ├── ConsolePanel.tsx  Compiler output display (stdout/stderr/exit code)
-│   ├── FileExplorer.tsx  Collapsible file tree with add/delete
+│   ├── CodeEditor.tsx    Legacy Monaco wrapper (fallback/demo only)
+│   ├── ConsolePanel.tsx  Legacy compiler output display
+│   ├── FileExplorer.tsx  Legacy browser file tree
 │   ├── Sidebar.tsx       Tab sidebar (supports disabled + tooltip)
 │   └── TopBar.tsx        App bar with role switcher + sign-out
 ├── demo/
@@ -41,7 +41,7 @@ src/
 │   ├── AuthCallbackPage.tsx  OIDC redirect handler
 │   ├── LandingPage.tsx       Unauthenticated landing
 │   ├── ProfessorDashboard.tsx Professor view
-│   └── StudentInterface.tsx  IDE: file explorer + Monaco + console + Socratic chat
+│   └── StudentInterface.tsx  Codespaces launch/status page for students
 ├── types/
 │   └── navigation.ts     AppView union type
 └── App.tsx               Auth-aware router
@@ -57,6 +57,7 @@ npm run lint
 ```
 
 Requires a `.env` at the repo root with Cognito and API variables. See `.env.example`.
+Vite is configured with `envDir: ..` in `frontend/vite.config.ts`, so the frontend reads the repo root `.env` rather than `frontend/.env`.
 
 ## Authentication flow
 
@@ -80,11 +81,14 @@ student   → [student]
 
 ## Student workspace
 
-`StudentInterface` maintains a `Record<string, string>` of filenames → content:
-- **FileExplorer** (left panel, 188 px, collapsible to 36 px): add files with `+`, delete with hover `×` + confirmation click. Clicking a file in collapsed mode auto-expands.
-- **Tab bar**: dynamically generated from the files map, scrollable for many open tabs.
-- **Monaco editor**: `key={activeFile}` forces a fresh instance per file; language is inferred from extension.
-- **ConsolePanel**: shows compile stdout/stderr, exit code, and elapsed time.
+The student route is now a Codespaces launch page instead of a browser IDE:
+- It points students to the GitHub repo or assignment template configured in the repo root `.env` via `VITE_CODESPACES_TEMPLATE_URL` or `VITE_CODESPACES_REPO_URL` as a fallback.
+- The professor dashboard can override those values per week and the student can pick the active week before launching Codespaces.
+- For now, the per-week settings persist in browser `localStorage`; a backend-backed source of truth would be the next step if you need shared persistence across devices.
+- It explains that the VS Code extension, terminal, file tree, and compiler all live inside Codespaces.
+- It no longer renders the Monaco editor, browser file explorer, or compile panel as the primary workflow.
+
+The Monaco/file-explorer/console components still exist in the codebase as legacy fallback/demo pieces, but they are no longer the default student path.
 
 ## Admin Gradio tab
 

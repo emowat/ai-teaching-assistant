@@ -5,6 +5,24 @@ import * as marked from 'marked';
 import * as fs from 'fs';
 import * as path from 'path';
 
+function resolveChatApiUrl(): string {
+    // Codespaces should provide the deployed rag_eng URL through RAG_ENG_URL.
+    // Local development still falls back to the workspace setting or the old bridge URL.
+    const envUrl = process.env.RAG_ENG_URL?.trim();
+    const configuredUrl = vscode.workspace.getConfiguration('codingRabbit').get<string>('apiUrl')?.trim();
+    const candidate = envUrl || (configuredUrl && !configuredUrl.startsWith('${') ? configuredUrl : undefined);
+
+    if (!candidate) {
+        return 'http://host.docker.internal:8000/api/chat';
+    }
+
+    if (candidate.endsWith('/api/chat')) {
+        return candidate;
+    }
+
+    return `${candidate.replace(/\/$/, '')}/api/chat`;
+}
+
 export class TAChatViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'coding-rabbit.chatView';
     private _conversationHistory: {role: string, content: string}[] = [];
@@ -200,7 +218,7 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
         if (this._hasSentWakeup) return;
         this._hasSentWakeup = true;
         try {
-            const apiUrl = vscode.workspace.getConfiguration('codingRabbit').get('apiUrl') || 'http://host.docker.internal:8000/api/chat';
+            const apiUrl = resolveChatApiUrl();
             const modelName = vscode.workspace.getConfiguration('codingRabbit').get('modelName') || 'codingrabbit-ta';
             
             TAChatViewProvider.getOutputChannel().appendLine("[Telemetry] Sending background wakeup ping to pre-warm SageMaker instance...");
@@ -679,7 +697,7 @@ ${terminalOutput}`;
         // Inject dynamic context into the very last user message for perfect KV caching
         apiMessages[apiMessages.length - 1].content = `${dynamicContext}\n\n[Student_Question]\n${userMessage}`;
 
-        // 3. Call Ollama API
+        // 3. Call the configured chat backend.
         try {
             const outputChannel = TAChatViewProvider.getOutputChannel();
             outputChannel.appendLine(`\n--- NEW REQUEST (${new Date().toLocaleTimeString()}) ---`);
@@ -691,7 +709,7 @@ ${terminalOutput}`;
             outputChannel.appendLine(`[Terminal_Context]\nExit_Code: ${exitCode}\nOutput:\n${terminalOutput}`);
             outputChannel.appendLine(`---------------------------------------------------`);
 
-            const apiUrl = vscode.workspace.getConfiguration('codingRabbit').get('apiUrl') || 'http://host.docker.internal:8000/api/chat';
+            const apiUrl = resolveChatApiUrl();
             const modelName = vscode.workspace.getConfiguration('codingRabbit').get('modelName') || 'codingrabbit-ta';
             
             outputChannel.appendLine(`Model Requested: ${modelName}`);
@@ -814,7 +832,7 @@ ${terminalOutput}`;
             
             webviewView.webview.postMessage({ 
                 type: 'addResponse', 
-                text: "Uh oh, my circuits are a bit fried. Make sure Ollama is running locally and the API URL is reachable!", 
+                text: "Uh oh, my circuits are a bit fried. Make sure the remote CodingRabbit backend is reachable from this workspace!",
                 isThinking: false 
             });
         }

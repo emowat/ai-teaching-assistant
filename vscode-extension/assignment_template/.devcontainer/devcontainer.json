@@ -17,7 +17,9 @@
                 "chat.editor.enable": false,
                 "inlineChat.enable": false,
 
-                // 2. Point CodingRabbit to the FastAPI Orchestrator (Port 8000)
+                // 2. Point CodingRabbit to the student tutor backend.
+                // Codespaces should provide the deployed rag_eng URL via RAG_ENG_URL.
+                // The extension prefers that env var and falls back to this local-dev setting.
                 "codingRabbit.apiUrl": "http://host.docker.internal:8000/api/chat",
                 "codingRabbit.modelName": "codingrabbit-ta",
 
@@ -56,7 +58,7 @@
     // Aggressively uninstall Copilot extensions after VS Code attaches by finding the hidden CLI executable
     "postAttachCommand": "find ~/.vscode-server/bin -name 'code' -type f -executable -exec {} --uninstall-extension github.copilot --force \\; -exec {} --uninstall-extension github.copilot-chat --force \\; || true",
 
-    // Mounts the student's local directory directly to /workspace in the Linux container
+    // Mounts the student's repository directly to /workspace in the Linux container
     "workspaceFolder": "/workspace",
     "mounts": [
         "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached"
