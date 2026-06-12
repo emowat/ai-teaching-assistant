@@ -2,7 +2,7 @@
   "name": "coding-rabbit",
   "displayName": "CodingRabbit",
   "description": "C++ CodingRabbit Teaching Assistant via Ollama",
-  "version": "0.0.5",
+  "version": "0.0.10",
   "publisher": "berkeley",
   "repository": "https://github.com/berkeley/coding-rabbit",
   "engines": {
@@ -63,11 +63,13 @@
   },
   "dependencies": {
     "diff": "^9.0.0",
+    "marked": "^12.0.0",
     "node-pty": "^1.1.0",
     "web-tree-sitter": "^0.22.6"
   },
   "devDependencies": {
     "@types/diff": "^7.0.2",
+    "@types/marked": "^5.0.2",
     "@types/node": "18.x",
     "@types/vscode": "^1.80.0",
     "typescript": "^5.1.3"

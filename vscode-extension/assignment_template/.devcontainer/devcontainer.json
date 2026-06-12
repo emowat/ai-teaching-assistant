@@ -17,8 +17,8 @@
                 "chat.editor.enable": false,
                 "inlineChat.enable": false,
 
-                // 2. Point CodingRabbit to the Mac Host's Ollama Server instead of the container's localhost
-                "codingRabbit.apiUrl": "http://host.docker.internal:11434/api/chat",
+                // 2. Point CodingRabbit to the FastAPI Orchestrator (Port 8000)
+                "codingRabbit.apiUrl": "http://host.docker.internal:8000/api/chat",
                 "codingRabbit.modelName": "codingrabbit-ta",
 
                 // 2. Disable the noisy C++ Doxygen lightbulbs and snippets
