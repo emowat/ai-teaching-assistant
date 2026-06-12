@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Bar,
   BarChart,
@@ -13,6 +13,12 @@ import { chartTooltipStyle, D, mono } from "../design/tokens";
 import { Sidebar } from "../components/Sidebar";
 import { TopBar } from "../components/TopBar";
 import type { AppView } from "../types/navigation";
+import {
+  defaultWeekLaunchConfigs,
+  loadWeekLaunchConfigs,
+  saveWeekLaunchConfigs,
+  type WeekLaunchConfig,
+} from "../data/codespaces";
 
 interface ProfessorDashboardProps {
   onNavigate: (view: AppView) => void;
@@ -38,20 +44,22 @@ const weekData = [
   { week: "W5", sessions: 6, hints: 3 },
 ];
 
-// STUB — replace when GET /professor/sections/:id/materials is available
-const materials = [
-  { week: "Week 1: Pointers & References", docs: 3, released: true },
-  { week: "Week 2: Arrays & Strings", docs: 2, released: true },
-  { week: "Week 3: Classes & OOP", docs: 4, released: false },
-  { week: "Week 4: Templates", docs: 0, released: false },
-];
-
 const profTabs = [
   { key: "overview", icon: "📋", label: "Overview" },
   { key: "materials", icon: "📚", label: "Materials" },
   { key: "students", icon: "👥", label: "Students" },
   { key: "analytics", icon: "📊", label: "Analytics" },
 ];
+
+const inputStyle = {
+  background: D.card,
+  border: `1px solid ${D.border}`,
+  color: D.text,
+  borderRadius: 8,
+  padding: "8px 10px",
+  fontSize: 13,
+  width: "100%",
+};
 
 export function ProfessorDashboard({
   onNavigate,
@@ -60,8 +68,24 @@ export function ProfessorDashboard({
 }: ProfessorDashboardProps) {
   const [tab, setTab] = useState("overview");
   const [monitorId, setMonitorId] = useState<string | null>(null);
+  const [weeks, setWeeks] = useState<WeekLaunchConfig[]>(() => loadWeekLaunchConfigs());
 
   const monitored = students.find((s) => s.id === monitorId);
+  const enabledWeeks = useMemo(() => weeks.filter((week) => week.enabled), [weeks]);
+
+  useEffect(() => {
+    saveWeekLaunchConfigs(weeks);
+  }, [weeks]);
+
+  const updateWeek = (id: string, patch: Partial<WeekLaunchConfig>) => {
+    setWeeks((current) =>
+      current.map((week) => (week.id === id ? { ...week, ...patch } : week))
+    );
+  };
+
+  const resetWeeks = () => {
+    setWeeks(defaultWeekLaunchConfigs.map((week) => ({ ...week })));
+  };
 
   return (
     <div
@@ -192,25 +216,82 @@ export function ProfessorDashboard({
                 }}
               >
                 <div style={{ fontSize: 18, fontWeight: 600 }}>
-                  Course materials <Tag color={D.muted}>STUB</Tag>
+                  Week repo routing <Tag color={D.muted}>Local config</Tag>
                 </div>
-                <Btn small>+ Upload document</Btn>
+                <Btn small variant="ghost" onClick={resetWeeks}>
+                  Reset defaults
+                </Btn>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {materials.map((m) => (
-                  <Card key={m.week} style={{ display: "flex", alignItems: "center", gap: 14 }}>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 3 }}>{m.week}</div>
-                      <div style={{ fontSize: 11, color: D.muted }}>
-                        {m.docs} document{m.docs !== 1 ? "s" : ""} uploaded
+                {weeks.map((week, index) => (
+                  <Card key={week.id} style={{ display: "grid", gap: 10 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <div style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>
+                        Week {index + 1} settings
                       </div>
+                      <Tag color={week.enabled ? D.green : D.muted}>
+                        {week.enabled ? "Enabled" : "Disabled"}
+                      </Tag>
                     </div>
-                    <Tag color={m.released ? D.green : D.muted}>
-                      {m.released ? "✓ Released" : "Unreleased"}
-                    </Tag>
-                    {!m.released && <Btn small>Release</Btn>}
+
+                    <label style={{ display: "grid", gap: 6 }}>
+                      <span style={{ fontSize: 12, color: D.muted }}>Week label</span>
+                      <input
+                        value={week.label}
+                        onChange={(event) => updateWeek(week.id, { label: event.target.value })}
+                        style={inputStyle}
+                      />
+                    </label>
+
+                    <label style={{ display: "grid", gap: 6 }}>
+                      <span style={{ fontSize: 12, color: D.muted }}>
+                        Student repo URL for this week
+                      </span>
+                      <input
+                        value={week.repoUrl}
+                        onChange={(event) => updateWeek(week.id, { repoUrl: event.target.value })}
+                        style={inputStyle}
+                      />
+                    </label>
+
+                    <label style={{ display: "grid", gap: 6 }}>
+                      <span style={{ fontSize: 12, color: D.muted }}>
+                        Codespaces template URL for this week
+                      </span>
+                      <input
+                        value={week.templateUrl}
+                        onChange={(event) =>
+                          updateWeek(week.id, { templateUrl: event.target.value })
+                        }
+                        style={inputStyle}
+                      />
+                    </label>
+
+                    <label
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        fontSize: 13,
+                        color: D.text,
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={week.enabled}
+                        onChange={(event) => updateWeek(week.id, { enabled: event.target.checked })}
+                      />
+                      Enable this week for students
+                    </label>
+
+                    <div style={{ fontSize: 11, color: D.muted }}>
+                      Students will see this week in the launcher when it is enabled.
+                    </div>
                   </Card>
                 ))}
+              </div>
+              <div style={{ marginTop: 12, fontSize: 12, color: D.muted }}>
+                Enabled weeks: {enabledWeeks.map((week) => week.label).join(", ") || "none"}
               </div>
             </div>
           ) : tab === "students" ? (

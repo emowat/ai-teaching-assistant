@@ -1,7 +1,7 @@
 {
   "name": "coding-rabbit",
   "displayName": "CodingRabbit",
-  "description": "C++ CodingRabbit Teaching Assistant via Ollama",
+  "description": "C++ CodingRabbit Teaching Assistant via the remote rag_eng backend",
   "version": "0.0.10",
   "publisher": "berkeley",
   "repository": "https://github.com/berkeley/coding-rabbit",

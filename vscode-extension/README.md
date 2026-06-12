@@ -1,6 +1,6 @@
 # CodingRabbit VS Code Extension
 
-This extension provides an interactive, CodingRabbit Teaching Assistant directly inside VS Code to help students debug C++ code without leaking solutions.
+This extension provides an interactive CodingRabbit Teaching Assistant directly inside VS Code or GitHub Codespaces to help students debug C++ code without leaking solutions.
 
 ## Features
 - **CodingRabbit Chat UI**: A sidebar webview that interacts with the student. Now supports `Enter` to send and `Shift+Enter` for multiline formatting.
@@ -13,7 +13,7 @@ This extension provides an interactive, CodingRabbit Teaching Assistant directly
 
 ## AWS Migration Checklist (Production Architecture)
 
-Currently, this extension functions as a "Thick Client" for local testing with an Ollama Dev Container. It contains the secret LLM System Prompt and makes HTTP calls directly to the local model API. 
+Currently, this extension functions as a thin-to-medium client for local testing and Codespaces. In the student path it should call the deployed `rag_eng` backend from the workspace environment; any local model bridge is now a legacy development path.
 
 When migrating to a cloud-based AWS infrastructure for production, the following architectural changes **MUST** be made:
 
@@ -26,12 +26,12 @@ When migrating to a cloud-based AWS infrastructure for production, the following
 **Action:** The extension needs to retrieve an auth token (e.g., via OAuth or a Berkeley student portal login) and attach it to the `Authorization` header of the `fetch` request. The AWS API Gateway should enforce rate limits per student.
 
 ### 3. Update the API Endpoint
-**Why:** The extension currently hardcodes a Docker Bridge IP (`http://192.168.65.254:11434/api/chat`) to reach the local Ollama instance.
-**Action:** Update the `apiUrl` in `TAChatViewProvider.ts` (or the VS Code Workspace settings configuration) to point to the secure AWS load balancer or API Gateway endpoint (e.g., `https://api.cs210.berkeley.edu/v1/chat`).
+**Why:** The extension must work inside Codespaces and on local workstations without depending on localhost or Docker bridge addresses.
+**Action:** Configure `RAG_ENG_URL` in the Codespaces/devcontainer environment and let the extension prefer that value, falling back to the workspace setting for local development. The URL should point at the deployed `rag_eng` chat endpoint (for example, `https://api.cs210.berkeley.edu/api/chat`).
 
 ### 4. Migrate RAG (VectorDB) Lookups
 **Why:** The client extension should not manage heavy databases or web scraping.
-**Action:** The AWS backend should handle all RAG document retrieval (e.g., searching an AWS OpenSearch or ChromaDB instance populated with `cppreference` docs) *before* appending it to the LLM prompt. The VS Code extension should not perform any RAG logic itself.
+**Action:** The AWS backend should handle all RAG document retrieval before appending it to the LLM prompt. The VS Code extension should not perform any RAG logic itself.
 
 ### 5. Centralize Anti-Cheat Telemetry
 **Why:** The copy/paste diff patches currently log to a local VS Code Output Channel, which instructors cannot see.
@@ -47,5 +47,5 @@ To test the extension locally:
    ```bash
    ./build_vsix_linux.sh . ./assignment_template/.devcontainer
    ```
-3. Open the `assignment_template` folder in VS Code.
+3. Open the `assignment_template` folder in VS Code or a GitHub Codespace.
 4. Click **"Reopen in Container"**. VS Code will automatically install the `.vsix` and apply the Hard Mode settings.
