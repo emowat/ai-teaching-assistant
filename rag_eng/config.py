@@ -37,6 +37,15 @@ class Settings:
     runner_image: str
     cors_origins: tuple[str, ...]
 
+    # --- Inference routing ---
+    use_sagemaker: bool
+    sagemaker_endpoint: str
+    s3_data_bucket: str
+    model_family: str          # llama3 | qwen | generic
+    ollama_url: str
+    aws_region: str
+    aws_profile: str | None
+
     @property
     def api_base_url(self) -> str:
         return f"http://127.0.0.1:{self.app_port}"
@@ -105,4 +114,13 @@ def get_settings() -> Settings:
             ).split(",")
             if origin.strip()
         ),
+        use_sagemaker=os.getenv("USE_SAGEMAKER", "false").lower() == "true",
+        sagemaker_endpoint=os.getenv(
+            "SAGEMAKER_ENDPOINT", "codingrabbit-sagemaker-async-endpoint"
+        ),
+        s3_data_bucket=os.getenv("S3_DATA_BUCKET", "codingrabbit-data-dev"),
+        model_family=os.getenv("MODEL_FAMILY", "llama3"),
+        ollama_url=os.getenv("OLLAMA_URL", "http://localhost:11434/api/chat"),
+        aws_region=os.getenv("AWS_REGION", "us-east-1"),
+        aws_profile=os.getenv("AWS_PROFILE") or None,
     )

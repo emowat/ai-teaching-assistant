@@ -6,6 +6,8 @@ import uuid
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 
 from rag_eng.auth.dependencies import require_authenticated_user
 from rag_eng.auth.models import MeResponse
@@ -23,8 +25,24 @@ from rag_eng.service import (
     ensure_index_service,
     get_health,
     rebuild_index_service,
+    run_chat,
     run_query,
 )
+
+
+class _ChatOptions(BaseModel):
+    temperature: float = 0.7
+    top_p: float = 0.9
+    num_ctx: int = 8192
+    num_predict: int = 2048
+
+
+class ChatRequest(BaseModel):
+    """Ollama-compatible chat request (sent by the VS Code extension)."""
+    model: str = "codingrabbit-ta"
+    messages: list[dict]
+    stream: bool = False
+    options: _ChatOptions = _ChatOptions()
 
 
 def _require_admin(
@@ -112,6 +130,30 @@ def create_app() -> FastAPI:
             return CompileResponse(job_id=job_id, status=status, result=result)
         except RunnerError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    @app.post("/api/chat")
+    async def chat(
+        payload: ChatRequest,
+        settings: Settings = Depends(get_settings),
+    ):
+        """VS Code extension endpoint (Ollama-compatible format).
+
+        No Cognito auth required here — the extension runs in student Codespaces
+        without a browser session. Auth will be added in a future sprint when
+        the extension supports Cognito tokens.
+        """
+        try:
+            result = await run_chat(
+                messages=payload.messages,
+                model_name=payload.model,
+                settings=settings,
+                stream=payload.stream,
+            )
+            if payload.stream:
+                return StreamingResponse(result, media_type="application/x-ndjson")
+            return result
         except Exception as exc:
             raise HTTPException(status_code=500, detail=str(exc)) from exc
 

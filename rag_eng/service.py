@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import re
+from typing import AsyncIterator
+
 from rag import (
     build_prompt,
     generate_response_from_result,
@@ -9,12 +12,15 @@ from rag import (
 )
 from rag.runtime import create_qdrant_client
 
-from rag_eng.config import get_settings
+from rag_eng.config import Settings, get_settings
 from rag_eng.indexing import ensure_index, rebuild_index
+from rag_eng.inference import run_inference
+from rag_eng.prompts import get_system_prompt
 from rag_eng.schemas import (
     HealthResponse,
     IndexEnsureResponse,
     IndexRebuildResponse,
+    QueryPayload,
     QueryResponse,
 )
 
@@ -115,3 +121,64 @@ def rebuild_index_service() -> IndexRebuildResponse:
         indexed_documents=result.indexed_documents,
         message=result.message,
     )
+
+
+# ---------------------------------------------------------------------------
+# Chat orchestration  (called by POST /api/chat — VS Code extension endpoint)
+# ---------------------------------------------------------------------------
+
+def _extract_chat_context(messages: list[dict]) -> dict:
+    """Pull structured fields out of the extension's [Context] blocks."""
+    last_user = next(
+        (m for m in reversed(messages) if m.get("role") == "user"), None
+    )
+    content = last_user["content"] if last_user else ""
+
+    def _block(tag: str) -> str:
+        m = re.search(rf"\[{tag}\](.*?)(?=\[|$)", content, re.DOTALL)
+        return m.group(1).strip() if m else ""
+
+    mode = "Study Assist" if "Mode: Study Assist" in content else "Homework Assist"
+    code_raw = _block("Code_Context")
+    terminal_output = _block("Terminal_Context")
+    student_message = re.sub(r"\[.*?\][\s\S]*?(?=\[|$)", "", content).strip()
+
+    return {
+        "student_message": student_message or content,
+        "code_raw": code_raw,
+        "terminal_output": terminal_output,
+        "mode": mode,
+    }
+
+
+async def run_chat(
+    messages: list[dict],
+    model_name: str,
+    settings: Settings,
+    stream: bool = False,
+) -> dict | AsyncIterator[bytes]:
+    """Full chat pipeline: context extraction → RAG → prompt assembly → inference.
+
+    Replaces the mocked backend/rag_client.py with real Qdrant + Cohere retrieval.
+    """
+    ctx = _extract_chat_context(messages)
+
+    # Build a QueryPayload from the chat context so we can reuse run_retrieval
+    query = QueryPayload(
+        student_message=ctx["student_message"],
+        code_raw=ctx["code_raw"] or None,
+        terminal_output=ctx["terminal_output"] or None,
+        mode=ctx["mode"],
+    )
+
+    retrieval_result = run_retrieval(query)
+    rag_context = retrieval_result.formatted_context
+
+    # Strip any existing system message injected by the extension
+    api_messages = [m for m in messages if m.get("role") != "system"]
+
+    system_prompt = get_system_prompt(ctx["mode"])
+    full_system = f"{system_prompt}\n{rag_context}"
+    api_messages.insert(0, {"role": "system", "content": full_system})
+
+    return await run_inference(api_messages, model_name, settings, stream=stream)
