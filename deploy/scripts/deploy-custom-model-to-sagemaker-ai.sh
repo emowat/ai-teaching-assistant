@@ -20,6 +20,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 PYTHON_SCRIPT="${REPO_ROOT}/deploy/deploy_sagemaker.py"
+# shellcheck source=deploy/scripts/_load_deploy_config.sh
+source "${SCRIPT_DIR}/_load_deploy_config.sh"
 
 ACTION=""
 ROLE_ARN=""
@@ -56,19 +58,15 @@ deploy-custom-model-to-sagemaker-ai.sh
     --prompt TEXT     Test prompt for invoke (default: C++ segfault question)
     --help            Show this message
 
-  Environment (optional, from repo .env):
-    SAGEMAKER_ENDPOINT       — endpoint name (default: codingrabbit-qwen-async)
-    S3_DATA_BUCKET           — bucket with model.tar.gz
-    MODEL_DATA_URI           — full s3:// URI to model artifact
-    SAGEMAKER_INSTANCE_TYPE  — e.g. ml.g5.2xlarge or ml.g5.12xlarge for fp16 14B
-    AWS_REGION               — default: us-east-1
-    AWS_PROFILE              — named AWS profile
+  Configuration:
+    deploy/deployment.yaml  — primary settings (see: python deploy/deployment_config.py describe)
+    .env / env vars         — override YAML (SAGEMAKER_ENDPOINT, S3_DATA_BUCKET, …)
 
-  After deploy succeeds, add to .env and restart rag_eng:
+  After deploy succeeds, add to .env and restart rag_eng (values from deployment.yaml):
     USE_SAGEMAKER=true
-    SAGEMAKER_ENDPOINT=codingrabbit-qwen-async
-    MODEL_FAMILY=qwen
-    S3_DATA_BUCKET=codingrabbit-data-dev
+    SAGEMAKER_ENDPOINT=<sagemaker.endpoint_name>
+    MODEL_FAMILY=<rag_eng.model_family>
+    S3_DATA_BUCKET=<aws.s3_bucket>
 
   Docs:
     https://docs.aws.amazon.com/sagemaker/latest/dg/async-inference.html
@@ -108,19 +106,12 @@ fi
 
 cd "${REPO_ROOT}"
 
-if [[ -f "${REPO_ROOT}/.env" ]]; then
-  set -a
-  # shellcheck disable=SC1091
-  source "${REPO_ROOT}/.env"
-  set +a
-fi
-
 if [[ -x "${REPO_ROOT}/.venv/bin/python" ]]; then
   PYTHON="${REPO_ROOT}/.venv/bin/python"
 elif command -v python3 &>/dev/null; then
   PYTHON="python3"
 else
-  echo "ERROR: No Python found. Create a venv:  uv venv && uv pip install boto3"
+  echo "ERROR: No Python found. Create a venv:  uv venv && uv pip install boto3 pyyaml"
   exit 1
 fi
 
@@ -128,6 +119,8 @@ if [[ ! -f "${PYTHON_SCRIPT}" ]]; then
   echo "ERROR: Missing ${PYTHON_SCRIPT}"
   exit 1
 fi
+
+load_deploy_config "${REPO_ROOT}" "${PYTHON}"
 
 ARGS=("${ACTION}")
 [[ -n "${ROLE_ARN}" ]] && ARGS+=(--role-arn "${ROLE_ARN}")
@@ -137,9 +130,12 @@ ARGS+=("${EXTRA_ARGS[@]}")
 echo ""
 echo "==> SageMaker AI: ${ACTION}"
 echo "    Repo:     ${REPO_ROOT}"
-echo "    Endpoint: ${SAGEMAKER_ENDPOINT:-codingrabbit-qwen-async}"
-echo "    Region:   ${AWS_REGION:-us-east-1}"
-echo "    Bucket:   ${S3_DATA_BUCKET:-codingrabbit-data-dev}"
+echo "    Config:   ${DEPLOY_CONFIG_PATH}"
+echo "    Endpoint: ${DEPLOY_ENDPOINT_NAME}"
+echo "    Region:   ${DEPLOY_AWS_REGION}"
+echo "    Bucket:   ${DEPLOY_S3_BUCKET}"
+echo "    Model:    ${DEPLOY_MODEL_DATA_URI}"
+echo "    Instance: ${DEPLOY_INSTANCE_TYPE}"
 echo ""
 
 "${PYTHON}" "${PYTHON_SCRIPT}" "${ARGS[@]}"

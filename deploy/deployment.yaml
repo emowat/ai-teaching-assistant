@@ -1,0 +1,190 @@
+# =============================================================================
+# CodingRabbit — SageMaker deployment configuration
+# =============================================================================
+#
+# Single source of truth for deploy/upload_model.py, deploy/deploy_sagemaker.py,
+# and deploy/scripts/*.sh
+#
+# Override precedence (highest wins):
+#   1. CLI flags (--bucket, --role-arn, etc.)
+#   2. Environment variables (see _reference.env_override per field)
+#   3. This file (deploy/deployment.yaml)
+#
+# Print field documentation:
+#   python deploy/deployment_config.py describe
+#
+# Custom config path:
+#   export DEPLOY_CONFIG=/path/to/deployment.yaml
+#
+# =============================================================================
+
+meta:
+  config_version: "1"
+  project: codingrabbit
+  model_name: qwen-finetuned-ta
+
+# -----------------------------------------------------------------------------
+# Google Drive — source of the fine-tuned HuggingFace model
+# -----------------------------------------------------------------------------
+google_drive:
+  # Folder ID from the URL: .../drive/folders/{folder_id}
+  folder_id: "14Gp0dkdI3RJi7AqH_uADkzF69ou3Ev3O"
+  # Human-readable link (documentation only; not used by scripts)
+  folder_url: "https://drive.google.com/drive/u/0/folders/14Gp0dkdI3RJi7AqH_uADkzF69ou3Ev3O"
+
+# -----------------------------------------------------------------------------
+# Local paths (relative to repository root unless absolute)
+# -----------------------------------------------------------------------------
+local_paths:
+  # Directory where gdown writes HuggingFace shards (gitignored)
+  download_dir: "./model_download"
+  # Packaged artifact before S3 upload (gitignored)
+  tarball_path: "./model.tar.gz"
+  # Suffixes gdown leaves on interrupted transfers (resume reuses these)
+  partial_file_suffixes:
+    - ".part"
+    - ".tmp"
+    - ".crdownload"
+
+# -----------------------------------------------------------------------------
+# AWS — shared credentials and storage
+# -----------------------------------------------------------------------------
+aws:
+  # Region for S3 and SageMaker. Options: any AWS region where SageMaker GPU
+  # instances are available (e.g. us-east-1, us-west-2).
+  region: "us-east-1"
+  # Named AWS CLI profile. Set to null to use default credential chain.
+  # Options: null | your profile name from ~/.aws/credentials
+  profile: null
+  # S3 bucket for model artifacts and async inference I/O
+  s3_bucket: "codingrabbit-data-dev"
+
+# -----------------------------------------------------------------------------
+# Model artifact on S3 (output of prepare-custom-model-from-google-drive.sh)
+# -----------------------------------------------------------------------------
+model_artifact:
+  # Object key inside s3_bucket (not a full URI)
+  s3_key: "models/qwen-finetuned/model.tar.gz"
+  # Full s3:// URI. Leave null to auto-build: s3://{aws.s3_bucket}/{s3_key}
+  s3_uri: null
+
+# -----------------------------------------------------------------------------
+# SageMaker Async Inference endpoint
+# Docs: https://docs.aws.amazon.com/sagemaker/latest/dg/async-inference.html
+# -----------------------------------------------------------------------------
+sagemaker:
+  # Endpoint name — must match SAGEMAKER_ENDPOINT in rag_eng .env
+  endpoint_name: "codingrabbit-qwen-async"
+  # GPU instance type. Options:
+  #   ml.g5.2xlarge  — 1× A10G, 24 GB VRAM (~$1.21/hr) — 4-bit / 7B models
+  #   ml.g5.12xlarge — 4× A10G, 96 GB VRAM (~$5.67/hr) — fp16 14B models
+  instance_type: "ml.g5.2xlarge"
+  # Number of instances in the production variant (usually 1 for capstone)
+  initial_instance_count: 1
+  # IAM execution role ARN. null = auto-detect from current AWS session
+  execution_role_arn: null
+
+  async_inference:
+    # S3 prefix (under aws.s3_bucket) where SageMaker writes async results
+    output_s3_prefix: "async-inference/output/"
+    # Max queued invocations per instance before 429
+    max_concurrent_invocations_per_instance: 4
+    # Smoke-test invoke(): seconds between S3 polls
+    invoke_poll_interval_seconds: 3
+    # Smoke-test invoke(): max poll attempts (interval × attempts = timeout)
+    invoke_poll_max_attempts: 60
+    # deploy(): waiter delay between endpoint status checks (seconds)
+    deploy_wait_delay_seconds: 30
+    # deploy(): max waiter attempts
+    deploy_wait_max_attempts: 40
+
+  # AWS Deep Learning Container (HuggingFace PyTorch inference)
+  # Catalog: https://aws.github.io/deep-learning-containers/reference/available_images/
+  # Tag format: {pytorch}-transformers{ver}-gpu-py{py}-cu{cuda}-ubuntu{os}
+  # Qwen2 requires transformers >= 4.40
+  dlc:
+    account_id: "763104351884"
+    repository: "huggingface-pytorch-inference"
+    tag: "2.3.0-transformers4.40.1-gpu-py311-cu121-ubuntu20.04"
+
+  container:
+    # HuggingFace task for the inference container
+    hf_task: "text-generation"
+    # TGI/LMI worker count (1 per GPU for single-GPU instances)
+    model_server_workers: "1"
+
+  runtime_io:
+    # Prefix for rag_eng / smoke-test request payloads uploaded before invoke
+    input_s3_prefix: "temp/sagemaker_inputs/"
+
+# -----------------------------------------------------------------------------
+# Smoke test (deploy_sagemaker.py invoke)
+# -----------------------------------------------------------------------------
+inference_smoke_test:
+  default_prompt: "Why does my C++ pointer cause a segmentation fault?"
+  system_message: "You are CodingRabbit, a Socratic C++ teaching assistant."
+  # Chat template for formatting. Options: qwen | llama3 | generic
+  chat_template: "qwen"
+  max_new_tokens: 512
+  temperature: 0.7
+  top_p: 0.9
+
+# -----------------------------------------------------------------------------
+# HuggingFace packaging validation (upload_model.py package step)
+# -----------------------------------------------------------------------------
+huggingface_packaging:
+  required_files:
+    - config.json
+    - tokenizer_config.json
+
+# -----------------------------------------------------------------------------
+# Values to copy into rag_eng .env after deploy succeeds
+# -----------------------------------------------------------------------------
+rag_eng:
+  model_family: "qwen"
+  use_sagemaker: false
+
+# =============================================================================
+# Field reference (documentation — ignored by loader, used by `describe` CLI)
+# =============================================================================
+_reference:
+  google_drive.folder_id:
+    description: Google Drive folder ID containing the fine-tuned HuggingFace model files.
+    env_override: DRIVE_FOLDER_ID
+  local_paths.download_dir:
+    description: Local directory for downloaded model shards before packaging.
+  local_paths.tarball_path:
+    description: Path to the model.tar.gz artifact created before S3 upload.
+  aws.region:
+    description: AWS region for S3 and SageMaker resources.
+    env_override: AWS_REGION
+    options: "us-east-1, us-west-2, eu-west-1, …"
+  aws.profile:
+    description: Named AWS CLI profile. null uses the default credential chain.
+    env_override: AWS_PROFILE
+  aws.s3_bucket:
+    description: S3 bucket for model artifacts and async inference input/output.
+    env_override: S3_DATA_BUCKET
+  model_artifact.s3_key:
+    description: S3 object key for model.tar.gz inside aws.s3_bucket.
+  model_artifact.s3_uri:
+    description: Full s3:// URI to model.tar.gz. Auto-built from bucket+key when null.
+    env_override: MODEL_DATA_URI
+  sagemaker.endpoint_name:
+    description: SageMaker endpoint name; must match rag_eng SAGEMAKER_ENDPOINT.
+    env_override: SAGEMAKER_ENDPOINT
+  sagemaker.instance_type:
+    description: GPU instance type for the async endpoint.
+    env_override: SAGEMAKER_INSTANCE_TYPE
+    options: "ml.g5.2xlarge (4-bit/7B), ml.g5.12xlarge (fp16 14B)"
+  sagemaker.execution_role_arn:
+    description: IAM role for SageMaker. null auto-detects from current session.
+    env_override: SAGEMAKER_EXECUTION_ROLE_ARN
+  sagemaker.dlc.tag:
+    description: ECR image tag for the HuggingFace PyTorch inference DLC.
+  inference_smoke_test.chat_template:
+    description: Prompt format for smoke tests and rag_eng MODEL_FAMILY.
+    options: "qwen, llama3, generic"
+  rag_eng.model_family:
+    description: Set MODEL_FAMILY in .env after deploy.
+    env_override: MODEL_FAMILY

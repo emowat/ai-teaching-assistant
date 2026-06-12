@@ -12,6 +12,9 @@ gradio>=4.36
 httpx>=0.27
 python-jose[cryptography]>=3.3
 
+# Deploy scripts (deploy/)
+pyyaml>=6.0
+
 # Dataset generation (synthetic-transcripts/)
 openai>=1.0
 tree-sitter>=0.21

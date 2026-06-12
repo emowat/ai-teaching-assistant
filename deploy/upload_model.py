@@ -38,7 +38,6 @@ Google Drive folder:
 from __future__ import annotations
 
 import argparse
-import os
 import shutil
 import sys
 import tarfile
@@ -46,28 +45,16 @@ from pathlib import Path
 
 import boto3
 
+_DEPLOY_DIR = Path(__file__).resolve().parent
+if str(_DEPLOY_DIR) not in sys.path:
+    sys.path.insert(0, str(_DEPLOY_DIR))
+
 try:
     import gdown
 except ImportError:
     gdown = None  # type: ignore[assignment]
 
-
-# ---------------------------------------------------------------------------
-# Configuration — override with CLI flags or environment variables
-# ---------------------------------------------------------------------------
-
-DRIVE_FOLDER_ID = "14Gp0dkdI3RJi7AqH_uADkzF69ou3Ev3O"
-
-DEFAULT_DOWNLOAD_DIR = Path("./model_download")
-DEFAULT_TAR_PATH = Path("./model.tar.gz")
-
-S3_BUCKET = os.getenv("S3_DATA_BUCKET", "codingrabbit-data-dev")
-S3_MODEL_KEY = "models/qwen-finetuned/model.tar.gz"
-AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
-AWS_PROFILE = os.getenv("AWS_PROFILE") or None
-
-# gdown may leave partial transfers with these suffixes
-_PARTIAL_SUFFIXES = (".part", ".tmp", ".crdownload")
+from deployment_config import DeployConfig, load_deploy_config
 
 
 # ---------------------------------------------------------------------------
@@ -88,7 +75,10 @@ def _format_size(num_bytes: int) -> str:
     return f"{num_bytes / 1024:.0f} KB"
 
 
-def _scan_download_dir(output_dir: Path) -> dict:
+def _scan_download_dir(
+    output_dir: Path,
+    partial_suffixes: tuple[str, ...],
+) -> dict:
     """Summarize what is already on disk (completed + partial files)."""
     file_count = 0
     partial_count = 0
@@ -109,7 +99,7 @@ def _scan_download_dir(output_dir: Path) -> dict:
             continue
         file_count += 1
         total_bytes += path.stat().st_size
-        if any(path.name.endswith(s) for s in _PARTIAL_SUFFIXES):
+        if any(path.name.endswith(s) for s in partial_suffixes):
             partial_count += 1
 
     try:
@@ -204,6 +194,7 @@ def _resolve_download_mode(
 
 
 def download(
+    cfg: DeployConfig,
     output_dir: Path,
     *,
     resume_flag: bool = False,
@@ -212,8 +203,10 @@ def download(
     """Download the Drive folder to a local directory."""
     _require_gdown()
     output_dir.mkdir(parents=True, exist_ok=True)
+    partial_suffixes = cfg.local_paths.partial_file_suffixes
+    drive_folder_id = cfg.google_drive.folder_id
 
-    stats = _scan_download_dir(output_dir)
+    stats = _scan_download_dir(output_dir, partial_suffixes)
     _print_download_status(output_dir, stats)
 
     mode = _resolve_download_mode(
@@ -241,23 +234,24 @@ def download(
         use_resume = True
         print("\nResuming download (completed files skipped, partial transfers reused) …")
 
-    print(f"Folder ID: {DRIVE_FOLDER_ID} → {output_dir}")
+    print(f"Folder ID: {drive_folder_id} → {output_dir}")
+    print(f"Config:    {cfg.config_path}")
     print("(Large models can take a long time. You can re-run with --resume if interrupted.)\n")
 
     gdown.download_folder(
-        id=DRIVE_FOLDER_ID,
+        id=drive_folder_id,
         output=str(output_dir),
         quiet=False,
         use_cookies=False,
         resume=use_resume,
     )
 
-    final_stats = _scan_download_dir(output_dir)
+    final_stats = _scan_download_dir(output_dir, partial_suffixes)
     print(f"\nDownload finished: {final_stats['file_count']} files, "
           f"{_format_size(final_stats['total_bytes'])} in {output_dir}")
 
 
-def package(local_dir: Path, tar_path: Path) -> None:
+def package(cfg: DeployConfig, local_dir: Path, tar_path: Path) -> None:
     """Package a local HuggingFace model directory into model.tar.gz.
 
     SageMaker extracts model.tar.gz to /opt/ml/model/.  All files must be at
@@ -268,8 +262,7 @@ def package(local_dir: Path, tar_path: Path) -> None:
         print(f"ERROR: No files found in {local_dir}")
         sys.exit(1)
 
-    # Warn if required HF files are missing
-    required = {"config.json", "tokenizer_config.json"}
+    required = set(cfg.huggingface_packaging.required_files)
     found_names = {f.name for f in model_files if f.is_file()}
     missing = required - found_names
     if missing:
@@ -278,7 +271,8 @@ def package(local_dir: Path, tar_path: Path) -> None:
 
     partial = [
         f for f in model_files
-        if f.is_file() and any(f.name.endswith(s) for s in _PARTIAL_SUFFIXES)
+        if f.is_file()
+        and any(f.name.endswith(s) for s in cfg.local_paths.partial_file_suffixes)
     ]
     if partial:
         print(f"WARNING: {len(partial)} partial/temp file(s) still present.")
@@ -296,11 +290,23 @@ def package(local_dir: Path, tar_path: Path) -> None:
     print(f"Packaged: {tar_path}  ({size_mb:.0f} MB)")
 
 
-def push(tar_path: Path, bucket: str, key: str, region: str, profile: str | None) -> None:
+def push(
+    cfg: DeployConfig,
+    tar_path: Path,
+    bucket: str | None = None,
+    key: str | None = None,
+    region: str | None = None,
+    profile: str | None = None,
+) -> None:
     """Upload model.tar.gz to S3."""
     if not tar_path.exists():
         print(f"ERROR: {tar_path} does not exist.  Run the 'package' step first.")
         sys.exit(1)
+
+    bucket = bucket or cfg.aws.s3_bucket
+    key = key or cfg.model_artifact.s3_key
+    region = region or cfg.aws.region
+    profile = profile if profile is not None else cfg.aws.profile
 
     session = boto3.Session(profile_name=profile, region_name=region)
     s3 = session.client("s3")
@@ -356,12 +362,17 @@ def main() -> None:
             "upload — all three steps"
         ),
     )
-    parser.add_argument("--local-dir", default=str(DEFAULT_DOWNLOAD_DIR), help="Local model directory")
-    parser.add_argument("--tar", default=str(DEFAULT_TAR_PATH), help="Path for model.tar.gz")
-    parser.add_argument("--bucket", default=S3_BUCKET, help="S3 bucket name")
-    parser.add_argument("--key", default=S3_MODEL_KEY, help="S3 object key for model.tar.gz")
-    parser.add_argument("--region", default=AWS_REGION)
-    parser.add_argument("--profile", default=AWS_PROFILE)
+    parser.add_argument(
+        "--config",
+        default=None,
+        help="Path to deployment.yaml (default: deploy/deployment.yaml or DEPLOY_CONFIG)",
+    )
+    parser.add_argument("--local-dir", default=None, help="Override local_paths.download_dir")
+    parser.add_argument("--tar", default=None, help="Override local_paths.tarball_path")
+    parser.add_argument("--bucket", default=None, help="Override aws.s3_bucket")
+    parser.add_argument("--key", default=None, help="Override model_artifact.s3_key")
+    parser.add_argument("--region", default=None, help="Override aws.region")
+    parser.add_argument("--profile", default=None, help="Override aws.profile")
     parser.add_argument(
         "--resume",
         action="store_true",
@@ -374,21 +385,23 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    local_dir = Path(args.local_dir)
-    tar_path = Path(args.tar)
+    cfg = load_deploy_config(args.config)
+    local_dir = Path(args.local_dir or cfg.local_paths.download_dir)
+    tar_path = Path(args.tar or cfg.local_paths.tarball_path)
 
     if args.action in ("download", "upload"):
         download(
+            cfg,
             local_dir,
             resume_flag=args.resume,
             force_redownload=args.force_redownload,
         )
 
     if args.action in ("package", "upload"):
-        package(local_dir, tar_path)
+        package(cfg, local_dir, tar_path)
 
     if args.action in ("push", "upload"):
-        push(tar_path, args.bucket, args.key, args.region, args.profile)
+        push(cfg, tar_path, args.bucket, args.key, args.region, args.profile)
 
 
 if __name__ == "__main__":

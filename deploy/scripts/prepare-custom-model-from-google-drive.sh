@@ -19,6 +19,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 PYTHON_SCRIPT="${REPO_ROOT}/deploy/upload_model.py"
+# shellcheck source=deploy/scripts/_load_deploy_config.sh
+source "${SCRIPT_DIR}/_load_deploy_config.sh"
 
 DOWNLOAD_ONLY=false
 PACKAGE_ONLY=false
@@ -63,13 +65,12 @@ prepare-custom-model-from-google-drive.sh
     ./deploy/scripts/prepare-custom-model-from-google-drive.sh --package-only
     ./deploy/scripts/prepare-custom-model-from-google-drive.sh --push-only
 
-  Environment (optional, from repo .env):
-    S3_DATA_BUCKET   — target bucket (default: codingrabbit-data-dev)
-    AWS_REGION       — default: us-east-1
-    AWS_PROFILE      — named AWS profile
+  Configuration:
+    deploy/deployment.yaml  — primary settings (see: python deploy/deployment_config.py describe)
+    .env / env vars         — override YAML (S3_DATA_BUCKET, AWS_REGION, DRIVE_FOLDER_ID, …)
 
   Output:
-    s3://<bucket>/models/qwen-finetuned/model.tar.gz
+    s3://<bucket>/<model_artifact.s3_key>  (from deployment.yaml)
     Set MODEL_DATA_URI to this URI before deploying SageMaker.
 EOF
 }
@@ -109,19 +110,12 @@ done
 
 cd "${REPO_ROOT}"
 
-if [[ -f "${REPO_ROOT}/.env" ]]; then
-  set -a
-  # shellcheck disable=SC1091
-  source "${REPO_ROOT}/.env"
-  set +a
-fi
-
 if [[ -x "${REPO_ROOT}/.venv/bin/python" ]]; then
   PYTHON="${REPO_ROOT}/.venv/bin/python"
 elif command -v python3 &>/dev/null; then
   PYTHON="python3"
 else
-  echo "ERROR: No Python found. Create a venv:  uv venv && uv pip install gdown boto3"
+  echo "ERROR: No Python found. Create a venv:  uv venv && uv pip install gdown boto3 pyyaml"
   exit 1
 fi
 
@@ -129,6 +123,10 @@ if [[ ! -f "${PYTHON_SCRIPT}" ]]; then
   echo "ERROR: Missing ${PYTHON_SCRIPT}"
   exit 1
 fi
+
+load_deploy_config "${REPO_ROOT}" "${PYTHON}"
+echo "Using config: ${DEPLOY_CONFIG_PATH}"
+echo "S3 target:    ${DEPLOY_MODEL_DATA_URI}"
 
 _run() {
   echo ""

@@ -19,9 +19,55 @@ Google Drive (fine-tuned Qwen)
 
 | Layer | Location | Role |
 |---|---|---|
+| **Configuration** | `deploy/deployment.yaml` | Single source of truth for all deploy settings |
 | **Shell wrappers** (start here) | `deploy/scripts/*.sh` | Human-friendly entry points with `--help` |
 | **Python implementation** | `deploy/upload_model.py`, `deploy/deploy_sagemaker.py` | Download, S3 upload, SageMaker API calls |
 | **Application** | `rag_eng/inference.py` | Calls the live endpoint at request time |
+
+---
+
+## Configuration (`deployment.yaml`)
+
+All deploy scripts read **`deploy/deployment.yaml`**. Environment variables and CLI flags override YAML values.
+
+```bash
+# Print every field, env override, and resolved values:
+python deploy/deployment_config.py describe
+
+# Export resolved settings for shell scripts:
+python deploy/deployment_config.py shell-export
+
+# Use a custom config file:
+export DEPLOY_CONFIG=/path/to/my-deployment.yaml
+```
+
+**Override precedence:** CLI flag → environment variable → `deployment.yaml`
+
+| Section | Keys | Purpose |
+|---|---|---|
+| `google_drive` | `folder_id`, `folder_url` | Source model on Google Drive |
+| `local_paths` | `download_dir`, `tarball_path`, `partial_file_suffixes` | Local working files (gitignored) |
+| `aws` | `region`, `profile`, `s3_bucket` | AWS credentials target |
+| `model_artifact` | `s3_key`, `s3_uri` | S3 location of `model.tar.gz` |
+| `sagemaker` | `endpoint_name`, `instance_type`, `dlc`, `container`, `async_inference` | Async endpoint setup |
+| `inference_smoke_test` | `default_prompt`, `chat_template`, generation params | `invoke` smoke test |
+| `huggingface_packaging` | `required_files` | Validation before packaging |
+| `rag_eng` | `model_family`, `use_sagemaker` | Values to copy into `.env` after deploy |
+
+The `_reference` block at the bottom of `deployment.yaml` documents each field (also printed by `describe`).
+
+**Common env overrides:**
+
+| Environment variable | YAML path |
+|---|---|
+| `S3_DATA_BUCKET` | `aws.s3_bucket` |
+| `SAGEMAKER_ENDPOINT` | `sagemaker.endpoint_name` |
+| `SAGEMAKER_INSTANCE_TYPE` | `sagemaker.instance_type` |
+| `MODEL_DATA_URI` | `model_artifact.s3_uri` |
+| `DRIVE_FOLDER_ID` | `google_drive.folder_id` |
+| `AWS_REGION` | `aws.region` |
+| `AWS_PROFILE` | `aws.profile` |
+| `MODEL_FAMILY` | `rag_eng.model_family` |
 
 ---
 
@@ -285,7 +331,10 @@ Fine-tuned Qwen  ← loaded from s3://…/models/qwen-finetuned/model.tar.gz
 ```text
 deploy/
 ├── README.md                                          ← this file
+├── deployment.yaml                                    ← configuration (edit this first)
+├── deployment_config.py                               ← YAML loader + describe CLI
 ├── scripts/
+│   ├── _load_deploy_config.sh                         ← shared bash helper
 │   ├── prepare-custom-model-from-google-drive.sh      ← Step 1: Drive → S3
 │   └── deploy-custom-model-to-sagemaker-ai.sh         ← Step 2: S3 → SageMaker
 ├── upload_model.py                                    ← Python: download/package/push
