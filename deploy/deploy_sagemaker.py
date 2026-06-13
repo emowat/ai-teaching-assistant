@@ -73,7 +73,11 @@ def _is_not_found(exc: Exception) -> bool:
     if not isinstance(exc, ClientError):
         return False
     code = exc.response.get("Error", {}).get("Code", "")
-    return code in {"ValidationException", "ResourceNotFound"}
+    return code in {
+        "ValidationException",
+        "ResourceNotFound",
+        "ObjectNotFoundException",
+    }
 
 
 def _describe_model(sm, model_name: str) -> dict | None:

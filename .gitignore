@@ -25,6 +25,7 @@ orchestrator.log
 frontend/dist/
 
 # Large Datasets
+raw_courses/
 synthetic-transcripts/*.jsonl
 synthetic-transcripts/*.txt
 synthetic-transcripts/*.npy

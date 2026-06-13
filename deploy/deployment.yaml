@@ -125,16 +125,16 @@ sagemaker:
     min_capacity: 0
     max_capacity: 1
     # Target tracking: backlog per instance while >= 1 instance is running
-    target_backlog_per_instance: 5.0
-    scale_in_cooldown_seconds: 600
-    scale_out_cooldown_seconds: 300
+    target_backlog_per_instance: 5.0  # How many requests per instance before scaling out (with max 1, this won’t add instances)
+    scale_in_cooldown_seconds: 300 # Main “how long GPU stays warm after traffic stops” knob  currently set to 5 minutes
+    scale_out_cooldown_seconds: 300 # How long to wait after scaling out before scaling in again (currently set to 5 minutes) Useless with max_capacity: 1
     # Step policy cooldown after scaling up from zero (HasBacklogWithoutCapacity)
-    scale_from_zero_cooldown_seconds: 300
+    scale_from_zero_cooldown_seconds: 300 # Only matters for repeated wake events (e.g. if alarm fires twice in a row)
     # CloudWatch alarm that triggers scale-from-zero (~period * evaluation_periods)
     scale_from_zero_alarm:
-      period_seconds: 30
-      evaluation_periods: 1
-      datapoints_to_alarm: 1
+      period_seconds: 30 # How often to check for backlog (currently set to 30 seconds)
+      evaluation_periods: 1 # How many periods to evaluate before firing the alarm (currently set to 1)
+      datapoints_to_alarm: 1 # How many datapoints to breach before firing the alarm (currently set to 1)
 
   # vLLM DLC — 4-bit bitsandbytes load at startup (no model re-upload needed)
   # Catalog: https://aws.github.io/deep-learning-containers/reference/available_images/
