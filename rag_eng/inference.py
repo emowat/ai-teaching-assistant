@@ -52,19 +52,29 @@ async def _invoke_sagemaker(
     settings: Settings,
 ) -> str:
     """Upload prompt to S3, invoke SageMaker Async endpoint, poll for result."""
+    import sys
+    from pathlib import Path
+
     import boto3
 
-    model_family = settings.model_family
-    formatted_prompt = _format_messages(messages, model_family)
+    deploy_dir = Path(__file__).resolve().parent.parent / "deploy"
+    if str(deploy_dir) not in sys.path:
+        sys.path.insert(0, str(deploy_dir))
+    from sagemaker_io import build_async_payload, parse_async_response
 
-    payload = {
-        "inputs": formatted_prompt,
-        "parameters": {
-            "max_new_tokens": 2048,
-            "temperature": 0.7,
-            "top_p": 0.9,
-        },
-    }
+    backend = settings.sagemaker_inference_backend
+    formatted_prompt = None
+    if backend == "huggingface":
+        formatted_prompt = _format_messages(messages, settings.model_family)
+
+    payload = build_async_payload(
+        backend,
+        messages,
+        max_tokens=2048,
+        temperature=0.7,
+        top_p=0.9,
+        formatted_prompt=formatted_prompt,
+    )
 
     request_id = str(uuid.uuid4())
     input_key = f"temp/sagemaker_inputs/{request_id}.json"
@@ -87,18 +97,16 @@ async def _invoke_sagemaker(
     output_uri = response["OutputLocation"]
     output_key = output_uri.replace(f"s3://{bucket}/", "")
 
-    # Poll S3 until result appears (2 s intervals, 60 s max)
-    for _ in range(30):
+    # Poll S3 until result appears (2 s intervals, 120 s max)
+    for _ in range(60):
         try:
             obj = s3.get_object(Bucket=bucket, Key=output_key)
             result = json.loads(obj["Body"].read().decode())
-            if isinstance(result, list) and result and "generated_text" in result[0]:
-                return result[0]["generated_text"]
-            return result.get("generated_text", str(result))
+            return parse_async_response(backend, result)
         except s3.exceptions.NoSuchKey:
             await asyncio.sleep(2.0)
 
-    raise TimeoutError("SageMaker async result not available after 60 s.")
+    raise TimeoutError("SageMaker async result not available after 120 s.")
 
 
 async def _stream_sagemaker(

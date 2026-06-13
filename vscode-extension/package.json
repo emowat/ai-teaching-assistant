@@ -51,6 +51,10 @@
     },
     "commands": [
       {
+        "command": "coding-rabbit.openChatView",
+        "title": "CodingRabbit: Open TA Chat"
+      },
+      {
         "command": "coding-rabbit.startTerminal",
         "title": "CodingRabbit: Start Tracked Terminal"
       }

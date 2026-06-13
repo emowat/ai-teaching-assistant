@@ -101,6 +101,9 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.commands.registerCommand('coding-rabbit.startTerminal', () => {
             trackTerminal();
+        }),
+        vscode.commands.registerCommand('coding-rabbit.openChatView', async () => {
+            await vscode.commands.executeCommand('workbench.view.extension.coding-rabbit-explorer');
         })
     );
 
@@ -117,7 +120,7 @@ export function activate(context: vscode.ExtensionContext) {
     }, 2000);
 
     // Automatically pop open the TA Chat window in the sidebar
-    vscode.commands.executeCommand('coding-rabbit.chatView.focus');
+    vscode.commands.executeCommand('coding-rabbit.openChatView');
 }
 
 export function deactivate() {}

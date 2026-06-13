@@ -4,8 +4,10 @@ import { D, mono } from "../design/tokens";
 import { TopBar } from "../components/TopBar";
 import type { AppView } from "../types/navigation";
 import {
+  getCodespacesFallbackUrl,
   getDefaultWeekId,
   getWeekLaunchUrl,
+  isWeekLaunchReady,
   loadWeekLaunchConfigs,
 } from "../data/codespaces";
 
@@ -15,14 +17,7 @@ interface StudentInterfaceProps {
   onSignOut: () => void;
 }
 
-const fallbackCodespacesUrl =
-  "https://github.com/codespaces/new?hide_repo_select=true&skip_quickstart=true";
-
-function getFallbackCodespacesUrl(): string {
-  const templateUrl = import.meta.env.VITE_CODESPACES_TEMPLATE_URL?.trim();
-  const repoUrl = import.meta.env.VITE_CODESPACES_REPO_URL?.trim();
-  return templateUrl || repoUrl || fallbackCodespacesUrl;
-}
+const fallbackCodespacesUrl = getCodespacesFallbackUrl();
 
 export function StudentInterface({
   onNavigate,
@@ -43,10 +38,11 @@ export function StudentInterface({
     if (selectedWeek) {
       return getWeekLaunchUrl(selectedWeek);
     }
-    return getFallbackCodespacesUrl();
+    return getCodespacesFallbackUrl();
   }, [selectedWeek]);
 
   const isConfigured = codespacesUrl !== fallbackCodespacesUrl;
+  const isLaunchReady = selectedWeek ? isWeekLaunchReady(selectedWeek) : false;
 
   const openCodespaces = () => {
     window.open(codespacesUrl, "_blank", "noopener,noreferrer");
@@ -130,13 +126,15 @@ export function StudentInterface({
               </p>
 
               <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 20 }}>
-                <Btn onClick={openCodespaces} disabled={!hasEnabledWeeks}>
+                <Btn onClick={openCodespaces} disabled={!hasEnabledWeeks || !isLaunchReady}>
                   Open Codespaces
                 </Btn>
                 <Btn
                   variant="ghost"
-                  onClick={() => window.open(codespacesUrl, "_blank", "noopener,noreferrer")}
-                  disabled={!hasEnabledWeeks}
+                  onClick={() =>
+                    selectedWeek?.repoUrl && window.open(selectedWeek.repoUrl, "_blank", "noopener,noreferrer")
+                  }
+                  disabled={!selectedWeek?.repoUrl}
                 >
                   Open week repo ↗
                 </Btn>
@@ -203,7 +201,27 @@ export function StudentInterface({
                     Repo: <code>{selectedWeek.repoUrl}</code>
                     <br />
                     Template: <code>{selectedWeek.templateUrl}</code>
+                    <br />
+                    Branch: <code>{selectedWeek.defaultBranch}</code>
                   </div>
+                </div>
+              )}
+
+              {selectedWeek && !isLaunchReady && (
+                <div
+                  style={{
+                    padding: "12px 14px",
+                    borderRadius: 10,
+                    border: `1px solid ${D.yellow}40`,
+                    background: `${D.yellow}12`,
+                    color: D.text,
+                    fontSize: 13,
+                    lineHeight: 1.6,
+                    marginBottom: 20,
+                  }}
+                >
+                  This week is enabled but not launch-ready yet. Add a repo URL or
+                  template URL in the Professor dashboard before launching.
                 </div>
               )}
 

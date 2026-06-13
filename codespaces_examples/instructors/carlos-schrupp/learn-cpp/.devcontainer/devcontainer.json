@@ -1,0 +1,47 @@
+{
+  "name": "CodingRabbit Learn C++ Example",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "github.copilot.enable": {
+          "*": false
+        },
+        "github.copilot.chat.enable": false,
+        "chat.commandCenter.enabled": false,
+        "chat.editor.enable": false,
+        "inlineChat.enable": false,
+        "C_Cpp.doxygen.generateOnType": false,
+        "C_Cpp.doxygen.generateOnCodeAction": false,
+        "C_Cpp.suggestSnippets": false,
+        "C_Cpp.intelliSenseEngine": "disabled",
+        "editor.suggest.showSnippets": false,
+        "editor.lightbulb.enabled": "off",
+        "editor.quickSuggestions": {
+          "other": "off",
+          "comments": "off",
+          "strings": "off"
+        },
+        "codingRabbit.apiUrl": "http://host.docker.internal:8000/api/chat",
+        "codingRabbit.modelName": "codingrabbit-ta"
+      },
+      "extensions": [
+        "ms-vscode.cpptools",
+        "ms-vscode.cpptools-extension-pack",
+        "/workspace/.devcontainer/coding-rabbit-0.0.10.vsix"
+      ]
+    }
+  },
+  "overrideCommand": true,
+  "runArgs": ["--cap-add=SYS_PTRACE", "--security-opt", "seccomp=unconfined"],
+  "onCreateCommand": "mkdir -p ~/.vscode-server/extensions/github.copilot ~/.vscode-server/extensions/github.copilot-chat ~/.vscode-remote/extensions/github.copilot ~/.vscode-remote/extensions/github.copilot-chat && chmod 000 ~/.vscode-server/extensions/github.copilot ~/.vscode-server/extensions/github.copilot-chat ~/.vscode-remote/extensions/github.copilot ~/.vscode-remote/extensions/github.copilot-chat",
+  "postAttachCommand": "find ~/.vscode-server/bin -name 'code' -type f -executable -exec {} --uninstall-extension github.copilot --force \\; -exec {} --uninstall-extension github.copilot-chat --force \\; || true",
+  "workspaceFolder": "/workspace",
+  "mounts": [
+    "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached"
+  ],
+  "remoteUser": "root"
+}

@@ -40,6 +40,7 @@ class Settings:
     # --- Inference routing ---
     use_sagemaker: bool
     sagemaker_endpoint: str
+    sagemaker_inference_backend: str  # vllm | huggingface
     s3_data_bucket: str
     model_family: str          # llama3 | qwen | generic
     ollama_url: str
@@ -118,6 +119,7 @@ def get_settings() -> Settings:
         sagemaker_endpoint=os.getenv(
             "SAGEMAKER_ENDPOINT", "codingrabbit-sagemaker-async-endpoint"
         ),
+        sagemaker_inference_backend=os.getenv("SAGEMAKER_INFERENCE_BACKEND", "vllm"),
         s3_data_bucket=os.getenv("S3_DATA_BUCKET", "codingrabbit-data-dev"),
         model_family=os.getenv("MODEL_FAMILY", "llama3"),
         ollama_url=os.getenv("OLLAMA_URL", "http://localhost:11434/api/chat"),

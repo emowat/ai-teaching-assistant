@@ -49,7 +49,7 @@ export DEPLOY_CONFIG=/path/to/my-deployment.yaml
 | `local_paths` | `download_dir`, `tarball_path`, `partial_file_suffixes` | Local working files (gitignored) |
 | `aws` | `region`, `profile`, `s3_bucket` | AWS credentials target |
 | `model_artifact` | `s3_key`, `s3_uri` | S3 location of `model.tar.gz` |
-| `sagemaker` | `endpoint_name`, `instance_type`, `dlc`, `container`, `async_inference` | Async endpoint setup |
+| `sagemaker` | `endpoint_name`, `instance_type`, `dlc`, `container`, `async_inference`, `autoscaling` | Async endpoint setup |
 | `inference_smoke_test` | `default_prompt`, `chat_template`, generation params | `invoke` smoke test |
 | `huggingface_packaging` | `required_files` | Validation before packaging |
 | `rag_eng` | `model_family`, `use_sagemaker` | Values to copy into `.env` after deploy |
@@ -67,7 +67,10 @@ The `_reference` block at the bottom of `deployment.yaml` documents each field (
 | `DRIVE_FOLDER_ID` | `google_drive.folder_id` |
 | `AWS_REGION` | `aws.region` |
 | `AWS_PROFILE` | `aws.profile` |
+| `SAGEMAKER_EXECUTION_ROLE_ARN` | `sagemaker.execution_role_arn` |
 | `MODEL_FAMILY` | `rag_eng.model_family` |
+
+**SageMaker execution role:** must be a dedicated IAM role that trusts `sagemaker.amazonaws.com` and can read `aws.s3_bucket`. Your SSO login role (`AWSReservedSSO_*`) is **not** valid — set `sagemaker.execution_role_arn` in `deployment.yaml`.
 
 ---
 
@@ -198,16 +201,14 @@ These are the **recommended** way to run deployment. Each script:
 
 **Purpose:** Create and manage a **SageMaker Asynchronous Inference** endpoint that loads the S3 model artifact.
 
-Async Inference is used because the fine-tuned Qwen model is large, inference can take tens of seconds, and the endpoint can **scale to zero** when idle. See [AWS Async Inference docs](https://docs.aws.amazon.com/sagemaker/latest/dg/async-inference.html).
-
-**Actions:**
+Async Inference is used because the fine-tuned Qwen model is large and inference can take tens of seconds. **`deploy` configures Application Auto Scaling** so the endpoint scales to **0 GPU instances when idle** (no inference charges). See [async autoscaling](https://docs.aws.amazon.com/sagemaker/latest/dg/async-inference-autoscale.html).
 
 | Action | What it does | Typical duration |
 |---|---|---|
-| `deploy` | Create Model + EndpointConfig + Endpoint | 5–15 minutes |
-| `invoke` | Send test prompt via async S3 in/out pipeline | 30–90 s cold start |
-| `status` | Print endpoint state | Instant |
-| `cleanup` | Delete endpoint, config, model (stops GPU charges) | 2–5 minutes |
+| `deploy` | Create Model + EndpointConfig + Endpoint + auto scaling | 15–30 minutes (first vLLM load) |
+| `invoke` | Send test prompt via async S3 in/out pipeline | 1–5 min if scaled to 0 |
+| `status` | Print endpoint state and instance count | Instant |
+| `cleanup` | Delete endpoint, auto scaling, config, model | 2–5 minutes |
 
 **Usage:**
 
@@ -320,7 +321,8 @@ Fine-tuned Qwen  ← loaded from s3://…/models/qwen-finetuned/model.tar.gz
 | Download interrupted | `./deploy/scripts/prepare-custom-model-from-google-drive.sh --resume` |
 | `config.json` missing when packaging | Download not complete; resume or re-download |
 | SageMaker deploy fails / OOM | Larger instance: `SAGEMAKER_INSTANCE_TYPE=ml.g5.12xlarge` |
-| `invoke` times out | Check `status`; first call has cold start; see CloudWatch logs |
+| `invoke` times out | Endpoint may be scaled to 0; first request waits for GPU spin-up (several min) |
+| Still paying when idle | Run `status` — instances should drop to 0 after ~10 min idle; or run `cleanup` |
 | Extension still hits Ollama | Set `USE_SAGEMAKER=true` and restart `rag_eng` |
 | Wrong chat template / garbage output | Set `MODEL_FAMILY=qwen` for Qwen models |
 
