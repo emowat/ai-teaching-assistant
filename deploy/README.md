@@ -21,7 +21,7 @@ Google Drive (fine-tuned Qwen)
 |---|---|---|
 | **Configuration** | `deploy/deployment.yaml` | Single source of truth for all deploy settings |
 | **Shell wrappers** (start here) | `deploy/scripts/*.sh` | Human-friendly entry points with `--help` |
-| **Python implementation** | `deploy/upload_model.py`, `deploy/deploy_sagemaker.py` | Download, S3 upload, SageMaker API calls |
+| **Python implementation** | `deploy/upload_model.py`, `deploy/deploy_sagemaker.py`, `deploy/sagemaker_io.py` | Download, S3 upload, SageMaker API calls, async payload helpers |
 | **Application** | `rag_eng/inference.py` | Calls the live endpoint at request time |
 
 ---
@@ -52,7 +52,7 @@ export DEPLOY_CONFIG=/path/to/my-deployment.yaml
 | `sagemaker` | `endpoint_name`, `instance_type`, `dlc`, `container`, `async_inference`, `autoscaling` | Async endpoint setup |
 | `inference_smoke_test` | `default_prompt`, `chat_template`, generation params | `invoke` smoke test |
 | `huggingface_packaging` | `required_files` | Validation before packaging |
-| `rag_eng` | `model_family`, `use_sagemaker` | Values to copy into `.env` after deploy |
+| `rag_eng` | `model_family`, `use_sagemaker`, `inference_backend` | Values to copy into `.env` after deploy |
 
 The `_reference` block at the bottom of `deployment.yaml` documents each field (also printed by `describe`).
 
@@ -68,6 +68,7 @@ The `_reference` block at the bottom of `deployment.yaml` documents each field (
 | `AWS_REGION` | `aws.region` |
 | `AWS_PROFILE` | `aws.profile` |
 | `SAGEMAKER_EXECUTION_ROLE_ARN` | `sagemaker.execution_role_arn` |
+| `SAGEMAKER_INFERENCE_BACKEND` | `sagemaker.container.inference_backend` / `rag_eng.inference_backend` |
 | `MODEL_FAMILY` | `rag_eng.model_family` |
 
 **SageMaker execution role:** must be a dedicated IAM role that trusts `sagemaker.amazonaws.com` and can read `aws.s3_bucket`. Your SSO login role (`AWSReservedSSO_*`) is **not** valid — set `sagemaker.execution_role_arn` in `deployment.yaml`.
@@ -82,7 +83,7 @@ From the **repository root**:
 # 1) Download from Google Drive, package, upload to S3
 ./deploy/scripts/prepare-custom-model-from-google-drive.sh
 
-# 2) Create SageMaker Async endpoint (~5–15 min)
+# 2) Create SageMaker Async endpoint (15–30 min first deploy; vLLM model load)
 ./deploy/scripts/deploy-custom-model-to-sagemaker-ai.sh deploy
 
 # 3) Smoke test
@@ -94,10 +95,14 @@ Then set in `.env` and restart `rag_eng`:
 ```bash
 USE_SAGEMAKER=true
 SAGEMAKER_ENDPOINT=codingrabbit-qwen-async
+SAGEMAKER_INFERENCE_BACKEND=vllm
 MODEL_FAMILY=qwen
 S3_DATA_BUCKET=codingrabbit-data-dev
 AWS_REGION=us-east-1
+AWS_PROFILE=codingrabbit-dev
 ```
+
+`SAGEMAKER_INFERENCE_BACKEND` must match `sagemaker.container.inference_backend` in `deployment.yaml` (currently `vllm`).
 
 ---
 
@@ -151,7 +156,7 @@ These are the **recommended** way to run deployment. Each script:
 **Pipeline (default — all three steps):**
 
 1. **Download** — `gdown` fetches the Drive folder into `./model_download/`
-2. **Package** — Creates `./model.tar.gz` (files at archive root for `/opt/ml/model/`)
+2. **Package** — Creates `./model.tar.gz` (files at archive root for `/opt/ml/model/`). Include `chatml_template.jinja` in `model_download/` before packaging if you use a custom chat template (see below).
 3. **Push** — Uploads to `s3://<S3_DATA_BUCKET>/models/qwen-finetuned/model.tar.gz`
 
 **Usage:**
@@ -267,13 +272,97 @@ python deploy/deploy_sagemaker.py cleanup
 
 ---
 
+## vLLM inference stack
+
+The endpoint uses the **AWS Deep Learning Container** `huggingface-vllm` (not the legacy `huggingface-pytorch-inference` pipeline). Key settings in `deployment.yaml`:
+
+| Setting | Purpose |
+|---|---|
+| `sagemaker.dlc.repository: huggingface-vllm` | vLLM OpenAI-compatible server inside SageMaker |
+| `sagemaker.container.inference_backend: vllm` | Async invoke uses OpenAI-style `messages` JSON |
+| `SM_VLLM_QUANTIZATION: bitsandbytes` | 4-bit load at container startup — no AWQ re-export needed |
+| `SM_VLLM_CHAT_TEMPLATE` | Path to custom Jinja template inside `/opt/ml/model/` |
+
+**bitsandbytes inflight quantization:** the full bf16 weights in `model.tar.gz` are quantized to 4-bit when vLLM starts. This fits Qwen2-14B on `ml.g5.2xlarge` without re-uploading a pre-quantized artifact.
+
+**Request format:** `deploy/sagemaker_io.py` builds payloads like:
+
+```json
+{
+  "messages": [
+    {"role": "system", "content": "You are a Socratic TA..."},
+    {"role": "user", "content": "Why does my pointer segfault?"}
+  ],
+  "max_tokens": 512,
+  "temperature": 0.7,
+  "top_p": 0.9
+}
+```
+
+vLLM applies the chat template on the endpoint. `rag_eng` does **not** pre-format `<|im_start|>` tokens when `SAGEMAKER_INFERENCE_BACKEND=vllm`.
+
+---
+
+## Custom chat template
+
+The fine-tuned model was trained with **ChatML** (`<|im_start|>` role blocks and end-of-turn tokens). If HuggingFace metadata from Colab is wrong, ship an explicit Jinja file and point vLLM at it.
+
+**Source template:** `deploy/templates/chatml_template.jinja`
+
+**Repackage and redeploy:**
+
+```bash
+cp deploy/templates/chatml_template.jinja model_download/chatml_template.jinja
+./deploy/scripts/prepare-custom-model-from-google-drive.sh --package-only
+./deploy/scripts/prepare-custom-model-from-google-drive.sh --push-only
+./deploy/scripts/deploy-custom-model-to-sagemaker-ai.sh deploy
+```
+
+Verify the template is at the archive root:
+
+```bash
+tar -tzf model.tar.gz | grep chatml_template.jinja
+```
+
+`deployment.yaml` sets `SM_VLLM_CHAT_TEMPLATE: /opt/ml/model/chatml_template.jinja`, which maps to vLLM’s `--chat-template` flag.
+
+---
+
+## Auto scaling (scale to zero)
+
+`deploy` registers **two** Application Auto Scaling policies when `sagemaker.autoscaling.enabled: true`:
+
+| Policy | Metric | When it applies |
+|---|---|---|
+| **Target tracking** | `ApproximateBacklogSizePerInstance` | Instance count ≥ 1 — scale out/in based on queue depth |
+| **Step scaling from zero** | `HasBacklogWithoutCapacity` | Instance count = 0 but queue has requests — wake the endpoint |
+
+With `min_capacity: 0`, the step policy is required; target tracking alone cannot wake a scaled-down endpoint.
+
+**Cold-start latency** after long idle ≈ alarm wake time + instance launch + vLLM model load (often **5–15+ minutes** total). Tune in `deployment.yaml`:
+
+```yaml
+autoscaling:
+  min_capacity: 0
+  scale_from_zero_alarm:
+    period_seconds: 30        # lower = faster wake (default ~30s vs AWS example ~2 min)
+    evaluation_periods: 1
+    datapoints_to_alarm: 1
+```
+
+See inline comments in `deployment.yaml` and [AWS async autoscaling docs](https://docs.aws.amazon.com/sagemaker/latest/dg/async-inference-autoscale.html).
+
+---
+
 ## GPU instance sizing
 
 | Model | Format | VRAM | Instance | ~Cost/hr |
 |---|---|---|---|---|
 | Qwen2-14B | bf16/fp16 | ~28 GB | `ml.g5.12xlarge` | ~$5.67 |
-| Qwen2-14B | 4-bit / QLoRA merged | ~8 GB | `ml.g5.2xlarge` | ~$1.21 |
+| Qwen2-14B | 4-bit bitsandbytes (inflight) | ~8 GB | `ml.g5.2xlarge` | ~$1.21 |
 | Qwen2-7B | bf16 | ~14 GB | `ml.g5.2xlarge` | ~$1.21 |
+
+When `min_capacity: 0`, you pay **$0/hr** for GPU while idle; cold starts add latency on the first request after scale-down.
 
 If deploy fails with CUDA OOM, set before running deploy:
 
@@ -296,17 +385,18 @@ rag_eng/service.py → run_chat()
       │  get_system_prompt() → 22 pedagogical rules
       ▼
 rag_eng/inference.py → run_inference()
-      │  USE_SAGEMAKER=true:
-      │    Format Qwen chat template (MODEL_FAMILY=qwen)
+      │  USE_SAGEMAKER=true, SAGEMAKER_INFERENCE_BACKEND=vllm:
+      │    OpenAI messages JSON (via sagemaker_io.build_async_payload)
       │    PUT request JSON → s3://…/temp/sagemaker_inputs/
       │    invoke_endpoint_async
       │    Poll S3 for output
       │    Stream chunks back to extension
+      │  (Legacy huggingface backend: manual Qwen chat template via MODEL_FAMILY)
       ▼
-SageMaker Async Endpoint  ← created by deploy-custom-model-to-sagemaker-ai.sh
-      │
+SageMaker Async Endpoint (vLLM DLC)  ← deploy-custom-model-to-sagemaker-ai.sh
+      │  Applies chatml_template.jinja; bitsandbytes 4-bit load
       ▼
-Fine-tuned Qwen  ← loaded from s3://…/models/qwen-finetuned/model.tar.gz
+Fine-tuned Qwen  ← s3://…/models/qwen-finetuned/model.tar.gz
 ```
 
 **Important:** Deployment scripts run **once**. `rag_eng` only **invokes** the endpoint at runtime; it does not create infrastructure.
@@ -321,10 +411,11 @@ Fine-tuned Qwen  ← loaded from s3://…/models/qwen-finetuned/model.tar.gz
 | Download interrupted | `./deploy/scripts/prepare-custom-model-from-google-drive.sh --resume` |
 | `config.json` missing when packaging | Download not complete; resume or re-download |
 | SageMaker deploy fails / OOM | Larger instance: `SAGEMAKER_INSTANCE_TYPE=ml.g5.12xlarge` |
-| `invoke` times out | Endpoint may be scaled to 0; first request waits for GPU spin-up (several min) |
-| Still paying when idle | Run `status` — instances should drop to 0 after ~10 min idle; or run `cleanup` |
+| `invoke` times out | Endpoint may be scaled to 0; cold start can take 5–15+ min (alarm + provision + vLLM load) |
+| Still paying when idle | Run `status` — instances should drop to 0 after scale-in cooldown (~10 min); or run `cleanup` |
 | Extension still hits Ollama | Set `USE_SAGEMAKER=true` and restart `rag_eng` |
-| Wrong chat template / garbage output | Set `MODEL_FAMILY=qwen` for Qwen models |
+| Wrong chat template / garbage output | With vLLM: repackage `chatml_template.jinja`, push, redeploy. Legacy HF backend: set `MODEL_FAMILY=qwen` |
+| SSO role rejected at deploy | Set `sagemaker.execution_role_arn` to a dedicated SageMaker execution role (not `AWSReservedSSO_*`) |
 
 ---
 
@@ -335,10 +426,13 @@ deploy/
 ├── README.md                                          ← this file
 ├── deployment.yaml                                    ← configuration (edit this first)
 ├── deployment_config.py                               ← YAML loader + describe CLI
+├── sagemaker_io.py                                    ← vLLM / HuggingFace async payload helpers
+├── templates/
+│   └── chatml_template.jinja                          ← ChatML template shipped in model.tar.gz
 ├── scripts/
 │   ├── _load_deploy_config.sh                         ← shared bash helper
 │   ├── prepare-custom-model-from-google-drive.sh      ← Step 1: Drive → S3
 │   └── deploy-custom-model-to-sagemaker-ai.sh         ← Step 2: S3 → SageMaker
 ├── upload_model.py                                    ← Python: download/package/push
-└── deploy_sagemaker.py                                ← Python: endpoint lifecycle
+└── deploy_sagemaker.py                                ← Python: endpoint lifecycle + autoscaling
 ```
