@@ -29,6 +29,7 @@ class RagRuntimeConfig:
     qdrant_path: str
     collection_name: str
     guidelines_collection_name: str
+    harvard_collection_name: str
     embedding_model: str
     raw_data_path: str
 
@@ -57,6 +58,9 @@ def get_runtime_config() -> RagRuntimeConfig:
         collection_name=os.getenv("QDRANT_COLLECTION_NAME", "course_knowledge"),
         guidelines_collection_name=os.getenv(
             "QDRANT_GUIDELINES_COLLECTION_NAME", "cpp_guidelines",
+        ),
+        harvard_collection_name=os.getenv(
+            "QDRANT_HARVARD_COLLECTION_NAME", "harvard_cs50",
         ),
         embedding_model=os.getenv(
             "EMBEDDING_MODEL",

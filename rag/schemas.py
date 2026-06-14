@@ -30,6 +30,13 @@ class SourceDomain(str, Enum):
     MIT_OCW_SYLLABUS = "mit_ocw_syllabus"
     MIT_OCW_ASSIGNMENT = "mit_ocw_assignment"
     CPP_CORE_GUIDELINES = "cpp_core_guidelines"
+    HARVARD_CS50 = "harvard_cs50"
+
+
+class CourseSource(str, Enum):
+    """Which course the student is enrolled in — drives collection selection."""
+    MIT = "mit"
+    HARVARD = "harvard"
 
 
 class AssistMode(str, Enum):
@@ -83,9 +90,10 @@ class QueryInput(BaseModel):
     code_raw: str = ""                    # raw C++ code in editor (with line numbers ok)
     terminal_output: str = ""
     exit_code: int = 0
-    week: int = Field(ge=1, le=8)
+    week: int = Field(ge=0, le=8)
     mode: AssistMode = AssistMode.HOMEWORK_ASSIST
     ast_features: ASTFeatures = Field(default_factory=ASTFeatures)
+    course_source: CourseSource = CourseSource.HARVARD
 
 
 # ---------------------------------------------------------------------------
@@ -111,6 +119,7 @@ class RetrievalResult(BaseModel):
     pedagogical: list[RetrievedDoc] = Field(default_factory=list)
     supplementary: list[RetrievedDoc] = Field(default_factory=list)
     guidelines: list[RetrievedDoc] = Field(default_factory=list)
+    harvard: list[RetrievedDoc] = Field(default_factory=list)
 
     # Pre-formatted context block ready for TA prompt injection
     formatted_context: str = ""

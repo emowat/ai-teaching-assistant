@@ -249,3 +249,74 @@ def retrieve_guidelines(
     ).points
 
     return [_hit_to_doc(h) for h in hits]
+
+
+# ---------------------------------------------------------------------------
+# Retriever E: Harvard CS50 (separate collection, week-filtered)
+# ---------------------------------------------------------------------------
+
+def _harvard_semantic_filter(week: int, *, cumulative: bool = False) -> Filter:
+    """Harvard lecture notes (Pedagogical_Context + Strict_Rules), week-filtered."""
+    from qdrant_client.models import FieldCondition, Filter, MatchValue, Range
+
+    course_condition = (
+        FieldCondition(key="week", range=Range(gte=0, lte=week))
+        if cumulative
+        else FieldCondition(key="week", match=MatchValue(value=week))
+    )
+    return Filter(must=[course_condition])
+
+
+def _harvard_rules_filter(week: int, *, cumulative: bool = False) -> Filter:
+    """Harvard Strict_Rules only, week-filtered."""
+    from qdrant_client.models import FieldCondition, Filter, MatchValue, Range
+
+    course_condition = (
+        FieldCondition(key="week", range=Range(gte=0, lte=week))
+        if cumulative
+        else FieldCondition(key="week", match=MatchValue(value=week))
+    )
+    return Filter(must=[
+        course_condition,
+        FieldCondition(key="category", match=MatchValue(value="Strict_Rules")),
+    ])
+
+
+def retrieve_harvard(
+    dense_query: str, week: int, top_k: int = 5, *, cumulative: bool = False,
+) -> list[RetrievedDoc]:
+    """Vector similarity search against the Harvard CS50 collection."""
+    model = _get_model()
+    client = _get_client()
+
+    query_vector = model.encode(dense_query).tolist()
+
+    hits = client.query_points(
+        collection_name=get_runtime_config().harvard_collection_name,
+        query=query_vector,
+        query_filter=_harvard_semantic_filter(week, cumulative=cumulative),
+        limit=top_k,
+    ).points
+
+    return [_hit_to_doc(h) for h in hits]
+
+
+def retrieve_harvard_rules(
+    dense_query: str, week: int, top_k: int = 3, threshold: float = 0.55,
+    *, cumulative: bool = False,
+) -> list[RetrievedDoc]:
+    """Vector search for Strict_Rules within the Harvard CS50 collection."""
+    model = _get_model()
+    client = _get_client()
+
+    query_vector = model.encode(dense_query).tolist()
+
+    hits = client.query_points(
+        collection_name=get_runtime_config().harvard_collection_name,
+        query=query_vector,
+        query_filter=_harvard_rules_filter(week, cumulative=cumulative),
+        limit=top_k,
+        score_threshold=threshold,
+    ).points
+
+    return [_hit_to_doc(h) for h in hits]

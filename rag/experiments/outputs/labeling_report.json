@@ -1,0 +1,422 @@
+[
+  {
+    "query_id": "q0000",
+    "labels_openai": 5,
+    "golden_labels": 5,
+    "pool_size": 50,
+    "golden_ratio": 0.1
+  },
+  {
+    "query_id": "q0019",
+    "labels_openai": 4,
+    "golden_labels": 4,
+    "pool_size": 50,
+    "golden_ratio": 0.08
+  },
+  {
+    "query_id": "q0051",
+    "labels_openai": 8,
+    "golden_labels": 8,
+    "pool_size": 80,
+    "golden_ratio": 0.1
+  },
+  {
+    "query_id": "q0037",
+    "labels_openai": 5,
+    "golden_labels": 5,
+    "pool_size": 50,
+    "golden_ratio": 0.1
+  },
+  {
+    "query_id": "q0026",
+    "labels_openai": 0,
+    "golden_labels": 0,
+    "pool_size": 80,
+    "golden_ratio": 0.0
+  },
+  {
+    "query_id": "q0016",
+    "labels_openai": 8,
+    "golden_labels": 8,
+    "pool_size": 50,
+    "golden_ratio": 0.16
+  },
+  {
+    "query_id": "q0028",
+    "labels_openai": 7,
+    "golden_labels": 7,
+    "pool_size": 50,
+    "golden_ratio": 0.14
+  },
+  {
+    "query_id": "q0039",
+    "labels_openai": 6,
+    "golden_labels": 6,
+    "pool_size": 50,
+    "golden_ratio": 0.12
+  },
+  {
+    "query_id": "q0035",
+    "labels_openai": 8,
+    "golden_labels": 8,
+    "pool_size": 80,
+    "golden_ratio": 0.1
+  },
+  {
+    "query_id": "q0031",
+    "labels_openai": 7,
+    "golden_labels": 7,
+    "pool_size": 80,
+    "golden_ratio": 0.087
+  },
+  {
+    "query_id": "q0003",
+    "labels_openai": 4,
+    "golden_labels": 4,
+    "pool_size": 50,
+    "golden_ratio": 0.08
+  },
+  {
+    "query_id": "q0050",
+    "labels_openai": 0,
+    "golden_labels": 0,
+    "pool_size": 80,
+    "golden_ratio": 0.0
+  },
+  {
+    "query_id": "q0011",
+    "labels_openai": 5,
+    "golden_labels": 5,
+    "pool_size": 50,
+    "golden_ratio": 0.1
+  },
+  {
+    "query_id": "q0009",
+    "labels_openai": 6,
+    "golden_labels": 6,
+    "pool_size": 80,
+    "golden_ratio": 0.075
+  },
+  {
+    "query_id": "q0052",
+    "labels_openai": 5,
+    "golden_labels": 5,
+    "pool_size": 50,
+    "golden_ratio": 0.1
+  },
+  {
+    "query_id": "q0048",
+    "labels_openai": 12,
+    "golden_labels": 12,
+    "pool_size": 80,
+    "golden_ratio": 0.15
+  },
+  {
+    "query_id": "q0055",
+    "labels_openai": 7,
+    "golden_labels": 7,
+    "pool_size": 80,
+    "golden_ratio": 0.087
+  },
+  {
+    "query_id": "q0030",
+    "labels_openai": 5,
+    "golden_labels": 5,
+    "pool_size": 80,
+    "golden_ratio": 0.062
+  },
+  {
+    "query_id": "q0058",
+    "labels_openai": 0,
+    "golden_labels": 0,
+    "pool_size": 80,
+    "golden_ratio": 0.0
+  },
+  {
+    "query_id": "q0041",
+    "labels_openai": 6,
+    "golden_labels": 6,
+    "pool_size": 80,
+    "golden_ratio": 0.075
+  },
+  {
+    "query_id": "q0027",
+    "labels_openai": 7,
+    "golden_labels": 7,
+    "pool_size": 80,
+    "golden_ratio": 0.087
+  },
+  {
+    "query_id": "q0025",
+    "labels_openai": 3,
+    "golden_labels": 3,
+    "pool_size": 50,
+    "golden_ratio": 0.06
+  },
+  {
+    "query_id": "q0001",
+    "labels_openai": 5,
+    "golden_labels": 5,
+    "pool_size": 80,
+    "golden_ratio": 0.062
+  },
+  {
+    "query_id": "q0033",
+    "labels_openai": 0,
+    "golden_labels": 0,
+    "pool_size": 80,
+    "golden_ratio": 0.0
+  },
+  {
+    "query_id": "q0021",
+    "labels_openai": 7,
+    "golden_labels": 7,
+    "pool_size": 50,
+    "golden_ratio": 0.14
+  },
+  {
+    "query_id": "q0007",
+    "labels_openai": 4,
+    "golden_labels": 4,
+    "pool_size": 50,
+    "golden_ratio": 0.08
+  },
+  {
+    "query_id": "q0038",
+    "labels_openai": 7,
+    "golden_labels": 7,
+    "pool_size": 80,
+    "golden_ratio": 0.087
+  },
+  {
+    "query_id": "q0044",
+    "labels_openai": 0,
+    "golden_labels": 0,
+    "pool_size": 80,
+    "golden_ratio": 0.0
+  },
+  {
+    "query_id": "q0020",
+    "labels_openai": 4,
+    "golden_labels": 4,
+    "pool_size": 50,
+    "golden_ratio": 0.08
+  },
+  {
+    "query_id": "q0032",
+    "labels_openai": 7,
+    "golden_labels": 7,
+    "pool_size": 50,
+    "golden_ratio": 0.14
+  },
+  {
+    "query_id": "q0008",
+    "labels_openai": 4,
+    "golden_labels": 4,
+    "pool_size": 50,
+    "golden_ratio": 0.08
+  },
+  {
+    "query_id": "q0047",
+    "labels_openai": 0,
+    "golden_labels": 0,
+    "pool_size": 80,
+    "golden_ratio": 0.0
+  },
+  {
+    "query_id": "q0057",
+    "labels_openai": 0,
+    "golden_labels": 0,
+    "pool_size": 50,
+    "golden_ratio": 0.0
+  },
+  {
+    "query_id": "q0059",
+    "labels_openai": 9,
+    "golden_labels": 9,
+    "pool_size": 80,
+    "golden_ratio": 0.113
+  },
+  {
+    "query_id": "q0015",
+    "labels_openai": 6,
+    "golden_labels": 6,
+    "pool_size": 50,
+    "golden_ratio": 0.12
+  },
+  {
+    "query_id": "q0034",
+    "labels_openai": 4,
+    "golden_labels": 4,
+    "pool_size": 50,
+    "golden_ratio": 0.08
+  },
+  {
+    "query_id": "q0054",
+    "labels_openai": 0,
+    "golden_labels": 0,
+    "pool_size": 80,
+    "golden_ratio": 0.0
+  },
+  {
+    "query_id": "q0056",
+    "labels_openai": 6,
+    "golden_labels": 6,
+    "pool_size": 50,
+    "golden_ratio": 0.12
+  },
+  {
+    "query_id": "q0046",
+    "labels_openai": 8,
+    "golden_labels": 8,
+    "pool_size": 50,
+    "golden_ratio": 0.16
+  },
+  {
+    "query_id": "q0013",
+    "labels_openai": 4,
+    "golden_labels": 4,
+    "pool_size": 50,
+    "golden_ratio": 0.08
+  },
+  {
+    "query_id": "q0022",
+    "labels_openai": 7,
+    "golden_labels": 7,
+    "pool_size": 80,
+    "golden_ratio": 0.087
+  },
+  {
+    "query_id": "q0043",
+    "labels_openai": 7,
+    "golden_labels": 7,
+    "pool_size": 50,
+    "golden_ratio": 0.14
+  },
+  {
+    "query_id": "q0010",
+    "labels_openai": 6,
+    "golden_labels": 6,
+    "pool_size": 50,
+    "golden_ratio": 0.12
+  },
+  {
+    "query_id": "q0023",
+    "labels_openai": 6,
+    "golden_labels": 6,
+    "pool_size": 50,
+    "golden_ratio": 0.12
+  },
+  {
+    "query_id": "q0040",
+    "labels_openai": 7,
+    "golden_labels": 7,
+    "pool_size": 50,
+    "golden_ratio": 0.14
+  },
+  {
+    "query_id": "q0029",
+    "labels_openai": 8,
+    "golden_labels": 8,
+    "pool_size": 80,
+    "golden_ratio": 0.1
+  },
+  {
+    "query_id": "q0017",
+    "labels_openai": 7,
+    "golden_labels": 7,
+    "pool_size": 50,
+    "golden_ratio": 0.14
+  },
+  {
+    "query_id": "q0024",
+    "labels_openai": 5,
+    "golden_labels": 5,
+    "pool_size": 50,
+    "golden_ratio": 0.1
+  },
+  {
+    "query_id": "q0006",
+    "labels_openai": 5,
+    "golden_labels": 5,
+    "pool_size": 50,
+    "golden_ratio": 0.1
+  },
+  {
+    "query_id": "q0053",
+    "labels_openai": 10,
+    "golden_labels": 10,
+    "pool_size": 80,
+    "golden_ratio": 0.125
+  },
+  {
+    "query_id": "q0005",
+    "labels_openai": 7,
+    "golden_labels": 7,
+    "pool_size": 50,
+    "golden_ratio": 0.14
+  },
+  {
+    "query_id": "q0018",
+    "labels_openai": 4,
+    "golden_labels": 4,
+    "pool_size": 50,
+    "golden_ratio": 0.08
+  },
+  {
+    "query_id": "q0049",
+    "labels_openai": 9,
+    "golden_labels": 9,
+    "pool_size": 80,
+    "golden_ratio": 0.113
+  },
+  {
+    "query_id": "q0014",
+    "labels_openai": 5,
+    "golden_labels": 5,
+    "pool_size": 50,
+    "golden_ratio": 0.1
+  },
+  {
+    "query_id": "q0042",
+    "labels_openai": 0,
+    "golden_labels": 0,
+    "pool_size": 80,
+    "golden_ratio": 0.0
+  },
+  {
+    "query_id": "q0002",
+    "labels_openai": 5,
+    "golden_labels": 5,
+    "pool_size": 50,
+    "golden_ratio": 0.1
+  },
+  {
+    "query_id": "q0004",
+    "labels_openai": 7,
+    "golden_labels": 7,
+    "pool_size": 50,
+    "golden_ratio": 0.14
+  },
+  {
+    "query_id": "q0045",
+    "labels_openai": 0,
+    "golden_labels": 0,
+    "pool_size": 80,
+    "golden_ratio": 0.0
+  },
+  {
+    "query_id": "q0012",
+    "labels_openai": 3,
+    "golden_labels": 3,
+    "pool_size": 50,
+    "golden_ratio": 0.06
+  },
+  {
+    "query_id": "q0036",
+    "labels_openai": 7,
+    "golden_labels": 7,
+    "pool_size": 80,
+    "golden_ratio": 0.087
+  }
+]

@@ -425,6 +425,180 @@ class CppGuidelinesLoader:
 
 
 # ---------------------------------------------------------------------------
+# Harvard CS50 Notes loader
+# ---------------------------------------------------------------------------
+
+HARVARD_NOTES_JSON_DIR = Path("Harvard") / "cs50_output" / "notes_json"
+
+
+class HarvardNotesLoader:
+    """Loads Harvard CS50 lecture notes from raw_data/Harvard/cs50_output/notes_json/*.json.
+
+    Chunking strategy:
+      - One chunk per section (heading + text block).
+      - Uses the same category classification heuristic as MIT materials.
+      - Weeks 0-5 map directly to the CS50 curriculum.
+
+    Usage:
+        loader = HarvardNotesLoader("raw_data")
+        chunks = loader.load_all()
+    """
+
+    MAX_CONTENT_LENGTH = 4000
+
+    def __init__(self, raw_data_path: str | Path):
+        self.raw_data = Path(raw_data_path)
+        self.notes_dir = self.raw_data / HARVARD_NOTES_JSON_DIR
+        if not self.notes_dir.exists():
+            raise FileNotFoundError(f"Harvard notes directory not found: {self.notes_dir}")
+
+    def load_all(self) -> list[ChunkPayload]:
+        """Parse all notes_N.json files and return one chunk per section."""
+        chunks: list[ChunkPayload] = []
+        json_files = sorted(self.notes_dir.glob("notes_*.json"))
+
+        for json_file in json_files:
+            try:
+                data = json.loads(json_file.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                print(f"  WARNING: could not parse {json_file.name}")
+                continue
+
+            week = int(data.get("week", 0))
+            title = str(data.get("title", ""))
+            sections = data.get("sections", [])
+
+            file_chunks: list[ChunkPayload] = []
+            for section in sections:
+                heading = str(section.get("heading", "")).strip()
+                text = str(section.get("text", "")).strip()
+                has_code = bool(section.get("has_code", False))
+
+                if not text:
+                    continue
+
+                # Assemble structured content with heading context
+                content = f"[{heading}] {text}" if heading else text
+                if len(content) > self.MAX_CONTENT_LENGTH:
+                    content = content[: self.MAX_CONTENT_LENGTH]
+
+                category = classify_category(text, has_code, source="lecture")
+                topic = heading.lower().replace(" ", "_") if heading else ""
+
+                chunk_id = _stable_chunk_id(
+                    "harvard_cs50_note",
+                    json_file.name,
+                    heading,
+                    text[:500],
+                )
+
+                file_chunks.append(ChunkPayload(
+                    chunk_id=chunk_id,
+                    content=content,
+                    week=week,
+                    category=category,
+                    topic=topic,
+                    priority=CATEGORY_PRIORITY.get(category, 2),
+                    source_domain=SourceDomain.HARVARD_CS50,
+                    source_type="harvard_cs50_note",
+                    page_number=None,
+                ))
+
+            chunks.extend(file_chunks)
+            print(f"  {json_file.name}: week={week} ({title}), {len(file_chunks)} sections")
+
+        print(f"Harvard CS50: {len(chunks)} total chunks indexed")
+        return chunks
+
+
+# ---------------------------------------------------------------------------
+# Harvard CS50 Transcripts loader
+# ---------------------------------------------------------------------------
+
+HARVARD_TRANSCRIPTS_DIR = Path("Harvard") / "cs50_transcripts"
+
+
+class HarvardTranscriptsLoader:
+    """Loads Harvard CS50 lecture transcripts from raw_data/Harvard/cs50_transcripts/*.json.
+
+    Chunking strategy:
+      - One chunk per paragraph (natural speech boundary).
+      - Paragraphs shorter than MIN_CHAR_LENGTH are skipped (likely noise).
+      - Category: Pedagogical_Context (spoken lecture content).
+      - Weeks 1-5 map to the CS50 curriculum.
+
+    Usage:
+        loader = HarvardTranscriptsLoader("raw_data")
+        chunks = loader.load_all()
+    """
+
+    MAX_CONTENT_LENGTH = 3000
+    MIN_CHAR_LENGTH = 50
+
+    def __init__(self, raw_data_path: str | Path):
+        self.raw_data = Path(raw_data_path)
+        self.transcripts_dir = self.raw_data / HARVARD_TRANSCRIPTS_DIR
+        if not self.transcripts_dir.exists():
+            raise FileNotFoundError(f"Transcripts directory not found: {self.transcripts_dir}")
+
+    def load_all(self) -> list[ChunkPayload]:
+        """Parse all lecture*.json files and return one chunk per paragraph."""
+        chunks: list[ChunkPayload] = []
+        json_files = sorted(self.transcripts_dir.glob("lecture*.json"))
+
+        for json_file in json_files:
+            try:
+                data = json.loads(json_file.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                print(f"  WARNING: could not parse {json_file.name}")
+                continue
+
+            week = int(data.get("week", 0))
+            title = str(data.get("title", ""))
+            paragraphs = data.get("paragraphs", [])
+
+            file_chunks: list[ChunkPayload] = []
+            for para in paragraphs:
+                text = str(para.get("text", "")).strip()
+                idx = para.get("index", 0)
+
+                if len(text) < self.MIN_CHAR_LENGTH:
+                    continue
+
+                content = text
+                if len(content) > self.MAX_CONTENT_LENGTH:
+                    content = content[: self.MAX_CONTENT_LENGTH]
+
+                # Transcripts are always Pedagogical_Context
+                category = DocCategory.PEDAGOGICAL_CONTEXT
+
+                chunk_id = _stable_chunk_id(
+                    "harvard_cs50_transcript",
+                    json_file.name,
+                    str(idx),
+                    text[:500],
+                )
+
+                file_chunks.append(ChunkPayload(
+                    chunk_id=chunk_id,
+                    content=content,
+                    week=week,
+                    category=category,
+                    topic=f"transcript::{title}",
+                    priority=CATEGORY_PRIORITY.get(category, 2),
+                    source_domain=SourceDomain.HARVARD_CS50,
+                    source_type="harvard_cs50_transcript",
+                    page_number=None,
+                ))
+
+            chunks.extend(file_chunks)
+            print(f"  {json_file.name}: week={week} ({title}), {len(file_chunks)} paragraphs")
+
+        print(f"Harvard Transcripts: {len(chunks)} total chunks indexed")
+        return chunks
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 

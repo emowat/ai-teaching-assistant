@@ -1,0 +1,1235 @@
+#!/usr/bin/env python3
+"""
+labeling_chunks.py  —  Phase 1: Golden Chunk Labeling for Retrieval Experiment
+
+Workflow:
+  1. Load synthetic dataset, sample 80–100 stratified queries (week × mode).
+  2. Load all course chunks from raw_data/ (standalone; no dotenv needed).
+  3. For each query, build a Tiered Candidate Pool:
+       Tier 1 — Week W + Week 0, full content shown.
+       Tier 2 — Weeks 1..W-1, Hybrid Expansion:
+                BM25 top-Kw  +  Embedding top-Kw  →  dedup  →  neighbor (±1).
+  4. Send query + golden answer + candidate chunks to LLM (OpenAI GPT-5 mini).
+  5. Golden labels = LLM output. Save to golden_labels.json.
+
+Outputs (written to rag/experiments/outputs/):
+  eval_queries.jsonl       — sampled queries
+  golden_labels.json        — golden chunk IDs (OpenAI GPT-5 mini)
+  labeling_report.json      — per-query summary stats
+
+Usage:
+  python labeling_chunks.py                          # full run
+  python labeling_chunks.py --dry-run                # sample + pool only, no LLM
+  python labeling_chunks.py --sample-size 50         # override sample size
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import os
+import random
+import re
+import sys
+import time
+import uuid
+from collections import defaultdict
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+import tempfile
+import os
+import shutil
+from urllib.parse import urlparse, parse_qs
+
+# Optional S3 support (boto3 imported lazily in helpers)
+import boto3
+import botocore
+from botocore import UNSIGNED
+from botocore.client import Config
+from botocore.exceptions import NoCredentialsError
+from dotenv import load_dotenv
+
+# Load environment variables from .env if present
+load_dotenv()
+
+# ---------------------------------------------------------------------------
+# Paths (edit these if your setup differs)
+# ---------------------------------------------------------------------------
+
+DATASET_PATH = "s3://codingrabbit-data-dev/prepared/synthetic-transcripts/synthetic_c_plus_plus_dataset.jsonl"
+RAW_DATA_PATH = "s3://codingrabbit-data-dev/raw/rag_sources/Harvard/cs50_output/notes_json/"
+OUTPUT_DIR = Path(__file__).resolve().parent / "outputs"
+
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
+WEEK_0_DOMAIN = "cpp_core_guidelines"  # week-0 chunks have source_domain == this
+
+# Lecture filename → week mapping (mirrors rag/loader.py)
+_LECTURE_WEEK_MAP: dict[str, int] = {
+    "01_lecture_1_compilation_pipeline": 1,
+    "02_lecture_2_core_c": 2,
+    "03_lecture_3_c_memory_management": 3,
+    "04_lecture_4_data_structures_debugging": 4,
+    "05_lecture_5_c_introduction_classes_and_templates": 5,
+    "06_lecture_6_c_inheritance": 6,
+    "07_lecture_7_parent_destructors": 7,
+    "08_lecture_8_standard_template_library": 8,
+}
+
+# Syllabus matrix (mirrors rag/loader.py)
+SYLLABUS_MATRIX: dict[int, dict[str, str]] = {
+    1: {"name": "C Basics", "allowed": "printf, primitive types, main",
+        "forbidden": "pointers, arrays, structures, new/delete"},
+    2: {"name": "Arrays & Strings", "allowed": "arrays, string.h, functions",
+        "forbidden": "pointers, dynamic allocation, structures"},
+    3: {"name": "Pointers & Memory", "allowed": "raw pointers, references, stack allocation, address-of (&)",
+        "forbidden": "new/delete, vectors, smart pointers"},
+    4: {"name": "Manual Heap Management", "allowed": "new, delete, malloc, free, references",
+        "forbidden": "std::vector, smart pointers, RAII objects"},
+    5: {"name": "Object-Oriented C++", "allowed": "classes, inheritance, multiple inheritance, virtual functions, operator overload",
+        "forbidden": "templates"},
+    6: {"name": "Modern C++ & STL", "allowed": "std::vector, std::unique_ptr, RAII, templates, STL",
+        "forbidden": "raw malloc/free, bare new/delete"},
+    7: {"name": "Algorithms & Complexity", "allowed": "recursion, sorting algorithms, Big O notation, binary search trees",
+        "forbidden": "raw malloc/free, bare new/delete"},
+    8: {"name": "Advanced Data Structures", "allowed": "hash tables, tries, queues, stacks, linked lists",
+        "forbidden": "raw malloc/free, bare new/delete"},
+}
+
+# Category classification keywords (mirrors rag/loader.py)
+_STRICT_RULE_PATTERNS: list[re.Pattern] = [
+    re.compile(r"\b(must|always|never)\b", re.IGNORECASE),
+    re.compile(r"\b(remember to|ensure that|be careful|make sure)\b", re.IGNORECASE),
+    re.compile(r"\b(do not|don't|avoid|forbidden|prohibited)\b", re.IGNORECASE),
+    re.compile(r"\b(critical|mandatory|required|essential)\b", re.IGNORECASE),
+]
+
+# UUID namespace for deterministic chunk IDs (mirrors rag/loader.py)
+_CHUNK_NAMESPACE = uuid.UUID("58dbf568-51bb-4d4e-8cf9-c6a8a797d065")
+
+
+# ---------------------------------------------------------------------------
+# Data Classes
+# ---------------------------------------------------------------------------
+
+@dataclass
+class Chunk:
+    """Minimal chunk representation for labeling (avoids rag package dependency)."""
+    chunk_id: str
+    content: str
+    week: int
+    category: str            # Syllabus | Strict_Rules | Pedagogical_Context | Supplementary
+    source_file: str         # e.g. "01_lecture_1_compilation_pipeline.json"
+    page_number: int | None
+    source_domain: str       # mit_ocw_lecture | mit_ocw_syllabus | mit_ocw_assignment | cpp_core_guidelines
+    priority: int = 2
+    retrieval_score: float | None = None  # set by BM25 / embedding for Tier 2; shown in prompt
+
+
+@dataclass
+class EvalQuery:
+    """A single evaluation query extracted from the synthetic dataset."""
+    query_id: str
+    student_message: str
+    golden_answer: str
+    week: int
+    mode: str               # "Homework Assist" | "Study Assist"
+    topic: str
+    trigger: str
+
+
+@dataclass
+class LabelingResult:
+    """Per-query labeling output."""
+    query_id: str
+    labels_openai: list[str] = field(default_factory=list)
+    golden_labels: list[str] = field(default_factory=list)
+    note: str = ""
+
+
+# ---------------------------------------------------------------------------
+# 1. Dataset Loading & Sampling
+# ---------------------------------------------------------------------------
+
+def trigger_to_mode(trigger: str) -> str:
+    """Map dataset trigger to AssistMode."""
+    return "Study Assist" if trigger == "study_assist" else "Homework Assist"
+
+
+def load_dataset(path: Path) -> list[dict]:
+    """Load all records from the synthetic JSONL, excluding Out-of-Scope."""
+    records: list[dict] = []
+    text = _read_text(path)
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        rec = json.loads(line)
+        if rec["metadata"].get("trigger") == "Out-of-Scope":
+            continue
+        records.append(rec)
+    return records
+
+
+def _is_s3_url(path: str | Path) -> bool:
+    s = str(path)
+    return s.startswith("s3://") or "console.aws.amazon.com/s3/object/" in s
+
+
+def _parse_s3_url(url: str) -> tuple[str, str | None]:
+    """Return (bucket, key) for s3://bucket/key or console S3 object URLs.
+
+    For console URLs, expects query param `prefix` to contain the object key.
+    """
+    s = str(url)
+    if s.startswith("s3://"):
+        rest = s[len("s3://") :]
+        parts = rest.split("/", 1)
+        bucket = parts[0]
+        key = parts[1] if len(parts) > 1 else None
+        return bucket, key
+
+    p = urlparse(s)
+    # console URL: /s3/object/{bucket}
+    if "console.aws.amazon.com" in p.netloc and "/s3/object/" in p.path:
+        bucket = p.path.split("/s3/object/", 1)[1].strip("/ ")
+        qs = parse_qs(p.query)
+        key = qs.get("prefix", [None])[0]
+        return bucket, key
+
+    raise ValueError(f"Unrecognized S3 URL: {url}")
+
+
+def _read_text(path: Path | str) -> str:
+    """Read text from a local path or an S3 object (s3:// or console URL)."""
+    if isinstance(path, Path):
+        path = str(path)
+
+    if _is_s3_url(path):
+        bucket, key = _parse_s3_url(path)
+        if not key:
+            raise ValueError(f"S3 object key not found in URL: {path}")
+        # support anonymous access by setting S3_ANONYMOUS=1 in environment
+        if os.environ.get("S3_ANONYMOUS", "0") in ("1", "true", "True"):
+            s3 = boto3.client("s3", config=Config(signature_version=UNSIGNED))
+        else:
+            s3 = boto3.client("s3")
+        try:
+            obj = s3.get_object(Bucket=bucket, Key=key)
+            body = obj["Body"].read()
+            return body.decode("utf-8")
+        except NoCredentialsError:
+            raise RuntimeError(
+                "AWS credentials not found. Configure credentials via environment variables (AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY), ~/.aws/credentials, or an attached IAM role."
+            )
+        except botocore.exceptions.ClientError as e:
+            raise FileNotFoundError(f"Could not read s3://{bucket}/{key}: {e}") from e
+
+    # fallback: local file
+    with open(path, encoding="utf-8") as f:
+        return f.read()
+
+
+def _ensure_local_raw_data(raw_path: Path | str) -> str:
+    """If `raw_path` is an S3 prefix, download objects under that prefix to a temp dir and return its path.
+    If local, return the string path unchanged.
+    """
+    if isinstance(raw_path, Path):
+        raw_path = str(raw_path)
+    if not _is_s3_url(raw_path):
+        return str(raw_path)
+
+    bucket, prefix = _parse_s3_url(raw_path)
+    if prefix is None:
+        prefix = ""
+    # Normalize prefix
+    prefix = prefix.lstrip("/")
+
+    # support anonymous access for publicly-readable buckets
+    if os.environ.get("S3_ANONYMOUS", "0") in ("1", "true", "True"):
+        s3 = boto3.client("s3", config=Config(signature_version=UNSIGNED))
+    else:
+        s3 = boto3.client("s3")
+    paginator = s3.get_paginator("list_objects_v2")
+    tempdir = tempfile.mkdtemp(prefix="labeling_raw_")
+
+    try:
+        for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+            for obj in page.get("Contents", []):
+                key = obj["Key"]
+                rel = key[len(prefix) :].lstrip("/") if prefix and key.startswith(prefix) else key
+                local_path = os.path.join(tempdir, rel)
+                local_dir = os.path.dirname(local_path)
+                if not os.path.exists(local_dir):
+                    os.makedirs(local_dir, exist_ok=True)
+                try:
+                    with open(local_path, "wb") as fh:
+                        s3.download_fileobj(bucket, key, fh)
+                except botocore.exceptions.ClientError:
+                    # skip problematic files but continue
+                    continue
+    except NoCredentialsError:
+        # Give a clear actionable message when credentials are missing
+        shutil.rmtree(tempdir, ignore_errors=True)
+        raise RuntimeError(
+            "AWS credentials not found. Configure credentials via environment variables (AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY), ~/.aws/credentials, or an attached IAM role. Alternatively, set S3_ANONYMOUS=1 for public buckets or run `aws s3 sync` to download data locally."
+        )
+
+    return tempdir
+
+
+def extract_query(rec: dict, idx: int) -> EvalQuery:
+    """Extract a single EvalQuery from a dataset record (excludes system msg)."""
+    messages = rec["messages"]
+    meta = rec["metadata"]
+
+    # First user turn → student_message
+    user_msg = next((m["content"] for m in messages if m["role"] == "user"), "")
+    # First assistant turn → golden_answer
+    asst_msg = next((m["content"] for m in messages if m["role"] == "assistant"), "")
+
+    week = meta.get("week", 3)
+    trigger = meta.get("trigger", "terminal_help")
+
+    return EvalQuery(
+        query_id=f"q{idx:04d}",
+        student_message=user_msg,
+        golden_answer=asst_msg,
+        week=week,
+        mode=trigger_to_mode(trigger),
+        topic=meta.get("topic", ""),
+        trigger=trigger,
+    )
+
+
+def sample_queries(
+    records: list[dict],
+    target: int = 60,
+    seed: int = 42,
+) -> list[EvalQuery]:
+    """40 from week 1 + sample from week 5 to reach target=60. Ignore other weeks."""
+    random.seed(seed)
+
+    week1_recs = [r for r in records if r["metadata"]["week"] == 1]
+    week5_recs = [r for r in records if r["metadata"]["week"] == 5]
+
+    sampled: list[EvalQuery] = []
+
+    # 40 from week 1
+    n_w1 = min(40, len(week1_recs))
+    chosen_w1 = random.sample(week1_recs, n_w1)
+    for rec in chosen_w1:
+        sampled.append(extract_query(rec, len(sampled)))
+
+    # Fill to target from week 5
+    remaining = target - len(sampled)
+    if remaining > 0 and week5_recs:
+        n = min(remaining, len(week5_recs))
+        chosen_w5 = random.sample(week5_recs, n)
+        for rec in chosen_w5:
+            sampled.append(extract_query(rec, len(sampled)))
+
+    random.shuffle(sampled)
+    return sampled
+
+
+# ---------------------------------------------------------------------------
+# 2. Chunk Loading (standalone — no rag package dependency)
+# ---------------------------------------------------------------------------
+
+def _resolve_week(filename: str) -> int:
+    for key, week in _LECTURE_WEEK_MAP.items():
+        if key in filename:
+            return week
+    return 1
+
+
+def _stable_chunk_id(*parts: object) -> str:
+    normalized = "::".join(str(part) for part in parts)
+    return str(uuid.uuid5(_CHUNK_NAMESPACE, normalized))
+
+
+def _classify_category(text: str, has_code: bool, source: str) -> str:
+    if source == "syllabus":
+        return "Syllabus"
+    if source == "assignment_solution":
+        return "Supplementary"
+    for pat in _STRICT_RULE_PATTERNS:
+        if pat.search(text):
+            return "Strict_Rules"
+    return "Pedagogical_Context"
+
+
+def load_chunks(raw_data_path: Path | str) -> list[Chunk]:
+    """Load all course chunks from raw_data/ (mirrors rag/loader.py).
+
+    If `raw_data_path` is an S3 prefix/URL, download the objects locally first.
+    """
+    chunks: list[Chunk] = []
+    # Ensure local copy when provided as S3 URL
+    if _is_s3_url(raw_data_path):
+        local_root = _ensure_local_raw_data(raw_data_path)
+        raw_data_path = Path(local_root)
+    else:
+        raw_data_path = Path(raw_data_path)
+
+    lecture_dir = raw_data_path / "lecture_text"
+    syllabus_path = raw_data_path / "mit_ocw_output" / "syllabus.txt"
+
+    # --- Lecture slides ---
+    json_files = sorted(lecture_dir.glob("*.json"))
+    json_files = [f for f in json_files if "assignment" not in f.name.lower()]
+
+    for json_file in json_files:
+        week = _resolve_week(json_file.name)
+        try:
+            data = json.loads(json_file.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            print(f"  WARNING: could not parse {json_file.name}")
+            continue
+
+        for slide in data:
+            text = str(slide.get("text", "")).strip()
+            if not text:
+                continue
+            has_code = bool(slide.get("has_code", False))
+            section = str(slide.get("section", ""))
+            page = slide.get("page")
+            content = f"[{section}] {text}" if section else text
+            content = content[:2000]
+
+            category = _classify_category(text, has_code, source="lecture")
+            chunk_id = _stable_chunk_id("lecture", json_file.name, page, section, text[:2000])
+
+            chunks.append(Chunk(
+                chunk_id=chunk_id,
+                content=content,
+                week=week,
+                category=category,
+                source_file=json_file.name,
+                page_number=page,
+                source_domain="mit_ocw_lecture",
+                priority={"Syllabus": 1, "Strict_Rules": 1, "Pedagogical_Context": 2, "Supplementary": 3}.get(category, 2),
+            ))
+
+    # --- Syllabus ---
+    if syllabus_path.exists():
+        raw_text = syllabus_path.read_text(encoding="utf-8")
+        content_body = _strip_headers(raw_text)
+        for week, info in SYLLABUS_MATRIX.items():
+            chunk_id = _stable_chunk_id("syllabus", week, info["name"])
+            syllabus_content = (
+                f"Week: {week} - {info['name']}\n"
+                f"Allowed: {info['allowed']}\n"
+                f"Forbidden: {info['forbidden']}\n\n"
+                f"Course Description: {content_body[:500]}"
+            )
+            chunks.append(Chunk(
+                chunk_id=chunk_id,
+                content=syllabus_content,
+                week=week,
+                category="Syllabus",
+                source_file="syllabus.txt",
+                page_number=None,
+                source_domain="mit_ocw_syllabus",
+                priority=1,
+            ))
+
+    # --- Assignment solutions ---
+    for json_file in sorted(lecture_dir.glob("assignment*_solution.json")):
+        try:
+            data = json.loads(json_file.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            print(f"  WARNING: could not parse {json_file.name}")
+            continue
+        week = 4  # assignments mapped to mid-course
+        for slide in data:
+            text = str(slide.get("text", "")).strip()
+            if not text:
+                continue
+            content = text[:2000]
+            chunk_id = _stable_chunk_id("assignment_solution", json_file.name, slide.get("page"), text[:2000])
+            chunks.append(Chunk(
+                chunk_id=chunk_id,
+                content=content,
+                week=week,
+                category="Supplementary",
+                source_file=json_file.name,
+                page_number=slide.get("page"),
+                source_domain="mit_ocw_assignment",
+                priority=3,
+            ))
+
+    return chunks
+
+
+def _strip_headers(text: str) -> str:
+    """Remove TITLE/BREADCRUMB/SOURCE prefix lines before the first === marker."""
+    lines = text.split("\n")
+    result: list[str] = []
+    header_done = False
+    has_marker = False
+    for line in lines:
+        if header_done:
+            result.append(line)
+        elif line.startswith("==="):
+            header_done = True
+            has_marker = True
+    if not has_marker:
+        return text.strip()
+    return "\n".join(result).strip()
+
+
+def load_harvard_notes(raw_data_path: Path | str) -> list[Chunk]:
+    """Load Harvard CS50 notes from notes_json sections.
+
+    If `raw_data_path` is an S3 prefix/URL, download the objects locally first.
+    The S3 path already points directly to the notes_json directory.
+    """
+    if _is_s3_url(raw_data_path):
+        # S3 prefix *is* the notes_json dir (e.g. s3://.../notes_json/)
+        # Files land at <tempdir>/notes_0.json etc.
+        notes_dir = Path(_ensure_local_raw_data(raw_data_path))
+    else:
+        # Local: traverse raw_data/ → Harvard/cs50_output/notes_json/
+        notes_dir = Path(raw_data_path) / "Harvard" / "cs50_output" / "notes_json"
+    if not notes_dir.exists():
+        raise FileNotFoundError(f"Harvard notes_json not found: {notes_dir}")
+
+    chunks: list[Chunk] = []
+
+    for json_file in sorted(notes_dir.glob("notes_*.json")):
+        try:
+            data = json.loads(json_file.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            print(f"  WARNING: could not parse {json_file.name}")
+            continue
+
+        week = data.get("week", 0)
+        title = data.get("title", "")
+
+        for i, section in enumerate(data.get("sections", [])):
+            heading = str(section.get("heading", "")).strip()
+            text = str(section.get("text", "")).strip()
+            has_code = bool(section.get("has_code", False))
+
+            if not text and not heading:
+                continue
+
+            # Chunk content: heading as context prefix + text
+            content = f"[{heading}] {text}" if heading and text else (heading or text)
+            content = content[:2000]
+
+            # Simple category classification (same heuristic as MIT)
+            category = _classify_category(text, has_code, source="lecture")
+
+            chunk_id = _stable_chunk_id("harvard_cs50", json_file.name, i, heading, text[:2000])
+
+            chunks.append(Chunk(
+                chunk_id=chunk_id,
+                content=content,
+                week=week,
+                category=category,
+                source_file=f"notes_{week}_{title}",
+                page_number=i,  # section index acts as page
+                source_domain="harvard_cs50",
+                priority={"Syllabus": 1, "Strict_Rules": 1, "Pedagogical_Context": 2, "Supplementary": 3}.get(category, 2),
+            ))
+
+    return chunks
+
+
+def load_harvard_transcripts(raw_data_base: str = "raw_data") -> list[Chunk]:
+    """Load Harvard CS50 lecture transcripts (paragraph-level chunks). Local-only."""
+    from pathlib import Path as _Path
+    transcripts_dir = _Path(raw_data_base) / "Harvard" / "cs50_transcripts"
+    if not transcripts_dir.exists():
+        print(f"  WARNING: Transcripts dir not found: {transcripts_dir}")
+        return []
+
+    chunks: list[Chunk] = []
+    for json_file in sorted(transcripts_dir.glob("lecture*.json")):
+        try:
+            data = json.loads(json_file.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            continue
+
+        week = int(data.get("week", 0))
+        title = str(data.get("title", ""))
+        for para in data.get("paragraphs", []):
+            text = str(para.get("text", "")).strip()
+            if len(text) < 50:
+                continue
+            idx = para.get("index", 0)
+
+            chunk_id = _stable_chunk_id("harvard_cs50_transcript", json_file.name, str(idx), text[:500])
+            chunks.append(Chunk(
+                chunk_id=chunk_id,
+                content=text[:3000],
+                week=week,
+                category="Pedagogical_Context",
+                source_file=json_file.name,
+                page_number=None,
+                source_domain="harvard_cs50",
+                priority=2,
+            ))
+
+    print(f"  Harvard transcripts: {len(chunks)} chunks")
+    return chunks
+
+
+def load_cpp_guidelines(raw_data_base: str = "raw_data") -> list[Chunk]:
+    """Load C++ Core Guidelines as week-0 reference chunks. Local-only."""
+    from pathlib import Path as _Path
+    guidelines_path = _Path(raw_data_base) / "cppcoreguidelines" / "cppcoreguidelines.json"
+    if not guidelines_path.exists():
+        print(f"  WARNING: Guidelines not found: {guidelines_path}")
+        return []
+
+    data = json.loads(guidelines_path.read_text(encoding="utf-8"))
+    chunks: list[Chunk] = []
+    for entry in data:
+        if entry.get("level") != 3:
+            continue
+        title = str(entry.get("title", ""))
+        rule_number = str(entry.get("rule_number", ""))
+        section = str(entry.get("section", ""))
+        reason = str(entry.get("reason", ""))
+        examples = entry.get("examples", [])
+        enforcement = str(entry.get("enforcement", ""))
+
+        parts = [f"Section: {section}", f"Rule: {title}"]
+        if reason:
+            parts.append(f"Reason: {reason}")
+        for ex in examples:
+            code = ex.get("code", "")
+            if code:
+                parts.append(f"Example:\n{code}")
+        if enforcement:
+            parts.append(f"Enforcement: {enforcement}")
+        content = "\n\n".join(parts)[:3000]
+
+        chunk_id = _stable_chunk_id("cpp_guideline", rule_number or title, content[:500])
+        chunks.append(Chunk(
+            chunk_id=chunk_id,
+            content=content,
+            week=0,
+            category="Guideline",
+            source_file="cppcoreguidelines.json",
+            page_number=None,
+            source_domain="cpp_core_guidelines",
+            priority=2,
+        ))
+
+    print(f"  C++ Core Guidelines: {len(chunks)} chunks (week 0)")
+    return chunks
+
+
+# ---------------------------------------------------------------------------
+# 3. Candidate Pool Construction
+# ---------------------------------------------------------------------------
+
+def _tier2_k(query_week: int) -> int:
+    """Dynamic Kw: 5 per history week, capped at 25."""
+    history_weeks = query_week - 1
+    return min(history_weeks * 5, 25)
+
+
+def _simple_bm25(
+    query_text: str,
+    corpus_chunks: list[Chunk],
+    top_k: int,
+) -> list[Chunk]:
+    """
+    Minimal BM25-like keyword ranking (TF * IDF).
+    Uses scikit-learn style TF-IDF if available, otherwise falls back to
+    a simple term-overlap scorer.
+    """
+    try:
+        from sklearn.feature_extraction.text import TfidfVectorizer
+        from sklearn.metrics.pairwise import cosine_similarity
+
+        corpus_texts = [c.content for c in corpus_chunks]
+        vectorizer = TfidfVectorizer(stop_words="english", max_features=5000)
+        tfidf_matrix = vectorizer.fit_transform(corpus_texts)
+        query_vec = vectorizer.transform([query_text])
+        scores = cosine_similarity(query_vec, tfidf_matrix).flatten()
+
+        ranked = sorted(
+            zip(corpus_chunks, scores), key=lambda x: x[1], reverse=True
+        )
+        result = []
+        for c, s in ranked[:top_k]:
+            c.retrieval_score = float(s)
+            result.append(c)
+        return result
+    except ImportError:
+        pass
+
+    # Fallback: simple term-overlap BM25 approximation
+    def _tokenize(text: str) -> list[str]:
+        return re.findall(r"[a-zA-Z_][a-zA-Z0-9_]*", text.lower())
+
+    query_tokens = set(_tokenize(query_text))
+    if not query_tokens:
+        return corpus_chunks[:top_k]
+
+    # Simple IDF: log(N / df)
+    N = len(corpus_chunks)
+    df: dict[str, int] = defaultdict(int)
+    tokenized_corpus: list[set[str]] = []
+    for c in corpus_chunks:
+        tokens = set(_tokenize(c.content))
+        tokenized_corpus.append(tokens)
+        for t in tokens:
+            df[t] += 1
+
+    idf = {t: math.log((N - df[t] + 0.5) / (df[t] + 0.5) + 1) for t in df}
+
+    scored: list[tuple[Chunk, float]] = []
+    for i, c in enumerate(corpus_chunks):
+        doc_tokens = tokenized_corpus[i]
+        score = sum(idf.get(t, 0) for t in (query_tokens & doc_tokens))
+        # BM25-like len normalization (simple)
+        dl = len(doc_tokens) or 1
+        score = score / (1 + 0.5 * (dl / 50))  # k1=1.0, b=0.5, avgdl~50 words
+        scored.append((c, score))
+
+    scored.sort(key=lambda x: x[1], reverse=True)
+    result = []
+    for c, s in scored[:top_k]:
+        c.retrieval_score = float(s)
+        result.append(c)
+    return result
+
+
+def _embedding_top_k(
+    query_text: str,
+    corpus_chunks: list[Chunk],
+    model: Any,
+    top_k: int,
+) -> list[Chunk]:
+    """Dense retrieval: encode query, dot-product with chunk embeddings."""
+    query_vec = model.encode(query_text)
+
+    scored: list[tuple[Chunk, float]] = []
+    for c in corpus_chunks:
+        chunk_vec = model.encode(c.content)
+        # Dot product (consistent with Qdrant distance=DOT)
+        sim = float(query_vec @ chunk_vec.T)
+        scored.append((c, sim))
+
+    scored.sort(key=lambda x: x[1], reverse=True)
+    result = []
+    for c, s in scored[:top_k]:
+        c.retrieval_score = float(s)
+        result.append(c)
+    return result
+
+
+def _neighbor_expansion(
+    selected: list[Chunk],
+    all_chunks: list[Chunk],
+    radius: int = 1,
+) -> list[Chunk]:
+    """
+    For each selected chunk, include ±radius neighbors from the same source_file,
+    ordered by page_number.
+    """
+    # Group all chunks by source_file, sorted by page_number
+    source_groups: dict[str, list[Chunk]] = defaultdict(list)
+    for c in all_chunks:
+        source_groups[c.source_file].append(c)
+    for fname in source_groups:
+        source_groups[fname].sort(key=lambda c: c.page_number or 0)
+
+    # Build position lookup: (source_file, chunk_id) → index in source group
+    position: dict[tuple[str, str], int] = {}
+    for fname, clist in source_groups.items():
+        for i, c in enumerate(clist):
+            position[(fname, c.chunk_id)] = i
+
+    expanded_ids: set[str] = {c.chunk_id for c in selected}
+    for c in selected:
+        fname = c.source_file
+        pos = position.get((fname, c.chunk_id))
+        if pos is None:
+            continue
+        clist = source_groups[fname]
+        for offset in range(-radius, radius + 1):
+            if offset == 0:
+                continue
+            neighbor_pos = pos + offset
+            if 0 <= neighbor_pos < len(clist):
+                expanded_ids.add(clist[neighbor_pos].chunk_id)
+
+    # Return all chunks whose IDs are in expanded set, preserving original ordering
+    id_to_chunk = {c.chunk_id: c for c in all_chunks}
+    return [id_to_chunk[cid] for cid in expanded_ids if cid in id_to_chunk]
+
+
+def build_candidate_pool(
+    query: EvalQuery,
+    all_chunks: list[Chunk],
+) -> list[Chunk]:
+
+    retrieval_query = _build_retrieval_query(query)
+
+    if _is_ast_query(
+        query.student_message,
+        query.golden_answer,
+    ):
+        top_k = 80
+    else:
+        top_k = 50
+
+
+    # print("\n" + "=" * 80)
+    # print(f"QUERY {query.query_id}")
+    # print("=" * 80)
+    # print(retrieval_query)
+
+    # candidate_chunks = _simple_bm25(
+    #     retrieval_query,
+    #     all_chunks,
+    #     top_k=top_k,
+    # )
+
+    # print("\nTOP RETRIEVED CHUNKS:")
+    # for c in candidate_chunks[:10]:
+    #     print("-" * 60)
+    #     print(f"{c.chunk_id} | Week {c.week} | {c.category}")
+    #     print(c.content[:500])
+        
+    return _simple_bm25(
+        retrieval_query,
+        all_chunks,
+        top_k=top_k,
+    )
+
+def _build_retrieval_query(query: EvalQuery) -> str:
+    """
+    Build retrieval query for candidate generation.
+
+    Uses:
+      - student question
+      - golden answer
+
+    Avoids:
+      - raw code
+      - AST metadata
+      - terminal context
+    """
+
+    m = re.search(
+        r"\[Student_Question\](.*)",
+        query.student_message,
+        flags=re.DOTALL,
+    )
+
+    if m:
+        student_question = m.group(1).strip()
+    else:
+        student_question = query.student_message[:500]
+
+    golden = query.golden_answer[:1500]
+
+    return f"""
+Question:
+{student_question}
+
+Expected Answer:
+{golden}
+"""
+
+# ---------------------------------------------------------------------------
+# 4. LLM Labeling
+# ---------------------------------------------------------------------------
+
+def _build_labeling_prompt(query: EvalQuery, candidate_chunks: list[Chunk]) -> str:
+    """Build the LLM prompt for chunk relevance labeling."""
+    chunks_text: list[str] = []
+    # Sort by week descending so current week appears first
+    sorted_chunks = sorted(candidate_chunks, key=lambda c: c.week, reverse=True)
+
+    current_week_header = False
+    prev_week: int | None = None
+    for c in sorted_chunks:
+        if c.week != prev_week:
+            if c.week >= query.week:
+                label = f"Week {c.week} (Current — all shown)" if not current_week_header else f"Week {c.week}"
+                if c.week == query.week:
+                    current_week_header = True
+            else:
+                label = f"Week {c.week} (Prerequisite)"
+            chunks_text.append(f"\n### {label}")
+            prev_week = c.week
+
+        # Truncate content for prompt
+        content_preview = c.content[:300]
+
+        # Show retrieval score for Tier 2 (prerequisite) chunks; omit for Tier 1
+        if c.week < query.week and c.retrieval_score is not None:
+            chunks_text.append(
+                f"[{c.chunk_id}] [sim={c.retrieval_score:.3f}] "
+                f"[Week {c.week}, {c.category}] {content_preview}"
+            )
+        else:
+            chunks_text.append(
+                f"[{c.chunk_id}] [Week {c.week}, {c.category}] {content_preview}"
+            )
+
+    chunks_block = "\n".join(chunks_text)
+
+    # Truncate golden answer to keep prompt size manageable
+    golden_preview = query.golden_answer[:800]
+
+    # Base prompt header (shared by both modes)
+    header = f"""You are labeling which course documents are relevant to a specific student question. Your job is to identify which document chunks contain information that directly helps answer the question.
+
+## Student Question
+{query.student_message}
+
+## Expected TA Response (Golden Answer)
+{golden_preview}
+
+## Candidate Document Chunks
+The candidate pool contains structured lecture notes, spoken lecture
+transcripts, and C++ Core Guidelines (week 0, global reference).
+Chunks are ordered with current-week content first, then prerequisites.
+
+{chunks_block}
+
+## Task
+Return a JSON array of chunk IDs that contain information directly useful for answering this student's question.
+
+Guidelines:
+- Include chunks that provide syllabus rules relevant to the question.
+- Include chunks whose content is directly referenced or implied by the golden answer.
+- Include chunks that provide necessary conceptual background.
+- Prefer recall over precision. When uncertain, INCLUDE the chunk.
+- The golden answer is a hint about what information matters — use it to guide your selection, but don't select chunks just because they share keywords with the golden answer."""
+
+    # AST-specific guideline (appended only for AST-related queries)
+    ast_guidelines = """You are extracting C++ concepts for retrieval. Given:
+    - source code
+    - AST metadata
+    - runtime output
+    Rewrite this question using the accompanying AST data as a query for C++ reference material."""
+
+    prompt = header
+    if _is_ast_query(query.student_message, query.golden_answer):
+        prompt += "\n" + ast_guidelines
+
+    prompt += ("\n\nOutput ONLY a JSON array with no other text. "
+               "Do not explain your reasoning. "
+               "Format: [\"chunk_id_1\", \"chunk_id_2\", ...]")
+    return prompt
+
+def _is_ast_query(
+    student_message: str,
+    golden_answer: str,
+) -> bool:
+
+    if "AST_Metadata:" not in student_message:
+        return False
+
+    text = golden_answer.lower()
+
+    signals = [
+        "type mismatch",
+        "pointer",
+        "reference",
+        "dereference",
+        "array",
+        "loop",
+        "parameter",
+        "argument",
+        "variable",
+        "scope",
+        "control flow",
+        "return type",
+        "function call",
+        "nullptr",
+        "memory",
+    ]
+
+    return any(x in text for x in signals)
+
+def _call_openai(prompt: str, api_key: str | None = None, model: str = "gpt-5-mini") -> list[str]:
+    """Call OpenAI chat API for labeling. Returns list of chunk IDs."""
+    if api_key is None:
+        api_key = os.getenv("OPENAI_API_KEY", "")
+    if not api_key:
+        raise RuntimeError("OPENAI_API_KEY not set. Set env var or pass api_key.")
+
+    try:
+        from openai import OpenAI
+    except ImportError:
+        raise ImportError("openai package not installed. Run: pip install openai")
+
+    client = OpenAI(api_key=api_key)
+    response = client.chat.completions.create(
+        model=model,
+        messages=[{"role": "user", "content": prompt}],
+        seed=42,
+        max_completion_tokens=2000,
+    )
+    raw = response.choices[0].message.content or ""
+    result = _parse_label_output(raw)
+    if not result:
+        print(f"  WARNING: could not parse LLM output: {raw[:200]}")
+    return result
+
+
+def _parse_label_output(raw: str) -> list[str]:
+    """Extract a JSON array of chunk IDs from LLM output. Robust to markdown and
+    temperature=1 verbosity (explanatory text before/after the array)."""
+    raw = raw.strip()
+    # Strip markdown code fences
+    raw = re.sub(r"^```(?:json)?\s*", "", raw)
+    raw = re.sub(r"\s*```$", "", raw)
+
+    # Try parsing the whole string as JSON
+    try:
+        parsed = json.loads(raw)
+        if isinstance(parsed, list):
+            return [str(item) for item in parsed]
+    except json.JSONDecodeError:
+        pass
+
+    # Extract any JSON array embedded in the text (handles "Here are: [\"id1\"]")
+    array_match = re.search(r"\[.*?\]", raw, re.DOTALL)
+    if array_match:
+        try:
+            parsed = json.loads(array_match.group(0))
+            if isinstance(parsed, list):
+                return [str(item) for item in parsed]
+        except json.JSONDecodeError:
+            pass
+
+    # Fallback: extract UUIDs
+    ids = re.findall(r"[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}", raw)
+    if ids:
+        return ids
+    return []
+
+
+# ---------------------------------------------------------------------------
+# Main Orchestration
+# ---------------------------------------------------------------------------
+
+def _print_distribution(queries: list[EvalQuery], max_week: int = 8) -> None:
+    """Print week × mode distribution table."""
+    dist: dict[tuple[int, str], int] = defaultdict(int)
+    for q in queries:
+        dist[(q.week, q.mode)] += 1
+    min_w = min(q.week for q in queries) if queries else 0
+    print("\n  Query Distribution:")
+    print(f"  {'Week':<6} {'Homework':>10} {'Study':>10} {'Total':>8}")
+    for w in range(min_w, max_week + 1):
+        hw = dist.get((w, "Homework Assist"), 0)
+        st = dist.get((w, "Study Assist"), 0)
+        print(f"  {w:<6} {hw:>10} {st:>10} {hw+st:>8}")
+    hw_total = sum(v for (_, m), v in dist.items() if m == "Homework Assist")
+    st_total = sum(v for (_, m), v in dist.items() if m == "Study Assist")
+    print(f"  {'Total':<6} {hw_total:>10} {st_total:>10} {hw_total+st_total:>8}")
+    print()
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Golden chunk labeling for retrieval experiment")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="Sample queries + build pools, but skip LLM calls.")
+    parser.add_argument("--course", type=str, default="harvard",
+                        choices=["mit", "harvard"],
+                        help="Course to label: mit or harvard (default: harvard).")
+    parser.add_argument("--sample-size", type=int, default=60,
+                        help="Target number of queries to sample (default: 30).")
+    parser.add_argument("--seed", type=int, default=42,
+                        help="Random seed (default: 42).")
+    args = parser.parse_args()
+
+    # ------------------------------------------------------------------
+    # Setup
+    # ------------------------------------------------------------------
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    random.seed(args.seed)
+
+    print("=" * 60)
+    print("Phase 1: Golden Chunk Labeling")
+    print("=" * 60)
+
+    course = args.course.lower()
+
+    # ------------------------------------------------------------------
+    # Step 1: Load dataset & sample queries
+    # ------------------------------------------------------------------
+    print("\n[1/4] Loading dataset & sampling queries ...")
+    records = load_dataset(DATASET_PATH)
+    # Filter to course-relevant weeks
+    if course == "harvard":
+        records = [r for r in records if r["metadata"].get("week", 0) <= 5]
+        print(f"  Filtered to weeks 0-5: {len(records)} records (Harvard).")
+    print(f"  Loaded {len(records)} records (excl. Out-of-Scope).")
+
+    queries = sample_queries(records, target=args.sample_size, seed=args.seed)
+    print(f"  Sampled {len(queries)} queries.")
+    _print_distribution(queries, max_week=5 if course == "harvard" else 8)
+
+    # Save eval queries
+    eval_path = OUTPUT_DIR / "eval_queries.jsonl"
+    with open(eval_path, "w", encoding="utf-8") as f:
+        for q in queries:
+            f.write(json.dumps({
+                "query_id": q.query_id,
+                "student_message": q.student_message,
+                "golden_answer": q.golden_answer,
+                "week": q.week,
+                "mode": q.mode,
+                "topic": q.topic,
+                "trigger": q.trigger,
+            }, ensure_ascii=False) + "\n")
+    print(f"  Saved eval queries → {eval_path}")
+
+    # ------------------------------------------------------------------
+    # Step 2: Load chunks
+    # ------------------------------------------------------------------
+    print(f"\n[2/4] Loading {course.upper()} course chunks ...")
+    if course == "harvard":
+        all_chunks = load_harvard_notes(RAW_DATA_PATH)
+        all_chunks.extend(load_harvard_transcripts("raw_data"))
+    else:
+        all_chunks = load_chunks(RAW_DATA_PATH)
+    # Always include C++ Core Guidelines (week 0, course-agnostic)
+    all_chunks.extend(load_cpp_guidelines("raw_data"))
+
+    if len(all_chunks) == 0:
+        print("  WARNING: No chunks loaded from any source (notes, transcripts, guidelines).")
+    print(f"  Loaded {len(all_chunks)} chunks.")
+
+    # Print chunk distribution
+    from collections import Counter as Ctr
+    week_dist = Ctr(c.week for c in all_chunks)
+    cat_dist = Ctr(c.category for c in all_chunks)
+    src_dist = Ctr(getattr(c, 'source_type', getattr(c, 'source_domain', '?')) for c in all_chunks)
+    print(f"  Week distribution: {dict(sorted(week_dist.items()))}")
+    print(f"  Category distribution: {dict(cat_dist)}")
+    print(f"  Source type distribution: {dict(src_dist)}")
+
+    # ------------------------------------------------------------------
+    # Step 3: Build candidate pools (BM25-only, notes + transcripts)
+    # ------------------------------------------------------------------
+    print("\n[3/4] Building candidate pools (BM25 only) ...")
+
+    # Build candidate pool per query
+    query_pools: dict[str, list[Chunk]] = {}
+    total_pool_sizes: list[int] = []
+    for i, q in enumerate(queries):
+        pool = build_candidate_pool(q, all_chunks)
+        query_pools[q.query_id] = pool
+        total_pool_sizes.append(len(pool))
+        if (i + 1) % 20 == 0:
+            print(f"  Built pools for {i + 1}/{len(queries)} queries ...")
+
+    avg_pool = sum(total_pool_sizes) / len(total_pool_sizes)
+    print(f"  Pool sizes: min={min(total_pool_sizes)}, max={max(total_pool_sizes)}, "
+          f"avg={avg_pool:.1f}")
+
+    if args.dry_run:
+        print("\n  [DRY RUN] Skipping LLM labeling. Pools built successfully.")
+        # Save pool summary
+        pool_summary = {
+            q.query_id: {
+                "week": q.week,
+                "mode": q.mode,
+                "pool_size": len(query_pools[q.query_id]),
+            }
+            for q in queries
+        }
+        with open(OUTPUT_DIR / "pool_summary.json", "w", encoding="utf-8") as f:
+            json.dump(pool_summary, f, indent=2)
+        print(f"  Pool summary saved → {OUTPUT_DIR / 'pool_summary.json'}")
+        return
+
+    # ------------------------------------------------------------------
+    # Step 4: LLM Labeling (OpenAI GPT-5 mini only)
+    # ------------------------------------------------------------------
+    print("\n[4/4] LLM Labeling (OpenAI GPT-5 mini) ...")
+    results: list[LabelingResult] = []
+
+    openai_key = os.getenv("OPENAI_API_KEY", "")
+    if not openai_key:
+        print("  ERROR: OPENAI_API_KEY not set. Set env var or pass api_key.")
+        sys.exit(1)
+
+    for i, q in enumerate(queries):
+        result = LabelingResult(query_id=q.query_id)
+        pool = query_pools[q.query_id]
+        prompt = _build_labeling_prompt(q, pool)
+
+        print(f"\n  [{i + 1}/{len(queries)}] Query: {q.query_id} "
+              f"(Week {q.week}, {q.mode}, pool={len(pool)})")
+
+        # OpenAI GPT-5 mini
+        try:
+            result.labels_openai = _call_openai(prompt, api_key=openai_key)
+            print(f"    OpenAI → {len(result.labels_openai)} chunks")
+        except Exception as e:
+            print(f"    OpenAI ERROR: {e}")
+            result.labels_openai = []
+
+        # Golden labels = OpenAI output directly
+        result.golden_labels = result.labels_openai
+
+        results.append(result)
+
+        # Rate limiting
+        if i < len(queries) - 1:
+            time.sleep(1.0)
+
+    # ------------------------------------------------------------------
+    # Save outputs
+    # ------------------------------------------------------------------
+    print("\n--- Saving Outputs ---")
+
+    # Golden labels (OpenAI GPT-5 mini)
+    golden_out = {r.query_id: r.golden_labels for r in results}
+    with open(OUTPUT_DIR / "golden_labels.json", "w", encoding="utf-8") as f:
+        json.dump(golden_out, f, indent=2)
+    print(f"  Golden labels → {OUTPUT_DIR / 'golden_labels.json'}")
+
+    # Summary report
+    report = []
+    for r in results:
+        total_golden = len(r.golden_labels)
+        total_pool = len(query_pools.get(r.query_id, []))
+        report.append({
+            "query_id": r.query_id,
+            "labels_openai": len(r.labels_openai),
+            "golden_labels": total_golden,
+            "pool_size": total_pool,
+            "golden_ratio": round(total_golden / total_pool, 3) if total_pool else 0,
+        })
+    with open(OUTPUT_DIR / "labeling_report.json", "w", encoding="utf-8") as f:
+        json.dump(report, f, indent=2)
+    print(f"  Labeling report → {OUTPUT_DIR / 'labeling_report.json'}")
+
+    # Summary
+    total_labeled = sum(len(r.golden_labels) for r in results)
+    avg_labels = total_labeled / len(results) if results else 0
+    print(f"\n{'=' * 60}")
+    print(f"Labeling complete.")
+    print(f"  Total queries:     {len(queries)}")
+    print(f"  Total labels:      {total_labeled}")
+    print(f"  Avg labels/query:  {avg_labels:.1f}")
+    print(f"  Outputs directory: {OUTPUT_DIR}")
+    print(f"{'=' * 60}")
+
+
+if __name__ == "__main__":
+    main()

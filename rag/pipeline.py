@@ -18,9 +18,12 @@ test because they can reuse the retrieval result directly.
 
 from __future__ import annotations
 
-from rag.schemas import AssistMode, QueryInput, RetrievalResult
+from rag.schemas import AssistMode, CourseSource, QueryInput, RetrievalResult
 from rag.query_builder import build_query
-from rag.retrievers import retrieve_syllabus, retrieve_semantic, retrieve_strict_rules, retrieve_guidelines
+from rag.retrievers import (
+    retrieve_syllabus, retrieve_semantic, retrieve_strict_rules, retrieve_guidelines,
+    retrieve_harvard, retrieve_harvard_rules,
+)
 from rag.reranker import merge_and_rerank
 from rag.context_assembler import build_retrieval_result
 
@@ -57,7 +60,9 @@ def run_retrieval(query: QueryInput) -> RetrievalResult:
 
     1. Build dense query from student NL, AST, terminal
     2. Mode-aware parameter selection
-    3. Parallel retrieval: syllabus (exact), semantic (vector), rules (vector+filter), guidelines (vector, separate collection)
+    3. Parallel retrieval: syllabus (exact), semantic (vector), rules (vector+filter),
+       guidelines (vector, separate collection). Routes to MIT or Harvard collection
+       based on course_source.
     4. Merge, category-weight, MMR diversify
     5. Format into [Vector_Database_Results] block
     """
@@ -71,26 +76,45 @@ def run_retrieval(query: QueryInput) -> RetrievalResult:
 
     dense_query = build_query(query)
 
-    # Four parallel retrievers
-    syllabus = retrieve_syllabus(query.week)
-    semantic = retrieve_semantic(
-        dense_query,
-        query.week,
-        top_k=params["semantic_top_k"],
-        cumulative=params["cumulative"],
-    )
-    rules = retrieve_strict_rules(
-        dense_query,
-        query.week,
-        top_k=params["rules_top_k"],
-        threshold=params["rules_threshold"],
-        cumulative=params["cumulative"],
-    )
+    # Guidelines are always available (week-agnostic, separate collection)
     guidelines = retrieve_guidelines(
         dense_query,
         top_k=params["guidelines_top_k"],
         threshold=params["guidelines_threshold"],
     )
+
+    if query.course_source == CourseSource.HARVARD:
+        # Harvard CS50: no syllabus, use Harvard-specific retrievers
+        syllabus = None
+        semantic = retrieve_harvard(
+            dense_query,
+            query.week,
+            top_k=params["semantic_top_k"],
+            cumulative=params["cumulative"],
+        )
+        rules = retrieve_harvard_rules(
+            dense_query,
+            query.week,
+            top_k=params["rules_top_k"],
+            threshold=params["rules_threshold"],
+            cumulative=params["cumulative"],
+        )
+    else:
+        # MIT OCW (default): syllabus + course material retrievers
+        syllabus = retrieve_syllabus(query.week)
+        semantic = retrieve_semantic(
+            dense_query,
+            query.week,
+            top_k=params["semantic_top_k"],
+            cumulative=params["cumulative"],
+        )
+        rules = retrieve_strict_rules(
+            dense_query,
+            query.week,
+            top_k=params["rules_top_k"],
+            threshold=params["rules_threshold"],
+            cumulative=params["cumulative"],
+        )
 
     # Merge + rerank (now returns 5-tuple with guidelines)
     syllabus, rules_out, pedagogical_out, supplementary_out, guidelines_out = merge_and_rerank(
