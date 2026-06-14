@@ -55,7 +55,7 @@ def _load_deploy_config():
         sys.path.insert(0, str(_DEPLOY_DIR))
     from deployment_config import load_deploy_config
 
-    return load_deploy_config()()
+    return load_deploy_config()
 
 
 def _boto_session(settings: Settings):
@@ -79,8 +79,13 @@ def fetch_sagemaker_status(settings: Settings | None = None) -> SageMakerStatus:
 
     try:
         deploy_cfg = _load_deploy_config()
-        max_model_len = (
-            deploy_cfg.sagemaker.container.extra_env.get("SM_VLLM_MAX_MODEL_LEN")
+        max_model_len = deploy_cfg.sagemaker.container.extra_env.get("SM_VLLM_MAX_MODEL_LEN")
+        lights.append(
+            TrafficLight(
+                "Deploy config",
+                "ok",
+                str(deploy_cfg.config_path),
+            )
         )
     except Exception as exc:
         lights.append(

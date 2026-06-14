@@ -114,8 +114,8 @@ def build_gradio_app(settings: Settings | None = None) -> gr.Blocks:
         else "Ollama (see inference_config.yaml)"
     )
 
-    with gr.Blocks(title="rag_eng Admin Console") as demo:
-        gr.Markdown("# `rag_eng` Admin Console")
+    with gr.Blocks(title="Backend Diagnostic Console") as demo:
+        gr.Markdown("# Backend Diagnostic Console")
 
         with gr.Tab("RAG Query"):
             gr.Markdown(
