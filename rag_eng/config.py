@@ -3,13 +3,124 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
+import yaml
 from dotenv import load_dotenv
 
 
 load_dotenv()
+
+_INFERENCE_CONFIG_PATH = Path(__file__).parent / "inference_config.yaml"
+
+
+# ---------------------------------------------------------------------------
+# Inference config (loaded from inference_config.yaml)
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class OllamaOptions:
+    temperature: float
+    top_p: float
+    num_ctx: int
+    num_predict: int
+
+
+@dataclass(frozen=True)
+class OllamaInferenceConfig:
+    model: str
+    url: str
+    timeout_seconds: float
+    think: bool
+    options: OllamaOptions
+
+
+@dataclass(frozen=True)
+class SageMakerGenerationConfig:
+    max_tokens: int
+    temperature: float
+    top_p: float
+
+
+@dataclass(frozen=True)
+class SageMakerContextConfig:
+    """Must stay in sync with deploy/deployment.yaml SM_VLLM_MAX_MODEL_LEN after redeploy."""
+    max_model_len: int
+    reserved_output_tokens: int
+    safety_tokens: int
+    chars_per_token: float
+
+
+@dataclass(frozen=True)
+class SageMakerInferenceConfig:
+    poll_interval_seconds: float
+    streaming_chunk_size: int
+    generation: SageMakerGenerationConfig
+    context: SageMakerContextConfig
+
+
+@dataclass(frozen=True)
+class InferenceConfig:
+    ollama: OllamaInferenceConfig
+    sagemaker: SageMakerInferenceConfig
+
+
+def load_inference_config(path: Path | None = None) -> InferenceConfig:
+    """Load inference_config.yaml; env vars OLLAMA_MODEL and OLLAMA_URL override YAML."""
+    p = path or _INFERENCE_CONFIG_PATH
+    raw: dict = yaml.safe_load(p.read_text()) if p.exists() else {}
+
+    ollama_raw = raw.get("ollama", {})
+    options_raw = ollama_raw.get("options", {})
+
+    model = os.getenv("OLLAMA_MODEL") or ollama_raw.get("model", "qwen3.5:9b")
+    url = os.getenv("OLLAMA_URL") or ollama_raw.get("url", "http://localhost:11434/api/chat")
+
+    ollama = OllamaInferenceConfig(
+        model=model,
+        url=url,
+        timeout_seconds=float(ollama_raw.get("timeout_seconds", 900)),
+        think=bool(ollama_raw.get("think", False)),
+        options=OllamaOptions(
+            temperature=float(options_raw.get("temperature", 0.7)),
+            top_p=float(options_raw.get("top_p", 0.9)),
+            num_ctx=int(options_raw.get("num_ctx", 8192)),
+            num_predict=int(options_raw.get("num_predict", 2048)),
+        ),
+    )
+
+    sm_raw = raw.get("sagemaker", {})
+    gen_raw = sm_raw.get("generation", {})
+    ctx_raw = sm_raw.get("context", {})
+    sagemaker = SageMakerInferenceConfig(
+        poll_interval_seconds=float(sm_raw.get("poll_interval_seconds", 2.0)),
+        streaming_chunk_size=int(sm_raw.get("streaming_chunk_size", 20)),
+        generation=SageMakerGenerationConfig(
+            max_tokens=int(gen_raw.get("max_tokens", 2048)),
+            temperature=float(gen_raw.get("temperature", 0.7)),
+            top_p=float(gen_raw.get("top_p", 0.9)),
+        ),
+        context=SageMakerContextConfig(
+            max_model_len=int(ctx_raw.get("max_model_len", 10240)),
+            reserved_output_tokens=int(ctx_raw.get("reserved_output_tokens", 2048)),
+            safety_tokens=int(ctx_raw.get("safety_tokens", 128)),
+            chars_per_token=float(ctx_raw.get("chars_per_token", 4.0)),
+        ),
+    )
+
+    return InferenceConfig(ollama=ollama, sagemaker=sagemaker)
+
+
+_inference_config: InferenceConfig | None = None
+
+
+def get_inference_config() -> InferenceConfig:
+    """Return cached InferenceConfig (loaded once at first call)."""
+    global _inference_config
+    if _inference_config is None:
+        _inference_config = load_inference_config()
+    return _inference_config
 
 
 @dataclass(frozen=True)
@@ -41,6 +152,7 @@ class Settings:
     use_sagemaker: bool
     sagemaker_endpoint: str
     sagemaker_inference_backend: str  # vllm | huggingface
+    sagemaker_poll_timeout_seconds: int
     s3_data_bucket: str
     model_family: str          # llama3 | qwen | generic
     ollama_url: str
@@ -120,6 +232,9 @@ def get_settings() -> Settings:
             "SAGEMAKER_ENDPOINT", "codingrabbit-sagemaker-async-endpoint"
         ),
         sagemaker_inference_backend=os.getenv("SAGEMAKER_INFERENCE_BACKEND", "vllm"),
+        sagemaker_poll_timeout_seconds=int(
+            os.getenv("SAGEMAKER_POLL_TIMEOUT_SECONDS", "600")
+        ),
         s3_data_bucket=os.getenv("S3_DATA_BUCKET", "codingrabbit-data-dev"),
         model_family=os.getenv("MODEL_FAMILY", "llama3"),
         ollama_url=os.getenv("OLLAMA_URL", "http://localhost:11434/api/chat"),

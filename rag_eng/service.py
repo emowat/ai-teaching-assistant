@@ -80,10 +80,11 @@ def get_health() -> HealthResponse:
     else:
         message = "Qdrant environment variables are incomplete."
 
-    if not cohere_configured and message == "Ready.":
+    if not cohere_configured and message == "Ready." and not settings.use_sagemaker:
         message = "Cohere API key is not configured."
 
-    ready = qdrant_configured and qdrant_reachable and cohere_configured
+    llm_ready = cohere_configured or settings.use_sagemaker
+    ready = qdrant_configured and qdrant_reachable and llm_ready
     return HealthResponse(
         ready=ready,
         qdrant_configured=qdrant_configured,
@@ -141,13 +142,20 @@ def _extract_chat_context(messages: list[dict]) -> dict:
     mode = "Study Assist" if "Mode: Study Assist" in content else "Homework Assist"
     code_raw = _block("Code_Context")
     terminal_output = _block("Terminal_Context")
-    student_message = re.sub(r"\[.*?\][\s\S]*?(?=\[|$)", "", content).strip()
+    student_message = _block("Student_Question")
+    if not student_message:
+        student_message = re.sub(r"\[.*?\][\s\S]*?(?=\[|$)", "", content).strip()
+
+    week_match = re.search(r"Week[:\s]+(\d+)", content, re.IGNORECASE)
+    week = int(week_match.group(1)) if week_match else 1
+    week = max(1, min(8, week))
 
     return {
         "student_message": student_message or content,
         "code_raw": code_raw,
         "terminal_output": terminal_output,
         "mode": mode,
+        "week": week,
     }
 
 
@@ -166,9 +174,10 @@ async def run_chat(
     # Build a QueryPayload from the chat context so we can reuse run_retrieval
     query = QueryPayload(
         student_message=ctx["student_message"],
-        code_raw=ctx["code_raw"] or None,
-        terminal_output=ctx["terminal_output"] or None,
+        code_raw=ctx["code_raw"],
+        terminal_output=ctx["terminal_output"],
         mode=ctx["mode"],
+        week=ctx["week"],
     )
 
     retrieval_result = run_retrieval(query)
@@ -178,7 +187,19 @@ async def run_chat(
     api_messages = [m for m in messages if m.get("role") != "system"]
 
     system_prompt = get_system_prompt(ctx["mode"])
-    full_system = f"{system_prompt}\n{rag_context}"
-    api_messages.insert(0, {"role": "system", "content": full_system})
+    if settings.use_sagemaker:
+        from rag_eng.config import get_inference_config
+        from rag_eng.prompt_budget import assemble_sagemaker_messages
+
+        api_messages = assemble_sagemaker_messages(
+            system_prompt,
+            rag_context,
+            api_messages,
+            ctx["mode"],
+            get_inference_config().sagemaker,
+        )
+    else:
+        full_system = f"{system_prompt}\n{rag_context}"
+        api_messages.insert(0, {"role": "system", "content": full_system})
 
     return await run_inference(api_messages, model_name, settings, stream=stream)

@@ -1,0 +1,65 @@
+# rag_eng inference configuration
+#
+# All inference tunables live here so they can be changed without touching
+# Python code.  The file is loaded once at startup by rag_eng.config.
+#
+# Override precedence:
+#   environment variables (OLLAMA_MODEL, OLLAMA_URL, etc.)
+#   → this file
+#   → hardcoded defaults in InferenceConfig
+
+# ---------------------------------------------------------------------------
+# Ollama (USE_SAGEMAKER=false) — local dev / Docker
+# ---------------------------------------------------------------------------
+ollama:
+  # Model name as it appears in `ollama list`.
+  # The extension sends "codingrabbit" as the model name but Ollama uses the
+  # real model tag.  This value overrides whatever the extension sends.
+  # Current Docker container model: qwen3.5:9b (9.7 B)
+  model: "qwen3.5:9b"
+
+  # Ollama API endpoint.  Use the Docker container host when Ollama runs in
+  # Docker (default: same host, port 11434).
+  # Override with env var OLLAMA_URL if needed.
+  url: "http://localhost:11434/api/chat"
+
+  # HTTP timeout in seconds for a single Ollama request.
+  # qwen3.5 on CPU/GPU can be slow on first load; RAG adds a large system prompt.
+  timeout_seconds: 900
+
+  # Top-level Ollama /api/chat flag (NOT inside options).
+  # qwen3.5 defaults to thinking mode, which burns num_predict on hidden
+  # reasoning tokens and leaves message.content empty.
+  think: false
+
+  # Model-level generation options forwarded to the Ollama /api/chat payload
+  options:
+    temperature: 0.7
+    top_p: 0.9
+    num_ctx: 8192       # context window; raise if prompts are very long
+    num_predict: 2048   # max output tokens
+
+# ---------------------------------------------------------------------------
+# SageMaker async (USE_SAGEMAKER=true) — production
+# ---------------------------------------------------------------------------
+sagemaker:
+  # vLLM context budget — must match deploy/deployment.yaml SM_VLLM_MAX_MODEL_LEN
+  # after you redeploy the endpoint (10240 = ~8K input + 2K output + buffer).
+  context:
+    max_model_len: 10240
+    reserved_output_tokens: 2048
+    safety_tokens: 128
+    chars_per_token: 4.0
+
+  # How often to poll S3 for the async result
+  poll_interval_seconds: 2.0
+
+  # Simulated-streaming: number of characters per chunk when splitting the
+  # SageMaker response back to the extension
+  streaming_chunk_size: 20
+
+  # Generation parameters forwarded to the vLLM OpenAI-compatible payload
+  generation:
+    max_tokens: 2048
+    temperature: 0.7
+    top_p: 0.9

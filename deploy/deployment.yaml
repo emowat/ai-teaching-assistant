@@ -155,7 +155,7 @@ sagemaker:
       SM_VLLM_QUANTIZATION: "bitsandbytes"
       SM_VLLM_ENFORCE_EAGER: "true"
       SM_VLLM_DTYPE: "bfloat16"
-      SM_VLLM_MAX_MODEL_LEN: "4096"
+      SM_VLLM_MAX_MODEL_LEN: "10240"
       SM_VLLM_GPU_MEMORY_UTILIZATION: "0.90"
       SM_VLLM_CHAT_TEMPLATE: "/opt/ml/model/chatml_template.jinja"
 
@@ -235,6 +235,10 @@ _reference:
   sagemaker.container.inference_backend:
     description: Request/response format for async invoke.
     options: "vllm (OpenAI messages JSON), huggingface (inputs/parameters)"
+  sagemaker.container.extra_env.SM_VLLM_MAX_MODEL_LEN:
+    description: >
+      vLLM max sequence length (prompt + completion). 10240 supports ~8K input +
+      2K output. Requires endpoint redeploy after change; watch GPU memory on ml.g5.2xlarge.
   sagemaker.container.extra_env.SM_VLLM_CHAT_TEMPLATE:
     description: Path to custom Jinja chat template inside /opt/ml/model (bypasses corrupted HF metadata).
   sagemaker.container.extra_env.SM_VLLM_QUANTIZATION:

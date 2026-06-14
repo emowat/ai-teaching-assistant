@@ -45,6 +45,14 @@ class ChatRequest(BaseModel):
     options: _ChatOptions = _ChatOptions()
 
 
+def _error_detail(exc: Exception) -> str:
+    """Return a non-empty HTTP error message (httpx timeouts often str() to '')."""
+    detail = str(exc).strip()
+    if detail:
+        return detail
+    return type(exc).__name__
+
+
 def _require_admin(
     x_admin_token: str | None = Header(default=None),
     settings: Settings = Depends(get_settings),
@@ -131,7 +139,7 @@ def create_app() -> FastAPI:
         except RunnerError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
         except Exception as exc:
-            raise HTTPException(status_code=500, detail=str(exc)) from exc
+            raise HTTPException(status_code=500, detail=_error_detail(exc)) from exc
 
     @app.post("/api/chat")
     async def chat(
@@ -155,6 +163,8 @@ def create_app() -> FastAPI:
                 return StreamingResponse(result, media_type="application/x-ndjson")
             return result
         except Exception as exc:
-            raise HTTPException(status_code=500, detail=str(exc)) from exc
+            raise HTTPException(status_code=500, detail=_error_detail(exc)) from exc
 
-    return app
+    from rag_eng.ui import mount_gradio_consoles
+
+    return mount_gradio_consoles(app)

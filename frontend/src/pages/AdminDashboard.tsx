@@ -114,28 +114,31 @@ export function AdminDashboard({
   }, []);
 
   useEffect(() => {
-    if (tab === "interrogator" && gradioAvailable === false) {
+    if (tab === "backend-console" && gradioAvailable === false) {
       setTab("stats");
     }
   }, [gradioAvailable, tab]);
 
   const adminTabs = useMemo<SidebarTab[]>(() => {
-    const interrogatorTab: SidebarTab = {
-      key: "interrogator",
-      icon: "🔬",
-      label: "RAG Query Console",
-      disabled: gradioAvailable !== true,
-      title:
-        gradioAvailable === null
-          ? "Checking Gradio availability..."
-          : gradioAvailable
-            ? "Open Gradio RAG query console"
-            : "Gradio is not running — start rag_eng to enable",
+    const gradioDisabled = gradioAvailable !== true;
+    const gradioTitle =
+      gradioAvailable === null
+        ? "Checking Gradio availability..."
+        : gradioAvailable
+          ? "Open backend diagnostic console"
+          : "Gradio is not running — start rag_eng to enable";
+
+    const backendConsoleTab: SidebarTab = {
+      key: "backend-console",
+      icon: "🖥",
+      label: "Backend Diagnostic Console",
+      disabled: gradioDisabled,
+      title: gradioTitle,
     };
     const ragIndex = baseAdminTabs.findIndex((t) => t.key === "rag");
     return [
       ...baseAdminTabs.slice(0, ragIndex + 1),
-      interrogatorTab,
+      backendConsoleTab,
       ...baseAdminTabs.slice(ragIndex + 1),
     ];
   }, [gradioAvailable]);
@@ -179,10 +182,13 @@ export function AdminDashboard({
           style={{
             flex: 1,
             overflow: "auto",
-            padding: tab === "interrogator" ? 0 : 22,
+            padding:
+              tab === "backend-console"
+                ? 0
+                : 22,
           }}
         >
-          {tab === "interrogator" && gradioAvailable && (
+          {tab === "backend-console" && gradioAvailable && (
             <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
               <div
                 style={{
@@ -194,7 +200,7 @@ export function AdminDashboard({
                   flexShrink: 0,
                 }}
               >
-                <div style={{ fontSize: 16, fontWeight: 600 }}>RAG Query Console</div>
+                <div style={{ fontSize: 16, fontWeight: 600 }}>Backend Diagnostic Console</div>
                 <Btn
                   small
                   variant="ghost"
@@ -205,7 +211,7 @@ export function AdminDashboard({
               </div>
               <iframe
                 src={gradioUrl}
-                title="RAG Query Console"
+                title="Backend Diagnostic Console"
                 style={{
                   flex: 1,
                   width: "100%",

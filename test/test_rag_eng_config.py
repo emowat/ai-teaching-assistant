@@ -17,3 +17,11 @@ def test_get_settings_uses_environment(monkeypatch) -> None:
     assert settings.qdrant_collection_name == "capstone"
     assert settings.cohere_api_key == "cohere-secret"
     assert settings.api_base_url == "http://127.0.0.1:9000"
+
+
+def test_get_settings_reads_sagemaker_poll_timeout(monkeypatch) -> None:
+    monkeypatch.setenv("SAGEMAKER_POLL_TIMEOUT_SECONDS", "900")
+
+    settings = get_settings()
+
+    assert settings.sagemaker_poll_timeout_seconds == 900

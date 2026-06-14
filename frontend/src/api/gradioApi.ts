@@ -1,4 +1,4 @@
-/** Gradio RAG UI mounted on the rag_eng service at `/gradio`. */
+/** Gradio admin console mounted on the rag_eng service at `/gradio`. */
 export function getGradioUrl(): string {
   const base = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8001";
   return `${base.replace(/\/$/, "")}/gradio`;

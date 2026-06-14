@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 from urllib import error, request
 
 import gradio as gr
@@ -10,10 +11,15 @@ import gradio as gr
 from rag.schemas import AssistMode
 
 from rag_eng.config import Settings, get_settings
+from rag_eng.gradio_tools import (
+    fetch_sagemaker_status,
+    format_traffic_lights_html,
+    invoke_pipeline_chat,
+    invoke_sagemaker_direct,
+)
 
 
 def _post_json(url: str, payload: dict) -> dict:
-    """Send a JSON request to the FastAPI backend."""
     body = json.dumps(payload).encode("utf-8")
     req = request.Request(
         url=url,
@@ -41,11 +47,6 @@ def _query_api(
     has_free: bool,
     has_recursion: bool,
 ) -> tuple[str, str, str, str]:
-    """Call the FastAPI `/query` endpoint and format its response.
-
-    The selected `result_count` is forwarded to the backend so the user can
-    control the final number of returned chunks without changing code.
-    """
     settings = get_settings()
     payload = {
         "student_message": student_message,
@@ -67,7 +68,6 @@ def _query_api(
             "target_variables": [],
         },
     }
-
     try:
         data = _post_json(f"{settings.api_base_url}/query", payload)
         return (
@@ -83,95 +83,164 @@ def _query_api(
         return "", "", "", f"Request failed: {exc}"
 
 
-def build_gradio_app(settings: Settings | None = None) -> gr.Blocks:
-    """Build the internal Gradio app mounted under the FastAPI server."""
-    runtime = settings or get_settings()
+def _refresh_sagemaker_status() -> str:
+    try:
+        status = fetch_sagemaker_status()
+        return format_traffic_lights_html(status)
+    except Exception as exc:
+        return f"<p style='color:#ef4444;'>Status check failed: {exc}</p>"
 
-    with gr.Blocks(title="rag_eng Query Console") as demo:
-        gr.Markdown(
-            """
-            # `rag_eng` Query Console
-            Internal UI for querying the FastAPI-backed capstone RAG service.
-            """
-        )
-        with gr.Row():
-            student_message = gr.Textbox(
-                label="Student Message",
-                placeholder="Why does my program crash when I dereference this pointer?",
+
+def _sagemaker_invoke(prompt: str) -> tuple[str, str]:
+    return invoke_sagemaker_direct(prompt)
+
+
+def _pipeline_invoke(
+    student_message: str,
+    code_raw: str,
+    terminal_output: str,
+    week: int,
+    mode: str,
+) -> tuple[str, str, str]:
+    return invoke_pipeline_chat(student_message, code_raw, terminal_output, week, mode)
+
+
+def build_gradio_app(settings: Settings | None = None) -> gr.Blocks:
+    """Single Gradio app with three admin tabs, mounted once at /gradio."""
+    runtime = settings or get_settings()
+    route_hint = (
+        f"SageMaker `{runtime.sagemaker_endpoint}`"
+        if runtime.use_sagemaker
+        else "Ollama (see inference_config.yaml)"
+    )
+
+    with gr.Blocks(title="rag_eng Admin Console") as demo:
+        gr.Markdown("# `rag_eng` Admin Console")
+
+        with gr.Tab("RAG Query"):
+            gr.Markdown(
+                "Retrieval + Cohere answer via `POST /query` — tests RAG without the LLM pipeline."
+            )
+            with gr.Row():
+                rq_student = gr.Textbox(
+                    label="Student Message",
+                    placeholder="Why does my program crash when I dereference this pointer?",
+                    lines=4,
+                )
+                rq_code = gr.Textbox(
+                    label="Code Snippet",
+                    placeholder="int* p; *p = 5;",
+                    lines=10,
+                )
+            rq_terminal = gr.Textbox(
+                label="Terminal Output",
+                placeholder="Segmentation fault (core dumped)",
                 lines=4,
             )
-            code_raw = gr.Textbox(
-                label="Code Snippet",
-                placeholder="int* p; *p = 5;",
-                lines=10,
-            )
-        terminal_output = gr.Textbox(
-            label="Terminal Output",
-            placeholder="Segmentation fault (core dumped)",
-            lines=4,
-        )
-        with gr.Row():
-            week = gr.Slider(
-                label="Course Week",
-                minimum=1,
-                maximum=8,
-                value=3,
-                step=1,
-            )
-            mode = gr.Dropdown(
-                label="Assist Mode",
-                choices=[item.value for item in AssistMode],
-                value=AssistMode.HOMEWORK_ASSIST.value,
-            )
-            # User-facing control for the final post-rerank result count.
-            result_count = gr.Slider(
-                label="Number of Results",
-                minimum=1,
-                maximum=10,
-                value=5,
-                step=1,
-            )
-        with gr.Accordion("AST Flags", open=False):
             with gr.Row():
-                has_pointer = gr.Checkbox(label="Has Pointer", value=True)
-                has_reference = gr.Checkbox(label="Has Reference", value=False)
-                has_loop = gr.Checkbox(label="Has Loop", value=False)
-                has_new = gr.Checkbox(label="Has new", value=False)
+                rq_week = gr.Slider(label="Course Week", minimum=1, maximum=8, value=3, step=1)
+                rq_mode = gr.Dropdown(
+                    label="Assist Mode",
+                    choices=[item.value for item in AssistMode],
+                    value=AssistMode.HOMEWORK_ASSIST.value,
+                )
+                rq_count = gr.Slider(label="Result Count", minimum=1, maximum=10, value=5, step=1)
+            with gr.Accordion("AST Flags", open=False):
+                with gr.Row():
+                    rq_ptr = gr.Checkbox(label="Has Pointer", value=True)
+                    rq_ref = gr.Checkbox(label="Has Reference", value=False)
+                    rq_loop = gr.Checkbox(label="Has Loop", value=False)
+                    rq_new = gr.Checkbox(label="Has new", value=False)
+                with gr.Row():
+                    rq_del = gr.Checkbox(label="Has delete", value=False)
+                    rq_malloc = gr.Checkbox(label="Has malloc", value=False)
+                    rq_free = gr.Checkbox(label="Has free", value=False)
+                    rq_rec = gr.Checkbox(label="Has Recursion", value=False)
+            rq_submit = gr.Button("Query RAG", variant="primary")
+            rq_answer = gr.Textbox(label="TA Answer", lines=4)
+            rq_docs = gr.Code(label="Retrieved Documents", language="json")
+            rq_ctx = gr.Textbox(label="Formatted Context", lines=16)
+            rq_status = gr.Textbox(
+                label="Status",
+                value=f"Backend: {runtime.api_base_url}",
+                interactive=False,
+            )
+            rq_submit.click(
+                fn=_query_api,
+                inputs=[
+                    rq_student, rq_code, rq_terminal, rq_week, rq_mode, rq_count,
+                    rq_ptr, rq_ref, rq_loop, rq_new, rq_del, rq_malloc, rq_free, rq_rec,
+                ],
+                outputs=[rq_answer, rq_docs, rq_ctx, rq_status],
+            )
+
+        with gr.Tab("SageMaker Console"):
+            gr.Markdown(
+                f"Traffic lights + direct async invoke — same path as "
+                f"`deploy-custom-model-to-sagemaker-ai.sh invoke`.  \n"
+                f"Endpoint: **{runtime.sagemaker_endpoint}**"
+            )
+            sm_lights = gr.HTML(value=_refresh_sagemaker_status())
+            sm_refresh = gr.Button("Refresh status", variant="secondary")
+            gr.Markdown("### Direct invoke")
+            sm_prompt = gr.Textbox(
+                label="Prompt",
+                placeholder="Why does my C++ pointer cause a segmentation fault?",
+                lines=4,
+            )
+            sm_invoke = gr.Button("Invoke SageMaker", variant="primary")
+            sm_response = gr.Textbox(label="Model response", lines=16)
+            sm_status = gr.Textbox(label="Invoke status", interactive=False)
+            sm_refresh.click(fn=_refresh_sagemaker_status, outputs=sm_lights)
+            sm_invoke.click(fn=_sagemaker_invoke, inputs=sm_prompt, outputs=[sm_response, sm_status])
+
+        with gr.Tab("Pipeline Console"):
+            gr.Markdown(
+                f"Full extension-style pipeline: context extraction → RAG → prompt budget → inference.  \n"
+                f"Current route: **{route_hint}**"
+            )
             with gr.Row():
-                has_delete = gr.Checkbox(label="Has delete", value=False)
-                has_malloc = gr.Checkbox(label="Has malloc", value=False)
-                has_free = gr.Checkbox(label="Has free", value=False)
-                has_recursion = gr.Checkbox(label="Has Recursion", value=False)
-
-        submit = gr.Button("Query RAG", variant="primary")
-        answer = gr.Textbox(label="TA Answer", lines=4)
-        retrieval_result = gr.Code(label="Retrieved Documents", language="json")
-        formatted_context = gr.Textbox(label="Formatted Context", lines=16)
-        status = gr.Textbox(
-            label="Status",
-            value=f"FastAPI backend target: {runtime.api_base_url}",
-            interactive=False,
-        )
-
-        submit.click(
-            fn=_query_api,
-            inputs=[
-                student_message,
-                code_raw,
-                terminal_output,
-                week,
-                mode,
-                result_count,
-                has_pointer,
-                has_reference,
-                has_loop,
-                has_new,
-                has_delete,
-                has_malloc,
-                has_free,
-                has_recursion,
-            ],
-            outputs=[answer, retrieval_result, formatted_context, status],
-        )
+                pp_question = gr.Textbox(
+                    label="Student Question",
+                    placeholder="Why does my pointer segfault?",
+                    lines=3,
+                )
+                pp_code = gr.Textbox(
+                    label="Code Context",
+                    placeholder="int *p;\n*p = 42;",
+                    lines=8,
+                )
+            pp_terminal = gr.Textbox(
+                label="Terminal Context",
+                placeholder="Segmentation fault (core dumped)",
+                lines=3,
+            )
+            with gr.Row():
+                pp_week = gr.Slider(label="Course Week", minimum=1, maximum=8, value=1, step=1)
+                pp_mode = gr.Dropdown(
+                    label="Assist Mode",
+                    choices=[item.value for item in AssistMode],
+                    value=AssistMode.HOMEWORK_ASSIST.value,
+                )
+            pp_run = gr.Button("Run pipeline", variant="primary")
+            pp_response = gr.Textbox(label="Assistant response", lines=14)
+            pp_raw = gr.Code(label="Raw JSON response", language="json")
+            pp_status = gr.Textbox(label="Pipeline status", interactive=False)
+            pp_run.click(
+                fn=_pipeline_invoke,
+                inputs=[pp_question, pp_code, pp_terminal, pp_week, pp_mode],
+                outputs=[pp_response, pp_raw, pp_status],
+            )
 
     return demo
+
+
+def mount_gradio_consoles(app: Any) -> Any:
+    """Mount the single tabbed admin console at /gradio."""
+    return gr.mount_gradio_app(app, build_gradio_app(), path="/gradio")
+
+
+# Keep these for any code that imports them directly (tests, etc.)
+build_rag_query_app = build_gradio_app
+build_sagemaker_console_app = build_gradio_app
+build_pipeline_console_app = build_gradio_app

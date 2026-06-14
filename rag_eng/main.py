@@ -2,11 +2,7 @@
 
 from __future__ import annotations
 
-import gradio as gr
-
 from rag_eng.api import create_app
-from rag_eng.ui import build_gradio_app
 
-
+# create_app() mounts the Gradio admin console at /gradio
 app = create_app()
-app = gr.mount_gradio_app(app, build_gradio_app(), path="/gradio")
