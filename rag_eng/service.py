@@ -62,6 +62,7 @@ def get_health() -> HealthResponse:
         and settings.qdrant_api_key
         and settings.qdrant_collection_name
         and settings.qdrant_guidelines_collection_name
+        and settings.qdrant_harvard_collection_name
     )
     cohere_configured = bool(settings.cohere_api_key)
     qdrant_reachable = False

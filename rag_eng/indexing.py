@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from rag.loader import CourseMaterialLoader, CppGuidelinesLoader
+from rag.loader import CourseMaterialLoader, CppGuidelinesLoader, HarvardNotesLoader, HarvardTranscriptsLoader
 from rag.runtime import create_qdrant_client
 
 from rag_eng.config import get_settings
@@ -29,6 +29,10 @@ def _collection_name() -> str:
 
 def _guidelines_collection_name() -> str:
     return get_settings().qdrant_guidelines_collection_name
+
+
+def _harvard_collection_name() -> str:
+    return get_settings().qdrant_harvard_collection_name
 
 
 def _embedding_model_name() -> str:
@@ -196,8 +200,98 @@ def _upsert_guidelines_points(client, points) -> int:
     return len(points)
 
 
+def _build_harvard_points():
+    """Load, embed, and convert Harvard CS50 notes + transcripts into Qdrant points."""
+    from qdrant_client.models import PointStruct
+    from sentence_transformers import SentenceTransformer
+
+    model = SentenceTransformer(_embedding_model_name())
+
+    points: list[PointStruct] = []
+
+    # Notes (structured lecture notes)
+    notes_loader = HarvardNotesLoader(_raw_data_path())
+    for chunk in notes_loader.load_all():
+        vector = model.encode(chunk.content).tolist()
+        payload = {
+            "chunk_id": chunk.chunk_id,
+            "content": chunk.content,
+            "week": chunk.week,
+            "category": chunk.category.value,
+            "topic": chunk.topic,
+            "priority": chunk.priority,
+            "parent_chunk_id": chunk.parent_chunk_id,
+            "source_domain": chunk.source_domain.value,
+            "source_type": chunk.source_type,
+            "page_number": chunk.page_number,
+        }
+        points.append(PointStruct(id=chunk.chunk_id, vector=vector, payload=payload))
+
+    # Transcripts (lecture speech transcripts)
+    transcript_loader = HarvardTranscriptsLoader(_raw_data_path())
+    for chunk in transcript_loader.load_all():
+        vector = model.encode(chunk.content).tolist()
+        payload = {
+            "chunk_id": chunk.chunk_id,
+            "content": chunk.content,
+            "week": chunk.week,
+            "category": chunk.category.value,
+            "topic": chunk.topic,
+            "priority": chunk.priority,
+            "parent_chunk_id": chunk.parent_chunk_id,
+            "source_domain": chunk.source_domain.value,
+            "source_type": chunk.source_type,
+            "page_number": chunk.page_number,
+        }
+        points.append(PointStruct(id=chunk.chunk_id, vector=vector, payload=payload))
+
+    return points
+
+
+def _ensure_harvard_collection(client, *, recreate: bool) -> bool:
+    """Ensure the Harvard CS50 collection exists, optionally recreating it."""
+    from qdrant_client.models import Distance, PayloadSchemaType, VectorParams
+
+    coll_name = _harvard_collection_name()
+    exists = client.collection_exists(coll_name)
+    if exists and recreate:
+        client.delete_collection(coll_name)
+        exists = False
+
+    if not exists:
+        client.create_collection(
+            collection_name=coll_name,
+            vectors_config=VectorParams(size=VECTOR_SIZE, distance=Distance.DOT),
+        )
+        # Harvard needs week + category + source_domain indexes for filtered retrieval
+        for field_name, schema in (
+            ("week", PayloadSchemaType.INTEGER),
+            ("category", PayloadSchemaType.KEYWORD),
+            ("source_domain", PayloadSchemaType.KEYWORD),
+        ):
+            try:
+                client.create_payload_index(
+                    collection_name=coll_name,
+                    field_name=field_name,
+                    field_schema=schema,
+                )
+            except Exception:
+                pass
+        return True
+    return False
+
+
+def _upsert_harvard_points(client, points) -> int:
+    """Batch upsert Harvard points into the Harvard collection."""
+    batch_size = 100
+    for start in range(0, len(points), batch_size):
+        batch = points[start : start + batch_size]
+        client.upsert(collection_name=_harvard_collection_name(), points=batch)
+    return len(points)
+
+
 def ensure_index() -> IndexingResult:
-    """Safely ensure both collections exist and upsert all indexed documents."""
+    """Safely ensure all three collections exist and upsert all indexed documents."""
     client = create_qdrant_client()
     try:
         created_course = _ensure_collection(client, recreate=False)
@@ -206,24 +300,28 @@ def ensure_index() -> IndexingResult:
 
         created_guidelines = _ensure_guidelines_collection(client, recreate=False)
         guidelines_count = _upsert_guidelines_points(client, _build_guidelines_points())
+
+        created_harvard = _ensure_harvard_collection(client, recreate=False)
+        harvard_count = _upsert_harvard_points(client, _build_harvard_points())
     finally:
         client.close()
 
-    total = course_count + guidelines_count
+    total = course_count + guidelines_count + harvard_count
     message = (
         f"Collections ensured successfully. "
-        f"{course_count} course documents + {guidelines_count} guidelines = {total} total."
+        f"{course_count} course documents + {guidelines_count} guidelines "
+        f"+ {harvard_count} Harvard notes = {total} total."
     )
     return IndexingResult(
         collection_name=_collection_name(),
         indexed_documents=total,
-        created_collection=created_course or created_guidelines,
+        created_collection=created_course or created_guidelines or created_harvard,
         message=message,
     )
 
 
 def rebuild_index() -> IndexingResult:
-    """Explicitly rebuild both collections from scratch."""
+    """Explicitly rebuild all three collections from scratch."""
     client = create_qdrant_client()
     try:
         _ensure_collection(client, recreate=True)
@@ -232,13 +330,17 @@ def rebuild_index() -> IndexingResult:
 
         _ensure_guidelines_collection(client, recreate=True)
         guidelines_count = _upsert_guidelines_points(client, _build_guidelines_points())
+
+        _ensure_harvard_collection(client, recreate=True)
+        harvard_count = _upsert_harvard_points(client, _build_harvard_points())
     finally:
         client.close()
 
-    total = course_count + guidelines_count
+    total = course_count + guidelines_count + harvard_count
     message = (
         f"Collections rebuilt successfully. "
-        f"{course_count} course documents + {guidelines_count} guidelines = {total} total."
+        f"{course_count} course documents + {guidelines_count} guidelines "
+        f"+ {harvard_count} Harvard notes = {total} total."
     )
     return IndexingResult(
         collection_name=_collection_name(),

@@ -1,0 +1,57 @@
+[
+  {
+    "week": 1,
+    "title": "Week 1 C",
+    "source_url": "https://cdn.cs50.net/2025/fall/lectures/1/lang/en/lecture1.txt",
+    "raw_chars": 155630,
+    "paragraphs": 604,
+    "total_chars": 155027,
+    "raw_file": "Harvard/cs50_transcripts/lecture1_raw.txt",
+    "txt_file": "Harvard/cs50_transcripts/lecture1.txt",
+    "json_file": "Harvard/cs50_transcripts/lecture1.json"
+  },
+  {
+    "week": 2,
+    "title": "Week 2 Arrays",
+    "source_url": "https://cdn.cs50.net/2025/fall/lectures/2/lang/en/lecture2.txt",
+    "raw_chars": 144600,
+    "paragraphs": 548,
+    "total_chars": 144053,
+    "raw_file": "Harvard/cs50_transcripts/lecture2_raw.txt",
+    "txt_file": "Harvard/cs50_transcripts/lecture2.txt",
+    "json_file": "Harvard/cs50_transcripts/lecture2.json"
+  },
+  {
+    "week": 3,
+    "title": "Week 3 Algorithms",
+    "source_url": "https://cdn.cs50.net/2025/fall/lectures/3/lang/en/lecture3.txt",
+    "raw_chars": 121227,
+    "paragraphs": 483,
+    "total_chars": 120744,
+    "raw_file": "Harvard/cs50_transcripts/lecture3_raw.txt",
+    "txt_file": "Harvard/cs50_transcripts/lecture3.txt",
+    "json_file": "Harvard/cs50_transcripts/lecture3.json"
+  },
+  {
+    "week": 4,
+    "title": "Week 4 Memory",
+    "source_url": "https://cdn.cs50.net/2025/fall/lectures/4/lang/en/lecture4.txt",
+    "raw_chars": 138505,
+    "paragraphs": 597,
+    "total_chars": 137908,
+    "raw_file": "Harvard/cs50_transcripts/lecture4_raw.txt",
+    "txt_file": "Harvard/cs50_transcripts/lecture4.txt",
+    "json_file": "Harvard/cs50_transcripts/lecture4.json"
+  },
+  {
+    "week": 5,
+    "title": "Week 5 Data Structures",
+    "source_url": "https://cdn.cs50.net/2025/fall/lectures/5/lang/en/lecture5.txt",
+    "raw_chars": 134495,
+    "paragraphs": 499,
+    "total_chars": 133997,
+    "raw_file": "Harvard/cs50_transcripts/lecture5_raw.txt",
+    "txt_file": "Harvard/cs50_transcripts/lecture5.txt",
+    "json_file": "Harvard/cs50_transcripts/lecture5.json"
+  }
+]

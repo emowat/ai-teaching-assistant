@@ -20,6 +20,7 @@ class Settings:
     qdrant_api_key: str | None
     qdrant_collection_name: str
     qdrant_guidelines_collection_name: str
+    qdrant_harvard_collection_name: str
     cohere_api_key: str | None
     embedding_model: str
     app_host: str
@@ -87,6 +88,10 @@ def get_settings() -> Settings:
         qdrant_guidelines_collection_name=os.getenv(
             "QDRANT_GUIDELINES_COLLECTION_NAME",
             "cpp_guidelines",
+        ),
+        qdrant_harvard_collection_name=os.getenv(
+            "QDRANT_HARVARD_COLLECTION_NAME",
+            "harvard_cs50",
         ),
         cohere_api_key=os.getenv("COHERE_API_KEY"),
         embedding_model=os.getenv(
