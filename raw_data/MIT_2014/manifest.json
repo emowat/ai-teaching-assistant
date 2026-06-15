@@ -1,0 +1,290 @@
+[
+  {
+    "kind": "lecture",
+    "title": "Introduction to C: Welcome to the Memory Jungle (PDF)",
+    "slug": "mit6_s096iap14_lecture1",
+    "resource_page_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/resources/mit6_s096iap14_lecture1/",
+    "file_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/443693ecfb1cc3e6fe78034a2ce179d0_MIT6_S096IAP14_Lecture1.pdf",
+    "local_path": "MIT_2014/lecture_notes/MIT6_S096IAP14_Lecture1.pdf",
+    "bytes": 332405
+  },
+  {
+    "kind": "examples",
+    "title": "Lecture 1 Examples (ZIP)",
+    "slug": "lecture01-examples",
+    "resource_page_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/resources/lecture01-examples/",
+    "file_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/a67217a0d0b0d0e9a627542e1d7d6bbb_lecture01-examples.zip",
+    "local_path": "MIT_2014/examples/lecture01-examples.zip",
+    "bytes": 4037
+  },
+  {
+    "kind": "lecture",
+    "title": "Subtleties of C: Data Structures and Floating-Point Arithmetic (PDF)",
+    "slug": "mit6_s096iap14_lecture2",
+    "resource_page_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/resources/mit6_s096iap14_lecture2/",
+    "file_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/3f8f2bc5d4ee804b3bce651a210a940f_MIT6_S096IAP14_Lecture2.pdf",
+    "local_path": "MIT_2014/lecture_notes/MIT6_S096IAP14_Lecture2.pdf",
+    "bytes": 470277
+  },
+  {
+    "kind": "examples",
+    "title": "Lecture 2 Examples (ZIP)",
+    "slug": "lecture02-examples",
+    "resource_page_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/resources/lecture02-examples/",
+    "file_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/db4460b240cd15152bc0f62f45b2e883_lecture02-examples.zip",
+    "local_path": "MIT_2014/examples/lecture02-examples.zip",
+    "bytes": 3102
+  },
+  {
+    "kind": "lecture",
+    "title": "Assembly (PDF)",
+    "slug": "mit6_s096iap14_lecture3a",
+    "resource_page_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/resources/mit6_s096iap14_lecture3a/",
+    "file_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/86331fabb0fb9a8b95b90e0d58eaf442_MIT6_S096IAP14_Lecture3A.pdf",
+    "local_path": "MIT_2014/lecture_notes/MIT6_S096IAP14_Lecture3A.pdf",
+    "bytes": 543428
+  },
+  {
+    "kind": "lecture",
+    "title": "Secure Programming in C (PDF - 1.2MB)",
+    "slug": "mit6_s096iap14_lecture3s",
+    "resource_page_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/resources/mit6_s096iap14_lecture3s/",
+    "file_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/df281b9bb8aa5c4377567454bb839676_MIT6_S096IAP14_Lecture3S.pdf",
+    "local_path": "MIT_2014/lecture_notes/MIT6_S096IAP14_Lecture3S.pdf",
+    "bytes": 1299729
+  },
+  {
+    "kind": "lecture",
+    "title": "Style and Structure: Transition from C to C++ (PDF)",
+    "slug": "mit6_s096iap14_lecture4",
+    "resource_page_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/resources/mit6_s096iap14_lecture4/",
+    "file_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/f1fae54094c348beee52ebb521eb409c_MIT6_S096IAP14_Lecture4.pdf",
+    "local_path": "MIT_2014/lecture_notes/MIT6_S096IAP14_Lecture4.pdf",
+    "bytes": 319895
+  },
+  {
+    "kind": "examples",
+    "title": "Lecture 4 Examples (ZIP)",
+    "slug": "lecture04-examples",
+    "resource_page_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/resources/lecture04-examples/",
+    "file_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/e1e8c457a57bae34a643bcb94ec1130a_lecture04-examples.zip",
+    "local_path": "MIT_2014/examples/lecture04-examples.zip",
+    "bytes": 826
+  },
+  {
+    "kind": "lecture",
+    "title": "Object-Oriented C++: Abstraction, Inheritance, STL (PDF)",
+    "slug": "mit6_s096iap14_lecture5",
+    "resource_page_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/resources/mit6_s096iap14_lecture5/",
+    "file_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/8f524afc3c98ded0e66a5d4a4c45b30f_MIT6_S096IAP14_Lecture5.pdf",
+    "local_path": "MIT_2014/lecture_notes/MIT6_S096IAP14_Lecture5.pdf",
+    "bytes": 227418
+  },
+  {
+    "kind": "examples",
+    "title": "Lecture 5 Examples (ZIP)",
+    "slug": "lecture05-examples",
+    "resource_page_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/resources/lecture05-examples/",
+    "file_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/4709f5309d25770364d9227b47dc1843_lecture05-examples.zip",
+    "local_path": "MIT_2014/examples/lecture05-examples.zip",
+    "bytes": 3449
+  },
+  {
+    "kind": "lecture",
+    "title": "Design Patterns: Higher-Level Program Design (PDF)",
+    "slug": "mit6_s096iap14_lecture6",
+    "resource_page_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/resources/mit6_s096iap14_lecture6/",
+    "file_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/a62a91ae256211755e4fcfe92109a496_MIT6_S096IAP14_Lecture6.pdf",
+    "local_path": "MIT_2014/lecture_notes/MIT6_S096IAP14_Lecture6.pdf",
+    "bytes": 312912
+  },
+  {
+    "kind": "examples",
+    "title": "Lecture 6 Examples (ZIP)",
+    "slug": "lecture06-examples",
+    "resource_page_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/resources/lecture06-examples/",
+    "file_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/594738db468a0c145409ece8f8448b76_lecture06-examples.zip",
+    "local_path": "MIT_2014/examples/lecture06-examples.zip",
+    "bytes": 4435
+  },
+  {
+    "kind": "lecture",
+    "title": "Introduction to Projects: Unit Testing, Third-Party Libraries, Code Review (PDF)",
+    "slug": "mit6_s096iap14_lecture7",
+    "resource_page_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/resources/mit6_s096iap14_lecture7/",
+    "file_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/015bfa44cf7b48405afb14ce986af7ab_MIT6_S096IAP14_Lecture7.pdf",
+    "local_path": "MIT_2014/lecture_notes/MIT6_S096IAP14_Lecture7.pdf",
+    "bytes": 184566
+  },
+  {
+    "kind": "lecture",
+    "title": "Project Environments: Iterators, N-Body Problem, Setup (PDF)",
+    "slug": "mit6_s096iap14_lecture8",
+    "resource_page_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/resources/mit6_s096iap14_lecture8/",
+    "file_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/a1bef9c1a97c611e8aacb38c42a874bd_MIT6_S096IAP14_Lecture8.pdf",
+    "local_path": "MIT_2014/lecture_notes/MIT6_S096IAP14_Lecture8.pdf",
+    "bytes": 870858
+  },
+  {
+    "kind": "examples",
+    "title": "Vector Math Header (H)",
+    "slug": "vector3",
+    "resource_page_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/resources/vector3/",
+    "file_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/ae55af63c7af7cc76e0c4253177af878_Vector3.h",
+    "local_path": "MIT_2014/examples/Vector3.h",
+    "bytes": 2372
+  },
+  {
+    "kind": "lecture",
+    "title": "Visualization: OpenGL, Makefiles, Large Projects (PDF)",
+    "slug": "mit6_s096iap14_lecture9",
+    "resource_page_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/resources/mit6_s096iap14_lecture9/",
+    "file_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/df6cfc843d60da5bf9815ea0a29bd9e6_MIT6_S096IAP14_Lecture9.pdf",
+    "local_path": "MIT_2014/lecture_notes/MIT6_S096IAP14_Lecture9.pdf",
+    "bytes": 757876
+  },
+  {
+    "kind": "lecture",
+    "title": "Course Recap, Interviews, Advanced Topics: Grab Bag & Perspective (PDF)",
+    "slug": "mit6_s096iap14_lecture10",
+    "resource_page_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/resources/mit6_s096iap14_lecture10/",
+    "file_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/f7dab10f096bcfad5841d1960fee3ecb_MIT6_S096IAP14_Lecture10.pdf",
+    "local_path": "MIT_2014/lecture_notes/MIT6_S096IAP14_Lecture10.pdf",
+    "bytes": 291427
+  },
+  {
+    "kind": "assignment",
+    "title": "Problem 1: Floating Point (PDF)",
+    "slug": "mit6_s096iap14_ass1_p1",
+    "resource_page_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/resources/mit6_s096iap14_ass1_p1/",
+    "file_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/2512aaef17906bb47312b58fc84c19fb_MIT6_S096IAP14_ass1_p1.pdf",
+    "local_path": "MIT_2014/assignments/MIT6_S096IAP14_ass1_p1.pdf",
+    "bytes": 259560
+  },
+  {
+    "kind": "assignment",
+    "title": "floating.data (ZIP)",
+    "slug": "floating-data",
+    "resource_page_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/resources/floating-data/",
+    "file_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/bbdef2abed01b94a05a56b7504774ac3_floating.data.zip",
+    "local_path": "MIT_2014/assignments/floating.data.zip",
+    "bytes": 18064
+  },
+  {
+    "kind": "assignment",
+    "title": "Problem 2: Matrix Manipulation (PDF)",
+    "slug": "mit6_s096iap14_ass1_p2",
+    "resource_page_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/resources/mit6_s096iap14_ass1_p2/",
+    "file_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/295f17e070b66cbec4a88de25ff3694f_MIT6_S096IAP14_ass1_p2.pdf",
+    "local_path": "MIT_2014/assignments/MIT6_S096IAP14_ass1_p2.pdf",
+    "bytes": 308108
+  },
+  {
+    "kind": "assignment",
+    "title": "matrix.data (ZIP)",
+    "slug": "matrix-data",
+    "resource_page_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/resources/matrix-data/",
+    "file_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/05219d1899190bfe23d48f4196722155_matrix.data.zip",
+    "local_path": "MIT_2014/assignments/matrix.data.zip",
+    "bytes": 281811
+  },
+  {
+    "kind": "assignment",
+    "title": "Problem 3: Matrix Manipulation 2 (PDF)",
+    "slug": "mit6_s096iap14_ass1_p3",
+    "resource_page_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/resources/mit6_s096iap14_ass1_p3/",
+    "file_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/cda27b4badd6e569bd0f99cd69e341e7_MIT6_S096IAP14_ass1_p3.pdf",
+    "local_path": "MIT_2014/assignments/MIT6_S096IAP14_ass1_p3.pdf",
+    "bytes": 303717
+  },
+  {
+    "kind": "assignment",
+    "title": "Problem 4: Transposition Cipher (PDF)",
+    "slug": "mit6_s096iap14_ass1_p4",
+    "resource_page_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/resources/mit6_s096iap14_ass1_p4/",
+    "file_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/b6540acfffa846dbe307a191ad07cd81_MIT6_S096IAP14_ass1_p4.pdf",
+    "local_path": "MIT_2014/assignments/MIT6_S096IAP14_ass1_p4.pdf",
+    "bytes": 309695
+  },
+  {
+    "kind": "assignment",
+    "title": "Problem 1: Linked List Library (PDF)",
+    "slug": "mit6_s096iap14_ass2_p1",
+    "resource_page_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/resources/mit6_s096iap14_ass2_p1/",
+    "file_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/fea0e748427def3862062ddc39c7f78a_MIT6_S096IAP14_ass2_p1.pdf",
+    "local_path": "MIT_2014/assignments/MIT6_S096IAP14_ass2_p1.pdf",
+    "bytes": 257049
+  },
+  {
+    "kind": "assignment",
+    "title": "list (ZIP)",
+    "slug": "list",
+    "resource_page_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/resources/list/",
+    "file_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/0449fc7236fc13ace2c3e93c96a93c02_list.zip",
+    "local_path": "MIT_2014/assignments/list.zip",
+    "bytes": 3375
+  },
+  {
+    "kind": "assignment",
+    "title": "Problem 2: Minimum Spanning Tree (PDF)",
+    "slug": "mit6_s096iap14_ass2_p2",
+    "resource_page_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/resources/mit6_s096iap14_ass2_p2/",
+    "file_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/19b653c0ab4a4fa9f7d92955dd99e94c_MIT6_S096IAP14_ass2_p2.pdf",
+    "local_path": "MIT_2014/assignments/MIT6_S096IAP14_ass2_p2.pdf",
+    "bytes": 337651
+  },
+  {
+    "kind": "assignment",
+    "title": "mst (ZIP - 5.3MB)",
+    "slug": "mst-data",
+    "resource_page_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/resources/mst-data/",
+    "file_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/70a3e20df66a1617eac954798a0f8ac9_mst.data.zip",
+    "local_path": "MIT_2014/assignments/mst.data.zip",
+    "bytes": 5593857
+  },
+  {
+    "kind": "assignment",
+    "title": "Problem 3: Rational Number Library (PDF)",
+    "slug": "mit6_s096iap14_ass2_p3",
+    "resource_page_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/resources/mit6_s096iap14_ass2_p3/",
+    "file_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/a2faff7dd316a65a08d493dd6514203b_MIT6_S096IAP14_ass2_p3.pdf",
+    "local_path": "MIT_2014/assignments/MIT6_S096IAP14_ass2_p3.pdf",
+    "bytes": 274491
+  },
+  {
+    "kind": "assignment",
+    "title": "rational (ZIP)",
+    "slug": "rational",
+    "resource_page_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/resources/rational/",
+    "file_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/820782559c74bf80959427a78ac52cf0_rational.zip",
+    "local_path": "MIT_2014/assignments/rational.zip",
+    "bytes": 3435
+  },
+  {
+    "kind": "assignment",
+    "title": "Problem 1: C++ Linked List Library (PDF)",
+    "slug": "mit6_s096iap14_ass3_p1",
+    "resource_page_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/resources/mit6_s096iap14_ass3_p1/",
+    "file_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/4bc8ac790488c1739ad3994d8ccc8eaa_MIT6_S096IAP14_ass3_p1.pdf",
+    "local_path": "MIT_2014/assignments/MIT6_S096IAP14_ass3_p1.pdf",
+    "bytes": 262828
+  },
+  {
+    "kind": "assignment",
+    "title": "cpplist (ZIP)",
+    "slug": "cpplist",
+    "resource_page_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/resources/cpplist/",
+    "file_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/dba8ad5c7057b38c2e936024bc2f2add_cpplist.zip",
+    "local_path": "MIT_2014/assignments/cpplist.zip",
+    "bytes": 6043
+  },
+  {
+    "kind": "assignment",
+    "title": "nbody (ZIP - 2.2MB)",
+    "slug": "nbody",
+    "resource_page_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/resources/nbody/",
+    "file_url": "https://ocw.mit.edu/courses/6-s096-effective-programming-in-c-and-c-january-iap-2014/72b2be8fed41220e18f166e3c4f7959f_nbody.zip",
+    "local_path": "MIT_2014/assignments/nbody.zip",
+    "bytes": 2344230
+  }
+]
