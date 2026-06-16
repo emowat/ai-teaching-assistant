@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from rag.schemas import QueryInput, RetrievalResult
@@ -87,8 +89,10 @@ class HealthResponse(BaseModel):
     ready: bool
     qdrant_configured: bool
     cohere_configured: bool
+    openai_configured: bool = False
     qdrant_reachable: bool
     cohere_reachable: bool = False
+    openai_reachable: bool = False
     message: str = ""
 
 
@@ -111,3 +115,37 @@ class IndexRebuildResponse(BaseModel):
     message: str = Field(
         default="Collection rebuilt successfully.",
     )
+
+
+class ModelRouteConfig(BaseModel):
+    """Non-secret provider/model pair saved by the admin UI."""
+
+    provider: Literal["cohere", "openai", "ollama", "sagemaker"]
+    model: str = Field(min_length=1, max_length=200)
+
+
+class AdminLlmConfigResponse(BaseModel):
+    """Editable LLM configuration exposed to admins."""
+
+    rag: ModelRouteConfig
+    chat: ModelRouteConfig
+    openai_api_key_configured: bool
+    openai_base_url: str
+    restart_command_configured: bool = False
+
+
+class AdminLlmConfigUpdate(BaseModel):
+    """Payload used by the admin UI to persist LLM configuration changes."""
+
+    rag: ModelRouteConfig
+    chat: ModelRouteConfig
+    openai_api_key: str | None = Field(default=None, max_length=2000)
+    openai_base_url: str | None = Field(default=None, max_length=500)
+
+
+class RestartResponse(BaseModel):
+    """Response returned when the backend is asked to reload or restart."""
+
+    success: bool
+    scheduled: bool
+    message: str

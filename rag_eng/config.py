@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
@@ -13,6 +14,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 _INFERENCE_CONFIG_PATH = Path(__file__).parent / "inference_config.yaml"
+_RUNTIME_CONFIG_PATH = Path(__file__).parent / "runtime_config.yaml"
 
 
 # ---------------------------------------------------------------------------
@@ -64,12 +66,27 @@ class SageMakerInferenceConfig:
 class InferenceConfig:
     ollama: OllamaInferenceConfig
     sagemaker: SageMakerInferenceConfig
+    rag: "ModelRouteConfig"
+    chat: "ModelRouteConfig"
+    openai_base_url: str
+
+
+@dataclass(frozen=True)
+class ModelRouteConfig:
+    provider: str
+    model: str
 
 
 def load_inference_config(path: Path | None = None) -> InferenceConfig:
-    """Load inference_config.yaml; env vars OLLAMA_MODEL and OLLAMA_URL override YAML."""
-    p = path or _INFERENCE_CONFIG_PATH
-    raw: dict = yaml.safe_load(p.read_text()) if p.exists() else {}
+    """Load runtime provider selections and legacy inference defaults."""
+    if path is None:
+        if _RUNTIME_CONFIG_PATH.exists():
+            path = _RUNTIME_CONFIG_PATH
+        else:
+            path = _INFERENCE_CONFIG_PATH
+
+    raw: dict = yaml.safe_load(path.read_text()) if path.exists() else {}
+    raw = raw or {}
 
     ollama_raw = raw.get("ollama", {})
     options_raw = ollama_raw.get("options", {})
@@ -109,7 +126,29 @@ def load_inference_config(path: Path | None = None) -> InferenceConfig:
         ),
     )
 
-    return InferenceConfig(ollama=ollama, sagemaker=sagemaker)
+    runtime_raw = raw.get("runtime", raw)
+    rag_raw = runtime_raw.get("rag", {})
+    chat_raw = runtime_raw.get("chat", {})
+    openai_raw = runtime_raw.get("openai", {})
+    default_chat_provider = "sagemaker" if os.getenv("USE_SAGEMAKER", "false").lower() == "true" else "ollama"
+    rag_provider = str(rag_raw.get("provider", "cohere"))
+    chat_provider = str(chat_raw.get("provider", default_chat_provider))
+    rag_default_model = "gpt-5.4-mini" if rag_provider == "openai" else "command-xlarge-nightly"
+    chat_default_model = "gpt-5.4-mini" if chat_provider == "openai" else model
+
+    return InferenceConfig(
+        ollama=ollama,
+        sagemaker=sagemaker,
+        rag=ModelRouteConfig(
+            provider=rag_provider,
+            model=str(rag_raw.get("model", rag_default_model)),
+        ),
+        chat=ModelRouteConfig(
+            provider=chat_provider,
+            model=str(chat_raw.get("model", chat_default_model)),
+        ),
+        openai_base_url=str(openai_raw.get("base_url", "https://api.openai.com/v1")),
+    )
 
 
 _inference_config: InferenceConfig | None = None
@@ -123,6 +162,77 @@ def get_inference_config() -> InferenceConfig:
     return _inference_config
 
 
+def reload_inference_config() -> InferenceConfig:
+    """Force a reload of the cached inference configuration."""
+    global _inference_config
+    _inference_config = load_inference_config()
+    return _inference_config
+
+
+def get_runtime_config_path() -> Path:
+    return _RUNTIME_CONFIG_PATH
+
+
+def load_runtime_config(path: Path | None = None) -> dict:
+    """Load the editable runtime config file as plain YAML data."""
+    p = path or _RUNTIME_CONFIG_PATH
+    loaded = yaml.safe_load(p.read_text()) if p.exists() else {}
+    return loaded or {}
+
+
+def save_runtime_config(data: Mapping[str, object], path: Path | None = None) -> None:
+    """Persist the editable runtime config file."""
+    p = path or _RUNTIME_CONFIG_PATH
+    p.write_text(yaml.safe_dump(dict(data), sort_keys=False))
+
+
+def _read_env_file(path: Path) -> dict[str, str]:
+    data: dict[str, str] = {}
+    if not path.exists():
+        return data
+
+    for line in path.read_text().splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        data[key.strip()] = value.strip()
+    return data
+
+
+def _format_env_line(key: str, value: str) -> str:
+    if value == "":
+        return f"{key}="
+    if any(ch in value for ch in (" ", "#", '"', "'")):
+        escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+        return f'{key}="{escaped}"'
+    return f"{key}={value}"
+
+
+def update_env_file(path: Path, updates: Mapping[str, str | None]) -> None:
+    """Update a .env file in place while preserving unrelated comments/keys."""
+    existing_lines = path.read_text().splitlines() if path.exists() else []
+    index_by_key: dict[str, int] = {}
+    for idx, line in enumerate(existing_lines):
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in line:
+            continue
+        key = line.split("=", 1)[0].strip()
+        index_by_key[key] = idx
+
+    new_lines = list(existing_lines)
+    for key, value in updates.items():
+        if value is None:
+            continue
+        formatted = _format_env_line(key, value)
+        if key in index_by_key:
+            new_lines[index_by_key[key]] = formatted
+        else:
+            new_lines.append(formatted)
+
+    path.write_text("\n".join(new_lines) + ("\n" if new_lines else ""))
+
+
 @dataclass(frozen=True)
 class Settings:
     """Application settings loaded from environment variables."""
@@ -132,6 +242,8 @@ class Settings:
     qdrant_collection_name: str
     qdrant_guidelines_collection_name: str
     cohere_api_key: str | None
+    openai_api_key: str | None
+    openai_base_url: str
     embedding_model: str
     app_host: str
     app_port: int
@@ -147,6 +259,7 @@ class Settings:
     runner_mode: str
     runner_image: str
     cors_origins: tuple[str, ...]
+    restart_command: str | None
 
     # --- Inference routing ---
     use_sagemaker: bool
@@ -202,6 +315,8 @@ def get_settings() -> Settings:
             "cpp_guidelines",
         ),
         cohere_api_key=os.getenv("COHERE_API_KEY"),
+        openai_api_key=os.getenv("OPENAI_API_KEY"),
+        openai_base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
         embedding_model=os.getenv(
             "EMBEDDING_MODEL",
             "sentence-transformers/multi-qa-mpnet-base-dot-v1",
@@ -227,6 +342,7 @@ def get_settings() -> Settings:
             ).split(",")
             if origin.strip()
         ),
+        restart_command=os.getenv("RESTART_COMMAND") or None,
         use_sagemaker=os.getenv("USE_SAGEMAKER", "false").lower() == "true",
         sagemaker_endpoint=os.getenv(
             "SAGEMAKER_ENDPOINT", "codingrabbit-sagemaker-async-endpoint"

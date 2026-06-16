@@ -95,6 +95,13 @@ def _sagemaker_invoke(prompt: str) -> tuple[str, str]:
     return invoke_sagemaker_direct(prompt)
 
 
+def _clear_sagemaker_request() -> tuple[str, str]:
+    return (
+        "",
+        "Request cancelled. The prompt is still in the textbox, so you can send it again.",
+    )
+
+
 def _pipeline_invoke(
     student_message: str,
     code_raw: str,
@@ -188,11 +195,32 @@ def build_gradio_app(settings: Settings | None = None) -> gr.Blocks:
                 placeholder="Why does my C++ pointer cause a segmentation fault?",
                 lines=4,
             )
-            sm_invoke = gr.Button("Invoke SageMaker", variant="primary")
+            with gr.Row():
+                sm_invoke = gr.Button("Invoke SageMaker", variant="primary")
+                sm_retry = gr.Button("Send again", variant="secondary")
+                sm_cancel = gr.Button("Cancel request", variant="stop")
             sm_response = gr.Textbox(label="Model response", lines=16)
             sm_status = gr.Textbox(label="Invoke status", interactive=False)
             sm_refresh.click(fn=_refresh_sagemaker_status, outputs=sm_lights)
-            sm_invoke.click(fn=_sagemaker_invoke, inputs=sm_prompt, outputs=[sm_response, sm_status])
+            sm_invoke_event = sm_invoke.click(
+                fn=_sagemaker_invoke,
+                inputs=sm_prompt,
+                outputs=[sm_response, sm_status],
+            )
+            sm_retry_event = sm_retry.click(
+                fn=_sagemaker_invoke,
+                inputs=sm_prompt,
+                outputs=[sm_response, sm_status],
+            )
+            sm_cancel.click(
+                fn=_clear_sagemaker_request,
+                cancels=[sm_invoke_event, sm_retry_event],
+                outputs=[sm_response, sm_status],
+            )
+            gr.Markdown(
+                "Use **Cancel request** to stop the active call. The prompt stays in place, "
+                "so you can press **Send again** or **Invoke SageMaker** to resubmit it."
+            )
 
         with gr.Tab("Pipeline Console"):
             gr.Markdown(

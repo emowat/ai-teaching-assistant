@@ -8,6 +8,9 @@ FastAPI service layer for the codingrabbit.dev capstone. Provides the RAG query 
 |---|---|---|
 | `GET` | `/health` | Liveness probe |
 | `POST` | `/query` | RAG query with reranking |
+| `GET` | `/admin/llm/config` | Read editable LLM provider/model settings |
+| `POST` | `/admin/llm/config` | Save editable LLM provider/model settings |
+| `POST` | `/admin/restart` | Reload config or schedule a restart command |
 | `POST` | `/run/compile` | Compile + run student C++ code |
 | `GET` | `/gradio` | Gradio RAG interrogation UI |
 | `POST` | `/admin/index/ensure` | Idempotent index bootstrap |
@@ -17,7 +20,8 @@ FastAPI service layer for the codingrabbit.dev capstone. Provides the RAG query 
 
 1. Copy `.env.example` to `.env` at the repo root.
 2. Fill in `QDRANT_URL`, `QDRANT_API_KEY`, `COHERE_API_KEY`, and Cognito variables.
-3. Install dependencies:
+3. Fill in `OPENAI_API_KEY` if you plan to route either chat or RAG through OpenAI.
+4. Install dependencies:
 
 ```bash
 uv sync
@@ -25,19 +29,19 @@ uv sync
 pip install -r requirements.txt
 ```
 
-4. Ensure or rebuild the index:
+5. Ensure or rebuild the index:
 
 ```bash
 python -m rag_eng.cli ensure-index
 ```
 
-5. Run the service on port 8001 (frontend default):
+6. Run the service on port 8001 (frontend default):
 
 ```bash
 uv run uvicorn rag_eng.main:app --host 0.0.0.0 --port 8001
 ```
 
-6. Open:
+7. Open:
 - API docs: `http://localhost:8001/docs`
 - Gradio UI: `http://localhost:8001/gradio`
 
@@ -116,3 +120,8 @@ docker run --rm -p 8001:8001 --env-file .env rag-eng
 | `CORS_ORIGINS` | `http://localhost:5173` | Allowed CORS origins (comma-separated) |
 | `LOG_LEVEL` | `INFO` | Uvicorn log level |
 | `ADMIN_TOKEN` | — | Bearer token for admin endpoints |
+| `OPENAI_API_KEY` | — | OpenAI API key for admin-selected OpenAI routes |
+| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | Optional OpenAI-compatible base URL |
+| `RESTART_COMMAND` | — | Optional shell command to run when the admin presses restart |
+
+The editable non-secret model routing settings live in `rag_eng/runtime_config.yaml`.

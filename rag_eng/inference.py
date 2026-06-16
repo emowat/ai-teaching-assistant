@@ -10,6 +10,11 @@ from typing import AsyncIterator
 import httpx
 
 from rag_eng.config import Settings, get_inference_config
+from rag_eng.llm_clients import (
+    OpenAIChatConfig,
+    ainvoke_openai_chat_completion,
+    chunk_text,
+)
 from rag_eng.prompt_budget import effective_max_tokens
 
 
@@ -204,6 +209,30 @@ async def _invoke_ollama(
     return _gen()
 
 
+async def _invoke_openai(
+    messages: list[dict],
+    settings: Settings,
+    stream: bool = False,
+) -> dict | AsyncIterator[bytes]:
+    """Invoke the OpenAI chat-completions API."""
+    ic = get_inference_config().chat
+    if not settings.openai_api_key:
+        raise ValueError("OPENAI_API_KEY is not configured.")
+
+    config = OpenAIChatConfig(
+        api_key=settings.openai_api_key,
+        base_url=settings.openai_base_url or get_inference_config().openai_base_url,
+        model=ic.model,
+        timeout_seconds=120.0,
+        temperature=0.7,
+        top_p=0.9,
+    )
+    text = await ainvoke_openai_chat_completion(messages, config)
+    if not stream:
+        return {"message": {"content": text}}
+    return chunk_text(text, get_inference_config().sagemaker.streaming_chunk_size)
+
+
 # ---------------------------------------------------------------------------
 # Public interface
 # ---------------------------------------------------------------------------
@@ -220,10 +249,14 @@ async def run_inference(
         - dict with ``{"message": {"content": str}}`` when stream=False
         - AsyncIterator[bytes] of NDJSON chunks when stream=True
     """
-    if settings.use_sagemaker:
+    chat_provider = get_inference_config().chat.provider
+    if chat_provider == "sagemaker" or settings.use_sagemaker:
         if stream:
             return _stream_sagemaker(messages, settings)
         text = await _invoke_sagemaker(messages, settings)
         return {"message": {"content": text}}
+
+    if chat_provider == "openai":
+        return await _invoke_openai(messages, settings, stream=stream)
 
     return await _invoke_ollama(messages, settings, stream=stream)

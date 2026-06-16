@@ -3,18 +3,21 @@
 from __future__ import annotations
 
 import re
+from types import SimpleNamespace
 from typing import AsyncIterator
 
-from rag import (
-    build_prompt,
-    generate_response_from_result,
-    run_retrieval,
-)
+from rag import build_prompt, generate_response_from_result, run_retrieval
 from rag.runtime import create_qdrant_client
 
-from rag_eng.config import Settings, get_settings
+from rag_eng.config import Settings, get_inference_config, get_settings
 from rag_eng.indexing import ensure_index, rebuild_index
 from rag_eng.inference import run_inference
+from rag_eng.llm_clients import (
+    OpenAIChatConfig,
+    ainvoke_openai_chat_completion,
+    chunk_text,
+    invoke_openai_chat_completion,
+)
 from rag_eng.prompts import get_system_prompt
 from rag_eng.schemas import (
     HealthResponse,
@@ -25,17 +28,45 @@ from rag_eng.schemas import (
 )
 
 
-def _build_llm():
-    """Create the Cohere chat model lazily."""
-    from langchain_cohere import ChatCohere
+class _PromptAdapter:
+    """Simple sync adapter for prompt-based LLM calls."""
 
+    def __init__(self, fn):
+        self._fn = fn
+
+    def invoke(self, prompt: str):
+        return SimpleNamespace(content=self._fn(prompt))
+
+
+def _build_llm():
+    """Create the configured RAG chat model lazily."""
     settings = get_settings()
-    if not settings.cohere_api_key:
-        raise ValueError("COHERE_API_KEY is not configured.")
-    return ChatCohere(
-        cohere_api_key=settings.cohere_api_key,
-        model="command-xlarge-nightly",
-    )
+    route = get_inference_config().rag
+
+    if route.provider == "cohere":
+        from langchain_cohere import ChatCohere
+
+        if not settings.cohere_api_key:
+            raise ValueError("COHERE_API_KEY is not configured.")
+        return ChatCohere(
+            cohere_api_key=settings.cohere_api_key,
+            model=route.model,
+        )
+
+    if route.provider == "openai":
+        if not settings.openai_api_key:
+            raise ValueError("OPENAI_API_KEY is not configured.")
+        config = OpenAIChatConfig(
+            api_key=settings.openai_api_key,
+            base_url=settings.openai_base_url or get_inference_config().openai_base_url,
+            model=route.model,
+            timeout_seconds=120.0,
+            temperature=0.3,
+            top_p=0.9,
+        )
+        return _PromptAdapter(lambda prompt: invoke_openai_chat_completion(prompt, config))
+
+    raise ValueError(f"Unsupported RAG provider: {route.provider}")
 
 
 def run_query(query) -> QueryResponse:
@@ -57,6 +88,7 @@ def run_query(query) -> QueryResponse:
 def get_health() -> HealthResponse:
     """Check config and basic backend connectivity."""
     settings = get_settings()
+    runtime = get_inference_config()
     qdrant_configured = bool(
         settings.qdrant_url
         and settings.qdrant_api_key
@@ -64,6 +96,7 @@ def get_health() -> HealthResponse:
         and settings.qdrant_guidelines_collection_name
     )
     cohere_configured = bool(settings.cohere_api_key)
+    openai_configured = bool(settings.openai_api_key)
     qdrant_reachable = False
     message = "Ready."
 
@@ -80,17 +113,38 @@ def get_health() -> HealthResponse:
     else:
         message = "Qdrant environment variables are incomplete."
 
-    if not cohere_configured and message == "Ready." and not settings.use_sagemaker:
-        message = "Cohere API key is not configured."
+    def _provider_ready(provider: str) -> bool:
+        if provider == "cohere":
+            return cohere_configured
+        if provider == "openai":
+            return openai_configured
+        if provider in {"ollama", "sagemaker"}:
+            return True
+        return False
 
-    llm_ready = cohere_configured or settings.use_sagemaker
+    rag_ready = _provider_ready(runtime.rag.provider)
+    chat_ready = _provider_ready(runtime.chat.provider)
+    if message == "Ready." and not rag_ready:
+        if runtime.rag.provider == "cohere":
+            message = "Cohere API key is not configured."
+        elif runtime.rag.provider == "openai":
+            message = "OpenAI API key is not configured."
+    if message == "Ready." and not chat_ready:
+        if runtime.chat.provider == "cohere":
+            message = "Cohere API key is not configured."
+        elif runtime.chat.provider == "openai":
+            message = "OpenAI API key is not configured."
+
+    llm_ready = rag_ready and chat_ready
     ready = qdrant_configured and qdrant_reachable and llm_ready
     return HealthResponse(
         ready=ready,
         qdrant_configured=qdrant_configured,
         cohere_configured=cohere_configured,
+        openai_configured=openai_configured,
         qdrant_reachable=qdrant_reachable,
         cohere_reachable=cohere_configured,
+        openai_reachable=openai_configured,
         message=message,
     )
 
@@ -127,6 +181,7 @@ def rebuild_index_service() -> IndexRebuildResponse:
 # ---------------------------------------------------------------------------
 # Chat orchestration  (called by POST /api/chat — VS Code extension endpoint)
 # ---------------------------------------------------------------------------
+
 
 def _extract_chat_context(messages: list[dict]) -> dict:
     """Pull structured fields out of the extension's [Context] blocks."""
@@ -165,13 +220,9 @@ async def run_chat(
     settings: Settings,
     stream: bool = False,
 ) -> dict | AsyncIterator[bytes]:
-    """Full chat pipeline: context extraction → RAG → prompt assembly → inference.
-
-    Replaces the mocked backend/rag_client.py with real Qdrant + Cohere retrieval.
-    """
+    """Full chat pipeline: context extraction -> RAG -> prompt assembly -> inference."""
     ctx = _extract_chat_context(messages)
 
-    # Build a QueryPayload from the chat context so we can reuse run_retrieval
     query = QueryPayload(
         student_message=ctx["student_message"],
         code_raw=ctx["code_raw"],
@@ -182,13 +233,12 @@ async def run_chat(
 
     retrieval_result = run_retrieval(query)
     rag_context = retrieval_result.formatted_context
-
-    # Strip any existing system message injected by the extension
     api_messages = [m for m in messages if m.get("role") != "system"]
 
     system_prompt = get_system_prompt(ctx["mode"])
-    if settings.use_sagemaker:
-        from rag_eng.config import get_inference_config
+    chat_route = get_inference_config().chat
+
+    if chat_route.provider == "sagemaker":
         from rag_eng.prompt_budget import assemble_sagemaker_messages
 
         api_messages = assemble_sagemaker_messages(
@@ -198,8 +248,26 @@ async def run_chat(
             ctx["mode"],
             get_inference_config().sagemaker,
         )
-    else:
+        return await run_inference(api_messages, model_name, settings, stream=stream)
+
+    if chat_route.provider == "openai":
+        if not settings.openai_api_key:
+            raise ValueError("OPENAI_API_KEY is not configured.")
+        config = OpenAIChatConfig(
+            api_key=settings.openai_api_key,
+            base_url=settings.openai_base_url or get_inference_config().openai_base_url,
+            model=chat_route.model,
+            timeout_seconds=120.0,
+            temperature=0.7,
+            top_p=0.9,
+        )
         full_system = f"{system_prompt}\n{rag_context}"
         api_messages.insert(0, {"role": "system", "content": full_system})
+        text = await ainvoke_openai_chat_completion(api_messages, config)
+        if stream:
+            return chunk_text(text, get_inference_config().sagemaker.streaming_chunk_size)
+        return {"message": {"content": text}}
 
+    full_system = f"{system_prompt}\n{rag_context}"
+    api_messages.insert(0, {"role": "system", "content": full_system})
     return await run_inference(api_messages, model_name, settings, stream=stream)

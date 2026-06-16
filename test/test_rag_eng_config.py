@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from rag_eng.config import get_settings
+from rag_eng.config import load_runtime_config, save_runtime_config, update_env_file
 
 
 def test_get_settings_uses_environment(monkeypatch) -> None:
@@ -25,3 +28,41 @@ def test_get_settings_reads_sagemaker_poll_timeout(monkeypatch) -> None:
     settings = get_settings()
 
     assert settings.sagemaker_poll_timeout_seconds == 900
+
+
+def test_runtime_config_round_trip(tmp_path: Path) -> None:
+    path = tmp_path / "runtime_config.yaml"
+    payload = {
+        "runtime": {
+            "rag": {"provider": "openai", "model": "gpt-5.4-mini"},
+            "chat": {"provider": "ollama", "model": "qwen3.5:9b"},
+            "openai": {"base_url": "https://api.openai.com/v1"},
+        }
+    }
+
+    save_runtime_config(payload, path)
+
+    assert load_runtime_config(path) == payload
+
+
+def test_update_env_file_preserves_comments_and_updates_values(
+    tmp_path: Path,
+) -> None:
+    env_path = tmp_path / ".env"
+    env_path.write_text(
+        "# comment\nOPENAI_API_KEY=old\nOTHER=value\n",
+        encoding="utf-8",
+    )
+
+    update_env_file(
+        env_path,
+        {
+            "OPENAI_API_KEY": "new-secret",
+            "OPENAI_BASE_URL": "https://api.openai.com/v1",
+        },
+    )
+
+    text = env_path.read_text(encoding="utf-8")
+    assert "# comment" in text
+    assert "OPENAI_API_KEY=new-secret" in text
+    assert "OPENAI_BASE_URL=https://api.openai.com/v1" in text

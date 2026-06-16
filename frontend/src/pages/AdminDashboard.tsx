@@ -1,6 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { checkGradioAvailable, getGradioUrl } from "../api/gradioApi";
 import {
+  getAdminLlmConfig,
+  restartBackend,
+  saveAdminLlmConfig,
+  type AdminLlmConfig,
+  type LlmProvider,
+} from "../api/adminLlmApi";
+import {
   Area,
   AreaChart,
   CartesianGrid,
@@ -22,6 +29,7 @@ interface AdminDashboardProps {
   onNavigate: (view: AppView) => void;
   allowedViews: AppView[];
   onSignOut: () => void;
+  accessToken: string;
 }
 
 // STUB — replace when analytics API is available
@@ -35,20 +43,13 @@ const sessionData = [
   { day: "Sun", sessions: 57, resolved: 42 },
 ];
 
-// STUB — replace when model config API is available
 const modelShare = [
-  { name: "Sonnet", value: 78, color: D.orange },
-  { name: "Haiku", value: 15, color: D.blue },
-  { name: "Opus", value: 7, color: D.green },
+  { name: "Ollama", value: 58, color: D.orange },
+  { name: "SageMaker", value: 27, color: D.blue },
+  { name: "OpenAI", value: 15, color: D.green },
 ];
 
-// STUB — replace when GET /admin/models is available
-const models = [
-  { name: "claude-sonnet-4-20250514", active: true, tier: "Balanced", speed: "Fast", note: "Recommended" },
-  { name: "claude-opus-4-20250514", active: false, tier: "Powerful", speed: "Slower", note: "High cost" },
-  { name: "claude-haiku-4-5", active: false, tier: "Lightweight", speed: "Fastest", note: "Budget" },
-];
-
+// STUB — replace when model config API is available
 // STUB — replace when GET /admin/users is available
 const professors = [
   { name: "Dr. Rivera", email: "crivera@university.edu", courses: 3, students: 87, status: "active" },
@@ -82,10 +83,22 @@ export function AdminDashboard({
   onNavigate,
   allowedViews,
   onSignOut,
+  accessToken,
 }: AdminDashboardProps) {
   const [tab, setTab] = useState("stats");
   const [healthOk, setHealthOk] = useState<boolean | null>(null);
   const [gradioAvailable, setGradioAvailable] = useState<boolean | null>(null);
+  const [config, setConfig] = useState<AdminLlmConfig | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [formStatus, setFormStatus] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [restarting, setRestarting] = useState(false);
+  const [ragProvider, setRagProvider] = useState<LlmProvider>("cohere");
+  const [ragModel, setRagModel] = useState("command-xlarge-nightly");
+  const [chatProvider, setChatProvider] = useState<LlmProvider>("ollama");
+  const [chatModel, setChatModel] = useState("qwen3.5:9b");
+  const [openaiApiKey, setOpenaiApiKey] = useState("");
+  const [openaiBaseUrl, setOpenaiBaseUrl] = useState("https://api.openai.com/v1");
   const gradioUrl = getGradioUrl();
 
   useEffect(() => {
@@ -114,10 +127,27 @@ export function AdminDashboard({
   }, []);
 
   useEffect(() => {
-    if (tab === "backend-console" && gradioAvailable === false) {
-      setTab("stats");
-    }
-  }, [gradioAvailable, tab]);
+    if (!accessToken) return;
+
+    let cancelled = false;
+    void getAdminLlmConfig(accessToken)
+      .then((data) => {
+        if (cancelled) return;
+        setConfig(data);
+        setRagProvider(data.rag.provider);
+        setRagModel(data.rag.model);
+        setChatProvider(data.chat.provider);
+        setChatModel(data.chat.model);
+        setOpenaiBaseUrl(data.openai_base_url || "https://api.openai.com/v1");
+      })
+      .catch((err: Error) => {
+        if (!cancelled) setFormError(err.message);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken]);
 
   const adminTabs = useMemo<SidebarTab[]>(() => {
     const gradioDisabled = gradioAvailable !== true;
@@ -143,6 +173,8 @@ export function AdminDashboard({
     ];
   }, [gradioAvailable]);
 
+  const activeTab = tab === "backend-console" && gradioAvailable === false ? "stats" : tab;
+
   const footer = (
     <Card style={{ padding: "10px 12px", marginTop: 12, borderRadius: 8 }}>
       <div style={{ ...mono, fontSize: 11, color: healthOk ? D.green : D.red }}>
@@ -157,6 +189,42 @@ export function AdminDashboard({
       </div>
     </Card>
   );
+
+  const handleSaveConfig = async () => {
+    setSaving(true);
+    setFormError(null);
+    setFormStatus(null);
+    try {
+      const payload = {
+        rag: { provider: ragProvider, model: ragModel.trim() },
+        chat: { provider: chatProvider, model: chatModel.trim() },
+        openai_base_url: openaiBaseUrl.trim() || null,
+        ...(openaiApiKey.trim() ? { openai_api_key: openaiApiKey.trim() } : {}),
+      };
+      const data = await saveAdminLlmConfig(payload, accessToken);
+      setConfig(data);
+      setOpenaiApiKey("");
+      setFormStatus("Configuration saved.");
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Unable to save configuration.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleRestart = async () => {
+    setRestarting(true);
+    setFormError(null);
+    setFormStatus(null);
+    try {
+      const result = await restartBackend(accessToken);
+      setFormStatus(result.message);
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Restart failed.");
+    } finally {
+      setRestarting(false);
+    }
+  };
 
   return (
     <div
@@ -176,19 +244,19 @@ export function AdminDashboard({
         onSignOut={onSignOut}
       />
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
-        <Sidebar tabs={adminTabs} active={tab} onTab={setTab} footer={footer} />
+        <Sidebar tabs={adminTabs} active={activeTab} onTab={setTab} footer={footer} />
 
         <div
           style={{
             flex: 1,
             overflow: "auto",
             padding:
-              tab === "backend-console"
+              activeTab === "backend-console"
                 ? 0
                 : 22,
           }}
         >
-          {tab === "backend-console" && gradioAvailable && (
+          {activeTab === "backend-console" && gradioAvailable && (
             <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
               <div
                 style={{
@@ -223,7 +291,7 @@ export function AdminDashboard({
             </div>
           )}
 
-          {tab === "stats" && (
+          {activeTab === "stats" && (
             <div>
               <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 18 }}>
                 Evaluation dashboard <Tag color={D.muted}>STUB</Tag>
@@ -285,47 +353,177 @@ export function AdminDashboard({
             </div>
           )}
 
-          {tab === "models" && (
+          {activeTab === "models" && (
             <div>
               <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 18 }}>
-                AI model configuration <Tag color={D.muted}>STUB</Tag>
+                AI model configuration
+                <span style={{ marginLeft: 8 }}>
+                  {config?.restart_command_configured ? (
+                    <Tag color={D.green}>Live reload ready</Tag>
+                  ) : (
+                    <Tag color={D.yellow}>Restart command unset</Tag>
+                  )}
+                </span>
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 20 }}>
-                {models.map((m) => (
-                  <Card
-                    key={m.name}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 16,
-                      borderColor: m.active ? D.orangeBorder : D.border,
-                      background: m.active ? `${D.orange}05` : D.card,
-                    }}
-                  >
-                    <div style={{ flex: 1 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                        <span style={{ ...mono, fontSize: 13, fontWeight: 500 }}>{m.name}</span>
-                        {m.active && <Tag>Active</Tag>}
-                        <Tag color={D.muted}>{m.note}</Tag>
-                      </div>
-                      <div style={{ display: "flex", gap: 18 }}>
-                        {[["Tier", m.tier], ["Speed", m.speed]].map(([k, v]) => (
-                          <span key={k} style={{ fontSize: 12, color: D.muted }}>
-                            {k}: <span style={{ color: D.dim }}>{v}</span>
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                    <Btn variant={m.active ? "ghost" : "primary"} small>
-                      {m.active ? "✓ Active" : "Activate"}
-                    </Btn>
-                  </Card>
-                ))}
+              <Card style={{ display: "grid", gap: 16, marginBottom: 16 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                  <label style={{ display: "grid", gap: 6 }}>
+                    <span style={{ fontSize: 12, color: D.muted }}>RAG provider</span>
+                    <select
+                      value={ragProvider}
+                      onChange={(e) => {
+                        const next = e.target.value as LlmProvider;
+                        setRagProvider(next);
+                        if (next === "openai" && (!ragModel || ragModel === "command-xlarge-nightly")) {
+                          setRagModel("gpt-5.4-mini");
+                        }
+                      }}
+                      style={{
+                        background: D.bg,
+                        color: D.text,
+                        border: `1px solid ${D.border}`,
+                        borderRadius: 8,
+                        padding: "10px 12px",
+                      }}
+                    >
+                      <option value="cohere">Cohere</option>
+                      <option value="openai">OpenAI</option>
+                    </select>
+                  </label>
+                  <label style={{ display: "grid", gap: 6 }}>
+                    <span style={{ fontSize: 12, color: D.muted }}>RAG model</span>
+                    <input
+                      value={ragModel}
+                      onChange={(e) => setRagModel(e.target.value)}
+                      placeholder="command-xlarge-nightly"
+                      style={{
+                        background: D.bg,
+                        color: D.text,
+                        border: `1px solid ${D.border}`,
+                        borderRadius: 8,
+                        padding: "10px 12px",
+                      }}
+                    />
+                  </label>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                  <label style={{ display: "grid", gap: 6 }}>
+                    <span style={{ fontSize: 12, color: D.muted }}>Chat provider</span>
+                    <select
+                      value={chatProvider}
+                      onChange={(e) => {
+                        const next = e.target.value as LlmProvider;
+                        setChatProvider(next);
+                        if (next === "openai" && (!chatModel || chatModel === "qwen3.5:9b")) {
+                          setChatModel("gpt-5.4-mini");
+                        }
+                      }}
+                      style={{
+                        background: D.bg,
+                        color: D.text,
+                        border: `1px solid ${D.border}`,
+                        borderRadius: 8,
+                        padding: "10px 12px",
+                      }}
+                    >
+                      <option value="ollama">Ollama</option>
+                      <option value="sagemaker">SageMaker</option>
+                      <option value="openai">OpenAI</option>
+                    </select>
+                  </label>
+                  <label style={{ display: "grid", gap: 6 }}>
+                    <span style={{ fontSize: 12, color: D.muted }}>Chat model</span>
+                    <input
+                      value={chatModel}
+                      onChange={(e) => setChatModel(e.target.value)}
+                      placeholder="gpt-5.4-mini"
+                      style={{
+                        background: D.bg,
+                        color: D.text,
+                        border: `1px solid ${D.border}`,
+                        borderRadius: 8,
+                        padding: "10px 12px",
+                      }}
+                    />
+                  </label>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                  <label style={{ display: "grid", gap: 6 }}>
+                    <span style={{ fontSize: 12, color: D.muted }}>
+                      OpenAI API key {config?.openai_api_key_configured ? "(saved)" : "(not set)"}
+                    </span>
+                    <input
+                      type="password"
+                      value={openaiApiKey}
+                      onChange={(e) => setOpenaiApiKey(e.target.value)}
+                      placeholder="sk-..."
+                      style={{
+                        background: D.bg,
+                        color: D.text,
+                        border: `1px solid ${D.border}`,
+                        borderRadius: 8,
+                        padding: "10px 12px",
+                      }}
+                    />
+                  </label>
+                  <label style={{ display: "grid", gap: 6 }}>
+                    <span style={{ fontSize: 12, color: D.muted }}>OpenAI base URL</span>
+                    <input
+                      value={openaiBaseUrl}
+                      onChange={(e) => setOpenaiBaseUrl(e.target.value)}
+                      placeholder="https://api.openai.com/v1"
+                      style={{
+                        background: D.bg,
+                        color: D.text,
+                        border: `1px solid ${D.border}`,
+                        borderRadius: 8,
+                        padding: "10px 12px",
+                      }}
+                    />
+                  </label>
+                </div>
+
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                  <Btn variant="primary" small onClick={handleSaveConfig} disabled={saving || restarting}>
+                    {saving ? "Saving..." : "Save configuration"}
+                  </Btn>
+                  <Btn variant="ghost" small onClick={handleRestart} disabled={saving || restarting}>
+                    {restarting ? "Restarting..." : "Apply / restart"}
+                  </Btn>
+                  {config && (
+                    <span style={{ fontSize: 12, color: D.muted }}>
+                      Current route: RAG <span style={{ color: D.text }}>{config.rag.provider}</span> / Chat{" "}
+                      <span style={{ color: D.text }}>{config.chat.provider}</span>
+                    </span>
+                  )}
+                </div>
+
+                {formError && <div style={{ color: D.red, fontSize: 12 }}>{formError}</div>}
+                {formStatus && <div style={{ color: D.green, fontSize: 12 }}>{formStatus}</div>}
+              </Card>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+                <Card>
+                  <div style={{ fontSize: 12, color: D.muted, marginBottom: 6 }}>RAG route</div>
+                  <div style={{ ...mono, fontSize: 13 }}>{config ? `${config.rag.provider} / ${config.rag.model}` : "Loading..."}</div>
+                </Card>
+                <Card>
+                  <div style={{ fontSize: 12, color: D.muted, marginBottom: 6 }}>Chat route</div>
+                  <div style={{ ...mono, fontSize: 13 }}>{config ? `${config.chat.provider} / ${config.chat.model}` : "Loading..."}</div>
+                </Card>
+                <Card>
+                  <div style={{ fontSize: 12, color: D.muted, marginBottom: 6 }}>OpenAI secret</div>
+                  <div style={{ ...mono, fontSize: 13 }}>
+                    {config?.openai_api_key_configured ? "Configured" : "Not configured"}
+                  </div>
+                </Card>
               </div>
             </div>
           )}
 
-          {tab === "rag" && (
+          {activeTab === "rag" && (
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
                 <div style={{ fontSize: 18, fontWeight: 600 }}>
@@ -355,7 +553,7 @@ export function AdminDashboard({
             </div>
           )}
 
-          {tab === "users" && (
+          {activeTab === "users" && (
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
                 <div style={{ fontSize: 18, fontWeight: 600 }}>
@@ -381,7 +579,7 @@ export function AdminDashboard({
             </div>
           )}
 
-          {tab === "courses" && (
+          {activeTab === "courses" && (
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
                 <div style={{ fontSize: 18, fontWeight: 600 }}>

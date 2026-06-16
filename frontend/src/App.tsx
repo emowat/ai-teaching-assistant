@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useAuth } from "react-oidc-context";
 import { getPrimaryRole, getUserGroups } from "./auth/getUserGroups";
 import {
@@ -27,14 +27,11 @@ function App() {
   const demoMode = import.meta.env.DEV;
   const [viewOverride, setViewOverride] = useState<AppView | null>(null);
 
-  useEffect(() => {
-    if (viewOverride && !canAccessView(role, viewOverride)) {
-      setViewOverride(null);
-    }
-  }, [role, viewOverride]);
-
   const activeView = useMemo(() => {
-    if (viewOverride && canAccessView(role, viewOverride)) return viewOverride;
+    const sanitizedOverride = viewOverride && canAccessView(role, viewOverride)
+      ? viewOverride
+      : null;
+    if (sanitizedOverride) return sanitizedOverride;
     if (demoMode && viewOverride && !auth.isAuthenticated) return viewOverride;
     if (auth.isAuthenticated) return defaultView;
     return "landing";
@@ -62,6 +59,7 @@ function App() {
     onNavigate: navigate,
     allowedViews,
     onSignOut: handleSignOut,
+    accessToken: auth.user?.access_token ?? "",
   };
 
   if (!cognitoEnv.ok) {
