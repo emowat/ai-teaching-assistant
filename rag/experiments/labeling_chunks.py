@@ -4,7 +4,7 @@ labeling_chunks.py  —  Phase 1: Golden Chunk Labeling for Retrieval Experiment
 
 Workflow:
   1. Load synthetic dataset, sample 80–100 stratified queries (week × mode).
-  2. Load all course chunks from raw_data/ (standalone; no dotenv needed).
+  2. Load all course chunks from S3 (standalone; no dotenv needed).
   3. For each query, build a Tiered Candidate Pool:
        Tier 1 — Week W + Week 0, full content shown.
        Tier 2 — Weeks 1..W-1, Hybrid Expansion:
@@ -12,7 +12,7 @@ Workflow:
   4. Send query + golden answer + candidate chunks to LLM (OpenAI GPT-5 mini).
   5. Golden labels = LLM output. Save to golden_labels.json.
 
-Outputs (written to rag/experiments/outputs/):
+Outputs (written to OUTPUT_PREFIX):
   eval_queries.jsonl       — sampled queries
   golden_labels.json        — golden chunk IDs (OpenAI GPT-5 mini)
   labeling_report.json      — per-query summary stats
@@ -39,7 +39,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 import tempfile
-import os
 import shutil
 from urllib.parse import urlparse, parse_qs
 
@@ -58,9 +57,31 @@ load_dotenv()
 # Paths (edit these if your setup differs)
 # ---------------------------------------------------------------------------
 
-DATASET_PATH = "s3://codingrabbit-data-dev/prepared/synthetic-transcripts/synthetic_c_plus_plus_dataset.jsonl"
-RAW_DATA_PATH = "s3://codingrabbit-data-dev/raw/rag_sources/Harvard/cs50_output/notes_json/"
-OUTPUT_DIR = Path(__file__).resolve().parent / "outputs"
+S3_BUCKET = os.getenv("LABELING_S3_BUCKET", "codingrabbit-data-dev")
+DATASET_PATH = os.getenv(
+    "LABELING_DATASET_PATH",
+    f"s3://{S3_BUCKET}/prepared/synthetic-transcripts/synthetic_c_plus_plus_dataset.jsonl",
+)
+HARVARD_NOTES_PATH = os.getenv(
+    "LABELING_HARVARD_NOTES_PATH",
+    f"s3://{S3_BUCKET}/raw/rag_sources/Harvard/cs50_output/notes_json/",
+)
+HARVARD_TRANSCRIPTS_PATH = os.getenv(
+    "LABELING_HARVARD_TRANSCRIPTS_PATH",
+    f"s3://{S3_BUCKET}/raw/rag_sources/Harvard/cs50_transcripts/",
+)
+CPP_GUIDELINES_PATH = os.getenv(
+    "LABELING_CPP_GUIDELINES_PATH",
+    f"s3://{S3_BUCKET}/raw/rag_sources/cppcoreguidelines/cppcoreguidelines.json",
+)
+MIT_RAW_DATA_PATH = os.getenv(
+    "LABELING_MIT_RAW_DATA_PATH",
+    f"s3://{S3_BUCKET}/raw/rag_sources/MIT/",
+)
+OUTPUT_PREFIX = os.getenv(
+    "LABELING_OUTPUT_PREFIX",
+    f"s3://{S3_BUCKET}/prepared/rag/experiments/outputs/",
+)
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -204,6 +225,23 @@ def _parse_s3_url(url: str) -> tuple[str, str | None]:
     raise ValueError(f"Unrecognized S3 URL: {url}")
 
 
+<<<<<<< Updated upstream
+=======
+def _require_boto3() -> None:
+    if boto3 is None or botocore is None:
+        raise RuntimeError(
+            "S3 paths require boto3/botocore. Install boto3 or use a local path."
+        )
+
+
+def _get_s3_client() -> Any:
+    _require_boto3()
+    if os.environ.get("S3_ANONYMOUS", "0") in ("1", "true", "True"):
+        return boto3.client("s3", config=Config(signature_version=UNSIGNED))
+    return boto3.client("s3")
+
+
+>>>>>>> Stashed changes
 def _read_text(path: Path | str) -> str:
     """Read text from a local path or an S3 object (s3:// or console URL)."""
     if isinstance(path, Path):
@@ -213,11 +251,7 @@ def _read_text(path: Path | str) -> str:
         bucket, key = _parse_s3_url(path)
         if not key:
             raise ValueError(f"S3 object key not found in URL: {path}")
-        # support anonymous access by setting S3_ANONYMOUS=1 in environment
-        if os.environ.get("S3_ANONYMOUS", "0") in ("1", "true", "True"):
-            s3 = boto3.client("s3", config=Config(signature_version=UNSIGNED))
-        else:
-            s3 = boto3.client("s3")
+        s3 = _get_s3_client()
         try:
             obj = s3.get_object(Bucket=bucket, Key=key)
             body = obj["Body"].read()
@@ -232,6 +266,46 @@ def _read_text(path: Path | str) -> str:
     # fallback: local file
     with open(path, encoding="utf-8") as f:
         return f.read()
+
+
+def _write_text(path: Path | str, text: str) -> None:
+    """Write text to a local path or an S3 object."""
+    if isinstance(path, Path):
+        path = str(path)
+
+    if _is_s3_url(path):
+        bucket, key = _parse_s3_url(path)
+        if not key:
+            raise ValueError(f"S3 object key not found in URL: {path}")
+        s3 = _get_s3_client()
+        try:
+            s3.put_object(
+                Bucket=bucket,
+                Key=key,
+                Body=text.encode("utf-8"),
+                ContentType="application/json" if key.endswith(".json") else "text/plain",
+            )
+            return
+        except NoCredentialsError:
+            raise RuntimeError(
+                "AWS credentials not found. Configure credentials via environment variables (AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY), ~/.aws/credentials, or an attached IAM role."
+            )
+        except botocore.exceptions.ClientError as e:
+            raise RuntimeError(f"Could not write s3://{bucket}/{key}: {e}") from e
+
+    local_path = Path(path)
+    local_path.parent.mkdir(parents=True, exist_ok=True)
+    local_path.write_text(text, encoding="utf-8")
+
+
+def _write_json(path: Path | str, data: Any) -> None:
+    _write_text(path, json.dumps(data, indent=2, ensure_ascii=False))
+
+
+def _output_path(filename: str) -> str:
+    if _is_s3_url(OUTPUT_PREFIX):
+        return f"{str(OUTPUT_PREFIX).rstrip('/')}/{filename}"
+    return str(Path(OUTPUT_PREFIX) / filename)
 
 
 def _ensure_local_raw_data(raw_path: Path | str) -> str:
@@ -249,11 +323,7 @@ def _ensure_local_raw_data(raw_path: Path | str) -> str:
     # Normalize prefix
     prefix = prefix.lstrip("/")
 
-    # support anonymous access for publicly-readable buckets
-    if os.environ.get("S3_ANONYMOUS", "0") in ("1", "true", "True"):
-        s3 = boto3.client("s3", config=Config(signature_version=UNSIGNED))
-    else:
-        s3 = boto3.client("s3")
+    s3 = _get_s3_client()
     paginator = s3.get_paginator("list_objects_v2")
     tempdir = tempfile.mkdtemp(prefix="labeling_raw_")
 
@@ -543,10 +613,13 @@ def load_harvard_notes(raw_data_path: Path | str) -> list[Chunk]:
     return chunks
 
 
-def load_harvard_transcripts(raw_data_base: str = "raw_data") -> list[Chunk]:
-    """Load Harvard CS50 lecture transcripts (paragraph-level chunks). Local-only."""
-    from pathlib import Path as _Path
-    transcripts_dir = _Path(raw_data_base) / "Harvard" / "cs50_transcripts"
+def load_harvard_transcripts(raw_data_path: Path | str) -> list[Chunk]:
+    """Load Harvard CS50 lecture transcripts (paragraph-level chunks)."""
+    if _is_s3_url(raw_data_path):
+        transcripts_dir = Path(_ensure_local_raw_data(raw_data_path))
+    else:
+        transcripts_dir = Path(raw_data_path) / "Harvard" / "cs50_transcripts"
+
     if not transcripts_dir.exists():
         print(f"  WARNING: Transcripts dir not found: {transcripts_dir}")
         return []
@@ -582,15 +655,15 @@ def load_harvard_transcripts(raw_data_base: str = "raw_data") -> list[Chunk]:
     return chunks
 
 
-def load_cpp_guidelines(raw_data_base: str = "raw_data") -> list[Chunk]:
-    """Load C++ Core Guidelines as week-0 reference chunks. Local-only."""
-    from pathlib import Path as _Path
-    guidelines_path = _Path(raw_data_base) / "cppcoreguidelines" / "cppcoreguidelines.json"
-    if not guidelines_path.exists():
+def load_cpp_guidelines(guidelines_path: Path | str) -> list[Chunk]:
+    """Load C++ Core Guidelines as week-0 reference chunks."""
+    try:
+        raw_text = _read_text(guidelines_path)
+    except FileNotFoundError:
         print(f"  WARNING: Guidelines not found: {guidelines_path}")
         return []
 
-    data = json.loads(guidelines_path.read_text(encoding="utf-8"))
+    data = json.loads(raw_text)
     chunks: list[Chunk] = []
     for entry in data:
         if entry.get("level") != 3:
@@ -1057,12 +1130,15 @@ def main():
     # ------------------------------------------------------------------
     # Setup
     # ------------------------------------------------------------------
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    if not _is_s3_url(OUTPUT_PREFIX):
+        Path(OUTPUT_PREFIX).mkdir(parents=True, exist_ok=True)
     random.seed(args.seed)
 
     print("=" * 60)
     print("Phase 1: Golden Chunk Labeling")
     print("=" * 60)
+    print(f"Dataset:       {DATASET_PATH}")
+    print(f"Output prefix: {OUTPUT_PREFIX}")
 
     course = args.course.lower()
 
@@ -1082,18 +1158,19 @@ def main():
     _print_distribution(queries, max_week=5 if course == "harvard" else 8)
 
     # Save eval queries
-    eval_path = OUTPUT_DIR / "eval_queries.jsonl"
-    with open(eval_path, "w", encoding="utf-8") as f:
-        for q in queries:
-            f.write(json.dumps({
-                "query_id": q.query_id,
-                "student_message": q.student_message,
-                "golden_answer": q.golden_answer,
-                "week": q.week,
-                "mode": q.mode,
-                "topic": q.topic,
-                "trigger": q.trigger,
-            }, ensure_ascii=False) + "\n")
+    eval_path = _output_path("eval_queries.jsonl")
+    eval_lines = []
+    for q in queries:
+        eval_lines.append(json.dumps({
+            "query_id": q.query_id,
+            "student_message": q.student_message,
+            "golden_answer": q.golden_answer,
+            "week": q.week,
+            "mode": q.mode,
+            "topic": q.topic,
+            "trigger": q.trigger,
+        }, ensure_ascii=False))
+    _write_text(eval_path, "\n".join(eval_lines) + "\n")
     print(f"  Saved eval queries → {eval_path}")
 
     # ------------------------------------------------------------------
@@ -1101,12 +1178,16 @@ def main():
     # ------------------------------------------------------------------
     print(f"\n[2/4] Loading {course.upper()} course chunks ...")
     if course == "harvard":
-        all_chunks = load_harvard_notes(RAW_DATA_PATH)
-        all_chunks.extend(load_harvard_transcripts("raw_data"))
+        print(f"  Harvard notes:       {HARVARD_NOTES_PATH}")
+        print(f"  Harvard transcripts: {HARVARD_TRANSCRIPTS_PATH}")
+        all_chunks = load_harvard_notes(HARVARD_NOTES_PATH)
+        all_chunks.extend(load_harvard_transcripts(HARVARD_TRANSCRIPTS_PATH))
     else:
-        all_chunks = load_chunks(RAW_DATA_PATH)
+        print(f"  MIT raw data: {MIT_RAW_DATA_PATH}")
+        all_chunks = load_chunks(MIT_RAW_DATA_PATH)
     # Always include C++ Core Guidelines (week 0, course-agnostic)
-    all_chunks.extend(load_cpp_guidelines("raw_data"))
+    print(f"  C++ Guidelines: {CPP_GUIDELINES_PATH}")
+    all_chunks.extend(load_cpp_guidelines(CPP_GUIDELINES_PATH))
 
     if len(all_chunks) == 0:
         print("  WARNING: No chunks loaded from any source (notes, transcripts, guidelines).")
@@ -1151,9 +1232,9 @@ def main():
             }
             for q in queries
         }
-        with open(OUTPUT_DIR / "pool_summary.json", "w", encoding="utf-8") as f:
-            json.dump(pool_summary, f, indent=2)
-        print(f"  Pool summary saved → {OUTPUT_DIR / 'pool_summary.json'}")
+        pool_summary_path = _output_path("pool_summary.json")
+        _write_json(pool_summary_path, pool_summary)
+        print(f"  Pool summary saved → {pool_summary_path}")
         return
 
     # ------------------------------------------------------------------
@@ -1199,9 +1280,9 @@ def main():
 
     # Golden labels (OpenAI GPT-5 mini)
     golden_out = {r.query_id: r.golden_labels for r in results}
-    with open(OUTPUT_DIR / "golden_labels.json", "w", encoding="utf-8") as f:
-        json.dump(golden_out, f, indent=2)
-    print(f"  Golden labels → {OUTPUT_DIR / 'golden_labels.json'}")
+    golden_path = _output_path("golden_labels.json")
+    _write_json(golden_path, golden_out)
+    print(f"  Golden labels → {golden_path}")
 
     # Summary report
     report = []
@@ -1215,9 +1296,9 @@ def main():
             "pool_size": total_pool,
             "golden_ratio": round(total_golden / total_pool, 3) if total_pool else 0,
         })
-    with open(OUTPUT_DIR / "labeling_report.json", "w", encoding="utf-8") as f:
-        json.dump(report, f, indent=2)
-    print(f"  Labeling report → {OUTPUT_DIR / 'labeling_report.json'}")
+    report_path = _output_path("labeling_report.json")
+    _write_json(report_path, report)
+    print(f"  Labeling report → {report_path}")
 
     # Summary
     total_labeled = sum(len(r.golden_labels) for r in results)
@@ -1227,7 +1308,7 @@ def main():
     print(f"  Total queries:     {len(queries)}")
     print(f"  Total labels:      {total_labeled}")
     print(f"  Avg labels/query:  {avg_labels:.1f}")
-    print(f"  Outputs directory: {OUTPUT_DIR}")
+    print(f"  Output prefix:     {OUTPUT_PREFIX}")
     print(f"{'=' * 60}")
 
 
