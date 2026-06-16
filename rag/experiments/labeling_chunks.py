@@ -80,7 +80,7 @@ MIT_RAW_DATA_PATH = os.getenv(
 )
 OUTPUT_PREFIX = os.getenv(
     "LABELING_OUTPUT_PREFIX",
-    f"s3://{S3_BUCKET}/prepared/rag/experiments/outputs/",
+    f"s3://{S3_BUCKET}/prepared/outputs/",
 )
 
 # ---------------------------------------------------------------------------

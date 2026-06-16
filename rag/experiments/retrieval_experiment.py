@@ -16,6 +16,10 @@ Workflow per run:
 Usage:
   export QDRANT_URL="https://..." QDRANT_API_KEY="..."
   export MLFLOW_TRACKING_URI="https://..."  # or "file:///tmp/mlruns" for local
+  export RAG_EXPERIMENT_S3_BUCKET="your-bucket"
+  export RAG_EXPERIMENT_RAW_DATA_PATH="s3://bucket/path/to/data"
+  export RAG_EXPERIMENT_GOLDEN_LABELS_PATH="s3://bucket/path/to/golden_labels.json"
+  export RAG_EXPERIMENT_OUTPUT_PREFIX="s3://bucket/path/to/outputs/"
   python retrieval_experiment.py                     # full grid
   python retrieval_experiment.py --quick             # 1 model × 1 chunking only
   python retrieval_experiment.py --dry-run           # validate setup, no index builds
@@ -34,16 +38,117 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 import numpy as np
 
 # ---------------------------------------------------------------------------
-# Paths
+# Paths (S3-first, mirrors labeling_chunks.py)
 # ---------------------------------------------------------------------------
 
-GOLDEN_LABELS_PATH = Path(__file__).resolve().parent / "outputs" / "golden_labels_filtered.json"
-RAW_DATA_PATH = Path("/Users/lynw/Projects/ai-teaching-assistant/raw_data")
-OUTPUT_DIR = Path(__file__).resolve().parent / "outputs"
+S3_BUCKET = os.getenv("RAG_EXPERIMENT_S3_BUCKET", "codingrabbit-data-dev")
+
+# Raw data path (S3 or local)
+RAW_DATA_PATH = os.getenv(
+    "RAG_EXPERIMENT_RAW_DATA_PATH",
+    f"s3://{S3_BUCKET}/raw/rag_sources/Harvard/cs50_output/notes_json/",
+)
+
+# Golden labels path (S3 or local)
+GOLDEN_LABELS_PATH = os.getenv(
+    "RAG_EXPERIMENT_GOLDEN_LABELS_PATH",
+    f"s3://{S3_BUCKET}/prepared/outputs/golden_labels_filtered.json",
+)
+GOLDEN_LABEL_FALLBACK_PATHS = [
+    f"s3://{S3_BUCKET}/prepared/rag/experiments/outputs/golden_labels.json"
+]
+EVAL_QUERIES_PATH = os.getenv(
+    "RAG_EXPERIMENT_EVAL_QUERIES_PATH",
+    f"s3://{S3_BUCKET}/prepared/rag/experiments/outputs/eval_queries.jsonl",
+)
+
+# Output prefix (S3 or local)
+OUTPUT_PREFIX = os.getenv(
+    "RAG_EXPERIMENT_OUTPUT_PREFIX",
+    f"s3://{S3_BUCKET}/prepared/rag/experiments/outputs/",
+)
+
+OUTPUT_DIR = OUTPUT_PREFIX
+
+
+def _is_s3_url(path: str | Path) -> bool:
+    s = str(path)
+    return s.startswith("s3://") or "console.aws.amazon.com/s3/object/" in s
+
+
+def _parse_s3_url(url: str) -> tuple[str, str | None]:
+    s = str(url)
+    if s.startswith("s3://"):
+        rest = s[len("s3://"):]
+        parts = rest.split("/", 1)
+        return parts[0], parts[1] if len(parts) > 1 else None
+
+    p = urlparse(s)
+    if "console.aws.amazon.com" in p.netloc and "/s3/object/" in p.path:
+        bucket = p.path.split("/s3/object/", 1)[1].strip("/ ")
+        key = parse_qs(p.query).get("prefix", [None])[0]
+        return bucket, key
+
+    raise ValueError(f"Unrecognized S3 URL: {url}")
+
+
+def _get_s3_client() -> Any:
+    try:
+        import boto3
+        from botocore import UNSIGNED
+        from botocore.client import Config
+    except ModuleNotFoundError as e:
+        raise RuntimeError("S3 paths require boto3/botocore. Install boto3 or use local paths.") from e
+
+    if os.environ.get("S3_ANONYMOUS", "0") in ("1", "true", "True"):
+        return boto3.client("s3", config=Config(signature_version=UNSIGNED))
+    return boto3.client("s3")
+
+
+def _read_text(path: Path | str) -> str:
+    if isinstance(path, Path):
+        path = str(path)
+
+    if _is_s3_url(path):
+        bucket, key = _parse_s3_url(path)
+        if not key:
+            raise ValueError(f"S3 object key not found in URL: {path}")
+        s3 = _get_s3_client()
+        try:
+            obj = s3.get_object(Bucket=bucket, Key=key)
+        except Exception as e:
+            raise FileNotFoundError(f"Could not read s3://{bucket}/{key}: {e}") from e
+        return obj["Body"].read().decode("utf-8")
+
+    return Path(path).read_text(encoding="utf-8")
+
+
+def _write_json(path: Path | str, data: Any) -> None:
+    if isinstance(path, Path):
+        path = str(path)
+    text = json.dumps(data, indent=2, default=str)
+
+    if _is_s3_url(path):
+        bucket, key = _parse_s3_url(path)
+        if not key:
+            raise ValueError(f"S3 object key not found in URL: {path}")
+        s3 = _get_s3_client()
+        s3.put_object(
+            Bucket=bucket,
+            Key=key,
+            Body=text.encode("utf-8"),
+            ContentType="application/json",
+        )
+        return
+
+    local_path = Path(path)
+    local_path.parent.mkdir(parents=True, exist_ok=True)
+    local_path.write_text(text, encoding="utf-8")
 
 # ---------------------------------------------------------------------------
 # 1. Golden Labels Loading
@@ -58,19 +163,84 @@ class GoldenQuery:
     golden_chunk_ids: set[str]          # chunk IDs that should be retrieved
 
 
-def load_golden_queries(path: Path) -> list[GoldenQuery]:
-    with open(path, encoding="utf-8") as f:
-        data = json.load(f)
+def load_golden_queries(path: Path | str) -> list[GoldenQuery]:
+    """Load golden queries from a local file or S3 path."""
+    attempted: list[str] = []
+    text = ""
+    loaded_path = ""
+    for candidate in [str(path), *GOLDEN_LABEL_FALLBACK_PATHS]:
+        if candidate in attempted:
+            continue
+        attempted.append(candidate)
+        try:
+            text = _read_text(candidate)
+            loaded_path = candidate
+            break
+        except (FileNotFoundError, RuntimeError) as e:
+            print(f"  [golden labels] not found: {candidate} ({e})")
+
+    if not text:
+        raise FileNotFoundError(
+            "Could not load golden labels from any candidate path:\n"
+            + "\n".join(f"  - {p}" for p in attempted)
+        )
+
+    if loaded_path != str(path):
+        print(f"  [golden labels] using fallback: {loaded_path}")
+
+    data = json.loads(text)
+
+    # New labeling output is qid -> [chunk_id, ...]. Merge it with eval_queries.jsonl.
+    if data and all(isinstance(v, list) for v in data.values()):
+        eval_queries = _load_eval_query_metadata()
+        return [
+            GoldenQuery(
+                query_id=qid,
+                student_message=eval_queries[qid]["student_message"],
+                week=eval_queries[qid]["week"],
+                mode=eval_queries[qid]["mode"],
+                golden_chunk_ids=set(chunk_ids),
+            )
+            for qid, chunk_ids in data.items()
+            if qid in eval_queries
+        ]
+
     queries: list[GoldenQuery] = []
     for qid, entry in data.items():
+        found_chunks = entry.get("found_chunks", {})
+        if isinstance(found_chunks, list):
+            golden_ids = set(found_chunks)
+        else:
+            golden_ids = set(found_chunks.keys())
         queries.append(GoldenQuery(
             query_id=qid,
             student_message=entry["student_message"],
             week=entry["week"],
             mode=entry["mode"],
-            golden_chunk_ids=set(entry["found_chunks"].keys()),
+            golden_chunk_ids=golden_ids,
         ))
     return queries
+
+
+def _load_eval_query_metadata() -> dict[str, dict[str, Any]]:
+    candidates = [
+        EVAL_QUERIES_PATH,
+        str(Path(__file__).resolve().parent / "outputs" / "eval_queries.jsonl"),
+    ]
+    for candidate in candidates:
+        try:
+            text = _read_text(candidate)
+            return {
+                rec["query_id"]: rec
+                for rec in (json.loads(line) for line in text.splitlines() if line.strip())
+            }
+        except (FileNotFoundError, RuntimeError) as e:
+            print(f"  [eval queries] not found: {candidate} ({e})")
+
+    raise FileNotFoundError(
+        "Golden labels are stored as qid -> list, so eval_queries.jsonl is required. "
+        "Set RAG_EXPERIMENT_EVAL_QUERIES_PATH or upload eval_queries.jsonl beside the labels."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -257,7 +427,7 @@ def load_slide_chunks(raw_data_path: Path, overlap: int = 0) -> list[ExpChunk]:
     return chunks
 
 
-def load_harvard_cs50_chunks(raw_data_path: Path, overlap: int = 0) -> list[ExpChunk]:
+def load_harvard_cs50_chunks(raw_data_path: Path | str, overlap: int = 0) -> list[ExpChunk]:
     """
     Load the Harvard CS50 note chunks used by the labeling pipeline.
 
@@ -265,6 +435,9 @@ def load_harvard_cs50_chunks(raw_data_path: Path, overlap: int = 0) -> list[ExpC
     Harvard loader, so the retrieval experiment must index those same chunk IDs
     for recall/precision metrics to be meaningful. The overlap argument is
     accepted only to keep the experiment loop's loader call uniform.
+    
+    If raw_data_path is an S3 path, this will import and use helpers from
+    labeling_chunks to handle S3 downloads.
     """
     experiments_dir = Path(__file__).resolve().parent
     if str(experiments_dir) not in sys.path:
@@ -1019,9 +1192,9 @@ def main():
               f"mrr={m['mrr']:.4f}  ndcg@{k}={m[f'ndcg@{k}']:.4f}")
 
         # Save results
-        results_path = OUTPUT_DIR / "experiment_results.json"
-        with open(results_path, "w", encoding="utf-8") as f:
-            json.dump(all_results, f, indent=2, default=str)
+        results_path = OUTPUT_PREFIX.rstrip("/") + "/experiment_results.json"
+
+        _write_json(results_path, all_results)
         print(f"\nResults saved → {results_path}")
 
 
