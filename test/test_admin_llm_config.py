@@ -126,6 +126,49 @@ def test_admin_save_llm_config(monkeypatch, tmp_path: Path) -> None:
     assert response.json()["chat"]["provider"] == "openai"
 
 
+def test_admin_save_llm_config_allows_sagemaker_without_model(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("ADMIN_TOKEN", "admin-token")
+    runtime_state = {"config": _runtime_config()}
+    monkeypatch.setattr("rag_eng.api.get_inference_config", lambda: runtime_state["config"])
+    monkeypatch.setattr("rag_eng.api.get_runtime_config_path", lambda: tmp_path / "runtime_config.yaml")
+
+    def fake_save_runtime_config(data, path=None):
+        runtime = data["runtime"]
+        runtime_state["config"] = InferenceConfig(
+            ollama=runtime_state["config"].ollama,
+            sagemaker=runtime_state["config"].sagemaker,
+            rag=ModelRouteConfig(
+                provider=runtime["rag"]["provider"],
+                model=runtime["rag"]["model"],
+            ),
+            chat=ModelRouteConfig(
+                provider=runtime["chat"]["provider"],
+                model=runtime["chat"].get("model", ""),
+            ),
+            openai_base_url=runtime["openai"]["base_url"],
+        )
+
+    monkeypatch.setattr("rag_eng.api.save_runtime_config", fake_save_runtime_config)
+    monkeypatch.setattr("rag_eng.api.update_env_file", lambda path, updates: None)
+    monkeypatch.setattr("rag_eng.api.reload_inference_config", lambda: runtime_state["config"])
+
+    client = _client()
+    response = client.post(
+        "/admin/llm/config",
+        headers={"X-Admin-Token": "admin-token"},
+        json={
+            "rag": {"provider": "openai", "model": "gpt-5.4-mini"},
+            "chat": {"provider": "sagemaker", "model": ""},
+            "openai_api_key": None,
+            "openai_base_url": "https://api.openai.com/v1",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["chat"]["provider"] == "sagemaker"
+    assert response.json()["chat"]["model"] == ""
+
+
 def test_admin_restart_uses_restart_command(monkeypatch) -> None:
     monkeypatch.setenv("ADMIN_TOKEN", "admin-token")
     monkeypatch.setenv("RESTART_COMMAND", "echo restart")

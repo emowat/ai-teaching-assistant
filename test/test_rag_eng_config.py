@@ -2,8 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from rag_eng.config import get_settings
 from rag_eng.config import load_runtime_config, save_runtime_config, update_env_file
+from rag_eng.schemas import ModelRouteConfig
 
 
 def test_get_settings_uses_environment(monkeypatch) -> None:
@@ -43,6 +46,17 @@ def test_runtime_config_round_trip(tmp_path: Path) -> None:
     save_runtime_config(payload, path)
 
     assert load_runtime_config(path) == payload
+
+
+def test_model_route_config_allows_sagemaker_without_model() -> None:
+    route = ModelRouteConfig(provider="sagemaker", model="")
+
+    assert route.model == ""
+
+
+def test_model_route_config_requires_model_for_non_sagemaker() -> None:
+    with pytest.raises(ValueError, match="model is required"):
+        ModelRouteConfig(provider="openai", model="")
 
 
 def test_update_env_file_preserves_comments_and_updates_values(

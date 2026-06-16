@@ -3,7 +3,7 @@ runtime:
     provider: openai
     model: gpt-5.4-mini
   chat:
-    provider: openai
-    model: gpt-5.4-mini
+    provider: sagemaker
+    model: ''
   openai:
     base_url: https://api.openai.com/v1

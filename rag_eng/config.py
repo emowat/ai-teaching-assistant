@@ -133,19 +133,35 @@ def load_inference_config(path: Path | None = None) -> InferenceConfig:
     default_chat_provider = "sagemaker" if os.getenv("USE_SAGEMAKER", "false").lower() == "true" else "ollama"
     rag_provider = str(rag_raw.get("provider", "cohere"))
     chat_provider = str(chat_raw.get("provider", default_chat_provider))
-    rag_default_model = "gpt-5.4-mini" if rag_provider == "openai" else "command-xlarge-nightly"
-    chat_default_model = "gpt-5.4-mini" if chat_provider == "openai" else model
+    rag_default_model = (
+        ""
+        if rag_provider == "sagemaker"
+        else "gpt-5.4-mini"
+        if rag_provider == "openai"
+        else "command-xlarge-nightly"
+    )
+    chat_default_model = (
+        ""
+        if chat_provider == "sagemaker"
+        else "gpt-5.4-mini"
+        if chat_provider == "openai"
+        else model
+    )
+
+    def _route_model(raw_value: object, default: str) -> str:
+        value = "" if raw_value is None else str(raw_value).strip()
+        return value if value else default
 
     return InferenceConfig(
         ollama=ollama,
         sagemaker=sagemaker,
         rag=ModelRouteConfig(
             provider=rag_provider,
-            model=str(rag_raw.get("model", rag_default_model)),
+            model=_route_model(rag_raw.get("model"), rag_default_model),
         ),
         chat=ModelRouteConfig(
             provider=chat_provider,
-            model=str(chat_raw.get("model", chat_default_model)),
+            model=_route_model(chat_raw.get("model"), chat_default_model),
         ),
         openai_base_url=str(openai_raw.get("base_url", "https://api.openai.com/v1")),
     )

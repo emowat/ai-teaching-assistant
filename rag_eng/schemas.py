@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from rag.schemas import QueryInput, RetrievalResult
 
@@ -121,7 +121,15 @@ class ModelRouteConfig(BaseModel):
     """Non-secret provider/model pair saved by the admin UI."""
 
     provider: Literal["cohere", "openai", "ollama", "sagemaker"]
-    model: str = Field(min_length=1, max_length=200)
+    model: str = Field(default="", max_length=200)
+
+    @model_validator(mode="after")
+    def _validate_model_for_provider(self) -> "ModelRouteConfig":
+        if self.provider == "sagemaker":
+            return self
+        if not self.model.strip():
+            raise ValueError(f"model is required for provider '{self.provider}'")
+        return self
 
 
 class AdminLlmConfigResponse(BaseModel):
