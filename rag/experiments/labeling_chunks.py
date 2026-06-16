@@ -225,8 +225,6 @@ def _parse_s3_url(url: str) -> tuple[str, str | None]:
     raise ValueError(f"Unrecognized S3 URL: {url}")
 
 
-<<<<<<< Updated upstream
-=======
 def _require_boto3() -> None:
     if boto3 is None or botocore is None:
         raise RuntimeError(
@@ -241,7 +239,6 @@ def _get_s3_client() -> Any:
     return boto3.client("s3")
 
 
->>>>>>> Stashed changes
 def _read_text(path: Path | str) -> str:
     """Read text from a local path or an S3 object (s3:// or console URL)."""
     if isinstance(path, Path):
