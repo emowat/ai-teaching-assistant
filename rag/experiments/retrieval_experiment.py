@@ -2,13 +2,13 @@
 """
 retrieval_experiment.py  —  Phases 2-5: Retrieval Experiment Grid Search
 
-Grid: 3 embedding × 2 chunking × 6 retriever × 5 top_k = 180 runs
-      Actual index rebuilds: 3 × 2 = 6 (top_k and retriever reuse same index)
+Grid: embeddings × corpus × retriever × top_k × rerank × mode × weights ×
+      rule_threshold. Index rebuilds only depend on embedding × corpus.
 
 Workflow per run:
-  1. Load chunks with selected chunking strategy (slide / slide+overlap).
+  1. Load Harvard CS50 chunks with the same loader used by golden labeling.
   2. Build Qdrant Cloud index with selected embedding model.
-  3. For each retriever type × top_k value:
+  3. For each retrieval/rerank config:
      a. Retrieve top_k chunks per query.
      b. Compute Recall@K, MRR, NDCG, Precision@K vs golden labels.
      c. Log to MLflow.
@@ -25,13 +25,13 @@ from __future__ import annotations
 
 import argparse
 import collections
-import hashlib
 import json
+import math
 import os
 import sys
 import time
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -74,7 +74,7 @@ def load_golden_queries(path: Path) -> list[GoldenQuery]:
 
 
 # ---------------------------------------------------------------------------
-# 2. Chunking Strategies
+# 2. Corpus Loading
 # ---------------------------------------------------------------------------
 
 @dataclass
@@ -257,6 +257,36 @@ def load_slide_chunks(raw_data_path: Path, overlap: int = 0) -> list[ExpChunk]:
     return chunks
 
 
+def load_harvard_cs50_chunks(raw_data_path: Path, overlap: int = 0) -> list[ExpChunk]:
+    """
+    Load the Harvard CS50 note chunks used by the labeling pipeline.
+
+    `golden_labels_filtered.json` was generated from labeling_chunks.py's
+    Harvard loader, so the retrieval experiment must index those same chunk IDs
+    for recall/precision metrics to be meaningful. The overlap argument is
+    accepted only to keep the experiment loop's loader call uniform.
+    """
+    experiments_dir = Path(__file__).resolve().parent
+    if str(experiments_dir) not in sys.path:
+        sys.path.insert(0, str(experiments_dir))
+
+    from labeling_chunks import load_harvard_notes
+
+    if overlap:
+        print("  [chunking] overlap ignored for Harvard CS50 note chunks.")
+
+    chunks = []
+    for c in load_harvard_notes(raw_data_path):
+        chunks.append(ExpChunk(
+            chunk_id=c.chunk_id,
+            content=c.content,
+            week=c.week,
+            category=c.category,
+            source_domain=c.source_domain,
+        ))
+    return chunks
+
+
 # ---------------------------------------------------------------------------
 # 3. Qdrant Indexing
 # ---------------------------------------------------------------------------
@@ -282,10 +312,7 @@ def build_index(
 ) -> Any:
     """Build a Qdrant collection with embedded chunk vectors. Returns the client."""
     from sentence_transformers import SentenceTransformer
-    from qdrant_client.models import (
-        Distance, PointStruct, VectorParams,
-        PayloadSchemaType, FieldCondition, Filter, MatchValue,
-    )
+    from qdrant_client.models import Distance, PointStruct, VectorParams, PayloadSchemaType
 
     print(f"  Loading embedding model: {embedding_model_name} ...")
     model = SentenceTransformer(embedding_model_name)
@@ -310,7 +337,11 @@ def build_index(
     for start in range(0, len(chunks), batch_size):
         batch = chunks[start:start + batch_size]
         texts = [c.content for c in batch]
-        vectors = model.encode(texts, show_progress_bar=False).tolist()
+        vectors = model.encode(
+            texts,
+            normalize_embeddings=True,
+            show_progress_bar=False,
+        ).tolist()
         for c, vec in zip(batch, vectors):
             points.append(PointStruct(
                 id=c.chunk_id,
@@ -349,6 +380,14 @@ def _week_filter(week: int) -> Any:
     return Filter(must=[FieldCondition(key="week", match=MatchValue(value=week))])
 
 
+def _category_filter(week: int, category: str) -> Any:
+    from qdrant_client.models import FieldCondition, Filter, MatchValue
+    return Filter(must=[
+        FieldCondition(key="week", match=MatchValue(value=week)),
+        FieldCondition(key="category", match=MatchValue(value=category)),
+    ])
+
+
 def _semantic_filter(week: int) -> Any:
     from qdrant_client.models import FieldCondition, Filter, MatchValue
     return Filter(
@@ -377,12 +416,104 @@ def _pedagogy_filter(week: int) -> Any:
     )
 
 
-_CATEGORY_WEIGHTS = {
-    "Syllabus": 2.0,
-    "Strict_Rules": 0.8,
+_BASE_WEIGHTS = {
+    "Syllabus": 1.5,
+    "Strict_Rules": 1.5,
     "Pedagogical_Context": 1.0,
+    "Guideline": 0.8,
     "Supplementary": 0.5,
 }
+
+_MODE_WEIGHTS = {
+    "homework": {
+        "Syllabus": 1.5,
+        "Strict_Rules": 1.8,
+        "Pedagogical_Context": 0.9,
+        "Guideline": 0.3,
+        "Supplementary": 0.3,
+    },
+    "study": {
+        "Syllabus": 1.5,
+        "Strict_Rules": 1.0,
+        "Pedagogical_Context": 1.5,
+        "Guideline": 1.2,
+        "Supplementary": 0.8,
+    },
+}
+
+_WEIGHT_PROFILE_OVERRIDES = {
+    "production": {},
+    "neutral": {
+        "Syllabus": 1.0,
+        "Strict_Rules": 1.0,
+        "Pedagogical_Context": 1.0,
+        "Guideline": 1.0,
+        "Supplementary": 1.0,
+    },
+    "rules_heavy": {
+        "Syllabus": 1.5,
+        "Strict_Rules": 2.0,
+        "Pedagogical_Context": 0.8,
+        "Guideline": 0.5,
+        "Supplementary": 0.4,
+    },
+    "pedagogy_heavy": {
+        "Syllabus": 1.2,
+        "Strict_Rules": 0.8,
+        "Pedagogical_Context": 1.8,
+        "Guideline": 1.0,
+        "Supplementary": 0.8,
+    },
+}
+
+
+def _category_weights(mode: str, weight_profile: str) -> dict[str, float]:
+    if weight_profile == "production":
+        return _MODE_WEIGHTS.get(mode, _BASE_WEIGHTS)
+    return _WEIGHT_PROFILE_OVERRIDES.get(weight_profile, _BASE_WEIGHTS)
+
+
+def _token_set(text: str) -> set[str]:
+    return set(text.lower().split())
+
+
+def _jaccard_sim(a: set[str], b: set[str]) -> float:
+    if not a or not b:
+        return 0.0
+    return len(a & b) / len(a | b)
+
+
+def _mmr_rerank(
+    candidates: list[tuple[str, float, str]],
+    top_k: int,
+    lambda_param: float,
+) -> list[tuple[str, float, str]]:
+    """Diversify scored candidates with the same Jaccard-token MMR style as production."""
+    if len(candidates) <= top_k:
+        return candidates
+
+    selected: list[tuple[str, float, str]] = []
+    remaining = list(candidates)
+    remaining_sets = [_token_set(content) for _, _, content in remaining]
+
+    while len(selected) < top_k and remaining:
+        if not selected:
+            best_idx = 0
+        else:
+            best_score = -math.inf
+            best_idx = 0
+            selected_sets = [_token_set(content) for _, _, content in selected]
+            for i, (_, score, _) in enumerate(remaining):
+                max_sim = max(_jaccard_sim(remaining_sets[i], s) for s in selected_sets)
+                mmr_score = lambda_param * score - (1 - lambda_param) * max_sim
+                if mmr_score > best_score:
+                    best_score = mmr_score
+                    best_idx = i
+
+        selected.append(remaining.pop(best_idx))
+        remaining_sets.pop(best_idx)
+
+    return selected
 
 
 def retrieve(
@@ -393,6 +524,10 @@ def retrieve(
     collection_name: str,
     retriever_type: str,
     top_k: int,
+    rerank_strategy: str,
+    mode: str,
+    weight_profile: str,
+    rule_threshold: float | None,
 ) -> list[str]:
     """
     Run retrieval. Returns list of chunk IDs (ordered by score descending).
@@ -405,8 +540,10 @@ def retrieve(
       pedagogy+rules  — pedagogy + rules combined (no syllabus)
       full            — all three lanes (production config)
     """
-    query_vector = model.encode(query_text).tolist()
-    retrieved: list[tuple[str, float]] = []
+    query_vector = model.encode(query_text, normalize_embeddings=True).tolist()
+    fetch_k = top_k * 4 if rerank_strategy.startswith("mmr") else top_k
+    weights = _category_weights(mode, weight_profile)
+    retrieved: list[tuple[str, float, str]] = []
 
     # --- Individual category lanes ---
 
@@ -419,44 +556,54 @@ def retrieve(
             collection_name=collection_name,
             query=query_vector,
             query_filter=filt,
-            limit=top_k if retriever_type == "vector" else top_k,
+            limit=fetch_k,
         ).points
         for h in hits:
             payload = h.payload or {}
             cat = payload.get("category", "")
-            weight = _CATEGORY_WEIGHTS.get(cat, 1.0)
-            retrieved.append((str(h.id), h.score * weight))
+            weight = weights.get(cat, 1.0)
+            retrieved.append((str(h.id), h.score * weight, str(payload.get("content", ""))))
 
     if retriever_type in ("rules", "pedagogy+rules", "full"):
-        hits = client.query_points(
-            collection_name=collection_name,
-            query=query_vector,
-            query_filter=_rules_filter(week),
-            limit=max(2, top_k // 2),
-        ).points
+        query_kwargs = {
+            "collection_name": collection_name,
+            "query": query_vector,
+            "query_filter": _rules_filter(week),
+            "limit": max(2, fetch_k // 2),
+        }
+        if rule_threshold is not None:
+            query_kwargs["score_threshold"] = rule_threshold
+        hits = client.query_points(**query_kwargs).points
         for h in hits:
-            retrieved.append((str(h.id), h.score * 1.5))
+            payload = h.payload or {}
+            cat = payload.get("category", "Strict_Rules")
+            weight = weights.get(cat, 1.0)
+            retrieved.append((str(h.id), h.score * weight, str(payload.get("content", ""))))
 
     if retriever_type in ("syllabus", "full"):
         records, _ = client.scroll(
             collection_name=collection_name,
-            scroll_filter=_week_filter(week),
+            scroll_filter=_category_filter(week, "Syllabus"),
             limit=1,
         )
         for r in records:
-            p = r.payload or {}
-            if p.get("category") == "Syllabus":
-                retrieved.append((str(r.id), 2.0))
+            payload = r.payload or {}
+            weight = weights.get("Syllabus", 1.0)
+            retrieved.append((str(r.id), 1.0 * weight, str(payload.get("content", ""))))
 
     # Dedup & sort by score descending
     seen: set[str] = set()
-    unique: list[str] = []
-    for cid, _ in sorted(retrieved, key=lambda x: x[1], reverse=True):
+    unique: list[tuple[str, float, str]] = []
+    for cid, score, content in sorted(retrieved, key=lambda x: x[1], reverse=True):
         if cid not in seen:
             seen.add(cid)
-            unique.append(cid)
+            unique.append((cid, score, content))
 
-    return unique[:top_k]
+    if rerank_strategy.startswith("mmr"):
+        lambda_param = float(rerank_strategy.removeprefix("mmr_"))
+        unique = _mmr_rerank(unique, top_k=top_k, lambda_param=lambda_param)
+
+    return [cid for cid, _, _ in unique[:top_k]]
 
 
 # ---------------------------------------------------------------------------
@@ -479,6 +626,13 @@ def compute_metrics(
     # Precision@K
     precision = len(hits) / k if k > 0 else 0.0
 
+    # F1@K
+    f1 = (
+        2 * precision * recall / (precision + recall)
+        if precision + recall > 0
+        else 0.0
+    )
+
     # MRR
     mrr = 0.0
     for i, cid in enumerate(retrieved_list):
@@ -497,8 +651,12 @@ def compute_metrics(
     ndcg = dcg / idcg if idcg > 0 else 0.0
 
     return {
+        "recall": round(recall, 4),
+        "precision": round(precision, 4),
+        "f1": round(f1, 4),
         f"recall@{k}": round(recall, 4),
         f"precision@{k}": round(precision, 4),
+        f"f1@{k}": round(f1, 4),
         "mrr": round(mrr, 4),
         f"ndcg@{k}": round(ndcg, 4),
     }
@@ -516,8 +674,7 @@ EMBEDDING_MODELS = [
 ]
 
 CHUNKING_STRATEGIES = [
-    "slide",            # baseline: one slide per chunk
-    "slide+overlap1",   # include adjacent slide content
+    "harvard_notes",    # same chunk IDs used by golden_labels_filtered.json
 ]
 
 RETRIEVER_TYPES = [
@@ -533,6 +690,40 @@ RETRIEVER_TYPES = [
 
 TOP_K_VALUES = [3, 5, 8, 10, 15]
 
+RERANK_STRATEGIES = [
+    "similarity",
+    "mmr_0.5",
+    "mmr_0.7",
+    "mmr_0.9",
+]
+
+MODES = [
+    "homework",
+    "study",
+]
+
+WEIGHT_PROFILES = [
+    "production",
+    "neutral",
+    "rules_heavy",
+    "pedagogy_heavy",
+]
+
+RULE_THRESHOLDS = [
+    None,
+    0.45,
+    0.55,
+    0.65,
+]
+
+_RULE_RETRIEVERS = {"rules", "pedagogy+rules", "full"}
+
+
+def _rule_thresholds_for(retriever_type: str) -> list[float | None]:
+    if retriever_type in _RULE_RETRIEVERS:
+        return RULE_THRESHOLDS
+    return [None]
+
 
 def run_experiment(
     golden_queries: list[GoldenQuery],
@@ -544,6 +735,10 @@ def run_experiment(
     collection_name: str,
     client: Any,
     model: Any,
+    rerank_strategy: str,
+    mode: str,
+    weight_profile: str,
+    rule_threshold: float | None,
     mlflow_active: bool = True,
 ) -> dict:
     """Run one full experiment: retrieve for all queries, compute metrics."""
@@ -558,6 +753,10 @@ def run_experiment(
             collection_name=collection_name,
             retriever_type=retriever_type,
             top_k=top_k,
+            rerank_strategy=rerank_strategy,
+            mode=mode,
+            weight_profile=weight_profile,
+            rule_threshold=rule_threshold,
         )
         metrics = compute_metrics(retrieved, q.golden_chunk_ids, top_k)
         all_metrics.append(metrics)
@@ -570,20 +769,42 @@ def run_experiment(
         agg[key] = round(float(np.mean(vals)), 4)
 
     latency = round(time.perf_counter() - t0, 3)
+    weights = _category_weights(mode, weight_profile)
+    rerank_lambda = (
+        float(rerank_strategy.removeprefix("mmr_"))
+        if rerank_strategy.startswith("mmr")
+        else "none"
+    )
 
     params = {
         "embedding_model": embedding_model_name,
         "chunking": chunking,
         "retriever_type": retriever_type,
         "top_k": top_k,
+        "rerank_strategy": rerank_strategy,
+        "rerank_lambda": rerank_lambda,
+        "fetch_multiplier": 4 if rerank_strategy.startswith("mmr") else 1,
+        "mode": mode,
+        "weight_profile": weight_profile,
+        "weight_syllabus": weights.get("Syllabus", 1.0),
+        "weight_strict_rules": weights.get("Strict_Rules", 1.0),
+        "weight_pedagogical_context": weights.get("Pedagogical_Context", 1.0),
+        "weight_guideline": weights.get("Guideline", 1.0),
+        "weight_supplementary": weights.get("Supplementary", 1.0),
+        "rule_threshold": "none" if rule_threshold is None else rule_threshold,
+        "normalize_embeddings": True,
         "num_queries": len(golden_queries),
         "num_chunks": len(chunks),
         "collection_name": collection_name,
     }
 
     # Print result
-    print(f"    top_k={top_k:>2}  {retriever_type:<18}  "
+    threshold_label = "none" if rule_threshold is None else f"{rule_threshold:.2f}"
+    print(f"    top_k={top_k:>2}  {retriever_type:<15}  {rerank_strategy:<10}  "
+          f"{mode:<8}  {weight_profile:<14}  rule_t={threshold_label:<4}  "
           f"recall@{top_k}={agg[f'recall@{top_k}']:.4f}  "
+          f"precision@{top_k}={agg[f'precision@{top_k}']:.4f}  "
+          f"f1@{top_k}={agg[f'f1@{top_k}']:.4f}  "
           f"mrr={agg['mrr']:.4f}  ndcg@{top_k}={agg[f'ndcg@{top_k}']:.4f}  "
           f"lat={latency:.1f}s")
 
@@ -618,7 +839,7 @@ def main():
         tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "")
         if tracking_uri:
             mlflow.set_tracking_uri(tracking_uri)
-        mlflow.set_experiment("rag-retrieval-experiment")
+        mlflow.set_experiment("rag_retrieval")
         print(f"MLflow tracking: {mlflow.get_tracking_uri()}")
     except ImportError:
         print("WARNING: mlflow not installed. Metrics will not be logged.")
@@ -637,19 +858,35 @@ def main():
     # --- Config grid ---
     if args.quick:
         embeddings = [EMBEDDING_MODELS[1]]  # mpnet only
-        chunkings = [CHUNKING_STRATEGIES[0]]  # slide only
+        chunkings = [CHUNKING_STRATEGIES[0]]  # Harvard CS50 notes only
         retrievers = RETRIEVER_TYPES
         top_ks = TOP_K_VALUES
+        rerank_strategies = ["similarity", "mmr_0.7"]
+        modes = MODES
+        weight_profiles = ["production"]
     else:
         embeddings = EMBEDDING_MODELS
         chunkings = CHUNKING_STRATEGIES
         retrievers = RETRIEVER_TYPES
         top_ks = TOP_K_VALUES
+        rerank_strategies = RERANK_STRATEGIES
+        modes = MODES
+        weight_profiles = WEIGHT_PROFILES
 
-    total_runs = len(embeddings) * len(chunkings) * len(retrievers) * len(top_ks)
+    retriever_run_count = sum(
+        len(_rule_thresholds_for(rt))
+        for rt in retrievers
+    )
+    total_runs = (
+        len(embeddings) * len(chunkings) * len(top_ks) *
+        len(rerank_strategies) * len(modes) * len(weight_profiles) *
+        retriever_run_count
+    )
     total_rebuilds = len(embeddings) * len(chunkings)
     print(f"\nGrid: {len(embeddings)} embedding × {len(chunkings)} chunking × "
-          f"{len(retrievers)} retriever × {len(top_ks)} top_k = {total_runs} runs")
+          f"{len(retrievers)} retriever × {len(top_ks)} top_k × "
+          f"{len(rerank_strategies)} rerank × {len(modes)} mode × "
+          f"{len(weight_profiles)} weight profile × rule thresholds = {total_runs} runs")
     print(f"Index rebuilds: {total_rebuilds}")
 
     if args.dry_run:
@@ -659,7 +896,19 @@ def main():
                 print(f"  [{emb}] × [{ch}]")
                 for rt in retrievers:
                     for k in top_ks:
-                        print(f"      retriever={rt:<18}  top_k={k}")
+                        for rerank_strategy in rerank_strategies:
+                            for mode in modes:
+                                for weight_profile in weight_profiles:
+                                    for rule_threshold in _rule_thresholds_for(rt):
+                                        threshold_label = (
+                                            "none" if rule_threshold is None
+                                            else f"{rule_threshold:.2f}"
+                                        )
+                                        print(
+                                            f"      retriever={rt:<15} top_k={k:<2} "
+                                            f"rerank={rerank_strategy:<10} mode={mode:<8} "
+                                            f"weights={weight_profile:<14} rule_t={threshold_label}"
+                                        )
         return
 
     # --- Main loop ---
@@ -676,8 +925,8 @@ def main():
 
             # --- Load chunks ---
             overlap = 1 if "overlap1" in chunking else 0
-            chunks = load_slide_chunks(RAW_DATA_PATH, overlap=overlap)
-            print(f"  Loaded {len(chunks)} chunks (overlap={overlap}).")
+            chunks = load_harvard_cs50_chunks(RAW_DATA_PATH, overlap=overlap)
+            print(f"  Loaded {len(chunks)} Harvard CS50 chunks.")
 
             # --- Build index ---
             safe_name = emb_model.replace("/", "_").replace("-", "_")
@@ -690,28 +939,52 @@ def main():
                 chunks, emb_model, collection_name,
             )
 
-            # --- Run retrievers × top_k ---
-            print(f"\n  {'top_k':<6} {'retriever':<18} {'recall@K':<10} {'mrr':<10} {'ndcg@K':<10} {'latency'}")
-            print(f"  {'-'*6} {'-'*18} {'-'*10} {'-'*10} {'-'*10} {'-'*8}")
+            # --- Run retrievers × top_k × rerank/mode/weight/threshold ---
+            print(
+                f"\n  {'top_k':<6} {'retriever':<15} {'rerank':<10} "
+                f"{'mode':<8} {'weights':<14} {'rule_t':<11} "
+                f"{'recall@K':<10} {'precision@K':<12} {'f1@K':<10} "
+                f"{'mrr':<10} {'ndcg@K':<10} {'latency'}"
+            )
+            print(
+                f"  {'-'*6} {'-'*15} {'-'*10} {'-'*8} {'-'*14} {'-'*11} "
+                f"{'-'*10} {'-'*12} {'-'*10} {'-'*10} {'-'*10} {'-'*8}"
+            )
 
             for retriever_type in retrievers:
                 for top_k in top_ks:
-                    with mlflow.start_run(
-                        run_name=f"{safe_name}_{chunking}_{retriever_type}_k{top_k}"
-                    ) if mlflow_active else _NoopContext():
-                        result = run_experiment(
-                            golden_queries=golden_queries,
-                            chunks=chunks,
-                            embedding_model_name=emb_model,
-                            chunking=chunking,
-                            retriever_type=retriever_type,
-                            top_k=top_k,
-                            collection_name=collection_name,
-                            client=client,
-                            model=model,
-                            mlflow_active=mlflow_active,
-                        )
-                        all_results.append(result)
+                    for rerank_strategy in rerank_strategies:
+                        for mode in modes:
+                            for weight_profile in weight_profiles:
+                                for rule_threshold in _rule_thresholds_for(retriever_type):
+                                    threshold_name = (
+                                        "none" if rule_threshold is None
+                                        else str(rule_threshold).replace(".", "p")
+                                    )
+                                    run_name = (
+                                        f"{safe_name}_{chunking}_{retriever_type}_k{top_k}_"
+                                        f"{rerank_strategy}_{mode}_{weight_profile}_rt{threshold_name}"
+                                    )
+                                    with mlflow.start_run(
+                                        run_name=run_name
+                                    ) if mlflow_active else _NoopContext():
+                                        result = run_experiment(
+                                            golden_queries=golden_queries,
+                                            chunks=chunks,
+                                            embedding_model_name=emb_model,
+                                            chunking=chunking,
+                                            retriever_type=retriever_type,
+                                            top_k=top_k,
+                                            collection_name=collection_name,
+                                            client=client,
+                                            model=model,
+                                            rerank_strategy=rerank_strategy,
+                                            mode=mode,
+                                            weight_profile=weight_profile,
+                                            rule_threshold=rule_threshold,
+                                            mlflow_active=mlflow_active,
+                                        )
+                                        all_results.append(result)
 
             # --- Cleanup ---
             try:
@@ -737,8 +1010,12 @@ def main():
         m = best["metrics"]
         k = p["top_k"]
         print(f"  embedding={p['embedding_model']}  chunking={p['chunking']}  "
-              f"retriever={p['retriever_type']}  top_k={k}")
+              f"retriever={p['retriever_type']}  top_k={k}  "
+              f"rerank={p['rerank_strategy']}  mode={p['mode']}  "
+              f"weights={p['weight_profile']}  rule_threshold={p['rule_threshold']}")
         print(f"  recall@{k}={m[f'recall@{k}']:.4f}  "
+              f"precision@{k}={m[f'precision@{k}']:.4f}  "
+              f"f1@{k}={m[f'f1@{k}']:.4f}  "
               f"mrr={m['mrr']:.4f}  ndcg@{k}={m[f'ndcg@{k}']:.4f}")
 
         # Save results
