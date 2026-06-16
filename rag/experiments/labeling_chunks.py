@@ -43,13 +43,27 @@ import os
 import shutil
 from urllib.parse import urlparse, parse_qs
 
-# Optional S3 support (boto3 imported lazily in helpers)
-import boto3
-import botocore
-from botocore import UNSIGNED
-from botocore.client import Config
-from botocore.exceptions import NoCredentialsError
-from dotenv import load_dotenv
+# Optional S3 support.
+try:
+    import boto3
+    import botocore
+    from botocore import UNSIGNED
+    from botocore.client import Config
+    from botocore.exceptions import NoCredentialsError
+except ModuleNotFoundError:
+    boto3 = None
+    botocore = None
+    UNSIGNED = None
+    Config = None
+
+    class NoCredentialsError(Exception):
+        pass
+
+try:
+    from dotenv import load_dotenv
+except ModuleNotFoundError:
+    def load_dotenv() -> None:
+        return None
 
 # Load environment variables from .env if present
 load_dotenv()
@@ -204,12 +218,20 @@ def _parse_s3_url(url: str) -> tuple[str, str | None]:
     raise ValueError(f"Unrecognized S3 URL: {url}")
 
 
+def _require_boto3() -> None:
+    if boto3 is None or botocore is None:
+        raise RuntimeError(
+            "S3 paths require boto3/botocore. Install boto3 or use a local path."
+        )
+
+
 def _read_text(path: Path | str) -> str:
     """Read text from a local path or an S3 object (s3:// or console URL)."""
     if isinstance(path, Path):
         path = str(path)
 
     if _is_s3_url(path):
+        _require_boto3()
         bucket, key = _parse_s3_url(path)
         if not key:
             raise ValueError(f"S3 object key not found in URL: {path}")
@@ -243,6 +265,7 @@ def _ensure_local_raw_data(raw_path: Path | str) -> str:
     if not _is_s3_url(raw_path):
         return str(raw_path)
 
+    _require_boto3()
     bucket, prefix = _parse_s3_url(raw_path)
     if prefix is None:
         prefix = ""
