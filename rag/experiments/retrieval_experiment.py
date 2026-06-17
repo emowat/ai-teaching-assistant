@@ -59,9 +59,7 @@ GOLDEN_LABELS_PATH = os.getenv(
     "RAG_EXPERIMENT_GOLDEN_LABELS_PATH",
     f"s3://{S3_BUCKET}/prepared/outputs/golden_labels_filtered.json",
 )
-GOLDEN_LABEL_FALLBACK_PATHS = [
-    f"s3://{S3_BUCKET}/prepared/rag/experiments/outputs/golden_labels.json"
-]
+
 EVAL_QUERIES_PATH = os.getenv(
     "RAG_EXPERIMENT_EVAL_QUERIES_PATH",
     f"s3://{S3_BUCKET}/prepared/rag/experiments/outputs/eval_queries.jsonl",
@@ -168,7 +166,7 @@ def load_golden_queries(path: Path | str) -> list[GoldenQuery]:
     attempted: list[str] = []
     text = ""
     loaded_path = ""
-    for candidate in [str(path), *GOLDEN_LABEL_FALLBACK_PATHS]:
+    for candidate in [str(path)]:
         if candidate in attempted:
             continue
         attempted.append(candidate)
