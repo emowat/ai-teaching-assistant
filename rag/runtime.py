@@ -27,17 +27,24 @@ class RagRuntimeConfig:
     qdrant_url: str | None
     qdrant_api_key: str | None
     qdrant_path: str
-    collection_name: str
-    guidelines_collection_name: str
-    harvard_collection_name: str
+    collection_mit13: str
+    collection_mit14: str
+    collection_cs50: str
+    collection_guidelines: str
     embedding_model: str
     raw_data_path: str
 
     @property
     def uses_remote_qdrant(self) -> bool:
-        # The presence of a Qdrant URL is the switch that tells the repository
-        # to talk to the hosted service instead of the legacy local directory.
         return bool(self.qdrant_url)
+
+    def collection_for(self, course: str) -> str:
+        """Map course source to Qdrant collection name."""
+        return {
+            "mit13": self.collection_mit13,
+            "mit14": self.collection_mit14,
+            "cs50": self.collection_cs50,
+        }.get(course, self.collection_mit13)
 
 
 def get_runtime_config() -> RagRuntimeConfig:
@@ -55,13 +62,10 @@ def get_runtime_config() -> RagRuntimeConfig:
         qdrant_url=os.getenv("QDRANT_URL"),
         qdrant_api_key=os.getenv("QDRANT_API_KEY"),
         qdrant_path=os.getenv("QDRANT_PATH", str(default_qdrant_path)),
-        collection_name=os.getenv("QDRANT_COLLECTION_NAME", "course_knowledge"),
-        guidelines_collection_name=os.getenv(
-            "QDRANT_GUIDELINES_COLLECTION_NAME", "cpp_guidelines",
-        ),
-        harvard_collection_name=os.getenv(
-            "QDRANT_HARVARD_COLLECTION_NAME", "harvard_cs50",
-        ),
+        collection_mit13=os.getenv("QDRANT_COLLECTION_MIT13", "mit13_course"),
+        collection_mit14=os.getenv("QDRANT_COLLECTION_MIT14", "mit14_course"),
+        collection_cs50=os.getenv("QDRANT_COLLECTION_CS50", "cs50_course"),
+        collection_guidelines=os.getenv("QDRANT_COLLECTION_GUIDELINES", "cpp_guidelines"),
         embedding_model=os.getenv(
             "EMBEDDING_MODEL",
             "sentence-transformers/multi-qa-mpnet-base-dot-v1",

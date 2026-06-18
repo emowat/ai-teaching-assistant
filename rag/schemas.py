@@ -35,8 +35,9 @@ class SourceDomain(str, Enum):
 
 class CourseSource(str, Enum):
     """Which course the student is enrolled in — drives collection selection."""
-    MIT = "mit"
-    HARVARD = "harvard"
+    MIT_13 = "mit13"
+    MIT_14 = "mit14"
+    CS50 = "cs50"
 
 
 class AssistMode(str, Enum):
@@ -93,7 +94,7 @@ class QueryInput(BaseModel):
     week: int = Field(ge=0, le=8)
     mode: AssistMode = AssistMode.HOMEWORK_ASSIST
     ast_features: ASTFeatures = Field(default_factory=ASTFeatures)
-    course_source: CourseSource = CourseSource.HARVARD
+    course_source: CourseSource = CourseSource.CS50
 
 
 # ---------------------------------------------------------------------------
