@@ -1,28 +1,21 @@
 #!/usr/bin/env python3
 """
-retrieval_experiment.py  —  Phases 2-5: Retrieval Experiment Grid Search
+retrieval_experiment.py  —  Reusable RAG Retrieval Experiment Pipeline
 
-Grid: embeddings × corpus × retriever × top_k × rerank × mode × weights ×
-      rule_threshold. Index rebuilds only depend on embedding × corpus.
+Exports: load_golden_queries, load_harvard_cs50_chunks, build_index,
+         compute_metrics, run_experiment, GoldenQuery, ExpChunk.
 
-Workflow per run:
-  1. Load Harvard CS50 chunks with the same loader used by golden labeling.
-  2. Build Qdrant Cloud index with selected embedding model.
-  3. For each retrieval/rerank config:
-     a. Retrieve top_k chunks per query.
-     b. Compute Recall@K, MRR, NDCG, Precision@K vs golden labels.
-     c. Log to MLflow.
+Grid: embeddings x top_k x rerank.  Index rebuilds per embedding model.
+
+run_experiment() accepts an optional retrieve_fn for custom retrieval strategies
+(e.g. BM25+vector hybrid). Import this module from add_bm25.py or similar.
 
 Usage:
   export QDRANT_URL="https://..." QDRANT_API_KEY="..."
-  export MLFLOW_TRACKING_URI="https://..."  # or "file:///tmp/mlruns" for local
-  export RAG_EXPERIMENT_S3_BUCKET="your-bucket"
-  export RAG_EXPERIMENT_RAW_DATA_PATH="s3://bucket/path/to/data"
-  export RAG_EXPERIMENT_GOLDEN_LABELS_PATH="s3://bucket/path/to/golden_labels.json"
-  export RAG_EXPERIMENT_OUTPUT_PREFIX="s3://bucket/path/to/outputs/"
+  export MLFLOW_TRACKING_URI="https://..."
   python retrieval_experiment.py                     # full grid
-  python retrieval_experiment.py --quick             # 1 model × 1 chunking only
-  python retrieval_experiment.py --dry-run           # validate setup, no index builds
+  python retrieval_experiment.py --quick             # 1 model, fewer rerank
+  python retrieval_experiment.py --dry-run           # validate setup
 """
 
 from __future__ import annotations
@@ -57,12 +50,22 @@ RAW_DATA_PATH = os.getenv(
 # Golden labels path (S3 or local)
 GOLDEN_LABELS_PATH = os.getenv(
     "RAG_EXPERIMENT_GOLDEN_LABELS_PATH",
-    f"s3://{S3_BUCKET}/prepared/outputs/golden_labels_filtered.json",
+    f"s3://{S3_BUCKET}/prepared/outputs/golden_labels_cs50_validated.json",
+)
+
+HARVARD_TRANSCRIPTS_PATH = os.getenv(
+    "RAG_EXPERIMENT_TRANSCRIPTS_PATH",
+    f"s3://{S3_BUCKET}/raw/rag_sources/Harvard/cs50_transcripts/",
+)
+
+CPP_GUIDELINES_PATH = os.getenv(
+    "RAG_EXPERIMENT_GUIDELINES_PATH",
+    f"s3://{S3_BUCKET}/raw/rag_sources/cppcoreguidelines/cppcoreguidelines.json",
 )
 
 EVAL_QUERIES_PATH = os.getenv(
     "RAG_EXPERIMENT_EVAL_QUERIES_PATH",
-    f"s3://{S3_BUCKET}/prepared/rag/experiments/outputs/eval_queries.jsonl",
+    f"s3://{S3_BUCKET}/prepared/rag/experiments/outputs/eval_queries_cs50.jsonl",
 )
 
 # Output prefix (S3 or local)
@@ -426,35 +429,31 @@ def load_slide_chunks(raw_data_path: Path, overlap: int = 0) -> list[ExpChunk]:
 
 
 def load_harvard_cs50_chunks(raw_data_path: Path | str, overlap: int = 0) -> list[ExpChunk]:
-    """
-    Load the Harvard CS50 note chunks used by the labeling pipeline.
-
-    `golden_labels_filtered.json` was generated from labeling_chunks.py's
-    Harvard loader, so the retrieval experiment must index those same chunk IDs
-    for recall/precision metrics to be meaningful. The overlap argument is
-    accepted only to keep the experiment loop's loader call uniform.
-    
-    If raw_data_path is an S3 path, this will import and use helpers from
-    labeling_chunks to handle S3 downloads.
-    """
+    """Load Harvard CS50 notes, transcripts, and C++ Core Guidelines — same chunks as labeling."""
     experiments_dir = Path(__file__).resolve().parent
     if str(experiments_dir) not in sys.path:
         sys.path.insert(0, str(experiments_dir))
 
-    from labeling_chunks import load_harvard_notes
+    from labeling_chunks import load_harvard_notes, load_harvard_transcripts, load_cpp_guidelines
 
     if overlap:
-        print("  [chunking] overlap ignored for Harvard CS50 note chunks.")
+        print("  [chunking] overlap ignored for Harvard CS50 chunks.")
 
-    chunks = []
-    for c in load_harvard_notes(raw_data_path):
-        chunks.append(ExpChunk(
-            chunk_id=c.chunk_id,
-            content=c.content,
-            week=c.week,
-            category=c.category,
-            source_domain=c.source_domain,
-        ))
+    def _to_exp(c) -> ExpChunk:
+        return ExpChunk(chunk_id=c.chunk_id, content=c.content, week=c.week,
+                        category=c.category, source_domain=c.source_domain)
+
+    chunks = [_to_exp(c) for c in load_harvard_notes(raw_data_path)]
+    print(f"  Notes: {len(chunks)} chunks")
+
+    tx = load_harvard_transcripts(HARVARD_TRANSCRIPTS_PATH)
+    chunks.extend(_to_exp(c) for c in tx)
+    print(f"  Transcripts: {len(tx)} chunks")
+
+    cpp = load_cpp_guidelines(CPP_GUIDELINES_PATH)
+    chunks.extend(_to_exp(c) for c in cpp)
+    print(f"  C++ Guidelines: {len(cpp)} chunks")
+
     return chunks
 
 
@@ -502,9 +501,11 @@ def build_index(
     )
     print(f"  Created collection: {collection_name} (dim={actual_dim})")
 
-    # Build points
-    points: list[PointStruct] = []
-    batch_size = 128
+    # Embed and upsert in small batches so SageMaker jobs do not retain all
+    # vectors and full text payloads in memory at once.
+    batch_size = int(os.getenv("RAG_EXPERIMENT_EMBED_BATCH_SIZE", "8"))
+    indexed_count = 0
+    print(f"  Embedding/upserting in batches of {batch_size} ...")
     for start in range(0, len(chunks), batch_size):
         batch = chunks[start:start + batch_size]
         texts = [c.content for c in batch]
@@ -513,6 +514,7 @@ def build_index(
             normalize_embeddings=True,
             show_progress_bar=False,
         ).tolist()
+        points = []
         for c, vec in zip(batch, vectors):
             points.append(PointStruct(
                 id=c.chunk_id,
@@ -525,10 +527,8 @@ def build_index(
                     "source_domain": c.source_domain,
                 },
             ))
-
-    # Upsert
-    for start in range(0, len(points), 100):
-        client.upsert(collection_name=collection_name, points=points[start:start+100])
+        client.upsert(collection_name=collection_name, points=points)
+        indexed_count += len(points)
 
     # Payload indexes for filtered search
     for field in ["week", "category"]:
@@ -538,111 +538,13 @@ def build_index(
         except Exception:
             pass
 
-    print(f"  Indexed {len(points)} points.")
+    print(f"  Indexed {indexed_count} points.")
     return client, model
 
 
 # ---------------------------------------------------------------------------
 # 4. Retrieval
 # ---------------------------------------------------------------------------
-
-def _week_filter(week: int) -> Any:
-    from qdrant_client.models import FieldCondition, Filter, MatchValue
-    return Filter(must=[FieldCondition(key="week", match=MatchValue(value=week))])
-
-
-def _category_filter(week: int, category: str) -> Any:
-    from qdrant_client.models import FieldCondition, Filter, MatchValue
-    return Filter(must=[
-        FieldCondition(key="week", match=MatchValue(value=week)),
-        FieldCondition(key="category", match=MatchValue(value=category)),
-    ])
-
-
-def _semantic_filter(week: int) -> Any:
-    from qdrant_client.models import FieldCondition, Filter, MatchValue
-    return Filter(
-        must=[FieldCondition(key="week", match=MatchValue(value=week))],
-        must_not=[FieldCondition(key="category", match=MatchValue(value="Syllabus"))],
-    )
-
-
-def _rules_filter(week: int) -> Any:
-    from qdrant_client.models import FieldCondition, Filter, MatchValue
-    return Filter(must=[
-        FieldCondition(key="week", match=MatchValue(value=week)),
-        FieldCondition(key="category", match=MatchValue(value="Strict_Rules")),
-    ])
-
-
-def _pedagogy_filter(week: int) -> Any:
-    """Filter: exclude Syllabus and Strict_Rules (Pedagogical_Context + Supplementary only)."""
-    from qdrant_client.models import FieldCondition, Filter, MatchValue
-    return Filter(
-        must=[FieldCondition(key="week", match=MatchValue(value=week))],
-        must_not=[
-            FieldCondition(key="category", match=MatchValue(value="Syllabus")),
-            FieldCondition(key="category", match=MatchValue(value="Strict_Rules")),
-        ],
-    )
-
-
-_BASE_WEIGHTS = {
-    "Syllabus": 1.5,
-    "Strict_Rules": 1.5,
-    "Pedagogical_Context": 1.0,
-    "Guideline": 0.8,
-    "Supplementary": 0.5,
-}
-
-_MODE_WEIGHTS = {
-    "homework": {
-        "Syllabus": 1.5,
-        "Strict_Rules": 1.8,
-        "Pedagogical_Context": 0.9,
-        "Guideline": 0.3,
-        "Supplementary": 0.3,
-    },
-    "study": {
-        "Syllabus": 1.5,
-        "Strict_Rules": 1.0,
-        "Pedagogical_Context": 1.5,
-        "Guideline": 1.2,
-        "Supplementary": 0.8,
-    },
-}
-
-_WEIGHT_PROFILE_OVERRIDES = {
-    "production": {},
-    "neutral": {
-        "Syllabus": 1.0,
-        "Strict_Rules": 1.0,
-        "Pedagogical_Context": 1.0,
-        "Guideline": 1.0,
-        "Supplementary": 1.0,
-    },
-    "rules_heavy": {
-        "Syllabus": 1.5,
-        "Strict_Rules": 2.0,
-        "Pedagogical_Context": 0.8,
-        "Guideline": 0.5,
-        "Supplementary": 0.4,
-    },
-    "pedagogy_heavy": {
-        "Syllabus": 1.2,
-        "Strict_Rules": 0.8,
-        "Pedagogical_Context": 1.8,
-        "Guideline": 1.0,
-        "Supplementary": 0.8,
-    },
-}
-
-
-def _category_weights(mode: str, weight_profile: str) -> dict[str, float]:
-    if weight_profile == "production":
-        return _MODE_WEIGHTS.get(mode, _BASE_WEIGHTS)
-    return _WEIGHT_PROFILE_OVERRIDES.get(weight_profile, _BASE_WEIGHTS)
-
 
 def _token_set(text: str) -> set[str]:
     return set(text.lower().split())
@@ -691,90 +593,38 @@ def retrieve(
     client: Any,
     model: Any,
     query_text: str,
-    week: int,
+    query_week: int,
     collection_name: str,
-    retriever_type: str,
     top_k: int,
     rerank_strategy: str,
-    mode: str,
-    weight_profile: str,
-    rule_threshold: float | None,
 ) -> list[str]:
-    """
-    Run retrieval. Returns list of chunk IDs (ordered by score descending).
+    """Vector retrieval with week filter (current week and prior only) + optional MMR rerank."""
 
-    Retriever types (6 category-based lanes):
-      vector          — pure vector, no filter, all categories
-      pedagogy        — vector, filtered to Pedagogical_Context + Supplementary
-      rules           — vector, filtered to Strict_Rules only
-      syllabus        — exact lookup, Syllabus only
-      pedagogy+rules  — pedagogy + rules combined (no syllabus)
-      full            — all three lanes (production config)
-    """
     query_vector = model.encode(query_text, normalize_embeddings=True).tolist()
     fetch_k = top_k * 4 if rerank_strategy.startswith("mmr") else top_k
-    weights = _category_weights(mode, weight_profile)
-    retrieved: list[tuple[str, float, str]] = []
 
-    # --- Individual category lanes ---
+    from qdrant_client.models import FieldCondition, Filter, Range
+    week_filter = Filter(
+        must=[FieldCondition(key="week", range=Range(lte=query_week))]
+    )
 
-    if retriever_type in ("vector", "pedagogy", "pedagogy+rules", "full"):
-        if retriever_type == "vector":
-            filt = None  # no filter at all
-        else:
-            filt = _pedagogy_filter(week)  # pedagogy + supplementary only
-        hits = client.query_points(
-            collection_name=collection_name,
-            query=query_vector,
-            query_filter=filt,
-            limit=fetch_k,
-        ).points
-        for h in hits:
-            payload = h.payload or {}
-            cat = payload.get("category", "")
-            weight = weights.get(cat, 1.0)
-            retrieved.append((str(h.id), h.score * weight, str(payload.get("content", ""))))
+    hits = client.query_points(
+        collection_name=collection_name,
+        query=query_vector,
+        query_filter=week_filter,
+        limit=fetch_k,
+    ).points
 
-    if retriever_type in ("rules", "pedagogy+rules", "full"):
-        query_kwargs = {
-            "collection_name": collection_name,
-            "query": query_vector,
-            "query_filter": _rules_filter(week),
-            "limit": max(2, fetch_k // 2),
-        }
-        if rule_threshold is not None:
-            query_kwargs["score_threshold"] = rule_threshold
-        hits = client.query_points(**query_kwargs).points
-        for h in hits:
-            payload = h.payload or {}
-            cat = payload.get("category", "Strict_Rules")
-            weight = weights.get(cat, 1.0)
-            retrieved.append((str(h.id), h.score * weight, str(payload.get("content", ""))))
-
-    if retriever_type in ("syllabus", "full"):
-        records, _ = client.scroll(
-            collection_name=collection_name,
-            scroll_filter=_category_filter(week, "Syllabus"),
-            limit=1,
-        )
-        for r in records:
-            payload = r.payload or {}
-            weight = weights.get("Syllabus", 1.0)
-            retrieved.append((str(r.id), 1.0 * weight, str(payload.get("content", ""))))
-
-    # Dedup & sort by score descending
-    seen: set[str] = set()
-    unique: list[tuple[str, float, str]] = []
-    for cid, score, content in sorted(retrieved, key=lambda x: x[1], reverse=True):
-        if cid not in seen:
-            seen.add(cid)
-            unique.append((cid, score, content))
+    retrieved: list[tuple[str, float, str]] = [
+        (str(h.id), h.score, str((h.payload or {}).get("content", "")))
+        for h in hits
+    ]
 
     if rerank_strategy.startswith("mmr"):
         lambda_param = float(rerank_strategy.removeprefix("mmr_"))
-        unique = _mmr_rerank(unique, top_k=top_k, lambda_param=lambda_param)
+        retrieved = _mmr_rerank(retrieved, top_k=top_k, lambda_param=lambda_param)
 
-    return [cid for cid, _, _ in unique[:top_k]]
+    return [cid for cid, _, _ in retrieved[:top_k]]
 
 
 # ---------------------------------------------------------------------------
@@ -842,21 +692,8 @@ EMBEDDING_MODELS = [
     "all-MiniLM-L6-v2",
     "sentence-transformers/multi-qa-mpnet-base-dot-v1",
     "BAAI/bge-base-en-v1.5",
-]
-
-CHUNKING_STRATEGIES = [
-    "harvard_notes",    # same chunk IDs used by golden_labels_filtered.json
-]
-
-RETRIEVER_TYPES = [
-    # Individual category lanes — which categories are retrievable?
-    "vector",           # pure vector, no filter — baseline
-    "pedagogy",         # Pedagogical_Context + Supplementary only
-    "rules",            # Strict_Rules only
-    "syllabus",         # Syllabus exact lookup only
-    # Category lane combinations
-    "pedagogy+rules",   # pedagogy + rules (no syllabus)
-    "full",             # all three lanes (production config)
+    "intfloat/e5-base-v2",
+    # "intfloat/e5-large-v2",
 ]
 
 TOP_K_VALUES = [3, 5, 8, 10, 15]
@@ -868,66 +705,91 @@ RERANK_STRATEGIES = [
     "mmr_0.9",
 ]
 
-MODES = [
-    "homework",
-    "study",
-]
 
-WEIGHT_PROFILES = [
-    "production",
-    "neutral",
-    "rules_heavy",
-    "pedagogy_heavy",
-]
-
-RULE_THRESHOLDS = [
-    None,
-    0.45,
-    0.55,
-    0.65,
-]
-
-_RULE_RETRIEVERS = {"rules", "pedagogy+rules", "full"}
+def _metric_key(metric_name: str, top_k: int) -> str:
+    return f"{metric_name}@{top_k}"
 
 
-def _rule_thresholds_for(retriever_type: str) -> list[float | None]:
-    if retriever_type in _RULE_RETRIEVERS:
-        return RULE_THRESHOLDS
-    return [None]
+def _mlflow_metric_name(metric_name: str) -> str:
+    """Convert display metric names like recall@10 into MLflow-safe names."""
+    return metric_name.replace("@", "_at_")
+
+
+def _log_mlflow_metrics(metrics: dict[str, float], latency: float | None = None) -> None:
+    import mlflow
+
+    mlflow.log_metrics({
+        _mlflow_metric_name(key): value
+        for key, value in metrics.items()
+    })
+    if latency is not None:
+        mlflow.log_metric("latency_seconds", latency)
+
+
+def _f1_for_result(result: dict) -> float:
+    top_k = result["params"]["top_k"]
+    return result["metrics"].get(_metric_key("f1", top_k), result["metrics"].get("f1", 0.0))
+
+
+def _log_best_f1_run(best: dict, total_runs: int) -> None:
+    import mlflow
+
+    params = best["params"]
+    metrics = best["metrics"]
+    top_k = params["top_k"]
+
+    best_params = {
+        f"best_{key}": value
+        for key, value in params.items()
+    }
+    best_params["selection_metric"] = _metric_key("f1", top_k)
+    best_params["total_candidate_runs"] = total_runs
+
+    best_metrics = {
+        "best_f1": _f1_for_result(best),
+        "best_recall": metrics.get(_metric_key("recall", top_k), metrics.get("recall", 0.0)),
+        "best_precision": metrics.get(_metric_key("precision", top_k), metrics.get("precision", 0.0)),
+        "best_mrr": metrics.get("mrr", 0.0),
+        "best_ndcg": metrics.get(_metric_key("ndcg", top_k), 0.0),
+        "best_latency_seconds": best["latency"],
+    }
+
+    with mlflow.start_run(run_name="best_f1_summary"):
+        mlflow.log_params(best_params)
+        _log_mlflow_metrics(best_metrics)
 
 
 def run_experiment(
     golden_queries: list[GoldenQuery],
     chunks: list[ExpChunk],
     embedding_model_name: str,
-    chunking: str,
-    retriever_type: str,
     top_k: int,
     collection_name: str,
     client: Any,
     model: Any,
     rerank_strategy: str,
-    mode: str,
-    weight_profile: str,
-    rule_threshold: float | None,
+    retrieve_fn: Any = None,
     mlflow_active: bool = True,
 ) -> dict:
-    """Run one full experiment: retrieve for all queries, compute metrics."""
+    """Run one full experiment: retrieve for all queries, compute metrics.
+
+    retrieve_fn(client, model, query_text, query_week, collection_name, top_k, rerank_strategy) -> list[str]
+    Defaults to the built-in pure vector retrieve().
+    """
+    if retrieve_fn is None:
+        retrieve_fn = retrieve
+
     t0 = time.perf_counter()
 
     all_metrics: list[dict] = []
     for q in golden_queries:
-        retrieved = retrieve(
+        retrieved = retrieve_fn(
             client=client, model=model,
             query_text=q.student_message,
-            week=q.week,
+            query_week=q.week,
             collection_name=collection_name,
-            retriever_type=retriever_type,
             top_k=top_k,
             rerank_strategy=rerank_strategy,
-            mode=mode,
-            weight_profile=weight_profile,
-            rule_threshold=rule_threshold,
         )
         metrics = compute_metrics(retrieved, q.golden_chunk_ids, top_k)
         all_metrics.append(metrics)
@@ -940,7 +802,6 @@ def run_experiment(
         agg[key] = round(float(np.mean(vals)), 4)
 
     latency = round(time.perf_counter() - t0, 3)
-    weights = _category_weights(mode, weight_profile)
     rerank_lambda = (
         float(rerank_strategy.removeprefix("mmr_"))
         if rerank_strategy.startswith("mmr")
@@ -949,30 +810,17 @@ def run_experiment(
 
     params = {
         "embedding_model": embedding_model_name,
-        "chunking": chunking,
-        "retriever_type": retriever_type,
         "top_k": top_k,
         "rerank_strategy": rerank_strategy,
         "rerank_lambda": rerank_lambda,
         "fetch_multiplier": 4 if rerank_strategy.startswith("mmr") else 1,
-        "mode": mode,
-        "weight_profile": weight_profile,
-        "weight_syllabus": weights.get("Syllabus", 1.0),
-        "weight_strict_rules": weights.get("Strict_Rules", 1.0),
-        "weight_pedagogical_context": weights.get("Pedagogical_Context", 1.0),
-        "weight_guideline": weights.get("Guideline", 1.0),
-        "weight_supplementary": weights.get("Supplementary", 1.0),
-        "rule_threshold": "none" if rule_threshold is None else rule_threshold,
-        "normalize_embeddings": True,
         "num_queries": len(golden_queries),
         "num_chunks": len(chunks),
         "collection_name": collection_name,
     }
 
     # Print result
-    threshold_label = "none" if rule_threshold is None else f"{rule_threshold:.2f}"
-    print(f"    top_k={top_k:>2}  {retriever_type:<15}  {rerank_strategy:<10}  "
-          f"{mode:<8}  {weight_profile:<14}  rule_t={threshold_label:<4}  "
+    print(f"    top_k={top_k:>2}  {rerank_strategy:<10}  "
           f"recall@{top_k}={agg[f'recall@{top_k}']:.4f}  "
           f"precision@{top_k}={agg[f'precision@{top_k}']:.4f}  "
           f"f1@{top_k}={agg[f'f1@{top_k}']:.4f}  "
@@ -983,14 +831,11 @@ def run_experiment(
         try:
             import mlflow
             mlflow.log_params(params)
-            mlflow.log_metrics(agg)
-            mlflow.log_metric("latency_seconds", latency)
+            _log_mlflow_metrics(agg, latency=latency)
         except Exception as e:
             print(f"    [mlflow warning] {e}")
 
     return {"params": params, "metrics": agg, "latency": latency}
-
-
 # ---------------------------------------------------------------------------
 # 7. Main
 # ---------------------------------------------------------------------------
@@ -998,7 +843,7 @@ def run_experiment(
 def main():
     parser = argparse.ArgumentParser(description="Retrieval experiment grid search")
     parser.add_argument("--quick", action="store_true",
-                        help="Quick mode: 1 model × 1 chunking only.")
+                        help="Quick mode: 1 embedding model, fewer rerank strategies.")
     parser.add_argument("--dry-run", action="store_true",
                         help="Validate setup, print configs, no actual indexing.")
     args = parser.parse_args()
@@ -1028,58 +873,24 @@ def main():
 
     # --- Config grid ---
     if args.quick:
-        embeddings = [EMBEDDING_MODELS[1]]  # mpnet only
-        chunkings = [CHUNKING_STRATEGIES[0]]  # Harvard CS50 notes only
-        retrievers = RETRIEVER_TYPES
-        top_ks = TOP_K_VALUES
+        embeddings = [EMBEDDING_MODELS[0]]
         rerank_strategies = ["similarity", "mmr_0.7"]
-        modes = MODES
-        weight_profiles = ["production"]
     else:
         embeddings = EMBEDDING_MODELS
-        chunkings = CHUNKING_STRATEGIES
-        retrievers = RETRIEVER_TYPES
-        top_ks = TOP_K_VALUES
         rerank_strategies = RERANK_STRATEGIES
-        modes = MODES
-        weight_profiles = WEIGHT_PROFILES
 
-    retriever_run_count = sum(
-        len(_rule_thresholds_for(rt))
-        for rt in retrievers
-    )
-    total_runs = (
-        len(embeddings) * len(chunkings) * len(top_ks) *
-        len(rerank_strategies) * len(modes) * len(weight_profiles) *
-        retriever_run_count
-    )
-    total_rebuilds = len(embeddings) * len(chunkings)
-    print(f"\nGrid: {len(embeddings)} embedding × {len(chunkings)} chunking × "
-          f"{len(retrievers)} retriever × {len(top_ks)} top_k × "
-          f"{len(rerank_strategies)} rerank × {len(modes)} mode × "
-          f"{len(weight_profiles)} weight profile × rule thresholds = {total_runs} runs")
-    print(f"Index rebuilds: {total_rebuilds}")
+    top_ks = TOP_K_VALUES
+    total_runs = len(embeddings) * len(top_ks) * len(rerank_strategies)
+    print(f"\nGrid: {len(embeddings)} embedding x {len(top_ks)} top_k x "
+          f"{len(rerank_strategies)} rerank = {total_runs} runs")
 
     if args.dry_run:
         print("\n[DRY RUN] Configs that would be tested:")
         for emb in embeddings:
-            for ch in chunkings:
-                print(f"  [{emb}] × [{ch}]")
-                for rt in retrievers:
-                    for k in top_ks:
-                        for rerank_strategy in rerank_strategies:
-                            for mode in modes:
-                                for weight_profile in weight_profiles:
-                                    for rule_threshold in _rule_thresholds_for(rt):
-                                        threshold_label = (
-                                            "none" if rule_threshold is None
-                                            else f"{rule_threshold:.2f}"
-                                        )
-                                        print(
-                                            f"      retriever={rt:<15} top_k={k:<2} "
-                                            f"rerank={rerank_strategy:<10} mode={mode:<8} "
-                                            f"weights={weight_profile:<14} rule_t={threshold_label}"
-                                        )
+            print(f"  [{emb}]")
+            for k in top_ks:
+                for rerank_strategy in rerank_strategies:
+                    print(f"      top_k={k:<2}  rerank={rerank_strategy}")
         return
 
     # --- Main loop ---
@@ -1087,85 +898,53 @@ def main():
     rebuild_count = 0
 
     for emb_model in embeddings:
-        for chunking in chunkings:
-            rebuild_count += 1
-            print(f"\n{'=' * 60}")
-            print(f"[Rebuild {rebuild_count}/{total_rebuilds}] "
-                  f"embedding={emb_model}  chunking={chunking}")
-            print(f"{'=' * 60}")
+        rebuild_count += 1
+        print(f"\n{'=' * 60}")
+        print(f"[Rebuild {rebuild_count}/{len(embeddings)}] embedding={emb_model}")
+        print(f"{'=' * 60}")
 
-            # --- Load chunks ---
-            overlap = 1 if "overlap1" in chunking else 0
-            chunks = load_harvard_cs50_chunks(RAW_DATA_PATH, overlap=overlap)
-            print(f"  Loaded {len(chunks)} Harvard CS50 chunks.")
+        # Load chunks
+        chunks = load_harvard_cs50_chunks(RAW_DATA_PATH)
+        print(f"  Loaded {len(chunks)} Harvard CS50 chunks.")
 
-            # --- Build index ---
-            safe_name = emb_model.replace("/", "_").replace("-", "_")
-            collection_name = f"exp_{chunking}_{safe_name}"
-            if args.dry_run:
-                print(f"  [DRY RUN] Would create collection: {collection_name}")
-                continue
+        # Build index
+        safe_name = emb_model.replace("/", "_").replace("-", "_")
+        collection_name = f"exp_{safe_name}"
+        client, model = build_index(chunks, emb_model, collection_name)
 
-            client, model = build_index(
-                chunks, emb_model, collection_name,
-            )
+        # Run top_k x rerank
+        print(f"\n  {'top_k':<6} {'rerank':<10} "
+              f"{'recall@K':<10} {'precision@K':<12} {'f1@K':<10} "
+              f"{'mrr':<10} {'ndcg@K':<10} {'latency'}")
+        print(f"  {'-'*6} {'-'*10} "
+              f"{'-'*10} {'-'*12} {'-'*10} {'-'*10} {'-'*10} {'-'*8}")
 
-            # --- Run retrievers × top_k × rerank/mode/weight/threshold ---
-            print(
-                f"\n  {'top_k':<6} {'retriever':<15} {'rerank':<10} "
-                f"{'mode':<8} {'weights':<14} {'rule_t':<11} "
-                f"{'recall@K':<10} {'precision@K':<12} {'f1@K':<10} "
-                f"{'mrr':<10} {'ndcg@K':<10} {'latency'}"
-            )
-            print(
-                f"  {'-'*6} {'-'*15} {'-'*10} {'-'*8} {'-'*14} {'-'*11} "
-                f"{'-'*10} {'-'*12} {'-'*10} {'-'*10} {'-'*10} {'-'*8}"
-            )
+        for top_k in top_ks:
+            for rerank_strategy in rerank_strategies:
+                run_name = f"{safe_name}_k{top_k}_{rerank_strategy}"
+                with mlflow.start_run(run_name=run_name) if mlflow_active else _NoopContext():
+                    result = run_experiment(
+                        golden_queries=golden_queries,
+                        chunks=chunks,
+                        embedding_model_name=emb_model,
+                        top_k=top_k,
+                        collection_name=collection_name,
+                        client=client,
+                        model=model,
+                        rerank_strategy=rerank_strategy,
+                        mlflow_active=mlflow_active,
+                    )
+                    all_results.append(result)
 
-            for retriever_type in retrievers:
-                for top_k in top_ks:
-                    for rerank_strategy in rerank_strategies:
-                        for mode in modes:
-                            for weight_profile in weight_profiles:
-                                for rule_threshold in _rule_thresholds_for(retriever_type):
-                                    threshold_name = (
-                                        "none" if rule_threshold is None
-                                        else str(rule_threshold).replace(".", "p")
-                                    )
-                                    run_name = (
-                                        f"{safe_name}_{chunking}_{retriever_type}_k{top_k}_"
-                                        f"{rerank_strategy}_{mode}_{weight_profile}_rt{threshold_name}"
-                                    )
-                                    with mlflow.start_run(
-                                        run_name=run_name
-                                    ) if mlflow_active else _NoopContext():
-                                        result = run_experiment(
-                                            golden_queries=golden_queries,
-                                            chunks=chunks,
-                                            embedding_model_name=emb_model,
-                                            chunking=chunking,
-                                            retriever_type=retriever_type,
-                                            top_k=top_k,
-                                            collection_name=collection_name,
-                                            client=client,
-                                            model=model,
-                                            rerank_strategy=rerank_strategy,
-                                            mode=mode,
-                                            weight_profile=weight_profile,
-                                            rule_threshold=rule_threshold,
-                                            mlflow_active=mlflow_active,
-                                        )
-                                        all_results.append(result)
-
-            # --- Cleanup ---
-            try:
-                client.delete_collection(collection_name)
-            except Exception:
-                pass
-            try:
-                client.close()
-            except Exception:
-                pass
+        # Cleanup
+        try:
+            client.delete_collection(collection_name)
+        except Exception:
+            pass
+        try:
+            client.close()
+        except Exception:
+            pass
 
     # --- Final report ---
     if all_results:
@@ -1180,20 +959,37 @@ def main():
         p = best["params"]
         m = best["metrics"]
         k = p["top_k"]
-        print(f"  embedding={p['embedding_model']}  chunking={p['chunking']}  "
-              f"retriever={p['retriever_type']}  top_k={k}  "
-              f"rerank={p['rerank_strategy']}  mode={p['mode']}  "
-              f"weights={p['weight_profile']}  rule_threshold={p['rule_threshold']}")
+        print(f"  embedding={p['embedding_model']}  top_k={k}  "
+              f"rerank={p['rerank_strategy']}")
         print(f"  recall@{k}={m[f'recall@{k}']:.4f}  "
               f"precision@{k}={m[f'precision@{k}']:.4f}  "
               f"f1@{k}={m[f'f1@{k}']:.4f}  "
               f"mrr={m['mrr']:.4f}  ndcg@{k}={m[f'ndcg@{k}']:.4f}")
 
-        # Save results
-        results_path = OUTPUT_PREFIX.rstrip("/") + "/experiment_results.json"
+        # Best by F1
+        best_f1 = max(all_results, key=_f1_for_result)
+        p = best_f1["params"]
+        m = best_f1["metrics"]
+        k = p["top_k"]
+        print(f"\nBest by F1:")
+        print(f"  embedding={p['embedding_model']}  top_k={k}  "
+              f"rerank={p['rerank_strategy']}")
+        print(f"  recall@{k}={m[f'recall@{k}']:.4f}  "
+              f"precision@{k}={m[f'precision@{k}']:.4f}  "
+              f"f1@{k}={m[f'f1@{k}']:.4f}  "
+              f"mrr={m['mrr']:.4f}  ndcg@{k}={m[f'ndcg@{k}']:.4f}")
 
+        if mlflow_active:
+            try:
+                _log_best_f1_run(best_f1, total_runs=len(all_results))
+                print("  Logged best F1 summary to MLflow.")
+            except Exception as e:
+                print(f"  [mlflow warning] best F1 summary not logged: {e}")
+
+        # Save results
+        results_path = OUTPUT_PREFIX.rstrip("/") + "/experiment_results_cs50.json"
         _write_json(results_path, all_results)
-        print(f"\nResults saved → {results_path}")
+        print(f"\nResults saved -> {results_path}")
 
 
 class _NoopContext:

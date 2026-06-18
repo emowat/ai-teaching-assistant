@@ -35,12 +35,12 @@ from rag.context_assembler import build_retrieval_result
 MODE_PARAMS: dict[AssistMode, dict] = {
     AssistMode.HOMEWORK_ASSIST: {
         "cumulative": False,  # current week only — stay focused
-        "semantic_top_k": 5,
-        "rules_top_k": 3,
+        "semantic_top_k": 8,
+        "rules_top_k": 4,
         "rules_threshold": 0.55,
-        "guidelines_top_k": 2,
+        "guidelines_top_k": 3,
         "guidelines_threshold": 0.6,   # high threshold — minimal distraction
-        "final_k": 5,
+        "final_k": 8,
     },
     AssistMode.STUDY_ASSIST: {
         "cumulative": True,  # weeks 1..X — allow review of past concepts
@@ -83,8 +83,8 @@ def run_retrieval(query: QueryInput) -> RetrievalResult:
         threshold=params["guidelines_threshold"],
     )
 
-    if query.course_source == CourseSource.HARVARD:
-        # Harvard CS50: no syllabus, use Harvard-specific retrievers
+    if query.course_source == CourseSource.CS50:
+        # Harvard CS50: no syllabus, use CS50-specific retrievers (notes + transcripts)
         syllabus = None
         semantic = retrieve_harvard(
             dense_query,
@@ -99,8 +99,24 @@ def run_retrieval(query: QueryInput) -> RetrievalResult:
             threshold=params["rules_threshold"],
             cumulative=params["cumulative"],
         )
+    elif query.course_source == CourseSource.MIT_13:
+        # MIT 6.0013: syllabus + course material retrievers
+        syllabus = retrieve_syllabus(query.week)
+        semantic = retrieve_semantic(
+            dense_query,
+            query.week,
+            top_k=params["semantic_top_k"],
+            cumulative=params["cumulative"],
+        )
+        rules = retrieve_strict_rules(
+            dense_query,
+            query.week,
+            top_k=params["rules_top_k"],
+            threshold=params["rules_threshold"],
+            cumulative=params["cumulative"],
+        )
     else:
-        # MIT OCW (default): syllabus + course material retrievers
+        # MIT 6.0014 (placeholder: mirrors MIT13)
         syllabus = retrieve_syllabus(query.week)
         semantic = retrieve_semantic(
             dense_query,
@@ -124,6 +140,7 @@ def run_retrieval(query: QueryInput) -> RetrievalResult:
         guidelines=guidelines,
         mode=query.mode,
         final_k=final_k,
+        lambda_param=1.0,   # similarity strategy — no MMR diversity penalty
     )
 
     return build_retrieval_result(

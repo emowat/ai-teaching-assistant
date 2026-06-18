@@ -1,0 +1,1622 @@
+[
+  {
+    "params": {
+      "embedding_model": "all-MiniLM-L6-v2",
+      "chunking": "harvard_notes",
+      "retriever_type": "vector",
+      "top_k": 3,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_all_MiniLM_L6_v2"
+    },
+    "metrics": {
+      "recall@3": 0.2725,
+      "precision@3": 0.3129,
+      "mrr": 0.5408,
+      "ndcg@3": 0.369
+    },
+    "latency": 3.12
+  },
+  {
+    "params": {
+      "embedding_model": "all-MiniLM-L6-v2",
+      "chunking": "harvard_notes",
+      "retriever_type": "vector",
+      "top_k": 5,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_all_MiniLM_L6_v2"
+    },
+    "metrics": {
+      "recall@5": 0.3493,
+      "precision@5": 0.2531,
+      "mrr": 0.5429,
+      "ndcg@5": 0.3742
+    },
+    "latency": 3.11
+  },
+  {
+    "params": {
+      "embedding_model": "all-MiniLM-L6-v2",
+      "chunking": "harvard_notes",
+      "retriever_type": "vector",
+      "top_k": 8,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_all_MiniLM_L6_v2"
+    },
+    "metrics": {
+      "recall@8": 0.4274,
+      "precision@8": 0.1939,
+      "mrr": 0.5424,
+      "ndcg@8": 0.4077
+    },
+    "latency": 3.02
+  },
+  {
+    "params": {
+      "embedding_model": "all-MiniLM-L6-v2",
+      "chunking": "harvard_notes",
+      "retriever_type": "vector",
+      "top_k": 10,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_all_MiniLM_L6_v2"
+    },
+    "metrics": {
+      "recall@10": 0.5133,
+      "precision@10": 0.1918,
+      "mrr": 0.5473,
+      "ndcg@10": 0.449
+    },
+    "latency": 3.116
+  },
+  {
+    "params": {
+      "embedding_model": "all-MiniLM-L6-v2",
+      "chunking": "harvard_notes",
+      "retriever_type": "vector",
+      "top_k": 15,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_all_MiniLM_L6_v2"
+    },
+    "metrics": {
+      "recall@15": 0.5745,
+      "precision@15": 0.1442,
+      "mrr": 0.5433,
+      "ndcg@15": 0.4733
+    },
+    "latency": 3.018
+  },
+  {
+    "params": {
+      "embedding_model": "all-MiniLM-L6-v2",
+      "chunking": "harvard_notes",
+      "retriever_type": "pedagogy",
+      "top_k": 3,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_all_MiniLM_L6_v2"
+    },
+    "metrics": {
+      "recall@3": 0.2347,
+      "precision@3": 0.2517,
+      "mrr": 0.449,
+      "ndcg@3": 0.3124
+    },
+    "latency": 2.946
+  },
+  {
+    "params": {
+      "embedding_model": "all-MiniLM-L6-v2",
+      "chunking": "harvard_notes",
+      "retriever_type": "pedagogy",
+      "top_k": 5,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_all_MiniLM_L6_v2"
+    },
+    "metrics": {
+      "recall@5": 0.3366,
+      "precision@5": 0.2327,
+      "mrr": 0.4663,
+      "ndcg@5": 0.3471
+    },
+    "latency": 3.329
+  },
+  {
+    "params": {
+      "embedding_model": "all-MiniLM-L6-v2",
+      "chunking": "harvard_notes",
+      "retriever_type": "pedagogy",
+      "top_k": 8,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_all_MiniLM_L6_v2"
+    },
+    "metrics": {
+      "recall@8": 0.4087,
+      "precision@8": 0.1837,
+      "mrr": 0.4697,
+      "ndcg@8": 0.3848
+    },
+    "latency": 2.547
+  },
+  {
+    "params": {
+      "embedding_model": "all-MiniLM-L6-v2",
+      "chunking": "harvard_notes",
+      "retriever_type": "pedagogy",
+      "top_k": 10,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_all_MiniLM_L6_v2"
+    },
+    "metrics": {
+      "recall@10": 0.4087,
+      "precision@10": 0.1469,
+      "mrr": 0.4697,
+      "ndcg@10": 0.3848
+    },
+    "latency": 2.875
+  },
+  {
+    "params": {
+      "embedding_model": "all-MiniLM-L6-v2",
+      "chunking": "harvard_notes",
+      "retriever_type": "pedagogy",
+      "top_k": 15,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_all_MiniLM_L6_v2"
+    },
+    "metrics": {
+      "recall@15": 0.4155,
+      "precision@15": 0.0993,
+      "mrr": 0.4697,
+      "ndcg@15": 0.3874
+    },
+    "latency": 2.863
+  },
+  {
+    "params": {
+      "embedding_model": "all-MiniLM-L6-v2",
+      "chunking": "harvard_notes",
+      "retriever_type": "rules",
+      "top_k": 3,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_all_MiniLM_L6_v2"
+    },
+    "metrics": {
+      "recall@3": 0.0116,
+      "precision@3": 0.0204,
+      "mrr": 0.0612,
+      "ndcg@3": 0.0287
+    },
+    "latency": 2.852
+  },
+  {
+    "params": {
+      "embedding_model": "all-MiniLM-L6-v2",
+      "chunking": "harvard_notes",
+      "retriever_type": "rules",
+      "top_k": 5,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_all_MiniLM_L6_v2"
+    },
+    "metrics": {
+      "recall@5": 0.0116,
+      "precision@5": 0.0122,
+      "mrr": 0.0612,
+      "ndcg@5": 0.0234
+    },
+    "latency": 2.667
+  },
+  {
+    "params": {
+      "embedding_model": "all-MiniLM-L6-v2",
+      "chunking": "harvard_notes",
+      "retriever_type": "rules",
+      "top_k": 8,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_all_MiniLM_L6_v2"
+    },
+    "metrics": {
+      "recall@8": 0.0245,
+      "precision@8": 0.0179,
+      "mrr": 0.0731,
+      "ndcg@8": 0.0313
+    },
+    "latency": 2.669
+  },
+  {
+    "params": {
+      "embedding_model": "all-MiniLM-L6-v2",
+      "chunking": "harvard_notes",
+      "retriever_type": "rules",
+      "top_k": 10,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_all_MiniLM_L6_v2"
+    },
+    "metrics": {
+      "recall@10": 0.0245,
+      "precision@10": 0.0143,
+      "mrr": 0.0731,
+      "ndcg@10": 0.0308
+    },
+    "latency": 2.838
+  },
+  {
+    "params": {
+      "embedding_model": "all-MiniLM-L6-v2",
+      "chunking": "harvard_notes",
+      "retriever_type": "rules",
+      "top_k": 15,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_all_MiniLM_L6_v2"
+    },
+    "metrics": {
+      "recall@15": 0.0245,
+      "precision@15": 0.0095,
+      "mrr": 0.0731,
+      "ndcg@15": 0.0308
+    },
+    "latency": 2.791
+  },
+  {
+    "params": {
+      "embedding_model": "all-MiniLM-L6-v2",
+      "chunking": "harvard_notes",
+      "retriever_type": "syllabus",
+      "top_k": 3,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_all_MiniLM_L6_v2"
+    },
+    "metrics": {
+      "recall@3": 0.0,
+      "precision@3": 0.0,
+      "mrr": 0.0,
+      "ndcg@3": 0.0
+    },
+    "latency": 1.782
+  },
+  {
+    "params": {
+      "embedding_model": "all-MiniLM-L6-v2",
+      "chunking": "harvard_notes",
+      "retriever_type": "syllabus",
+      "top_k": 5,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_all_MiniLM_L6_v2"
+    },
+    "metrics": {
+      "recall@5": 0.0,
+      "precision@5": 0.0,
+      "mrr": 0.0,
+      "ndcg@5": 0.0
+    },
+    "latency": 1.846
+  },
+  {
+    "params": {
+      "embedding_model": "all-MiniLM-L6-v2",
+      "chunking": "harvard_notes",
+      "retriever_type": "syllabus",
+      "top_k": 8,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_all_MiniLM_L6_v2"
+    },
+    "metrics": {
+      "recall@8": 0.0,
+      "precision@8": 0.0,
+      "mrr": 0.0,
+      "ndcg@8": 0.0
+    },
+    "latency": 1.746
+  },
+  {
+    "params": {
+      "embedding_model": "all-MiniLM-L6-v2",
+      "chunking": "harvard_notes",
+      "retriever_type": "syllabus",
+      "top_k": 10,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_all_MiniLM_L6_v2"
+    },
+    "metrics": {
+      "recall@10": 0.0,
+      "precision@10": 0.0,
+      "mrr": 0.0,
+      "ndcg@10": 0.0
+    },
+    "latency": 1.731
+  },
+  {
+    "params": {
+      "embedding_model": "all-MiniLM-L6-v2",
+      "chunking": "harvard_notes",
+      "retriever_type": "syllabus",
+      "top_k": 15,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_all_MiniLM_L6_v2"
+    },
+    "metrics": {
+      "recall@15": 0.0,
+      "precision@15": 0.0,
+      "mrr": 0.0,
+      "ndcg@15": 0.0
+    },
+    "latency": 1.873
+  },
+  {
+    "params": {
+      "embedding_model": "all-MiniLM-L6-v2",
+      "chunking": "harvard_notes",
+      "retriever_type": "pedagogy+rules",
+      "top_k": 3,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_all_MiniLM_L6_v2"
+    },
+    "metrics": {
+      "recall@3": 0.2086,
+      "precision@3": 0.2245,
+      "mrr": 0.4014,
+      "ndcg@3": 0.2519
+    },
+    "latency": 6.608
+  },
+  {
+    "params": {
+      "embedding_model": "all-MiniLM-L6-v2",
+      "chunking": "harvard_notes",
+      "retriever_type": "pedagogy+rules",
+      "top_k": 5,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_all_MiniLM_L6_v2"
+    },
+    "metrics": {
+      "recall@5": 0.2463,
+      "precision@5": 0.1633,
+      "mrr": 0.4014,
+      "ndcg@5": 0.2476
+    },
+    "latency": 6.432
+  },
+  {
+    "params": {
+      "embedding_model": "all-MiniLM-L6-v2",
+      "chunking": "harvard_notes",
+      "retriever_type": "pedagogy+rules",
+      "top_k": 8,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_all_MiniLM_L6_v2"
+    },
+    "metrics": {
+      "recall@8": 0.3319,
+      "precision@8": 0.1454,
+      "mrr": 0.4078,
+      "ndcg@8": 0.2871
+    },
+    "latency": 6.392
+  },
+  {
+    "params": {
+      "embedding_model": "all-MiniLM-L6-v2",
+      "chunking": "harvard_notes",
+      "retriever_type": "pedagogy+rules",
+      "top_k": 10,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_all_MiniLM_L6_v2"
+    },
+    "metrics": {
+      "recall@10": 0.3661,
+      "precision@10": 0.1327,
+      "mrr": 0.4112,
+      "ndcg@10": 0.3027
+    },
+    "latency": 6.416
+  },
+  {
+    "params": {
+      "embedding_model": "all-MiniLM-L6-v2",
+      "chunking": "harvard_notes",
+      "retriever_type": "pedagogy+rules",
+      "top_k": 15,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_all_MiniLM_L6_v2"
+    },
+    "metrics": {
+      "recall@15": 0.4331,
+      "precision@15": 0.1075,
+      "mrr": 0.4123,
+      "ndcg@15": 0.3309
+    },
+    "latency": 6.407
+  },
+  {
+    "params": {
+      "embedding_model": "all-MiniLM-L6-v2",
+      "chunking": "harvard_notes",
+      "retriever_type": "full",
+      "top_k": 3,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_all_MiniLM_L6_v2"
+    },
+    "metrics": {
+      "recall@3": 0.2086,
+      "precision@3": 0.2245,
+      "mrr": 0.4014,
+      "ndcg@3": 0.2519
+    },
+    "latency": 8.7
+  },
+  {
+    "params": {
+      "embedding_model": "all-MiniLM-L6-v2",
+      "chunking": "harvard_notes",
+      "retriever_type": "full",
+      "top_k": 5,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_all_MiniLM_L6_v2"
+    },
+    "metrics": {
+      "recall@5": 0.2463,
+      "precision@5": 0.1633,
+      "mrr": 0.4014,
+      "ndcg@5": 0.2476
+    },
+    "latency": 8.402
+  },
+  {
+    "params": {
+      "embedding_model": "all-MiniLM-L6-v2",
+      "chunking": "harvard_notes",
+      "retriever_type": "full",
+      "top_k": 8,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_all_MiniLM_L6_v2"
+    },
+    "metrics": {
+      "recall@8": 0.3319,
+      "precision@8": 0.1454,
+      "mrr": 0.4078,
+      "ndcg@8": 0.2871
+    },
+    "latency": 8.448
+  },
+  {
+    "params": {
+      "embedding_model": "all-MiniLM-L6-v2",
+      "chunking": "harvard_notes",
+      "retriever_type": "full",
+      "top_k": 10,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_all_MiniLM_L6_v2"
+    },
+    "metrics": {
+      "recall@10": 0.3661,
+      "precision@10": 0.1327,
+      "mrr": 0.4112,
+      "ndcg@10": 0.3027
+    },
+    "latency": 8.633
+  },
+  {
+    "params": {
+      "embedding_model": "all-MiniLM-L6-v2",
+      "chunking": "harvard_notes",
+      "retriever_type": "full",
+      "top_k": 15,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_all_MiniLM_L6_v2"
+    },
+    "metrics": {
+      "recall@15": 0.4331,
+      "precision@15": 0.1075,
+      "mrr": 0.4123,
+      "ndcg@15": 0.3309
+    },
+    "latency": 8.573
+  },
+  {
+    "params": {
+      "embedding_model": "sentence-transformers/multi-qa-mpnet-base-dot-v1",
+      "chunking": "harvard_notes",
+      "retriever_type": "vector",
+      "top_k": 3,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_sentence_transformers_multi_qa_mpnet_base_dot_v1"
+    },
+    "metrics": {
+      "recall@3": 0.3068,
+      "precision@3": 0.3673,
+      "mrr": 0.6122,
+      "ndcg@3": 0.4207
+    },
+    "latency": 3.479
+  },
+  {
+    "params": {
+      "embedding_model": "sentence-transformers/multi-qa-mpnet-base-dot-v1",
+      "chunking": "harvard_notes",
+      "retriever_type": "vector",
+      "top_k": 5,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_sentence_transformers_multi_qa_mpnet_base_dot_v1"
+    },
+    "metrics": {
+      "recall@5": 0.4239,
+      "precision@5": 0.3347,
+      "mrr": 0.6758,
+      "ndcg@5": 0.4588
+    },
+    "latency": 3.329
+  },
+  {
+    "params": {
+      "embedding_model": "sentence-transformers/multi-qa-mpnet-base-dot-v1",
+      "chunking": "harvard_notes",
+      "retriever_type": "vector",
+      "top_k": 8,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_sentence_transformers_multi_qa_mpnet_base_dot_v1"
+    },
+    "metrics": {
+      "recall@8": 0.5164,
+      "precision@8": 0.2577,
+      "mrr": 0.6772,
+      "ndcg@8": 0.4897
+    },
+    "latency": 3.425
+  },
+  {
+    "params": {
+      "embedding_model": "sentence-transformers/multi-qa-mpnet-base-dot-v1",
+      "chunking": "harvard_notes",
+      "retriever_type": "vector",
+      "top_k": 10,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_sentence_transformers_multi_qa_mpnet_base_dot_v1"
+    },
+    "metrics": {
+      "recall@10": 0.5811,
+      "precision@10": 0.2367,
+      "mrr": 0.6806,
+      "ndcg@10": 0.5216
+    },
+    "latency": 3.347
+  },
+  {
+    "params": {
+      "embedding_model": "sentence-transformers/multi-qa-mpnet-base-dot-v1",
+      "chunking": "harvard_notes",
+      "retriever_type": "vector",
+      "top_k": 15,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_sentence_transformers_multi_qa_mpnet_base_dot_v1"
+    },
+    "metrics": {
+      "recall@15": 0.6811,
+      "precision@15": 0.1891,
+      "mrr": 0.6791,
+      "ndcg@15": 0.5637
+    },
+    "latency": 3.265
+  },
+  {
+    "params": {
+      "embedding_model": "sentence-transformers/multi-qa-mpnet-base-dot-v1",
+      "chunking": "harvard_notes",
+      "retriever_type": "pedagogy",
+      "top_k": 3,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_sentence_transformers_multi_qa_mpnet_base_dot_v1"
+    },
+    "metrics": {
+      "recall@3": 0.2898,
+      "precision@3": 0.3333,
+      "mrr": 0.4898,
+      "ndcg@3": 0.3759
+    },
+    "latency": 3.294
+  },
+  {
+    "params": {
+      "embedding_model": "sentence-transformers/multi-qa-mpnet-base-dot-v1",
+      "chunking": "harvard_notes",
+      "retriever_type": "pedagogy",
+      "top_k": 5,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_sentence_transformers_multi_qa_mpnet_base_dot_v1"
+    },
+    "metrics": {
+      "recall@5": 0.3371,
+      "precision@5": 0.2367,
+      "mrr": 0.4898,
+      "ndcg@5": 0.3587
+    },
+    "latency": 3.45
+  },
+  {
+    "params": {
+      "embedding_model": "sentence-transformers/multi-qa-mpnet-base-dot-v1",
+      "chunking": "harvard_notes",
+      "retriever_type": "pedagogy",
+      "top_k": 8,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_sentence_transformers_multi_qa_mpnet_base_dot_v1"
+    },
+    "metrics": {
+      "recall@8": 0.4087,
+      "precision@8": 0.1837,
+      "mrr": 0.4927,
+      "ndcg@8": 0.3946
+    },
+    "latency": 3.33
+  },
+  {
+    "params": {
+      "embedding_model": "sentence-transformers/multi-qa-mpnet-base-dot-v1",
+      "chunking": "harvard_notes",
+      "retriever_type": "pedagogy",
+      "top_k": 10,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_sentence_transformers_multi_qa_mpnet_base_dot_v1"
+    },
+    "metrics": {
+      "recall@10": 0.4155,
+      "precision@10": 0.149,
+      "mrr": 0.4927,
+      "ndcg@10": 0.3975
+    },
+    "latency": 3.252
+  },
+  {
+    "params": {
+      "embedding_model": "sentence-transformers/multi-qa-mpnet-base-dot-v1",
+      "chunking": "harvard_notes",
+      "retriever_type": "pedagogy",
+      "top_k": 15,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_sentence_transformers_multi_qa_mpnet_base_dot_v1"
+    },
+    "metrics": {
+      "recall@15": 0.4155,
+      "precision@15": 0.0993,
+      "mrr": 0.4927,
+      "ndcg@15": 0.3975
+    },
+    "latency": 3.149
+  },
+  {
+    "params": {
+      "embedding_model": "sentence-transformers/multi-qa-mpnet-base-dot-v1",
+      "chunking": "harvard_notes",
+      "retriever_type": "rules",
+      "top_k": 3,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_sentence_transformers_multi_qa_mpnet_base_dot_v1"
+    },
+    "metrics": {
+      "recall@3": 0.0245,
+      "precision@3": 0.0476,
+      "mrr": 0.0816,
+      "ndcg@3": 0.0529
+    },
+    "latency": 3.373
+  },
+  {
+    "params": {
+      "embedding_model": "sentence-transformers/multi-qa-mpnet-base-dot-v1",
+      "chunking": "harvard_notes",
+      "retriever_type": "rules",
+      "top_k": 5,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_sentence_transformers_multi_qa_mpnet_base_dot_v1"
+    },
+    "metrics": {
+      "recall@5": 0.0245,
+      "precision@5": 0.0286,
+      "mrr": 0.0816,
+      "ndcg@5": 0.0415
+    },
+    "latency": 3.442
+  },
+  {
+    "params": {
+      "embedding_model": "sentence-transformers/multi-qa-mpnet-base-dot-v1",
+      "chunking": "harvard_notes",
+      "retriever_type": "rules",
+      "top_k": 8,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_sentence_transformers_multi_qa_mpnet_base_dot_v1"
+    },
+    "metrics": {
+      "recall@8": 0.0245,
+      "precision@8": 0.0179,
+      "mrr": 0.0816,
+      "ndcg@8": 0.035
+    },
+    "latency": 3.312
+  },
+  {
+    "params": {
+      "embedding_model": "sentence-transformers/multi-qa-mpnet-base-dot-v1",
+      "chunking": "harvard_notes",
+      "retriever_type": "rules",
+      "top_k": 10,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_sentence_transformers_multi_qa_mpnet_base_dot_v1"
+    },
+    "metrics": {
+      "recall@10": 0.0245,
+      "precision@10": 0.0143,
+      "mrr": 0.0816,
+      "ndcg@10": 0.0344
+    },
+    "latency": 3.262
+  },
+  {
+    "params": {
+      "embedding_model": "sentence-transformers/multi-qa-mpnet-base-dot-v1",
+      "chunking": "harvard_notes",
+      "retriever_type": "rules",
+      "top_k": 15,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_sentence_transformers_multi_qa_mpnet_base_dot_v1"
+    },
+    "metrics": {
+      "recall@15": 0.0245,
+      "precision@15": 0.0095,
+      "mrr": 0.0816,
+      "ndcg@15": 0.0344
+    },
+    "latency": 3.435
+  },
+  {
+    "params": {
+      "embedding_model": "sentence-transformers/multi-qa-mpnet-base-dot-v1",
+      "chunking": "harvard_notes",
+      "retriever_type": "syllabus",
+      "top_k": 3,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_sentence_transformers_multi_qa_mpnet_base_dot_v1"
+    },
+    "metrics": {
+      "recall@3": 0.0,
+      "precision@3": 0.0,
+      "mrr": 0.0,
+      "ndcg@3": 0.0
+    },
+    "latency": 2.507
+  },
+  {
+    "params": {
+      "embedding_model": "sentence-transformers/multi-qa-mpnet-base-dot-v1",
+      "chunking": "harvard_notes",
+      "retriever_type": "syllabus",
+      "top_k": 5,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_sentence_transformers_multi_qa_mpnet_base_dot_v1"
+    },
+    "metrics": {
+      "recall@5": 0.0,
+      "precision@5": 0.0,
+      "mrr": 0.0,
+      "ndcg@5": 0.0
+    },
+    "latency": 2.528
+  },
+  {
+    "params": {
+      "embedding_model": "sentence-transformers/multi-qa-mpnet-base-dot-v1",
+      "chunking": "harvard_notes",
+      "retriever_type": "syllabus",
+      "top_k": 8,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_sentence_transformers_multi_qa_mpnet_base_dot_v1"
+    },
+    "metrics": {
+      "recall@8": 0.0,
+      "precision@8": 0.0,
+      "mrr": 0.0,
+      "ndcg@8": 0.0
+    },
+    "latency": 2.502
+  },
+  {
+    "params": {
+      "embedding_model": "sentence-transformers/multi-qa-mpnet-base-dot-v1",
+      "chunking": "harvard_notes",
+      "retriever_type": "syllabus",
+      "top_k": 10,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_sentence_transformers_multi_qa_mpnet_base_dot_v1"
+    },
+    "metrics": {
+      "recall@10": 0.0,
+      "precision@10": 0.0,
+      "mrr": 0.0,
+      "ndcg@10": 0.0
+    },
+    "latency": 2.555
+  },
+  {
+    "params": {
+      "embedding_model": "sentence-transformers/multi-qa-mpnet-base-dot-v1",
+      "chunking": "harvard_notes",
+      "retriever_type": "syllabus",
+      "top_k": 15,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_sentence_transformers_multi_qa_mpnet_base_dot_v1"
+    },
+    "metrics": {
+      "recall@15": 0.0,
+      "precision@15": 0.0,
+      "mrr": 0.0,
+      "ndcg@15": 0.0
+    },
+    "latency": 2.506
+  },
+  {
+    "params": {
+      "embedding_model": "sentence-transformers/multi-qa-mpnet-base-dot-v1",
+      "chunking": "harvard_notes",
+      "retriever_type": "pedagogy+rules",
+      "top_k": 3,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_sentence_transformers_multi_qa_mpnet_base_dot_v1"
+    },
+    "metrics": {
+      "recall@3": 0.1636,
+      "precision@3": 0.1973,
+      "mrr": 0.2449,
+      "ndcg@3": 0.1701
+    },
+    "latency": 7.148
+  },
+  {
+    "params": {
+      "embedding_model": "sentence-transformers/multi-qa-mpnet-base-dot-v1",
+      "chunking": "harvard_notes",
+      "retriever_type": "pedagogy+rules",
+      "top_k": 5,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_sentence_transformers_multi_qa_mpnet_base_dot_v1"
+    },
+    "metrics": {
+      "recall@5": 0.3143,
+      "precision@5": 0.2286,
+      "mrr": 0.2602,
+      "ndcg@5": 0.2386
+    },
+    "latency": 7.492
+  },
+  {
+    "params": {
+      "embedding_model": "sentence-transformers/multi-qa-mpnet-base-dot-v1",
+      "chunking": "harvard_notes",
+      "retriever_type": "pedagogy+rules",
+      "top_k": 8,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_sentence_transformers_multi_qa_mpnet_base_dot_v1"
+    },
+    "metrics": {
+      "recall@8": 0.3336,
+      "precision@8": 0.1531,
+      "mrr": 0.2153,
+      "ndcg@8": 0.2107
+    },
+    "latency": 7.266
+  },
+  {
+    "params": {
+      "embedding_model": "sentence-transformers/multi-qa-mpnet-base-dot-v1",
+      "chunking": "harvard_notes",
+      "retriever_type": "pedagogy+rules",
+      "top_k": 10,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_sentence_transformers_multi_qa_mpnet_base_dot_v1"
+    },
+    "metrics": {
+      "recall@10": 0.3615,
+      "precision@10": 0.1327,
+      "mrr": 0.2141,
+      "ndcg@10": 0.2201
+    },
+    "latency": 7.383
+  },
+  {
+    "params": {
+      "embedding_model": "sentence-transformers/multi-qa-mpnet-base-dot-v1",
+      "chunking": "harvard_notes",
+      "retriever_type": "pedagogy+rules",
+      "top_k": 15,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_sentence_transformers_multi_qa_mpnet_base_dot_v1"
+    },
+    "metrics": {
+      "recall@15": 0.4399,
+      "precision@15": 0.1088,
+      "mrr": 0.2135,
+      "ndcg@15": 0.2511
+    },
+    "latency": 7.204
+  },
+  {
+    "params": {
+      "embedding_model": "sentence-transformers/multi-qa-mpnet-base-dot-v1",
+      "chunking": "harvard_notes",
+      "retriever_type": "full",
+      "top_k": 3,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_sentence_transformers_multi_qa_mpnet_base_dot_v1"
+    },
+    "metrics": {
+      "recall@3": 0.1636,
+      "precision@3": 0.1973,
+      "mrr": 0.2449,
+      "ndcg@3": 0.1701
+    },
+    "latency": 8.179
+  },
+  {
+    "params": {
+      "embedding_model": "sentence-transformers/multi-qa-mpnet-base-dot-v1",
+      "chunking": "harvard_notes",
+      "retriever_type": "full",
+      "top_k": 5,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_sentence_transformers_multi_qa_mpnet_base_dot_v1"
+    },
+    "metrics": {
+      "recall@5": 0.3143,
+      "precision@5": 0.2286,
+      "mrr": 0.2602,
+      "ndcg@5": 0.2386
+    },
+    "latency": 8.277
+  },
+  {
+    "params": {
+      "embedding_model": "sentence-transformers/multi-qa-mpnet-base-dot-v1",
+      "chunking": "harvard_notes",
+      "retriever_type": "full",
+      "top_k": 8,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_sentence_transformers_multi_qa_mpnet_base_dot_v1"
+    },
+    "metrics": {
+      "recall@8": 0.3336,
+      "precision@8": 0.1531,
+      "mrr": 0.2153,
+      "ndcg@8": 0.2107
+    },
+    "latency": 8.471
+  },
+  {
+    "params": {
+      "embedding_model": "sentence-transformers/multi-qa-mpnet-base-dot-v1",
+      "chunking": "harvard_notes",
+      "retriever_type": "full",
+      "top_k": 10,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_sentence_transformers_multi_qa_mpnet_base_dot_v1"
+    },
+    "metrics": {
+      "recall@10": 0.3615,
+      "precision@10": 0.1327,
+      "mrr": 0.2141,
+      "ndcg@10": 0.2201
+    },
+    "latency": 8.485
+  },
+  {
+    "params": {
+      "embedding_model": "sentence-transformers/multi-qa-mpnet-base-dot-v1",
+      "chunking": "harvard_notes",
+      "retriever_type": "full",
+      "top_k": 15,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_sentence_transformers_multi_qa_mpnet_base_dot_v1"
+    },
+    "metrics": {
+      "recall@15": 0.4399,
+      "precision@15": 0.1088,
+      "mrr": 0.2135,
+      "ndcg@15": 0.2511
+    },
+    "latency": 8.342
+  },
+  {
+    "params": {
+      "embedding_model": "BAAI/bge-base-en-v1.5",
+      "chunking": "harvard_notes",
+      "retriever_type": "vector",
+      "top_k": 3,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_BAAI_bge_base_en_v1.5"
+    },
+    "metrics": {
+      "recall@3": 0.3115,
+      "precision@3": 0.3605,
+      "mrr": 0.5578,
+      "ndcg@3": 0.4
+    },
+    "latency": 3.229
+  },
+  {
+    "params": {
+      "embedding_model": "BAAI/bge-base-en-v1.5",
+      "chunking": "harvard_notes",
+      "retriever_type": "vector",
+      "top_k": 5,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_BAAI_bge_base_en_v1.5"
+    },
+    "metrics": {
+      "recall@5": 0.4238,
+      "precision@5": 0.3061,
+      "mrr": 0.5867,
+      "ndcg@5": 0.4255
+    },
+    "latency": 3.153
+  },
+  {
+    "params": {
+      "embedding_model": "BAAI/bge-base-en-v1.5",
+      "chunking": "harvard_notes",
+      "retriever_type": "vector",
+      "top_k": 8,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_BAAI_bge_base_en_v1.5"
+    },
+    "metrics": {
+      "recall@8": 0.4723,
+      "precision@8": 0.2168,
+      "mrr": 0.5879,
+      "ndcg@8": 0.4396
+    },
+    "latency": 3.171
+  },
+  {
+    "params": {
+      "embedding_model": "BAAI/bge-base-en-v1.5",
+      "chunking": "harvard_notes",
+      "retriever_type": "vector",
+      "top_k": 10,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_BAAI_bge_base_en_v1.5"
+    },
+    "metrics": {
+      "recall@10": 0.5212,
+      "precision@10": 0.1918,
+      "mrr": 0.586,
+      "ndcg@10": 0.4608
+    },
+    "latency": 3.334
+  },
+  {
+    "params": {
+      "embedding_model": "BAAI/bge-base-en-v1.5",
+      "chunking": "harvard_notes",
+      "retriever_type": "vector",
+      "top_k": 15,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_BAAI_bge_base_en_v1.5"
+    },
+    "metrics": {
+      "recall@15": 0.5718,
+      "precision@15": 0.1429,
+      "mrr": 0.5847,
+      "ndcg@15": 0.4786
+    },
+    "latency": 3.292
+  },
+  {
+    "params": {
+      "embedding_model": "BAAI/bge-base-en-v1.5",
+      "chunking": "harvard_notes",
+      "retriever_type": "pedagogy",
+      "top_k": 3,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_BAAI_bge_base_en_v1.5"
+    },
+    "metrics": {
+      "recall@3": 0.2316,
+      "precision@3": 0.2449,
+      "mrr": 0.4048,
+      "ndcg@3": 0.2911
+    },
+    "latency": 3.014
+  },
+  {
+    "params": {
+      "embedding_model": "BAAI/bge-base-en-v1.5",
+      "chunking": "harvard_notes",
+      "retriever_type": "pedagogy",
+      "top_k": 5,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_BAAI_bge_base_en_v1.5"
+    },
+    "metrics": {
+      "recall@5": 0.2997,
+      "precision@5": 0.2,
+      "mrr": 0.4221,
+      "ndcg@5": 0.3065
+    },
+    "latency": 3.385
+  },
+  {
+    "params": {
+      "embedding_model": "BAAI/bge-base-en-v1.5",
+      "chunking": "harvard_notes",
+      "retriever_type": "pedagogy",
+      "top_k": 8,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_BAAI_bge_base_en_v1.5"
+    },
+    "metrics": {
+      "recall@8": 0.3648,
+      "precision@8": 0.1582,
+      "mrr": 0.4284,
+      "ndcg@8": 0.34
+    },
+    "latency": 3.021
+  },
+  {
+    "params": {
+      "embedding_model": "BAAI/bge-base-en-v1.5",
+      "chunking": "harvard_notes",
+      "retriever_type": "pedagogy",
+      "top_k": 10,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_BAAI_bge_base_en_v1.5"
+    },
+    "metrics": {
+      "recall@10": 0.4039,
+      "precision@10": 0.1429,
+      "mrr": 0.4284,
+      "ndcg@10": 0.3583
+    },
+    "latency": 3.153
+  },
+  {
+    "params": {
+      "embedding_model": "BAAI/bge-base-en-v1.5",
+      "chunking": "harvard_notes",
+      "retriever_type": "pedagogy",
+      "top_k": 15,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_BAAI_bge_base_en_v1.5"
+    },
+    "metrics": {
+      "recall@15": 0.4155,
+      "precision@15": 0.0993,
+      "mrr": 0.4284,
+      "ndcg@15": 0.3638
+    },
+    "latency": 3.303
+  },
+  {
+    "params": {
+      "embedding_model": "BAAI/bge-base-en-v1.5",
+      "chunking": "harvard_notes",
+      "retriever_type": "rules",
+      "top_k": 3,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_BAAI_bge_base_en_v1.5"
+    },
+    "metrics": {
+      "recall@3": 0.0245,
+      "precision@3": 0.0476,
+      "mrr": 0.0918,
+      "ndcg@3": 0.0564
+    },
+    "latency": 3.086
+  },
+  {
+    "params": {
+      "embedding_model": "BAAI/bge-base-en-v1.5",
+      "chunking": "harvard_notes",
+      "retriever_type": "rules",
+      "top_k": 5,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_BAAI_bge_base_en_v1.5"
+    },
+    "metrics": {
+      "recall@5": 0.0245,
+      "precision@5": 0.0286,
+      "mrr": 0.0918,
+      "ndcg@5": 0.0445
+    },
+    "latency": 3.107
+  },
+  {
+    "params": {
+      "embedding_model": "BAAI/bge-base-en-v1.5",
+      "chunking": "harvard_notes",
+      "retriever_type": "rules",
+      "top_k": 8,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_BAAI_bge_base_en_v1.5"
+    },
+    "metrics": {
+      "recall@8": 0.0245,
+      "precision@8": 0.0179,
+      "mrr": 0.0918,
+      "ndcg@8": 0.0379
+    },
+    "latency": 3.154
+  },
+  {
+    "params": {
+      "embedding_model": "BAAI/bge-base-en-v1.5",
+      "chunking": "harvard_notes",
+      "retriever_type": "rules",
+      "top_k": 10,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_BAAI_bge_base_en_v1.5"
+    },
+    "metrics": {
+      "recall@10": 0.0245,
+      "precision@10": 0.0143,
+      "mrr": 0.0918,
+      "ndcg@10": 0.0373
+    },
+    "latency": 3.184
+  },
+  {
+    "params": {
+      "embedding_model": "BAAI/bge-base-en-v1.5",
+      "chunking": "harvard_notes",
+      "retriever_type": "rules",
+      "top_k": 15,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_BAAI_bge_base_en_v1.5"
+    },
+    "metrics": {
+      "recall@15": 0.0245,
+      "precision@15": 0.0095,
+      "mrr": 0.0918,
+      "ndcg@15": 0.0373
+    },
+    "latency": 3.151
+  },
+  {
+    "params": {
+      "embedding_model": "BAAI/bge-base-en-v1.5",
+      "chunking": "harvard_notes",
+      "retriever_type": "syllabus",
+      "top_k": 3,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_BAAI_bge_base_en_v1.5"
+    },
+    "metrics": {
+      "recall@3": 0.0,
+      "precision@3": 0.0,
+      "mrr": 0.0,
+      "ndcg@3": 0.0
+    },
+    "latency": 2.374
+  },
+  {
+    "params": {
+      "embedding_model": "BAAI/bge-base-en-v1.5",
+      "chunking": "harvard_notes",
+      "retriever_type": "syllabus",
+      "top_k": 5,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_BAAI_bge_base_en_v1.5"
+    },
+    "metrics": {
+      "recall@5": 0.0,
+      "precision@5": 0.0,
+      "mrr": 0.0,
+      "ndcg@5": 0.0
+    },
+    "latency": 2.305
+  },
+  {
+    "params": {
+      "embedding_model": "BAAI/bge-base-en-v1.5",
+      "chunking": "harvard_notes",
+      "retriever_type": "syllabus",
+      "top_k": 8,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_BAAI_bge_base_en_v1.5"
+    },
+    "metrics": {
+      "recall@8": 0.0,
+      "precision@8": 0.0,
+      "mrr": 0.0,
+      "ndcg@8": 0.0
+    },
+    "latency": 2.44
+  },
+  {
+    "params": {
+      "embedding_model": "BAAI/bge-base-en-v1.5",
+      "chunking": "harvard_notes",
+      "retriever_type": "syllabus",
+      "top_k": 10,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_BAAI_bge_base_en_v1.5"
+    },
+    "metrics": {
+      "recall@10": 0.0,
+      "precision@10": 0.0,
+      "mrr": 0.0,
+      "ndcg@10": 0.0
+    },
+    "latency": 2.261
+  },
+  {
+    "params": {
+      "embedding_model": "BAAI/bge-base-en-v1.5",
+      "chunking": "harvard_notes",
+      "retriever_type": "syllabus",
+      "top_k": 15,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_BAAI_bge_base_en_v1.5"
+    },
+    "metrics": {
+      "recall@15": 0.0,
+      "precision@15": 0.0,
+      "mrr": 0.0,
+      "ndcg@15": 0.0
+    },
+    "latency": 2.314
+  },
+  {
+    "params": {
+      "embedding_model": "BAAI/bge-base-en-v1.5",
+      "chunking": "harvard_notes",
+      "retriever_type": "pedagogy+rules",
+      "top_k": 3,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_BAAI_bge_base_en_v1.5"
+    },
+    "metrics": {
+      "recall@3": 0.1418,
+      "precision@3": 0.1769,
+      "mrr": 0.2211,
+      "ndcg@3": 0.1503
+    },
+    "latency": 6.79
+  },
+  {
+    "params": {
+      "embedding_model": "BAAI/bge-base-en-v1.5",
+      "chunking": "harvard_notes",
+      "retriever_type": "pedagogy+rules",
+      "top_k": 5,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_BAAI_bge_base_en_v1.5"
+    },
+    "metrics": {
+      "recall@5": 0.2561,
+      "precision@5": 0.1755,
+      "mrr": 0.2303,
+      "ndcg@5": 0.196
+    },
+    "latency": 7.061
+  },
+  {
+    "params": {
+      "embedding_model": "BAAI/bge-base-en-v1.5",
+      "chunking": "harvard_notes",
+      "retriever_type": "pedagogy+rules",
+      "top_k": 8,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_BAAI_bge_base_en_v1.5"
+    },
+    "metrics": {
+      "recall@8": 0.2796,
+      "precision@8": 0.1199,
+      "mrr": 0.1783,
+      "ndcg@8": 0.1701
+    },
+    "latency": 6.962
+  },
+  {
+    "params": {
+      "embedding_model": "BAAI/bge-base-en-v1.5",
+      "chunking": "harvard_notes",
+      "retriever_type": "pedagogy+rules",
+      "top_k": 10,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_BAAI_bge_base_en_v1.5"
+    },
+    "metrics": {
+      "recall@10": 0.3267,
+      "precision@10": 0.1163,
+      "mrr": 0.1683,
+      "ndcg@10": 0.1821
+    },
+    "latency": 6.89
+  },
+  {
+    "params": {
+      "embedding_model": "BAAI/bge-base-en-v1.5",
+      "chunking": "harvard_notes",
+      "retriever_type": "pedagogy+rules",
+      "top_k": 15,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_BAAI_bge_base_en_v1.5"
+    },
+    "metrics": {
+      "recall@15": 0.3893,
+      "precision@15": 0.0939,
+      "mrr": 0.1618,
+      "ndcg@15": 0.1989
+    },
+    "latency": 6.911
+  },
+  {
+    "params": {
+      "embedding_model": "BAAI/bge-base-en-v1.5",
+      "chunking": "harvard_notes",
+      "retriever_type": "full",
+      "top_k": 3,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_BAAI_bge_base_en_v1.5"
+    },
+    "metrics": {
+      "recall@3": 0.1418,
+      "precision@3": 0.1769,
+      "mrr": 0.2211,
+      "ndcg@3": 0.1503
+    },
+    "latency": 8.274
+  },
+  {
+    "params": {
+      "embedding_model": "BAAI/bge-base-en-v1.5",
+      "chunking": "harvard_notes",
+      "retriever_type": "full",
+      "top_k": 5,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_BAAI_bge_base_en_v1.5"
+    },
+    "metrics": {
+      "recall@5": 0.2561,
+      "precision@5": 0.1755,
+      "mrr": 0.2303,
+      "ndcg@5": 0.196
+    },
+    "latency": 8.49
+  },
+  {
+    "params": {
+      "embedding_model": "BAAI/bge-base-en-v1.5",
+      "chunking": "harvard_notes",
+      "retriever_type": "full",
+      "top_k": 8,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_BAAI_bge_base_en_v1.5"
+    },
+    "metrics": {
+      "recall@8": 0.2796,
+      "precision@8": 0.1199,
+      "mrr": 0.1783,
+      "ndcg@8": 0.1701
+    },
+    "latency": 8.281
+  },
+  {
+    "params": {
+      "embedding_model": "BAAI/bge-base-en-v1.5",
+      "chunking": "harvard_notes",
+      "retriever_type": "full",
+      "top_k": 10,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_BAAI_bge_base_en_v1.5"
+    },
+    "metrics": {
+      "recall@10": 0.3267,
+      "precision@10": 0.1163,
+      "mrr": 0.1683,
+      "ndcg@10": 0.1821
+    },
+    "latency": 8.349
+  },
+  {
+    "params": {
+      "embedding_model": "BAAI/bge-base-en-v1.5",
+      "chunking": "harvard_notes",
+      "retriever_type": "full",
+      "top_k": 15,
+      "num_queries": 49,
+      "num_chunks": 87,
+      "collection_name": "exp_harvard_notes_BAAI_bge_base_en_v1.5"
+    },
+    "metrics": {
+      "recall@15": 0.3893,
+      "precision@15": 0.0939,
+      "mrr": 0.1618,
+      "ndcg@15": 0.1989
+    },
+    "latency": 8.761
+  }
+]

@@ -3,24 +3,21 @@
 labeling_chunks.py  —  Phase 1: Golden Chunk Labeling for Retrieval Experiment
 
 Workflow:
-  1. Load synthetic dataset, sample 80–100 stratified queries (week × mode).
-  2. Load all course chunks from S3 (standalone; no dotenv needed).
-  3. For each query, build a Tiered Candidate Pool:
-       Tier 1 — Week W + Week 0, full content shown.
-       Tier 2 — Weeks 1..W-1, Hybrid Expansion:
-                BM25 top-Kw  +  Embedding top-Kw  →  dedup  →  neighbor (±1).
+  1. Load synthetic dataset, sample 200 queries evenly from weeks 1..5.
+  2. Load Harvard CS50 course chunks (notes + transcripts) + C++ Core Guidelines.
+  3. For each query, build candidate pool via BM25 keyword retrieval.
   4. Send query + golden answer + candidate chunks to LLM (OpenAI GPT-5 mini).
-  5. Golden labels = LLM output. Save to golden_labels.json.
+  5. Golden labels = LLM output. Save to golden_labels_cs50.json.
 
 Outputs (written to OUTPUT_PREFIX):
-  eval_queries.jsonl       — sampled queries
-  golden_labels.json        — golden chunk IDs (OpenAI GPT-5 mini)
-  labeling_report.json      — per-query summary stats
+  eval_queries_cs50.jsonl       — sampled queries
+  golden_labels_cs50.json        — golden chunk IDs (OpenAI GPT-5 mini)
+  labeling_report_cs50.json      — per-query summary stats
 
 Usage:
   python labeling_chunks.py                          # full run
   python labeling_chunks.py --dry-run                # sample + pool only, no LLM
-  python labeling_chunks.py --sample-size 50         # override sample size
+  python labeling_chunks.py --sample-size 100        # override sample size
 """
 
 from __future__ import annotations
@@ -34,7 +31,7 @@ import re
 import sys
 import time
 import uuid
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -57,11 +54,17 @@ load_dotenv()
 # Paths (edit these if your setup differs)
 # ---------------------------------------------------------------------------
 
+# S3_BUCKET = os.getenv("LABELING_S3_BUCKET", "codingrabbit-data-dev")
+# DATASET_PATH = os.getenv(
+#     "LABELING_DATASET_PATH",
+#     f"s3://{S3_BUCKET}/prepared/synthetic-transcripts/synthetic_c_plus_plus_dataset.jsonl",
+# )
 S3_BUCKET = os.getenv("LABELING_S3_BUCKET", "codingrabbit-data-dev")
 DATASET_PATH = os.getenv(
     "LABELING_DATASET_PATH",
-    f"s3://{S3_BUCKET}/prepared/synthetic-transcripts/synthetic_c_plus_plus_dataset.jsonl",
+    f"s3://{S3_BUCKET}/prepared/synthetic-transcripts/cs50_homework_debug_dataset.jsonl",
 )
+
 HARVARD_NOTES_PATH = os.getenv(
     "LABELING_HARVARD_NOTES_PATH",
     f"s3://{S3_BUCKET}/raw/rag_sources/Harvard/cs50_output/notes_json/",
@@ -80,45 +83,35 @@ MIT_RAW_DATA_PATH = os.getenv(
 )
 OUTPUT_PREFIX = os.getenv(
     "LABELING_OUTPUT_PREFIX",
-    f"s3://{S3_BUCKET}/prepared/outputs/",
+    "/Users/lynw/Projects/ai-teaching-assistant/rag/experiments/outputs",
 )
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
 
-WEEK_0_DOMAIN = "cpp_core_guidelines"  # week-0 chunks have source_domain == this
-
-# Lecture filename → week mapping (mirrors rag/loader.py)
+# Notes/transcript filename → week mapping for Harvard CS50
 _LECTURE_WEEK_MAP: dict[str, int] = {
-    "01_lecture_1_compilation_pipeline": 1,
-    "02_lecture_2_core_c": 2,
-    "03_lecture_3_c_memory_management": 3,
-    "04_lecture_4_data_structures_debugging": 4,
-    "05_lecture_5_c_introduction_classes_and_templates": 5,
-    "06_lecture_6_c_inheritance": 6,
-    "07_lecture_7_parent_destructors": 7,
-    "08_lecture_8_standard_template_library": 8,
+    "notes_0_scratch": 0,
+    "notes_1_c": 1,
+    "notes_2_arrays": 2,
+    "notes_3_algorithms": 3,
+    "notes_4_memory": 4,
+    "notes_5_data_structures": 5,
 }
 
-# Syllabus matrix (mirrors rag/loader.py)
+# CS50 syllabus matrix (weeks 1-5)
 SYLLABUS_MATRIX: dict[int, dict[str, str]] = {
-    1: {"name": "C Basics", "allowed": "printf, primitive types, main",
-        "forbidden": "pointers, arrays, structures, new/delete"},
-    2: {"name": "Arrays & Strings", "allowed": "arrays, string.h, functions",
+    1: {"name": "C", "allowed": "printf, primitive types, conditionals, loops, main",
+        "forbidden": "pointers, arrays, dynamic allocation"},
+    2: {"name": "Arrays", "allowed": "arrays, strings, string.h, command-line arguments, functions",
         "forbidden": "pointers, dynamic allocation, structures"},
-    3: {"name": "Pointers & Memory", "allowed": "raw pointers, references, stack allocation, address-of (&)",
-        "forbidden": "new/delete, vectors, smart pointers"},
-    4: {"name": "Manual Heap Management", "allowed": "new, delete, malloc, free, references",
-        "forbidden": "std::vector, smart pointers, RAII objects"},
-    5: {"name": "Object-Oriented C++", "allowed": "classes, inheritance, multiple inheritance, virtual functions, operator overload",
-        "forbidden": "templates"},
-    6: {"name": "Modern C++ & STL", "allowed": "std::vector, std::unique_ptr, RAII, templates, STL",
-        "forbidden": "raw malloc/free, bare new/delete"},
-    7: {"name": "Algorithms & Complexity", "allowed": "recursion, sorting algorithms, Big O notation, binary search trees",
-        "forbidden": "raw malloc/free, bare new/delete"},
-    8: {"name": "Advanced Data Structures", "allowed": "hash tables, tries, queues, stacks, linked lists",
-        "forbidden": "raw malloc/free, bare new/delete"},
+    3: {"name": "Algorithms", "allowed": "linear search, binary search, bubble sort, selection sort, recursion, Big O",
+        "forbidden": "pointers, dynamic allocation, structures"},
+    4: {"name": "Memory", "allowed": "pointers, malloc, free, valgrind, stack/heap, memory addresses",
+        "forbidden": "new/delete, RAII, smart pointers, vectors"},
+    5: {"name": "Data Structures", "allowed": "structs, linked lists, hash tables, tries, stacks, queues, typedef",
+        "forbidden": "C++ classes, templates, inheritance"},
 }
 
 # Category classification keywords (mirrors rag/loader.py)
@@ -147,7 +140,6 @@ class Chunk:
     source_file: str         # e.g. "01_lecture_1_compilation_pipeline.json"
     page_number: int | None
     source_domain: str       # mit_ocw_lecture | mit_ocw_syllabus | mit_ocw_assignment | cpp_core_guidelines
-    priority: int = 2
     retrieval_score: float | None = None  # set by BM25 / embedding for Tier 2; shown in prompt
 
 
@@ -169,7 +161,6 @@ class LabelingResult:
     query_id: str
     labels_openai: list[str] = field(default_factory=list)
     golden_labels: list[str] = field(default_factory=list)
-    note: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -225,15 +216,7 @@ def _parse_s3_url(url: str) -> tuple[str, str | None]:
     raise ValueError(f"Unrecognized S3 URL: {url}")
 
 
-def _require_boto3() -> None:
-    if boto3 is None or botocore is None:
-        raise RuntimeError(
-            "S3 paths require boto3/botocore. Install boto3 or use a local path."
-        )
-
-
 def _get_s3_client() -> Any:
-    _require_boto3()
     if os.environ.get("S3_ANONYMOUS", "0") in ("1", "true", "True"):
         return boto3.client("s3", config=Config(signature_version=UNSIGNED))
     return boto3.client("s3")
@@ -375,29 +358,33 @@ def extract_query(rec: dict, idx: int) -> EvalQuery:
 
 def sample_queries(
     records: list[dict],
-    target: int = 60,
+    target: int = 200,
     seed: int = 42,
 ) -> list[EvalQuery]:
-    """40 from week 1 + sample from week 5 to reach target=60. Ignore other weeks."""
+    """Evenly sample `target` queries from weeks 1..5, stratified by week."""
     random.seed(seed)
 
-    week1_recs = [r for r in records if r["metadata"]["week"] == 1]
-    week5_recs = [r for r in records if r["metadata"]["week"] == 5]
+    # Group records by week 1..5
+    by_week: dict[int, list[dict]] = {w: [] for w in range(1, 6)}
+    for r in records:
+        w = r["metadata"].get("week", 0)
+        if w in by_week:
+            by_week[w].append(r)
+
+    active_weeks = sorted(w for w in by_week if by_week[w])
+    if not active_weeks:
+        return []
+
+    per_week = target // len(active_weeks)  # 200 / 5 = 40
+    remainder = target % len(active_weeks)
 
     sampled: list[EvalQuery] = []
 
-    # 40 from week 1
-    n_w1 = min(40, len(week1_recs))
-    chosen_w1 = random.sample(week1_recs, n_w1)
-    for rec in chosen_w1:
-        sampled.append(extract_query(rec, len(sampled)))
-
-    # Fill to target from week 5
-    remaining = target - len(sampled)
-    if remaining > 0 and week5_recs:
-        n = min(remaining, len(week5_recs))
-        chosen_w5 = random.sample(week5_recs, n)
-        for rec in chosen_w5:
+    for i, w in enumerate(active_weeks):
+        n = per_week + (1 if i < remainder else 0)
+        n = min(n, len(by_week[w]))
+        chosen = random.sample(by_week[w], n)
+        for rec in chosen:
             sampled.append(extract_query(rec, len(sampled)))
 
     random.shuffle(sampled)
@@ -480,7 +467,6 @@ def load_chunks(raw_data_path: Path | str) -> list[Chunk]:
                 source_file=json_file.name,
                 page_number=page,
                 source_domain="mit_ocw_lecture",
-                priority={"Syllabus": 1, "Strict_Rules": 1, "Pedagogical_Context": 2, "Supplementary": 3}.get(category, 2),
             ))
 
     # --- Syllabus ---
@@ -503,7 +489,6 @@ def load_chunks(raw_data_path: Path | str) -> list[Chunk]:
                 source_file="syllabus.txt",
                 page_number=None,
                 source_domain="mit_ocw_syllabus",
-                priority=1,
             ))
 
     # --- Assignment solutions ---
@@ -528,7 +513,6 @@ def load_chunks(raw_data_path: Path | str) -> list[Chunk]:
                 source_file=json_file.name,
                 page_number=slide.get("page"),
                 source_domain="mit_ocw_assignment",
-                priority=3,
             ))
 
     return chunks
@@ -604,7 +588,6 @@ def load_harvard_notes(raw_data_path: Path | str) -> list[Chunk]:
                 source_file=f"notes_{week}_{title}",
                 page_number=i,  # section index acts as page
                 source_domain="harvard_cs50",
-                priority={"Syllabus": 1, "Strict_Rules": 1, "Pedagogical_Context": 2, "Supplementary": 3}.get(category, 2),
             ))
 
     return chunks
@@ -645,7 +628,6 @@ def load_harvard_transcripts(raw_data_path: Path | str) -> list[Chunk]:
                 source_file=json_file.name,
                 page_number=None,
                 source_domain="harvard_cs50",
-                priority=2,
             ))
 
     print(f"  Harvard transcripts: {len(chunks)} chunks")
@@ -692,7 +674,6 @@ def load_cpp_guidelines(guidelines_path: Path | str) -> list[Chunk]:
             source_file="cppcoreguidelines.json",
             page_number=None,
             source_domain="cpp_core_guidelines",
-            priority=2,
         ))
 
     print(f"  C++ Core Guidelines: {len(chunks)} chunks (week 0)")
@@ -702,11 +683,6 @@ def load_cpp_guidelines(guidelines_path: Path | str) -> list[Chunk]:
 # ---------------------------------------------------------------------------
 # 3. Candidate Pool Construction
 # ---------------------------------------------------------------------------
-
-def _tier2_k(query_week: int) -> int:
-    """Dynamic Kw: 5 per history week, capped at 25."""
-    history_weeks = query_week - 1
-    return min(history_weeks * 5, 25)
 
 
 def _simple_bm25(
@@ -777,109 +753,35 @@ def _simple_bm25(
     return result
 
 
-def _embedding_top_k(
-    query_text: str,
-    corpus_chunks: list[Chunk],
-    model: Any,
-    top_k: int,
-) -> list[Chunk]:
-    """Dense retrieval: encode query, dot-product with chunk embeddings."""
-    query_vec = model.encode(query_text)
-
-    scored: list[tuple[Chunk, float]] = []
-    for c in corpus_chunks:
-        chunk_vec = model.encode(c.content)
-        # Dot product (consistent with Qdrant distance=DOT)
-        sim = float(query_vec @ chunk_vec.T)
-        scored.append((c, sim))
-
-    scored.sort(key=lambda x: x[1], reverse=True)
-    result = []
-    for c, s in scored[:top_k]:
-        c.retrieval_score = float(s)
-        result.append(c)
-    return result
-
-
-def _neighbor_expansion(
-    selected: list[Chunk],
-    all_chunks: list[Chunk],
-    radius: int = 1,
-) -> list[Chunk]:
-    """
-    For each selected chunk, include ±radius neighbors from the same source_file,
-    ordered by page_number.
-    """
-    # Group all chunks by source_file, sorted by page_number
-    source_groups: dict[str, list[Chunk]] = defaultdict(list)
-    for c in all_chunks:
-        source_groups[c.source_file].append(c)
-    for fname in source_groups:
-        source_groups[fname].sort(key=lambda c: c.page_number or 0)
-
-    # Build position lookup: (source_file, chunk_id) → index in source group
-    position: dict[tuple[str, str], int] = {}
-    for fname, clist in source_groups.items():
-        for i, c in enumerate(clist):
-            position[(fname, c.chunk_id)] = i
-
-    expanded_ids: set[str] = {c.chunk_id for c in selected}
-    for c in selected:
-        fname = c.source_file
-        pos = position.get((fname, c.chunk_id))
-        if pos is None:
-            continue
-        clist = source_groups[fname]
-        for offset in range(-radius, radius + 1):
-            if offset == 0:
-                continue
-            neighbor_pos = pos + offset
-            if 0 <= neighbor_pos < len(clist):
-                expanded_ids.add(clist[neighbor_pos].chunk_id)
-
-    # Return all chunks whose IDs are in expanded set, preserving original ordering
-    id_to_chunk = {c.chunk_id: c for c in all_chunks}
-    return [id_to_chunk[cid] for cid in expanded_ids if cid in id_to_chunk]
-
-
 def build_candidate_pool(
     query: EvalQuery,
     all_chunks: list[Chunk],
 ) -> list[Chunk]:
+    """Build BM25 candidate pool with week-priority."""
 
     retrieval_query = _build_retrieval_query(query)
+    is_ast = _is_ast_query(query.student_message, query.golden_answer)
 
-    if _is_ast_query(
-        query.student_message,
-        query.golden_answer,
-    ):
-        top_k = 80
+    if is_ast:
+        # AST queries: guidelines (week 0) get heavy weight for rule lookup
+        guidelines = [c for c in all_chunks if c.week == 0]
+        others = [c for c in all_chunks if 0 < c.week <= query.week]
+        pool = _simple_bm25(retrieval_query, guidelines, top_k=40)
+        seen = {c.chunk_id for c in pool}
+        for c in _simple_bm25(retrieval_query, others, top_k=20):
+            if c.chunk_id not in seen:
+                pool.append(c)
     else:
-        top_k = 50
+        # Non-AST: equal split between current week and history
+        current = [c for c in all_chunks if c.week == query.week]
+        history = [c for c in all_chunks if c.week < query.week]
+        pool = _simple_bm25(retrieval_query, current, top_k=30)
+        seen = {c.chunk_id for c in pool}
+        for c in _simple_bm25(retrieval_query, history, top_k=30):
+            if c.chunk_id not in seen:
+                pool.append(c)
 
-
-    # print("\n" + "=" * 80)
-    # print(f"QUERY {query.query_id}")
-    # print("=" * 80)
-    # print(retrieval_query)
-
-    # candidate_chunks = _simple_bm25(
-    #     retrieval_query,
-    #     all_chunks,
-    #     top_k=top_k,
-    # )
-
-    # print("\nTOP RETRIEVED CHUNKS:")
-    # for c in candidate_chunks[:10]:
-    #     print("-" * 60)
-    #     print(f"{c.chunk_id} | Week {c.week} | {c.category}")
-    #     print(c.content[:500])
-        
-    return _simple_bm25(
-        retrieval_query,
-        all_chunks,
-        top_k=top_k,
-    )
+    return pool
 
 def _build_retrieval_query(query: EvalQuery) -> str:
     """
@@ -1118,8 +1020,8 @@ def main():
     parser.add_argument("--course", type=str, default="harvard",
                         choices=["mit", "harvard"],
                         help="Course to label: mit or harvard (default: harvard).")
-    parser.add_argument("--sample-size", type=int, default=60,
-                        help="Target number of queries to sample (default: 30).")
+    parser.add_argument("--sample-size", type=int, default=200,
+                        help="Target number of queries to sample (default: 200).")
     parser.add_argument("--seed", type=int, default=42,
                         help="Random seed (default: 42).")
     args = parser.parse_args()
@@ -1150,12 +1052,16 @@ def main():
         print(f"  Filtered to weeks 0-5: {len(records)} records (Harvard).")
     print(f"  Loaded {len(records)} records (excl. Out-of-Scope).")
 
+    # Per-week availability (diagnostic)
+    week_counts = Counter(r["metadata"].get("week", 0) for r in records)
+    print(f"  Records per week: {dict(sorted(week_counts.items()))}")
+
     queries = sample_queries(records, target=args.sample_size, seed=args.seed)
     print(f"  Sampled {len(queries)} queries.")
     _print_distribution(queries, max_week=5 if course == "harvard" else 8)
 
     # Save eval queries
-    eval_path = _output_path("eval_queries.jsonl")
+    eval_path = _output_path("eval_queries_cs50.jsonl")
     eval_lines = []
     for q in queries:
         eval_lines.append(json.dumps({
@@ -1191,10 +1097,9 @@ def main():
     print(f"  Loaded {len(all_chunks)} chunks.")
 
     # Print chunk distribution
-    from collections import Counter as Ctr
-    week_dist = Ctr(c.week for c in all_chunks)
-    cat_dist = Ctr(c.category for c in all_chunks)
-    src_dist = Ctr(getattr(c, 'source_type', getattr(c, 'source_domain', '?')) for c in all_chunks)
+    week_dist = Counter(c.week for c in all_chunks)
+    cat_dist = Counter(c.category for c in all_chunks)
+    src_dist = Counter(c.source_domain for c in all_chunks)
     print(f"  Week distribution: {dict(sorted(week_dist.items()))}")
     print(f"  Category distribution: {dict(cat_dist)}")
     print(f"  Source type distribution: {dict(src_dist)}")
@@ -1229,7 +1134,7 @@ def main():
             }
             for q in queries
         }
-        pool_summary_path = _output_path("pool_summary.json")
+        pool_summary_path = _output_path("pool_summary_cs50.json")
         _write_json(pool_summary_path, pool_summary)
         print(f"  Pool summary saved → {pool_summary_path}")
         return
@@ -1277,7 +1182,7 @@ def main():
 
     # Golden labels (OpenAI GPT-5 mini)
     golden_out = {r.query_id: r.golden_labels for r in results}
-    golden_path = _output_path("golden_labels.json")
+    golden_path = _output_path("golden_labels_cs50.json")
     _write_json(golden_path, golden_out)
     print(f"  Golden labels → {golden_path}")
 
@@ -1293,7 +1198,7 @@ def main():
             "pool_size": total_pool,
             "golden_ratio": round(total_golden / total_pool, 3) if total_pool else 0,
         })
-    report_path = _output_path("labeling_report.json")
+    report_path = _output_path("labeling_report_cs50.json")
     _write_json(report_path, report)
     print(f"  Labeling report → {report_path}")
 

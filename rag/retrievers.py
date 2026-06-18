@@ -147,7 +147,7 @@ def retrieve_syllabus(week: int) -> RetrievedDoc | None:
     records, _ = client.scroll(
         # The collection name is now config-driven so the same code can point
         # at any hosted Qdrant collection without code changes.
-        collection_name=get_runtime_config().collection_name,
+        collection_name=get_runtime_config().collection_mit13,
         scroll_filter=_syllabus_filter(week),
         limit=1,
     )
@@ -185,7 +185,7 @@ def retrieve_semantic(
     hits = client.query_points(
         # Semantic retrieval shares the same collection as the other lanes; the
         # filter is what separates concept text from rules and syllabus.
-        collection_name=get_runtime_config().collection_name,
+        collection_name=get_runtime_config().collection_mit13,
         query=query_vector,
         query_filter=_semantic_filter(week, cumulative=cumulative),
         limit=top_k,
@@ -211,7 +211,7 @@ def retrieve_strict_rules(
     hits = client.query_points(
         # Thresholding keeps low-similarity rules from leaking into the
         # response when the student query is only weakly related to policy text.
-        collection_name=get_runtime_config().collection_name,
+        collection_name=get_runtime_config().collection_mit13,
         query=query_vector,
         query_filter=_rules_filter(week, cumulative=cumulative),
         limit=top_k,
@@ -242,7 +242,7 @@ def retrieve_guidelines(
     query_vector = model.encode(dense_query).tolist()
 
     hits = client.query_points(
-        collection_name=get_runtime_config().guidelines_collection_name,
+        collection_name=get_runtime_config().collection_guidelines,
         query=query_vector,
         limit=top_k,
         score_threshold=threshold,
@@ -292,7 +292,7 @@ def retrieve_harvard(
     query_vector = model.encode(dense_query).tolist()
 
     hits = client.query_points(
-        collection_name=get_runtime_config().harvard_collection_name,
+        collection_name=get_runtime_config().collection_cs50,
         query=query_vector,
         query_filter=_harvard_semantic_filter(week, cumulative=cumulative),
         limit=top_k,
@@ -312,7 +312,7 @@ def retrieve_harvard_rules(
     query_vector = model.encode(dense_query).tolist()
 
     hits = client.query_points(
-        collection_name=get_runtime_config().harvard_collection_name,
+        collection_name=get_runtime_config().collection_cs50,
         query=query_vector,
         query_filter=_harvard_rules_filter(week, cumulative=cumulative),
         limit=top_k,

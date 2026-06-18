@@ -1,200 +1,164 @@
-# Retrieval Experiment Design
+# Retrieval Experiment
 
-## Flowchart
-
-### Phase 1–5: Overall Experiment Pipeline
-
-```
-┌──────────────────────────────────────────────────────────────────────────────────────────┐
-│                                                                                          │
-│  ┌─────────────────────┐   ┌─────────────────────┐   ┌─────────────────────┐             │
-│  │      Phase 1        │   │      Phase 2        │   │      Phase 3        │             │
-│  │                     │   │                     │   │                     │             │
-│  │  Generate golden    │   │  Embedding model    │   │  Chunking variant   │             │
-│  │  labels             │   │  sweep              │   │  experiment         │             │
-│  │                     │   │                     │   │                     │             │
-│  │  LLM dual-provider  │──▶│  Recall@K           │──▶│  slide + overlap    │             │
-│  │  + cross-encoder    │   │  MRR, NDCG          │   │  → sentence-window  │             │
-│  │                     │   │                     │   │                     │             │
-│  │  → golden_labels    │   │  Metric: hit rate   │   │  Metric: best       │             │
-│  │     .json            │   │  of golden labels   │   │  chunking strategy  │             │
-│  └─────────────────────┘   └─────────────────────┘   └─────────────────────┘             │
-│                                                                                          │
-│  ┌─────────────────────┐   ┌─────────────────────────────────────────────────────┐       │
-│  │      Phase 4        │   │                    Phase 5                          │       │
-│  │                     │   │                                                     │       │
-│  │  Retriever type     │   │  Full combination validation                        │       │
-│  │  + Top-K            │──▶│                                                     │       │
-│  │  grid search        │   │  Best (model, chunking, retriever, k)               │       │
-│  │                     │   │  + cost & latency analysis                          │       │
-│  │  Metric: Recall@K,  │   │                                                     │       │
-│  │  MRR, NDCG          │   │  Final recommendation for production RAG pipeline   │       │
-│  └─────────────────────┘   └─────────────────────────────────────────────────────┘       │
-│                                                                                          │
-└──────────────────────────────────────────────────────────────────────────────────────────┘
-```
-
-### Phase 1 Detail: Golden Label Generation
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                     1. Load Eval Dataset                                    │
-│  1,351 synthetic student-TA conversations from                              │
-│  synthetic_c_plus_plus_dataset.jsonl                                        │
-│  Exclude Out-of-Scope triggers (~51 records)                                │
-└────────────────────────────────────┬────────────────────────────────────────┘
-                                     │
-                                     ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                     2. Sample 80–100 Queries                                 │
-│  Stratified by: week (min 5 per week), mode (Homework ~75%, Study ~25%)     │
-│  → eval_queries.jsonl                                                        │
-└────────────────────────────────────┬────────────────────────────────────────┘
-                                     │
-                                     ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                   3. Build Candidate Pool per Query                          │
-│  ┌─────────────────────────────────────────────────────────────────────┐    │
-│  │  Tier 1: Full Presentation                                           │    │
-│  │  Week W (all chunks)  +  Week 0 (shared reference)                   │    │
-│  │  (~35-55 chunks, full content shown)                                 │    │
-│  └─────────────────────────────────────────────────────────────────────┘    │
-│                                     │                                        │
-│  ┌─────────────────────────────────▼───────────────────────────────────┐    │
-│  │  Tier 2: Hybrid Expansion (weeks 1..W-1)                             │    │
-│  │  BM25 Top-Kw  ∪  Embedding Top-Kw  →  Dedup  →  Neighbor ±1         │    │
-│  │  (~10-48 chunks, three complementary signals)                        │    │
-│  └─────────────────────────────────────────────────────────────────────┘    │
-│                                     │                                        │
-│  Total pool: ~40-103 chunks per query (varies by week)                       │
-└────────────────────────────────────┬────────────────────────────────────────┘
-                                     │
-                                     ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                   4. LLM Labeling (Dual-Provider)                            │
-│  ┌──────────────────────────┐    ┌──────────────────────────┐               │
-│  │  Cohere command-r-plus    │    │  OpenAI GPT-5 mini        │               │
-│  │  temp=0.0                │    │  temp=0.0                │               │
-│  │  Input: student Q +      │    │  Input: student Q +      │               │
-│  │  golden answer +         │    │  golden answer +         │               │
-│  │  candidate chunks        │    │  candidate chunks        │               │
-│  └────────────┬─────────────┘    └────────────┬─────────────┘               │
-│               │                               │                              │
-│               └───────────┬───────────────────┘                              │
-│                           │                                                  │
-│                           ▼                                                  │
-│               ┌───────────────────────┐                                      │
-│               │  Union =             │                                      │
-│               │  golden labels       │                                      │
-│               │  (Jaccard < 0.6 →    │                                      │
-│               │   manual review)     │                                      │
-│               └───────────────────────┘                                      │
-└────────────────────────────────────┬────────────────────────────────────────┘
-                                     │
-                                     ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                  5. Cross-Encoder Validation                                 │
-│  Model: BAAI/bge-reranker-v2-m3 (local, free)                               │
-│  Score each (query, chunk) pair → threshold at 0.5                          │
-│  Compute agreement (Jaccard) with LLM labels                                │
-│  > 0.7: reliable  |  0.4-0.7: spot-check  |  < 0.4: manual review          │
-│  → ce_scores.json  +  agreement_report.json                                  │
-└────────────────────────────────────┬────────────────────────────────────────┘
-                                     │
-                                     ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                  6. Output: Golden Labels Finalized                          │
-│  golden_labels.json: {query_id → [chunk_id, ...]}                           │
-│  Ready for Phase 2–5 retrieval experiments                                  │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
-> **Goal**: Select the optimal combination of (embedding model, chunking
-> strategy, overlap, retriever type, top-k) for the RAG pipeline by
-> systematically comparing retrieval quality on a labeled query set.
+Grid search over embedding models, top-k, and rerank strategies to find the best RAG pipeline config for Harvard CS50.
 
 ---
 
-## 1. Current Chunking Method
+## 1. Pipeline
 
-### 1.1 Data Sources
+```
+golden_labels_cs50.json  →  Qdrant index  →  vector retrieval  →  MMR rerank  →  metrics vs golden
+```
 
-| Source | Path | Format |
-|--------|------|--------|
-| Lecture slides | `raw_data/lecture_text/0[1-8]_lecture_*.json` | List of `{page, section, text, has_code}` |
-| Syllabus | `raw_data/mit_ocw_output/syllabus.txt` | Plain text + `SYLLABUS_MATRIX` (Python dict) |
-| Assignment solutions | `raw_data/lecture_text/assignment*_solution.json` | Same slide format as lectures |
-
-> **Note**: Textbooks may be added later. The chunking approach will need to be
-> revisited when long-form continuous prose is introduced (see §6).
-
-### 1.2 Current Chunking Strategy
-
-**Slide-based chunking: one slide = one chunk** (no overlap, no sliding window).
-
-Implemented in `rag/loader.py`:
-
-1. **Lecture slides**: Each slide JSON object becomes one chunk.
-   - Content is formatted as `[{section}] {text}` (section name prepended for
-     retrieval context).
-   - Content capped at 2000 characters.
-   - Week number derived from filename via `_LECTURE_WEEK_MAP`.
-
-2. **Syllabus**: One chunk per week (8 total), each containing the week's
-   allowed/forbidden matrix + a 500-char course description prefix.
-
-3. **Assignment solutions**: Each slide becomes one chunk (same as lectures),
-   assigned to week 4 (mid-course).
-
-### 1.3 Chunk-level Metadata (Payload Fields)
-
-Every chunk carries these fields in the Qdrant payload:
-
-| Field | Type | Source |
-|-------|------|--------|
-| `chunk_id` | UUID5 (deterministic) | `_stable_chunk_id()` |
-| `content` | str (≤2000 chars) | Slide text |
-| `week` | int (1-8) | Filename → `_LECTURE_WEEK_MAP` |
-| `category` | `DocCategory` enum | Heuristic classifier |
-| `topic` | str | Slide section name |
-| `priority` | int (1-3) | Based on `DocCategory` |
-| `source_domain` | `SourceDomain` enum | Source type |
-| `source_type` | str | `"lecture_slide"`, `"assignment_solution"`, `"syllabus_page"` |
-| `page_number` | int or None | Slide page number |
-| `parent_chunk_id` | UUID or None | Reserved for future parent-child linking |
-
-### 1.4 Chunk Category Classification
-
-Heuristic (`classify_category()` in `rag/loader.py`):
-
-| Priority | Condition | → Category |
-|----------|-----------|------------|
-| 1 | Source is `"syllabus"` | `Syllabus` |
-| 2 | Source is `"assignment_solution"` | `Supplementary` |
-| 3 | Text matches strict-rule keywords (`must`, `always`, `never`, `do not`, `avoid`, `forbidden`, `mandatory`, etc.) | `Strict_Rules` |
-| 4 | Everything else | `Pedagogical_Context` |
-
-**Priority mapping** (for reranking):
-- Syllabus = 1, Strict_Rules = 1, Pedagogical_Context = 2, Supplementary = 3
-
-### 1.5 Chunk ID Determinism
-
-Chunk IDs use UUID5 with a fixed namespace (`58dbf568-...`) and stable input
-parts (filename, page, section, content prefix). This means:
-
-- Re-running the loader produces the **same chunk IDs**.
-- Qdrant upsert replaces records in-place (no duplicates).
-- Re-indexing after changing **only embedding model** preserves IDs — vectors
-  change but the chunk identity remains stable.
-
-### 1.6 What Changes Under Different Chunking Strategies
-
-| Chunking Variable | Impact on Loader | Impact on Index |
-|-------------------|------------------|-----------------|
-| Slide-level with overlap (e.g. include adjacent slide content) | Minimal: modify `_parse_lecture_json` to append neighbor text | Chunk IDs change → full rebuild needed |
-| Sentence-level sliding window | Major: new chunker class needed, different ID scheme | Full rebuild |
-| Semantic chunking | Major: embedding-based splitting, different boundaries | Full rebuild |
+| Step | Description |
+|------|-------------|
+| Golden labels | `labeling_chunks.py` output: `{query_id: [chunk_id, ...]}` |
+| Corpus | Harvard CS50 notes (87 chunks) + transcripts (2,477) |
+| Index | Qdrant Cloud, one collection per embedding model |
+| Retrieval | Pure vector search (cosine distance), no category/week filters |
+| Rerank | Optional MMR (Jaccard token diversity) |
+| Metrics | Recall@K, Precision@K, F1@K, MRR, NDCG@K vs golden labels |
 
 ---
 
+## 2. Hyperparameter Grid
 
+### 2.1 Embedding Models
+
+| Model | Dim | Notes |
+|-------|-----|-------|
+| `all-MiniLM-L6-v2` | 384 | Lightweight baseline |
+| `sentence-transformers/multi-qa-mpnet-base-dot-v1` | 768 | Optimized for semantic search |
+| `BAAI/bge-base-en-v1.5` | 768 | Strong general-purpose |
+
+### 2.2 Top-K
+
+`[3, 5, 8, 10, 15]` — how many chunks retrieved per query.
+
+### 2.3 Rerank Strategies
+
+| Strategy | Description |
+|----------|-------------|
+| `similarity` | No rerank, raw cosine scores |
+| `mmr_0.5` | MMR λ=0.5, balanced relevance/diversity |
+| `mmr_0.7` | MMR λ=0.7, lean toward relevance |
+| `mmr_0.9` | MMR λ=0.9, mostly relevance, slight diversity |
+
+**MMR** (Maximal Marginal Relevance): scores each candidate as `λ × similarity_score - (1-λ) × max_jaccard_overlap_with_selected`. Higher λ = more relevance, lower = more diversity.
+
+When MMR is active, Qdrant fetches `top_k × 4` candidates first, then MMR picks the top-k most diverse subset.
+
+### 2.4 Grid Size
+
+```
+3 embeddings × 5 top_k × 4 rerank = 60 runs
+```
+
+One Qdrant index rebuild per embedding model (3 total).
+
+---
+
+## 3. Metrics
+
+| Metric | Formula | Meaning |
+|--------|---------|---------|
+| `recall@K` | `|golden ∩ top-K| / |golden|` | Fraction of golden chunks found in top-K |
+| `precision@K` | `|golden ∩ top-K| / K` | Fraction of top-K that are golden |
+| `f1@K` | `2 × P × R / (P + R)` | Harmonic mean of precision and recall |
+| `mrr` | `1 / rank_of_first_golden` | How early the first golden chunk appears |
+| `ndcg@K` | `DCG / IDCG` | Recall weighted by position (earlier = higher score) |
+
+Metrics are computed at K matching the retrieval top-k, then averaged across all queries.
+
+---
+
+## 4. Usage
+
+```bash
+# Full grid (60 runs)
+python retrieval_experiment.py
+
+# Quick mode (1 model, fewer rerank strategies)
+python retrieval_experiment.py --quick
+
+# Dry run (print configs, no indexing)
+python retrieval_experiment.py --dry-run
+```
+
+Environment variables:
+
+| Variable | Default |
+|----------|---------|
+| `QDRANT_URL` | (required for cloud) |
+| `QDRANT_API_KEY` | (required for cloud) |
+| `MLFLOW_TRACKING_URI` | Optional, logs metrics to MLflow |
+| `RAG_EXPERIMENT_S3_BUCKET` | `codingrabbit-data-dev` |
+| `RAG_EXPERIMENT_RAW_DATA_PATH` | Harvard notes S3 path |
+| `RAG_EXPERIMENT_GOLDEN_LABELS_PATH` | `golden_labels_filtered.json` S3 path |
+
+---
+
+## 5. Best Result
+
+Top config (row #28) by F1@8:
+
+See: `s3://codingrabbit-data-dev/prepared/rag/experiments/outputs/experiment_results_cs50.json`
+
+| Parameter | Value |
+|-----------|-------|
+| Embedding model | `sentence-transformers/multi-qa-mpnet-base-dot-v1` |
+| Top-K | 8 |
+| Rerank strategy | similarity |
+| Rerank lambda | none |
+| Fetch multiplier | 1 |
+| Num queries | 113 |
+| Num chunks | 3,078 |
+| Collection | `exp_sentence_transformers_multi_qa_mpnet_base_dot_v1` |
+
+### Metrics (K=8)
+
+| Metric | Value |
+|--------|-------|
+| Recall@8 | 0.1405 |
+| Precision@8 | 0.1040 |
+| F1@8 | 0.1153 |
+| MRR | 0.2646 |
+| NDCG@8 | 0.1421 |
+
+> Metrics at other K values (@3, @5, @10, @15) are not applicable — the experiment evaluates each run only at its configured top_k, so only K=8 metrics carry signal for this config.
+
+---
+
+## 6. Experiment V2 — BM25 + Vector Hybrid
+
+`add_bm25.py` — same pipeline, but retrieval merges BM25 (keyword) and vector (semantic) results.
+
+Grid: 5 top_k × hybrid BM25+vector = 5 runs.
+
+| top_k | recall@K | precision@K | f1@K | mrr | ndcg@K |
+|-------|----------|-------------|------|-----|--------|
+| 3 | 0.0591 | 0.1298 | 0.0785 | 0.2139 | 0.1300 |
+| 5 | 0.0908 | 0.1133 | 0.0967 | 0.2382 | 0.1237 |
+| 8 | 0.1371 | 0.1029 | 0.1134 | 0.2525 | 0.1340 |
+| **10** | **0.1657** | **0.1000** | **0.1207** | **0.2598** | **0.1460** |
+| 15 | 0.2136 | 0.0855 | 0.1187 | 0.2638 | 0.1671 |
+
+### Best by F1@10
+
+| Metric | Value |
+|--------|-------|
+| Recall@10 | 0.1657 |
+| Precision@10 | 0.1000 |
+| F1@10 | 0.1207 |
+| MRR | 0.2598 |
+| NDCG@10 | 0.1460 |
+
+### V1 vs V2 comparison (same mpnet, top_k=8)
+
+| Metric | V1 (vector only) | V2 (BM25+vector) | Delta |
+|--------|------------------|-------------------|-------|
+| Recall@8 | 0.1405 | 0.1371 | -2.4% |
+| F1@8 | 0.1153 | 0.1134 | -1.6% |
+| MRR | 0.2646 | 0.2525 | -4.6% |
+
+Hybrid BM25+vector did not improve over pure vector at K=8. BM25 pulls from a different ranking distribution; merging with interleave may dilute the vector signal when golden labels were generated with BM25 (labeling pipeline uses BM25 only, not vector).

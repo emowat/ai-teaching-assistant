@@ -21,7 +21,7 @@ from rag.experiments.labeling_chunks import (
     load_harvard_transcripts,
 )
 
-EVAL_QUERIES_PATH = Path(__file__).resolve().parent.parent / "rag" / "experiments" / "outputs" / "eval_queries.jsonl"
+EVAL_QUERIES_PATH = Path(__file__).resolve().parent.parent / "rag" / "experiments" / "outputs" / "eval_queries_cs50.jsonl"
 
 
 def load_eval_queries(path: Path) -> dict[str, dict]:
@@ -55,7 +55,7 @@ def main() -> None:
 
     # 直接从 raw_data 加载三个来源的 chunk
     print("Loading chunks from raw_data/ ...")
-    guidelines = load_cpp_guidelines("raw_data")
+    guidelines = load_cpp_guidelines("raw_data/cppcoreguidelines/cppcoreguidelines.json")
     harvard_notes = load_harvard_notes("raw_data")
     harvard_transcripts = load_harvard_transcripts("raw_data")
 
@@ -67,7 +67,6 @@ def main() -> None:
             "category": c.category,
             "source_file": c.source_file,
             "source_domain": c.source_domain,
-            "priority": c.priority,
         }
 
     print(f"Loaded: {len(guidelines)} guidelines, {len(harvard_notes)} notes, "
