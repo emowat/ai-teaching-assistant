@@ -15,6 +15,8 @@ import { TopBar } from "../components/TopBar";
 import type { AppView } from "../types/navigation";
 import {
   defaultWeekLaunchConfigs,
+  getWeekLaunchUrl,
+  isWeekLaunchReady,
   loadWeekLaunchConfigs,
   saveWeekLaunchConfigs,
   type WeekLaunchConfig,
@@ -267,6 +269,19 @@ export function ProfessorDashboard({
                       />
                     </label>
 
+                    <label style={{ display: "grid", gap: 6 }}>
+                      <span style={{ fontSize: 12, color: D.muted }}>
+                        Default branch for Codespaces
+                      </span>
+                      <input
+                        value={week.defaultBranch}
+                        onChange={(event) =>
+                          updateWeek(week.id, { defaultBranch: event.target.value })
+                        }
+                        style={inputStyle}
+                      />
+                    </label>
+
                     <label
                       style={{
                         display: "flex",
@@ -286,6 +301,11 @@ export function ProfessorDashboard({
 
                     <div style={{ fontSize: 11, color: D.muted }}>
                       Students will see this week in the launcher when it is enabled.
+                      Launch target: <code>{getWeekLaunchUrl(week)}</code>
+                    </div>
+
+                    <div style={{ fontSize: 11, color: D.muted }}>
+                      Status: {isWeekLaunchReady(week) ? "launch ready" : "missing repo/template URL"}
                     </div>
                   </Card>
                 ))}

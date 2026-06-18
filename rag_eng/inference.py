@@ -9,15 +9,21 @@ from typing import AsyncIterator
 
 import httpx
 
-from rag_eng.config import Settings
+from rag_eng.config import Settings, get_inference_config
+from rag_eng.llm_clients import (
+    OpenAIChatConfig,
+    ainvoke_openai_chat_completion,
+    chunk_text,
+)
+from rag_eng.prompt_budget import effective_max_tokens
 
 
 # ---------------------------------------------------------------------------
-# Chat template helpers
+# Chat template helpers (used only for the legacy huggingface backend)
 # ---------------------------------------------------------------------------
 
 def _format_messages(messages: list[dict], model_family: str) -> str:
-    """Convert messages list to the model-specific prompt format."""
+    """Convert messages list to model-specific prompt format."""
     if model_family == "llama3":
         prompt = "<|begin_of_text|>"
         for msg in messages:
@@ -52,19 +58,31 @@ async def _invoke_sagemaker(
     settings: Settings,
 ) -> str:
     """Upload prompt to S3, invoke SageMaker Async endpoint, poll for result."""
+    import sys
+    from pathlib import Path
+
     import boto3
 
-    model_family = settings.model_family
-    formatted_prompt = _format_messages(messages, model_family)
+    deploy_dir = Path(__file__).resolve().parent.parent / "deploy"
+    if str(deploy_dir) not in sys.path:
+        sys.path.insert(0, str(deploy_dir))
+    from sagemaker_io import build_async_payload, parse_async_response
 
-    payload = {
-        "inputs": formatted_prompt,
-        "parameters": {
-            "max_new_tokens": 2048,
-            "temperature": 0.7,
-            "top_p": 0.9,
-        },
-    }
+    ic = get_inference_config().sagemaker
+    backend = settings.sagemaker_inference_backend
+    formatted_prompt = None
+    if backend == "huggingface":
+        formatted_prompt = _format_messages(messages, settings.model_family)
+
+    max_tokens = effective_max_tokens(messages, ic)
+    payload = build_async_payload(
+        backend,
+        messages,
+        max_tokens=max_tokens,
+        temperature=ic.generation.temperature,
+        top_p=ic.generation.top_p,
+        formatted_prompt=formatted_prompt,
+    )
 
     request_id = str(uuid.uuid4())
     input_key = f"temp/sagemaker_inputs/{request_id}.json"
@@ -86,28 +104,45 @@ async def _invoke_sagemaker(
     )
     output_uri = response["OutputLocation"]
     output_key = output_uri.replace(f"s3://{bucket}/", "")
+    failure_uri = response.get("FailureLocation")
+    failure_key = (
+        failure_uri.replace(f"s3://{bucket}/", "") if failure_uri else None
+    )
 
-    # Poll S3 until result appears (2 s intervals, 60 s max)
-    for _ in range(30):
+    poll_interval = ic.poll_interval_seconds
+    max_attempts = max(1, settings.sagemaker_poll_timeout_seconds // int(poll_interval))
+    for _ in range(max_attempts):
+        if failure_key:
+            try:
+                obj = s3.get_object(Bucket=bucket, Key=failure_key)
+                failure_body = obj["Body"].read().decode()
+                raise RuntimeError(
+                    f"SageMaker async inference failed: {failure_body}"
+                )
+            except s3.exceptions.NoSuchKey:
+                pass
+
         try:
             obj = s3.get_object(Bucket=bucket, Key=output_key)
             result = json.loads(obj["Body"].read().decode())
-            if isinstance(result, list) and result and "generated_text" in result[0]:
-                return result[0]["generated_text"]
-            return result.get("generated_text", str(result))
+            return parse_async_response(backend, result)
         except s3.exceptions.NoSuchKey:
-            await asyncio.sleep(2.0)
+            await asyncio.sleep(poll_interval)
 
-    raise TimeoutError("SageMaker async result not available after 60 s.")
+    raise TimeoutError(
+        f"SageMaker async result not available after {int(max_attempts * poll_interval)}s. "
+        "Endpoint may be cold-starting; retry in a few minutes."
+    )
 
 
 async def _stream_sagemaker(
     messages: list[dict],
     settings: Settings,
-    chunk_size: int = 20,
 ) -> AsyncIterator[bytes]:
     """Simulate streaming by chunking the SageMaker response."""
+    ic = get_inference_config().sagemaker
     text = await _invoke_sagemaker(messages, settings)
+    chunk_size = ic.streaming_chunk_size
     for i in range(0, len(text), chunk_size):
         chunk = text[i : i + chunk_size]
         yield (json.dumps({"message": {"content": chunk}}) + "\n").encode()
@@ -118,36 +153,84 @@ async def _stream_sagemaker(
 # Ollama local path
 # ---------------------------------------------------------------------------
 
+def _normalize_ollama_response(data: dict) -> dict:
+    """Ensure message.content is populated for thinking-capable models."""
+    message = data.get("message")
+    if not isinstance(message, dict):
+        return data
+    content = message.get("content", "")
+    if not content and message.get("thinking"):
+        data = dict(data)
+        data["message"] = {**message, "content": message["thinking"]}
+    return data
+
+
 async def _invoke_ollama(
     messages: list[dict],
-    model_name: str,
     settings: Settings,
     stream: bool = False,
 ) -> dict | AsyncIterator[bytes]:
-    """Forward the messages to the local Ollama API."""
+    """Forward messages to the local/Docker Ollama API.
+
+    Model name comes from inference_config.yaml (ollama.model) which can be
+    overridden with the OLLAMA_MODEL env var.  The name sent by the extension
+    ("codingrabbit") is ignored — it does not match the Ollama model tag.
+    """
+    ic = get_inference_config().ollama
+    url = ic.url  # OLLAMA_URL env var already applied in loader
     payload = {
-        "model": model_name,
+        "model": ic.model,
         "messages": messages,
         "stream": stream,
-        "options": {"temperature": 0.7, "top_p": 0.9, "num_ctx": 8192, "num_predict": 2048},
+        "think": ic.think,
+        "options": {
+            "temperature": ic.options.temperature,
+            "top_p": ic.options.top_p,
+            "num_ctx": ic.options.num_ctx,
+            "num_predict": ic.options.num_predict,
+        },
     }
 
     if not stream:
         async with httpx.AsyncClient() as client:
-            resp = await client.post(settings.ollama_url, json=payload, timeout=300.0)
+            resp = await client.post(url, json=payload, timeout=ic.timeout_seconds)
             resp.raise_for_status()
-            return resp.json()
+            return _normalize_ollama_response(resp.json())
 
     async def _gen() -> AsyncIterator[bytes]:
         async with httpx.AsyncClient() as client:
             async with client.stream(
-                "POST", settings.ollama_url, json=payload, timeout=300.0
+                "POST", url, json=payload, timeout=ic.timeout_seconds
             ) as resp:
                 resp.raise_for_status()
                 async for chunk in resp.aiter_bytes():
                     yield chunk
 
     return _gen()
+
+
+async def _invoke_openai(
+    messages: list[dict],
+    settings: Settings,
+    stream: bool = False,
+) -> dict | AsyncIterator[bytes]:
+    """Invoke the OpenAI chat-completions API."""
+    ic = get_inference_config().chat
+    if not settings.openai_api_key:
+        raise ValueError("OPENAI_API_KEY is not configured.")
+
+    config = OpenAIChatConfig(
+        api_key=settings.openai_api_key,
+        base_url=settings.openai_base_url or get_inference_config().openai_base_url,
+        model=ic.model,
+        timeout_seconds=120.0,
+        temperature=0.7,
+        top_p=0.9,
+    )
+    text = await ainvoke_openai_chat_completion(messages, config)
+    if not stream:
+        return {"message": {"content": text}}
+    return chunk_text(text, get_inference_config().sagemaker.streaming_chunk_size)
 
 
 # ---------------------------------------------------------------------------
@@ -160,16 +243,20 @@ async def run_inference(
     settings: Settings,
     stream: bool = False,
 ) -> dict | AsyncIterator[bytes]:
-    """Route to SageMaker or Ollama based on settings.
+    """Route to SageMaker or Ollama based on USE_SAGEMAKER setting.
 
     Returns:
         - dict with ``{"message": {"content": str}}`` when stream=False
         - AsyncIterator[bytes] of NDJSON chunks when stream=True
     """
-    if settings.use_sagemaker:
+    chat_provider = get_inference_config().chat.provider
+    if chat_provider == "sagemaker" or settings.use_sagemaker:
         if stream:
             return _stream_sagemaker(messages, settings)
         text = await _invoke_sagemaker(messages, settings)
         return {"message": {"content": text}}
 
-    return await _invoke_ollama(messages, model_name, settings, stream=stream)
+    if chat_provider == "openai":
+        return await _invoke_openai(messages, settings, stream=stream)
+
+    return await _invoke_ollama(messages, settings, stream=stream)

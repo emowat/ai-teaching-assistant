@@ -1,6 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { checkGradioAvailable, getGradioUrl } from "../api/gradioApi";
 import {
+  getAdminLlmConfig,
+  restartBackend,
+  saveAdminLlmConfig,
+  type AdminLlmConfig,
+  type LlmProvider,
+} from "../api/adminLlmApi";
+import {
   Area,
   AreaChart,
   CartesianGrid,
@@ -22,6 +29,7 @@ interface AdminDashboardProps {
   onNavigate: (view: AppView) => void;
   allowedViews: AppView[];
   onSignOut: () => void;
+  accessToken: string;
 }
 
 // STUB — replace when analytics API is available
@@ -35,20 +43,48 @@ const sessionData = [
   { day: "Sun", sessions: 57, resolved: 42 },
 ];
 
-// STUB — replace when model config API is available
 const modelShare = [
-  { name: "Sonnet", value: 78, color: D.orange },
-  { name: "Haiku", value: 15, color: D.blue },
-  { name: "Opus", value: 7, color: D.green },
+  { name: "Ollama", value: 58, color: D.orange },
+  { name: "SageMaker", value: 27, color: D.blue },
+  { name: "OpenAI", value: 15, color: D.green },
 ];
 
-// STUB — replace when GET /admin/models is available
-const models = [
-  { name: "claude-sonnet-4-20250514", active: true, tier: "Balanced", speed: "Fast", note: "Recommended" },
-  { name: "claude-opus-4-20250514", active: false, tier: "Powerful", speed: "Slower", note: "High cost" },
-  { name: "claude-haiku-4-5", active: false, tier: "Lightweight", speed: "Fastest", note: "Budget" },
-];
+const CUSTOM_MODEL_VALUE = "__custom__";
+const OPENAI_MODEL_OPTIONS = ["gpt-5.4-mini", "gpt-5.4", "gpt-5.5"];
+const COHERE_MODEL_OPTIONS = ["command-r", "command-r-plus", "command-xlarge-nightly"];
+const OLLAMA_MODEL_OPTIONS = ["qwen3.5:9b", "llama3.1:8b", "llama3.2:3b"];
 
+function getModelOptions(provider: LlmProvider): string[] {
+  switch (provider) {
+    case "openai":
+      return OPENAI_MODEL_OPTIONS;
+    case "cohere":
+      return COHERE_MODEL_OPTIONS;
+    case "ollama":
+      return OLLAMA_MODEL_OPTIONS;
+    case "sagemaker":
+      return [];
+  }
+}
+
+function resolveModelValue(selected: string, customValue: string): string {
+  return selected === CUSTOM_MODEL_VALUE ? customValue.trim() : selected;
+}
+
+function getDefaultModel(provider: LlmProvider): string {
+  switch (provider) {
+    case "openai":
+      return "gpt-5.4-mini";
+    case "cohere":
+      return COHERE_MODEL_OPTIONS[0];
+    case "ollama":
+      return OLLAMA_MODEL_OPTIONS[0];
+    case "sagemaker":
+      return "";
+  }
+}
+
+// STUB — replace when model config API is available
 // STUB — replace when GET /admin/users is available
 const professors = [
   { name: "Dr. Rivera", email: "crivera@university.edu", courses: 3, students: 87, status: "active" },
@@ -82,17 +118,36 @@ export function AdminDashboard({
   onNavigate,
   allowedViews,
   onSignOut,
+  accessToken,
 }: AdminDashboardProps) {
   const [tab, setTab] = useState("stats");
   const [healthOk, setHealthOk] = useState<boolean | null>(null);
+  const [cohereConfigured, setCohereConfigured] = useState<boolean | null>(null);
   const [gradioAvailable, setGradioAvailable] = useState<boolean | null>(null);
+  const [config, setConfig] = useState<AdminLlmConfig | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [formStatus, setFormStatus] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [restarting, setRestarting] = useState(false);
+  const [ragProvider, setRagProvider] = useState<LlmProvider>("cohere");
+  const [ragModelChoice, setRagModelChoice] = useState("command-xlarge-nightly");
+  const [ragCustomModel, setRagCustomModel] = useState("");
+  const [chatProvider, setChatProvider] = useState<LlmProvider>("ollama");
+  const [chatModelChoice, setChatModelChoice] = useState("qwen3.5:9b");
+  const [chatCustomModel, setChatCustomModel] = useState("");
+  const [showOpenaiSecretEditor, setShowOpenaiSecretEditor] = useState(false);
+  const [openaiApiKey, setOpenaiApiKey] = useState("");
+  const [openaiBaseUrl, setOpenaiBaseUrl] = useState("https://api.openai.com/v1");
   const gradioUrl = getGradioUrl();
 
   useEffect(() => {
     const base = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8001";
     fetch(`${base}/health`)
       .then((r) => r.json())
-      .then((data: { ready?: boolean }) => setHealthOk(Boolean(data.ready)))
+      .then((data: { ready?: boolean; cohere_configured?: boolean }) => {
+        setHealthOk(Boolean(data.ready));
+        setCohereConfigured(data.cohere_configured ?? null);
+      })
       .catch(() => setHealthOk(false));
   }, []);
 
@@ -114,31 +169,57 @@ export function AdminDashboard({
   }, []);
 
   useEffect(() => {
-    if (tab === "interrogator" && gradioAvailable === false) {
-      setTab("stats");
-    }
-  }, [gradioAvailable, tab]);
+    if (!accessToken) return;
+
+    let cancelled = false;
+    void getAdminLlmConfig(accessToken)
+      .then((data) => {
+        if (cancelled) return;
+        setConfig(data);
+        setRagProvider(data.rag.provider);
+        const ragOptions = getModelOptions(data.rag.provider);
+        setRagModelChoice(ragOptions.includes(data.rag.model) ? data.rag.model : CUSTOM_MODEL_VALUE);
+        setRagCustomModel(ragOptions.includes(data.rag.model) ? "" : data.rag.model);
+        setChatProvider(data.chat.provider);
+        const chatOptions = getModelOptions(data.chat.provider);
+        setChatModelChoice(chatOptions.includes(data.chat.model) ? data.chat.model : CUSTOM_MODEL_VALUE);
+        setChatCustomModel(chatOptions.includes(data.chat.model) ? "" : data.chat.model);
+        setOpenaiBaseUrl(data.openai_base_url || "https://api.openai.com/v1");
+      })
+      .catch((err: Error) => {
+        if (!cancelled) setFormError(err.message);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken]);
 
   const adminTabs = useMemo<SidebarTab[]>(() => {
-    const interrogatorTab: SidebarTab = {
-      key: "interrogator",
-      icon: "🔬",
-      label: "RAG Query Console",
-      disabled: gradioAvailable !== true,
-      title:
-        gradioAvailable === null
-          ? "Checking Gradio availability..."
-          : gradioAvailable
-            ? "Open Gradio RAG query console"
-            : "Gradio is not running — start rag_eng to enable",
+    const gradioDisabled = gradioAvailable !== true;
+    const gradioTitle =
+      gradioAvailable === null
+        ? "Checking Gradio availability..."
+        : gradioAvailable
+          ? "Open backend diagnostic console"
+          : "Gradio is not running — start rag_eng to enable";
+
+    const backendConsoleTab: SidebarTab = {
+      key: "backend-console",
+      icon: "🖥",
+      label: "Backend Diagnostic Console",
+      disabled: gradioDisabled,
+      title: gradioTitle,
     };
     const ragIndex = baseAdminTabs.findIndex((t) => t.key === "rag");
     return [
       ...baseAdminTabs.slice(0, ragIndex + 1),
-      interrogatorTab,
+      backendConsoleTab,
       ...baseAdminTabs.slice(ragIndex + 1),
     ];
   }, [gradioAvailable]);
+
+  const activeTab = tab === "backend-console" && gradioAvailable === false ? "stats" : tab;
 
   const footer = (
     <Card style={{ padding: "10px 12px", marginTop: 12, borderRadius: 8 }}>
@@ -154,6 +235,133 @@ export function AdminDashboard({
       </div>
     </Card>
   );
+
+  const handleSaveConfig = async () => {
+    setSaving(true);
+    setFormError(null);
+    setFormStatus(null);
+    try {
+      const nextRagModel = resolveModelValue(ragModelChoice, ragCustomModel);
+      const nextChatModel = resolveModelValue(chatModelChoice, chatCustomModel);
+      if (!nextRagModel) {
+        if (ragProvider !== "sagemaker") {
+          throw new Error("Select or enter a RAG model.");
+        }
+      }
+      if (chatProvider !== "sagemaker" && !nextChatModel) {
+        throw new Error("Select or enter a chat model.");
+      }
+      const payload = {
+        rag: { provider: ragProvider, model: ragProvider === "sagemaker" ? "" : nextRagModel },
+        chat: {
+          provider: chatProvider,
+          model: chatProvider === "sagemaker" ? "" : nextChatModel,
+        },
+        openai_base_url: openaiBaseUrl.trim() || null,
+        ...(openaiApiKey.trim() ? { openai_api_key: openaiApiKey.trim() } : {}),
+      };
+      const data = await saveAdminLlmConfig(payload, accessToken);
+      setConfig(data);
+      setOpenaiApiKey("");
+      setShowOpenaiSecretEditor(false);
+      setFormStatus("Configuration saved.");
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Unable to save configuration.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleRestart = async () => {
+    setRestarting(true);
+    setFormError(null);
+    setFormStatus(null);
+    try {
+      const result = await restartBackend(accessToken);
+      setFormStatus(result.message);
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Restart failed.");
+    } finally {
+      setRestarting(false);
+    }
+  };
+
+  const renderModelPicker = (
+    label: string,
+    provider: LlmProvider,
+    value: string,
+    customValue: string,
+    onValueChange: (next: string) => void,
+    onCustomValueChange: (next: string) => void
+  ) => {
+    const options = getModelOptions(provider);
+    if (provider === "sagemaker") {
+      return (
+        <label style={{ display: "grid", gap: 6 }}>
+          <span style={{ fontSize: 12, color: D.muted }}>{label}</span>
+          <div
+            style={{
+              background: D.surface,
+              color: D.text,
+              border: `1px solid ${D.border}`,
+              borderRadius: 8,
+              padding: "10px 12px",
+              minHeight: 42,
+              display: "flex",
+              alignItems: "center",
+            }}
+          >
+            <span style={{ fontSize: 13, color: D.dim }}>
+              SageMaker uses the configured endpoint directly. No model name is required here.
+            </span>
+          </div>
+        </label>
+      );
+    }
+
+    return (
+      <div style={{ display: "grid", gap: 6 }}>
+        <label style={{ display: "grid", gap: 6 }}>
+          <span style={{ fontSize: 12, color: D.muted }}>{label}</span>
+          <select
+            value={value}
+            onChange={(e) => onValueChange(e.target.value)}
+            style={{
+              background: D.bg,
+              color: D.text,
+              border: `1px solid ${D.border}`,
+              borderRadius: 8,
+              padding: "10px 12px",
+            }}
+          >
+            {options.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+            <option value={CUSTOM_MODEL_VALUE}>Custom...</option>
+          </select>
+        </label>
+        {value === CUSTOM_MODEL_VALUE && (
+          <label style={{ display: "grid", gap: 6 }}>
+            <span style={{ fontSize: 11, color: D.muted }}>Custom model name</span>
+            <input
+              value={customValue}
+              onChange={(e) => onCustomValueChange(e.target.value)}
+              placeholder="Enter exact model name"
+              style={{
+                background: D.bg,
+                color: D.text,
+                border: `1px solid ${D.border}`,
+                borderRadius: 8,
+                padding: "10px 12px",
+              }}
+            />
+          </label>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div
@@ -173,16 +381,19 @@ export function AdminDashboard({
         onSignOut={onSignOut}
       />
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
-        <Sidebar tabs={adminTabs} active={tab} onTab={setTab} footer={footer} />
+        <Sidebar tabs={adminTabs} active={activeTab} onTab={setTab} footer={footer} />
 
         <div
           style={{
             flex: 1,
             overflow: "auto",
-            padding: tab === "interrogator" ? 0 : 22,
+            padding:
+              activeTab === "backend-console"
+                ? 0
+                : 22,
           }}
         >
-          {tab === "interrogator" && gradioAvailable && (
+          {activeTab === "backend-console" && gradioAvailable && (
             <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
               <div
                 style={{
@@ -194,7 +405,7 @@ export function AdminDashboard({
                   flexShrink: 0,
                 }}
               >
-                <div style={{ fontSize: 16, fontWeight: 600 }}>RAG Query Console</div>
+                <div style={{ fontSize: 16, fontWeight: 600 }}>Backend Diagnostic Console</div>
                 <Btn
                   small
                   variant="ghost"
@@ -205,7 +416,7 @@ export function AdminDashboard({
               </div>
               <iframe
                 src={gradioUrl}
-                title="RAG Query Console"
+                title="Backend Diagnostic Console"
                 style={{
                   flex: 1,
                   width: "100%",
@@ -217,7 +428,7 @@ export function AdminDashboard({
             </div>
           )}
 
-          {tab === "stats" && (
+          {activeTab === "stats" && (
             <div>
               <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 18 }}>
                 Evaluation dashboard <Tag color={D.muted}>STUB</Tag>
@@ -279,47 +490,232 @@ export function AdminDashboard({
             </div>
           )}
 
-          {tab === "models" && (
+          {activeTab === "models" && (
             <div>
               <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 18 }}>
-                AI model configuration <Tag color={D.muted}>STUB</Tag>
+                AI model configuration
+                <span style={{ marginLeft: 8 }}>
+                  {config?.restart_command_configured ? (
+                    <Tag color={D.green}>Live reload ready</Tag>
+                  ) : (
+                    <Tag color={D.yellow}>Restart command unset</Tag>
+                  )}
+                </span>
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 20 }}>
-                {models.map((m) => (
-                  <Card
-                    key={m.name}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 16,
-                      borderColor: m.active ? D.orangeBorder : D.border,
-                      background: m.active ? `${D.orange}05` : D.card,
-                    }}
-                  >
-                    <div style={{ flex: 1 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                        <span style={{ ...mono, fontSize: 13, fontWeight: 500 }}>{m.name}</span>
-                        {m.active && <Tag>Active</Tag>}
-                        <Tag color={D.muted}>{m.note}</Tag>
+              <Card style={{ display: "grid", gap: 16, marginBottom: 16 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                  <label style={{ display: "grid", gap: 6 }}>
+                    <span style={{ fontSize: 12, color: D.muted }}>RAG provider</span>
+                    <select
+                      value={ragProvider}
+                      onChange={(e) => {
+                        const next = e.target.value as LlmProvider;
+                        setRagProvider(next);
+                        const nextOptions = getModelOptions(next);
+                        const currentValue = resolveModelValue(ragModelChoice, ragCustomModel);
+                        if (nextOptions.length === 0) {
+                          setRagModelChoice(CUSTOM_MODEL_VALUE);
+                          setRagCustomModel("");
+                          return;
+                        }
+                        if (currentValue && nextOptions.includes(currentValue)) {
+                          setRagModelChoice(currentValue);
+                          setRagCustomModel("");
+                          return;
+                        }
+                        setRagModelChoice(getDefaultModel(next));
+                        setRagCustomModel("");
+                      }}
+                      style={{
+                        background: D.bg,
+                        color: D.text,
+                        border: `1px solid ${D.border}`,
+                        borderRadius: 8,
+                        padding: "10px 12px",
+                      }}
+                    >
+                      <option value="cohere">Cohere</option>
+                      <option value="openai">OpenAI</option>
+                    </select>
+                  </label>
+                  {renderModelPicker(
+                    "RAG model",
+                    ragProvider,
+                    ragModelChoice,
+                    ragCustomModel,
+                    setRagModelChoice,
+                    setRagCustomModel
+                  )}
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                  <label style={{ display: "grid", gap: 6 }}>
+                    <span style={{ fontSize: 12, color: D.muted }}>Chat provider</span>
+                    <select
+                      value={chatProvider}
+                      onChange={(e) => {
+                        const next = e.target.value as LlmProvider;
+                        setChatProvider(next);
+                        const nextOptions = getModelOptions(next);
+                        const currentValue = resolveModelValue(chatModelChoice, chatCustomModel);
+                        if (nextOptions.length === 0) {
+                          setChatModelChoice(CUSTOM_MODEL_VALUE);
+                          setChatCustomModel("");
+                          return;
+                        }
+                        if (currentValue && nextOptions.includes(currentValue)) {
+                          setChatModelChoice(currentValue);
+                          setChatCustomModel("");
+                          return;
+                        }
+                        setChatModelChoice(getDefaultModel(next));
+                        setChatCustomModel("");
+                      }}
+                      style={{
+                        background: D.bg,
+                        color: D.text,
+                        border: `1px solid ${D.border}`,
+                        borderRadius: 8,
+                        padding: "10px 12px",
+                      }}
+                    >
+                      <option value="ollama">Ollama</option>
+                      <option value="sagemaker">SageMaker</option>
+                      <option value="openai">OpenAI</option>
+                    </select>
+                  </label>
+                  {renderModelPicker(
+                    "Chat model",
+                    chatProvider,
+                    chatModelChoice,
+                    chatCustomModel,
+                    setChatModelChoice,
+                    setChatCustomModel
+                  )}
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                  <div style={{ display: "grid", gap: 6 }}>
+                    <span style={{ fontSize: 12, color: D.muted }}>
+                      OpenAI secret {config?.openai_api_key_configured ? "(configured)" : "(not set)"}
+                    </span>
+                    {showOpenaiSecretEditor ? (
+                      <>
+                        <input
+                          type="password"
+                          value={openaiApiKey}
+                          onChange={(e) => setOpenaiApiKey(e.target.value)}
+                          placeholder="Paste a new OpenAI API key"
+                          style={{
+                            background: D.bg,
+                            color: D.text,
+                            border: `1px solid ${D.border}`,
+                            borderRadius: 8,
+                            padding: "10px 12px",
+                          }}
+                        />
+                        <div style={{ fontSize: 11, color: D.muted }}>
+                          The saved key is not shown. Leave this blank to keep the existing secret.
+                        </div>
+                      </>
+                    ) : (
+                      <div
+                        style={{
+                          background: D.surface,
+                          color: D.text,
+                          border: `1px solid ${D.border}`,
+                          borderRadius: 8,
+                          padding: "10px 12px",
+                          minHeight: 42,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: 12,
+                        }}
+                      >
+                        <span style={{ fontSize: 13, color: D.dim }}>
+                          {config?.openai_api_key_configured
+                            ? "Configured on the backend"
+                            : "Not configured yet"}
+                        </span>
+                        <Btn small variant="ghost" onClick={() => setShowOpenaiSecretEditor(true)}>
+                          {config?.openai_api_key_configured ? "Replace key" : "Set key"}
+                        </Btn>
                       </div>
-                      <div style={{ display: "flex", gap: 18 }}>
-                        {[["Tier", m.tier], ["Speed", m.speed]].map(([k, v]) => (
-                          <span key={k} style={{ fontSize: 12, color: D.muted }}>
-                            {k}: <span style={{ color: D.dim }}>{v}</span>
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                    <Btn variant={m.active ? "ghost" : "primary"} small>
-                      {m.active ? "✓ Active" : "Activate"}
-                    </Btn>
-                  </Card>
-                ))}
+                    )}
+                  </div>
+                  <label style={{ display: "grid", gap: 6 }}>
+                    <span style={{ fontSize: 12, color: D.muted }}>OpenAI base URL</span>
+                    <input
+                      value={openaiBaseUrl}
+                      onChange={(e) => setOpenaiBaseUrl(e.target.value)}
+                      placeholder="https://api.openai.com/v1"
+                      style={{
+                        background: D.bg,
+                        color: D.text,
+                        border: `1px solid ${D.border}`,
+                        borderRadius: 8,
+                        padding: "10px 12px",
+                      }}
+                    />
+                  </label>
+                </div>
+
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                  <Btn variant="primary" small onClick={handleSaveConfig} disabled={saving || restarting}>
+                    {saving ? "Saving..." : "Save configuration"}
+                  </Btn>
+                  <Btn variant="ghost" small onClick={handleRestart} disabled={saving || restarting}>
+                    {restarting ? "Restarting..." : "Apply / restart"}
+                  </Btn>
+                  {config && (
+                    <span style={{ fontSize: 12, color: D.muted }}>
+                      Current route: RAG <span style={{ color: D.text }}>{config.rag.provider}</span> /{" "}
+                      {config.rag.provider !== "sagemaker" ? config.rag.model : "endpoint"} · Chat{" "}
+                      <span style={{ color: D.text }}>{config.chat.provider}</span>
+                      {config.chat.provider !== "sagemaker" ? ` / ${config.chat.model}` : " / endpoint"}
+                    </span>
+                  )}
+                </div>
+
+                {formError && <div style={{ color: D.red, fontSize: 12 }}>{formError}</div>}
+                {formStatus && <div style={{ color: D.green, fontSize: 12 }}>{formStatus}</div>}
+              </Card>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
+                <Card>
+                  <div style={{ fontSize: 12, color: D.muted, marginBottom: 6 }}>RAG route</div>
+                  <div style={{ ...mono, fontSize: 13 }}>
+                    {config ? `${config.rag.provider}${config.rag.provider === "sagemaker" ? "" : ` / ${config.rag.model}`}` : "Loading..."}
+                  </div>
+                </Card>
+                <Card>
+                  <div style={{ fontSize: 12, color: D.muted, marginBottom: 6 }}>Chat route</div>
+                  <div style={{ ...mono, fontSize: 13 }}>
+                    {config ? `${config.chat.provider}${config.chat.provider === "sagemaker" ? "" : ` / ${config.chat.model}`}` : "Loading..."}
+                  </div>
+                </Card>
+                <Card>
+                  <div style={{ fontSize: 12, color: D.muted, marginBottom: 6 }}>OpenAI secret</div>
+                  <div style={{ ...mono, fontSize: 13 }}>
+                    {config?.openai_api_key_configured ? "Configured" : "Not configured"}
+                  </div>
+                </Card>
+                <Card>
+                  <div style={{ fontSize: 12, color: D.muted, marginBottom: 6 }}>Cohere secret</div>
+                  <div style={{ ...mono, fontSize: 13 }}>
+                    {cohereConfigured === null
+                      ? "Unknown"
+                      : cohereConfigured
+                        ? "Configured on backend"
+                        : "Not configured"}
+                  </div>
+                </Card>
               </div>
             </div>
           )}
 
-          {tab === "rag" && (
+          {activeTab === "rag" && (
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
                 <div style={{ fontSize: 18, fontWeight: 600 }}>
@@ -349,7 +745,7 @@ export function AdminDashboard({
             </div>
           )}
 
-          {tab === "users" && (
+          {activeTab === "users" && (
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
                 <div style={{ fontSize: 18, fontWeight: 600 }}>
@@ -375,7 +771,7 @@ export function AdminDashboard({
             </div>
           )}
 
-          {tab === "courses" && (
+          {activeTab === "courses" && (
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
                 <div style={{ fontSize: 18, fontWeight: 600 }}>

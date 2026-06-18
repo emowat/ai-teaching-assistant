@@ -2,22 +2,38 @@
 
 from __future__ import annotations
 
+import os
+import subprocess
 import uuid
+from pathlib import Path
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
+from rag_eng.auth.cognito import verify_cognito_access_token
 from rag_eng.auth.dependencies import require_authenticated_user
 from rag_eng.auth.models import MeResponse
-from rag_eng.config import Settings, get_settings
+from rag_eng.config import (
+    Settings,
+    get_inference_config,
+    get_runtime_config_path,
+    get_settings,
+    reload_inference_config,
+    save_runtime_config,
+    update_env_file,
+)
 from rag_eng.schemas import (
+    AdminLlmConfigResponse,
+    AdminLlmConfigUpdate,
     HealthResponse,
     IndexEnsureResponse,
     IndexRebuildResponse,
     QueryPayload,
     QueryResult,
+    RestartResponse,
 )
 from rag_eng.runner_client import RunnerError, run_cpp_job
 from rag_eng.run_schemas import CompileRequest, CompileResponse
@@ -45,12 +61,57 @@ class ChatRequest(BaseModel):
     options: _ChatOptions = _ChatOptions()
 
 
+def _error_detail(exc: Exception) -> str:
+    """Return a non-empty HTTP error message (httpx timeouts often str() to '')."""
+    detail = str(exc).strip()
+    if detail:
+        return detail
+    return type(exc).__name__
+
+
 def _require_admin(
     x_admin_token: str | None = Header(default=None),
     settings: Settings = Depends(get_settings),
 ) -> None:
     if settings.admin_token and x_admin_token != settings.admin_token:
         raise HTTPException(status_code=401, detail="Invalid admin token.")
+
+
+_admin_bearer = HTTPBearer(auto_error=False)
+
+
+def _require_admin_access(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_admin_bearer),
+    x_admin_token: str | None = Header(default=None),
+    settings: Settings = Depends(get_settings),
+) -> None:
+    if settings.admin_token and x_admin_token == settings.admin_token:
+        return
+
+    if credentials is None or credentials.scheme.lower() != "bearer":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing admin credentials.",
+        )
+
+    current_user = verify_cognito_access_token(credentials.credentials, settings)
+    if current_user.primary_role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient role for this operation.",
+        )
+
+
+def _runtime_config_payload() -> AdminLlmConfigResponse:
+    settings = get_settings()
+    runtime = get_inference_config()
+    return AdminLlmConfigResponse(
+        rag={"provider": runtime.rag.provider, "model": runtime.rag.model},
+        chat={"provider": runtime.chat.provider, "model": runtime.chat.model},
+        openai_api_key_configured=bool(settings.openai_api_key),
+        openai_base_url=settings.openai_base_url or runtime.openai_base_url,
+        restart_command_configured=bool(settings.restart_command),
+    )
 
 
 def create_app() -> FastAPI:
@@ -108,6 +169,79 @@ def create_app() -> FastAPI:
         except Exception as exc:
             raise HTTPException(status_code=500, detail=str(exc)) from exc
 
+    @app.get(
+        "/admin/llm/config",
+        response_model=AdminLlmConfigResponse,
+        dependencies=[Depends(_require_admin_access)],
+    )
+    def admin_get_llm_config() -> AdminLlmConfigResponse:
+        return _runtime_config_payload()
+
+    @app.post(
+        "/admin/llm/config",
+        response_model=AdminLlmConfigResponse,
+        dependencies=[Depends(_require_admin_access)],
+    )
+    def admin_save_llm_config(payload: AdminLlmConfigUpdate) -> AdminLlmConfigResponse:
+        runtime_path = get_runtime_config_path()
+        runtime = get_inference_config()
+        updated = {
+            "runtime": {
+                "rag": payload.rag.model_dump(),
+                "chat": payload.chat.model_dump(),
+                "openai": {
+                    "base_url": (
+                        payload.openai_base_url
+                        if payload.openai_base_url is not None
+                        else runtime.openai_base_url
+                    ),
+                },
+            }
+        }
+        save_runtime_config(updated, runtime_path)
+
+        env_updates: dict[str, str | None] = {}
+        if payload.openai_api_key is not None:
+            env_updates["OPENAI_API_KEY"] = payload.openai_api_key
+            os.environ["OPENAI_API_KEY"] = payload.openai_api_key
+        if payload.openai_base_url is not None:
+            env_updates["OPENAI_BASE_URL"] = payload.openai_base_url
+            os.environ["OPENAI_BASE_URL"] = payload.openai_base_url
+        if env_updates:
+            repo_root = Path(__file__).resolve().parent.parent
+            update_env_file(repo_root / ".env", env_updates)
+
+        reload_inference_config()
+        return _runtime_config_payload()
+
+    @app.post(
+        "/admin/restart",
+        response_model=RestartResponse,
+        dependencies=[Depends(_require_admin_access)],
+    )
+    def admin_restart_backend() -> RestartResponse:
+        settings = get_settings()
+        reload_inference_config()
+
+        if settings.restart_command:
+            subprocess.Popen(
+                settings.restart_command,
+                shell=True,
+                start_new_session=True,
+                cwd=str(Path(__file__).resolve().parent.parent),
+            )
+            return RestartResponse(
+                success=True,
+                scheduled=True,
+                message="Restart command scheduled in the background.",
+            )
+
+        return RestartResponse(
+            success=True,
+            scheduled=False,
+            message="Configuration reloaded in process. No restart command is configured.",
+        )
+
     @app.post("/run/compile", response_model=CompileResponse)
     def compile_code(
         payload: CompileRequest,
@@ -131,7 +265,7 @@ def create_app() -> FastAPI:
         except RunnerError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
         except Exception as exc:
-            raise HTTPException(status_code=500, detail=str(exc)) from exc
+            raise HTTPException(status_code=500, detail=_error_detail(exc)) from exc
 
     @app.post("/api/chat")
     async def chat(
@@ -155,6 +289,8 @@ def create_app() -> FastAPI:
                 return StreamingResponse(result, media_type="application/x-ndjson")
             return result
         except Exception as exc:
-            raise HTTPException(status_code=500, detail=str(exc)) from exc
+            raise HTTPException(status_code=500, detail=_error_detail(exc)) from exc
 
-    return app
+    from rag_eng.ui import mount_gradio_consoles
+
+    return mount_gradio_consoles(app)

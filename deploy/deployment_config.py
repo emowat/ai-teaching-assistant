@@ -32,6 +32,7 @@ ENV_OVERRIDES: dict[str, str] = {
     "SAGEMAKER_INSTANCE_TYPE": "sagemaker.instance_type",
     "SAGEMAKER_EXECUTION_ROLE_ARN": "sagemaker.execution_role_arn",
     "MODEL_FAMILY": "rag_eng.model_family",
+    "SAGEMAKER_INFERENCE_BACKEND": "rag_eng.inference_backend",
     "DEPLOY_CONFIG": "_config_path",  # special: path only, not merged into tree
 }
 
@@ -68,6 +69,28 @@ class ModelArtifactConfig:
 
 
 @dataclass
+class ScaleFromZeroAlarmConfig:
+    """CloudWatch alarm on HasBacklogWithoutCapacity (queue > 0, instances = 0)."""
+
+    period_seconds: int
+    evaluation_periods: int
+    datapoints_to_alarm: int
+
+
+@dataclass
+class AutoScalingConfig:
+    enabled: bool
+    variant_name: str
+    min_capacity: int
+    max_capacity: int
+    target_backlog_per_instance: float
+    scale_in_cooldown_seconds: int
+    scale_out_cooldown_seconds: int
+    scale_from_zero_cooldown_seconds: int
+    scale_from_zero_alarm: ScaleFromZeroAlarmConfig
+
+
+@dataclass
 class AsyncInferenceConfig:
     output_s3_prefix: str
     max_concurrent_invocations_per_instance: int
@@ -89,14 +112,17 @@ class DlcConfig:
 
 @dataclass
 class ContainerConfig:
+    inference_backend: str
     hf_task: str
     model_server_workers: str
+    extra_env: dict[str, str]
 
     def as_env_dict(self) -> dict[str, str]:
-        return {
-            "HF_TASK": self.hf_task,
-            "SAGEMAKER_MODEL_SERVER_WORKERS": self.model_server_workers,
-        }
+        env = {str(k): str(v) for k, v in self.extra_env.items()}
+        if self.inference_backend == "huggingface":
+            env["HF_TASK"] = self.hf_task
+            env["SAGEMAKER_MODEL_SERVER_WORKERS"] = self.model_server_workers
+        return env
 
 
 @dataclass
@@ -110,6 +136,8 @@ class SageMakerConfig:
     instance_type: str
     initial_instance_count: int
     execution_role_arn: str | None
+    inference_ami_version: str | None
+    autoscaling: AutoScalingConfig
     async_inference: AsyncInferenceConfig
     dlc: DlcConfig
     container: ContainerConfig
@@ -124,6 +152,9 @@ class SageMakerConfig:
     def async_output_uri(self, bucket: str) -> str:
         prefix = self.async_inference.output_s3_prefix.rstrip("/")
         return f"s3://{bucket}/{prefix}/"
+
+    def autoscaling_resource_id(self) -> str:
+        return f"endpoint/{self.endpoint_name}/variant/{self.autoscaling.variant_name}"
 
 
 @dataclass
@@ -145,6 +176,7 @@ class HuggingFacePackagingConfig:
 class RagEngConfig:
     model_family: str
     use_sagemaker: bool
+    inference_backend: str
 
 
 @dataclass
@@ -245,6 +277,15 @@ def _as_tuple_str_required(value: Any) -> tuple[str, ...]:
     return ()
 
 
+def _load_scale_from_zero_alarm(autoscale: dict) -> ScaleFromZeroAlarmConfig:
+    alarm = autoscale.get("scale_from_zero_alarm", {})
+    return ScaleFromZeroAlarmConfig(
+        period_seconds=int(alarm.get("period_seconds", 30)),
+        evaluation_periods=int(alarm.get("evaluation_periods", 1)),
+        datapoints_to_alarm=int(alarm.get("datapoints_to_alarm", 1)),
+    )
+
+
 def load_deploy_config(path: str | Path | None = None) -> DeployConfig:
     """Load deployment.yaml, apply environment overrides, return typed config."""
     config_path = resolve_config_path(path)
@@ -257,6 +298,7 @@ def load_deploy_config(path: str | Path | None = None) -> DeployConfig:
     ma = raw.get("model_artifact", {})
     sm = raw.get("sagemaker", {})
     ai = sm.get("async_inference", {})
+    autoscale = sm.get("autoscaling", {})
     dlc = sm.get("dlc", {})
     container = sm.get("container", {})
     runtime = sm.get("runtime_io", {})
@@ -271,6 +313,13 @@ def load_deploy_config(path: str | Path | None = None) -> DeployConfig:
     execution_role = sm.get("execution_role_arn")
     if execution_role in ("", "null", "none"):
         execution_role = None
+
+    inference_ami = sm.get("inference_ami_version")
+    if inference_ami in ("", "null", "none"):
+        inference_ami = None
+
+    extra_env_raw = container.get("extra_env") or {}
+    extra_env = {str(k): str(v) for k, v in extra_env_raw.items()}
 
     s3_uri = ma.get("s3_uri")
     if s3_uri in ("", "null", "none"):
@@ -304,6 +353,26 @@ def load_deploy_config(path: str | Path | None = None) -> DeployConfig:
             instance_type=str(sm.get("instance_type", "ml.g5.2xlarge")),
             initial_instance_count=int(sm.get("initial_instance_count", 1)),
             execution_role_arn=execution_role,
+            inference_ami_version=inference_ami,
+            autoscaling=AutoScalingConfig(
+                enabled=bool(autoscale.get("enabled", True)),
+                variant_name=str(autoscale.get("variant_name", "AllTraffic")),
+                min_capacity=int(autoscale.get("min_capacity", 0)),
+                max_capacity=int(autoscale.get("max_capacity", 1)),
+                target_backlog_per_instance=float(
+                    autoscale.get("target_backlog_per_instance", 5.0)
+                ),
+                scale_in_cooldown_seconds=int(
+                    autoscale.get("scale_in_cooldown_seconds", 600)
+                ),
+                scale_out_cooldown_seconds=int(
+                    autoscale.get("scale_out_cooldown_seconds", 300)
+                ),
+                scale_from_zero_cooldown_seconds=int(
+                    autoscale.get("scale_from_zero_cooldown_seconds", 300)
+                ),
+                scale_from_zero_alarm=_load_scale_from_zero_alarm(autoscale),
+            ),
             async_inference=AsyncInferenceConfig(
                 output_s3_prefix=str(
                     ai.get("output_s3_prefix", "async-inference/output/")
@@ -320,14 +389,19 @@ def load_deploy_config(path: str | Path | None = None) -> DeployConfig:
             ),
             dlc=DlcConfig(
                 account_id=str(dlc.get("account_id", "763104351884")),
-                repository=str(dlc.get("repository", "huggingface-pytorch-inference")),
+                repository=str(dlc.get("repository", "huggingface-vllm")),
                 tag=str(
-                    dlc.get("tag", "2.3.0-transformers4.40.1-gpu-py311-cu121-ubuntu20.04")
+                    dlc.get(
+                        "tag",
+                        "0.17.0-transformers4.57.5-gpu-py312-cu129-ubuntu22.04",
+                    )
                 ),
             ),
             container=ContainerConfig(
+                inference_backend=str(container.get("inference_backend", "vllm")),
                 hf_task=str(container.get("hf_task", "text-generation")),
                 model_server_workers=str(container.get("model_server_workers", "1")),
+                extra_env=extra_env,
             ),
             runtime_io=RuntimeIoConfig(
                 input_s3_prefix=str(
@@ -360,6 +434,7 @@ def load_deploy_config(path: str | Path | None = None) -> DeployConfig:
         rag_eng=RagEngConfig(
             model_family=str(rag.get("model_family", "qwen")),
             use_sagemaker=bool(rag.get("use_sagemaker", False)),
+            inference_backend=str(rag.get("inference_backend", "vllm")),
         ),
         _raw=raw,
     )

@@ -75,46 +75,91 @@ model_artifact:
 sagemaker:
   # Endpoint name — must match SAGEMAKER_ENDPOINT in rag_eng .env
   endpoint_name: "codingrabbit-qwen-async"
-  # GPU instance type. Options:
-  #   ml.g5.2xlarge  — 1× A10G, 24 GB VRAM (~$1.21/hr) — 4-bit / 7B models
-  #   ml.g5.12xlarge — 4× A10G, 96 GB VRAM (~$5.67/hr) — fp16 14B models
+  # GPU instance type. Qwen2-14B bf16 needs ml.g5.12xlarge OR 4-bit on g5.2xlarge.
+  #   ml.g5.2xlarge  — 1× A10G, 24 GB VRAM — 4-bit quantized 14B (vLLM)
+  #   ml.g5.4xlarge  — same GPU as 2xlarge; more CPU/RAM only
+  #   ml.g5.12xlarge — 4× A10G, 96 GB VRAM — bf16 14B without quantization
   instance_type: "ml.g5.2xlarge"
   # Number of instances in the production variant (usually 1 for capstone)
   initial_instance_count: 1
-  # IAM execution role ARN. null = auto-detect from current AWS session
-  execution_role_arn: null
+  # IAM execution role for SageMaker (NOT your SSO login role).
+  execution_role_arn: "arn:aws:iam::976193240866:role/service-role/SageMaker-ExecutionRole-20260609T133358"
+  # Required for huggingface-vllm GPU images (CUDA 12.9+). See AWS DLC vLLM docs.
+  inference_ami_version: "al2-ami-sagemaker-inference-gpu-3-1"
 
   async_inference:
-    # S3 prefix (under aws.s3_bucket) where SageMaker writes async results
     output_s3_prefix: "async-inference/output/"
-    # Max queued invocations per instance before 429
     max_concurrent_invocations_per_instance: 4
-    # Smoke-test invoke(): seconds between S3 polls
     invoke_poll_interval_seconds: 3
-    # Smoke-test invoke(): max poll attempts (interval × attempts = timeout)
-    invoke_poll_max_attempts: 60
-    # deploy(): waiter delay between endpoint status checks (seconds)
+    invoke_poll_max_attempts: 120
     deploy_wait_delay_seconds: 30
-    # deploy(): max waiter attempts
-    deploy_wait_max_attempts: 40
+    deploy_wait_max_attempts: 60
 
-  # AWS Deep Learning Container (HuggingFace PyTorch inference)
+  # Application Auto Scaling — scale GPU instances to 0 when idle (no inference cost)
+  #
+  # Two policies are registered on deploy (see deploy_sagemaker._setup_autoscaling):
+  #
+  # 1. Target tracking (ApproximateBacklogSizePerInstance)
+  #    Scales the variant while at least one instance exists: scale out when backlog
+  #    per instance exceeds target_backlog_per_instance; scale in when idle long
+  #    enough (scale_in_cooldown_seconds). With min_capacity: 0, this drives scale-in
+  #    to zero after sessions end.
+  #
+  # 2. Step scaling from zero (HasBacklogWithoutCapacity)
+  #    When min_capacity is 0, target tracking alone does not wake the endpoint —
+  #    backlog per instance is undefined with zero instances. AWS recommends a
+  #    second policy on the HasBacklogWithoutCapacity metric: queue length > 0 while
+  #    desired instance count is 0. A CloudWatch alarm (scale_from_zero_alarm) fires
+  #    the step policy to add one instance. scale_from_zero_cooldown_seconds is the
+  #    step policy cooldown between scale-out actions.
+  #
+  # Cold-start latency after long idle = alarm wake time + instance launch + model load.
+  # Tuning scale_from_zero_alarm trades responsiveness vs. stability (faster settings
+  # react sooner; AWS docs often use period_seconds: 60, evaluation_periods: 2 for
+  # conservative wake). max_capacity: 1 caps cost — only one GPU can spin up.
+  #
+  # Docs: https://docs.aws.amazon.com/sagemaker/latest/dg/async-inference-autoscale.html
+  autoscaling:
+    enabled: true
+    variant_name: "AllTraffic"
+    min_capacity: 0
+    max_capacity: 1
+    # Target tracking: backlog per instance while >= 1 instance is running
+    target_backlog_per_instance: 5.0  # How many requests per instance before scaling out (with max 1, this won’t add instances)
+    scale_in_cooldown_seconds: 300 # Main “how long GPU stays warm after traffic stops” knob  currently set to 5 minutes
+    scale_out_cooldown_seconds: 300 # How long to wait after scaling out before scaling in again (currently set to 5 minutes) Useless with max_capacity: 1
+    # Step policy cooldown after scaling up from zero (HasBacklogWithoutCapacity)
+    scale_from_zero_cooldown_seconds: 300 # Only matters for repeated wake events (e.g. if alarm fires twice in a row)
+    # CloudWatch alarm that triggers scale-from-zero (~period * evaluation_periods)
+    scale_from_zero_alarm:
+      period_seconds: 30 # How often to check for backlog (currently set to 30 seconds)
+      evaluation_periods: 1 # How many periods to evaluate before firing the alarm (currently set to 1)
+      datapoints_to_alarm: 1 # How many datapoints to breach before firing the alarm (currently set to 1)
+
+  # vLLM DLC — 4-bit bitsandbytes load at startup (no model re-upload needed)
   # Catalog: https://aws.github.io/deep-learning-containers/reference/available_images/
-  # Tag format: {pytorch}-transformers{ver}-gpu-py{py}-cu{cuda}-ubuntu{os}
-  # Qwen2 requires transformers >= 4.40
   dlc:
     account_id: "763104351884"
-    repository: "huggingface-pytorch-inference"
-    tag: "2.3.0-transformers4.40.1-gpu-py311-cu121-ubuntu20.04"
+    repository: "huggingface-vllm"
+    tag: "0.17.0-transformers4.57.5-gpu-py312-cu129-ubuntu22.04"
 
   container:
-    # HuggingFace task for the inference container
+    # Inference stack: vllm (OpenAI-style JSON) | huggingface (legacy pipeline)
+    inference_backend: "vllm"
+    # Legacy huggingface-pytorch-inference only (ignored when inference_backend=vllm)
     hf_task: "text-generation"
-    # TGI/LMI worker count (1 per GPU for single-GPU instances)
     model_server_workers: "1"
+    # vLLM env vars — SM_VLLM_* map to vLLM CLI flags
+    extra_env:
+      SM_VLLM_TENSOR_PARALLEL_SIZE: "1"
+      SM_VLLM_QUANTIZATION: "bitsandbytes"
+      SM_VLLM_ENFORCE_EAGER: "true"
+      SM_VLLM_DTYPE: "bfloat16"
+      SM_VLLM_MAX_MODEL_LEN: "10240"
+      SM_VLLM_GPU_MEMORY_UTILIZATION: "0.90"
+      SM_VLLM_CHAT_TEMPLATE: "/opt/ml/model/chatml_template.jinja"
 
   runtime_io:
-    # Prefix for rag_eng / smoke-test request payloads uploaded before invoke
     input_s3_prefix: "temp/sagemaker_inputs/"
 
 # -----------------------------------------------------------------------------
@@ -123,7 +168,6 @@ sagemaker:
 inference_smoke_test:
   default_prompt: "Why does my C++ pointer cause a segmentation fault?"
   system_message: "You are CodingRabbit, a Socratic C++ teaching assistant."
-  # Chat template for formatting. Options: qwen | llama3 | generic
   chat_template: "qwen"
   max_new_tokens: 512
   temperature: 0.7
@@ -143,6 +187,7 @@ huggingface_packaging:
 rag_eng:
   model_family: "qwen"
   use_sagemaker: false
+  inference_backend: "vllm"
 
 # =============================================================================
 # Field reference (documentation — ignored by loader, used by `describe` CLI)
@@ -176,12 +221,51 @@ _reference:
   sagemaker.instance_type:
     description: GPU instance type for the async endpoint.
     env_override: SAGEMAKER_INSTANCE_TYPE
-    options: "ml.g5.2xlarge (4-bit/7B), ml.g5.12xlarge (fp16 14B)"
+    options: "ml.g5.2xlarge (4-bit 14B), ml.g5.12xlarge (bf16 14B)"
   sagemaker.execution_role_arn:
-    description: IAM role for SageMaker. null auto-detects from current session.
+    description: SageMaker execution role (trusts sagemaker.amazonaws.com, s3 access to model bucket).
     env_override: SAGEMAKER_EXECUTION_ROLE_ARN
+  sagemaker.inference_ami_version:
+    description: SageMaker host AMI for GPU DLCs (required for huggingface-vllm).
+  sagemaker.dlc.repository:
+    description: ECR repository name.
+    options: "huggingface-vllm (4-bit via bitsandbytes), huggingface-pytorch-inference (legacy)"
   sagemaker.dlc.tag:
-    description: ECR image tag for the HuggingFace PyTorch inference DLC.
+    description: ECR image tag for the inference DLC.
+  sagemaker.container.inference_backend:
+    description: Request/response format for async invoke.
+    options: "vllm (OpenAI messages JSON), huggingface (inputs/parameters)"
+  sagemaker.container.extra_env.SM_VLLM_MAX_MODEL_LEN:
+    description: >
+      vLLM max sequence length (prompt + completion). 10240 supports ~8K input +
+      2K output. Requires endpoint redeploy after change; watch GPU memory on ml.g5.2xlarge.
+  sagemaker.container.extra_env.SM_VLLM_CHAT_TEMPLATE:
+    description: Path to custom Jinja chat template inside /opt/ml/model (bypasses corrupted HF metadata).
+  sagemaker.container.extra_env.SM_VLLM_QUANTIZATION:
+    description: vLLM quantization at model load. Use bitsandbytes for 4-bit inflight quant.
+  sagemaker.autoscaling.enabled:
+    description: Enable Application Auto Scaling to scale GPU instances to min_capacity when idle.
+  sagemaker.autoscaling.min_capacity:
+    description: Minimum instance count (0 = no GPU cost when idle; requests queue until scale-out).
+  sagemaker.autoscaling.max_capacity:
+    description: Maximum instance count for the async endpoint variant.
+  sagemaker.autoscaling.scale_from_zero_alarm.period_seconds:
+    description: CloudWatch alarm Period (seconds) for HasBacklogWithoutCapacity; lower = faster wake from zero.
+  sagemaker.autoscaling.scale_from_zero_alarm.evaluation_periods:
+    description: Number of Period-length windows evaluated before alarm state changes.
+  sagemaker.autoscaling.scale_from_zero_alarm.datapoints_to_alarm:
+    description: Breaching datapoints required within evaluation_periods to fire the alarm.
+  sagemaker.autoscaling.scale_from_zero_cooldown_seconds:
+    description: Step scaling policy cooldown after scaling up from zero instances.
+  sagemaker.autoscaling.target_backlog_per_instance:
+    description: Target tracking setpoint for ApproximateBacklogSizePerInstance (instances >= 1).
+  sagemaker.autoscaling.scale_in_cooldown_seconds:
+    description: Target tracking cooldown before scaling in after backlog drops.
+  sagemaker.autoscaling.scale_out_cooldown_seconds:
+    description: Target tracking cooldown before scaling out after backlog rises.
+  rag_eng.inference_backend:
+    description: Must match sagemaker.container.inference_backend in rag_eng .env.
+    env_override: SAGEMAKER_INFERENCE_BACKEND
   inference_smoke_test.chat_template:
     description: Prompt format for smoke tests and rag_eng MODEL_FAMILY.
     options: "qwen, llama3, generic"
