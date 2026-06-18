@@ -26,7 +26,8 @@ class QueryPayload(QueryInput):
                     "exit_code": 139,
                     "week": 3,
                     "mode": "Homework Assist",
-                    "course_source": "mit",
+                    "course_id": "mit13",
+                    "course_source": "mit13",
                     "result_count": 5,
                     "ast_features": {
                         "has_pointer": True,

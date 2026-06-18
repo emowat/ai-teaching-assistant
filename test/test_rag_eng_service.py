@@ -18,7 +18,7 @@ from rag_eng.config import (
 )
 from rag_eng.service import _extract_chat_context
 from rag_eng.service import run_chat, run_query
-from rag.schemas import AssistMode, QueryInput
+from rag.schemas import QueryInput
 from rag.schemas import RetrievalResult
 
 
@@ -96,8 +96,15 @@ def client() -> TestClient:
 
 
 def test_chat_endpoint_accepts_simple_message(monkeypatch, client: TestClient) -> None:
-    async def fake_run_chat(messages, model_name, settings, stream=False):
+    async def fake_run_chat(
+        messages,
+        model_name,
+        settings,
+        stream=False,
+        course_id=None,
+    ):
         assert messages[0]["role"] == "user"
+        assert course_id is None
         return {"message": {"content": "Try checking whether the pointer is initialized."}}
 
     monkeypatch.setattr("rag_eng.api.run_chat", fake_run_chat)
@@ -112,6 +119,74 @@ def test_chat_endpoint_accepts_simple_message(monkeypatch, client: TestClient) -
 
     assert response.status_code == 200
     assert "pointer" in response.json()["message"]["content"].lower()
+
+
+def test_run_chat_forwards_course_id_to_query_payload(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "rag_eng.service.get_inference_config",
+        lambda: _runtime_config(rag_provider="cohere", chat_provider="openai"),
+    )
+    monkeypatch.setattr(
+        "rag_eng.service.get_settings",
+        lambda: SimpleNamespace(
+            cohere_api_key="cohere",
+            openai_api_key="sk-test",
+            openai_base_url="https://api.openai.com/v1",
+            sagemaker_inference_backend="vllm",
+            sagemaker_endpoint="endpoint",
+            sagemaker_poll_timeout_seconds=600,
+            s3_data_bucket="bucket",
+            aws_profile=None,
+            aws_region="us-east-1",
+            use_sagemaker=False,
+            model_family="qwen",
+        ),
+    )
+    captured: dict[str, object] = {}
+
+    def fake_run_retrieval(query):
+        captured["course_id"] = query.course_id
+        return SimpleNamespace(formatted_context="[ctx]")
+
+    monkeypatch.setattr("rag_eng.service.run_retrieval", fake_run_retrieval)
+
+    async def fake_openai(messages, config):
+        return "openai chat answer"
+
+    monkeypatch.setattr(
+        "rag_eng.service.ainvoke_openai_chat_completion",
+        fake_openai,
+    )
+
+    response = asyncio.run(
+        run_chat(
+            [
+                {
+                    "role": "user",
+                    "content": "Mode: Homework Assist\nWeek: 1\n[Student_Question]\nWhy?",
+                }
+            ],
+            model_name="codingrabbit",
+            settings=SimpleNamespace(
+                cohere_api_key="cohere",
+                openai_api_key="sk-test",
+                openai_base_url="https://api.openai.com/v1",
+                sagemaker_inference_backend="vllm",
+                sagemaker_endpoint="endpoint",
+                sagemaker_poll_timeout_seconds=600,
+                s3_data_bucket="bucket",
+                aws_profile=None,
+                aws_region="us-east-1",
+                use_sagemaker=False,
+                model_family="qwen",
+            ),
+            stream=False,
+            course_id="mit14",
+        )
+    )
+
+    assert response["message"]["content"] == "openai chat answer"
+    assert captured["course_id"] == "mit14"
 
 
 def test_run_query_uses_openai_rag_provider(monkeypatch) -> None:

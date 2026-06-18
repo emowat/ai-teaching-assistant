@@ -125,6 +125,34 @@ def test_openapi_exposes_query_schema_examples(client: TestClient) -> None:
     assert "result_count" in schemas["QueryPayload"]["properties"]
 
 
+def test_chat_endpoint_forwards_course_id(monkeypatch, client: TestClient) -> None:
+    captured: dict[str, str | None] = {}
+
+    async def fake_run_chat(
+        messages,
+        model_name,
+        settings,
+        stream=False,
+        course_id=None,
+    ):
+        captured["course_id"] = course_id
+        return {"message": {"content": "Try checking whether the pointer is initialized."}}
+
+    monkeypatch.setattr("rag_eng.api.run_chat", fake_run_chat)
+
+    response = client.post(
+        "/api/chat",
+        json={
+            "model": "codingrabbit",
+            "course_id": "mit14",
+            "messages": [{"role": "user", "content": "Why does my pointer segfault?"}],
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured["course_id"] == "mit14"
+
+
 def test_admin_ensure_requires_token_when_configured(
     monkeypatch, client: TestClient
 ) -> None:

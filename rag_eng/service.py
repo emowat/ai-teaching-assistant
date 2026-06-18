@@ -220,6 +220,7 @@ async def run_chat(
     model_name: str,
     settings: Settings,
     stream: bool = False,
+    course_id: str | None = None,
 ) -> dict | AsyncIterator[bytes]:
     """Full chat pipeline: context extraction -> RAG -> prompt assembly -> inference."""
     ctx = _extract_chat_context(messages)
@@ -230,6 +231,7 @@ async def run_chat(
         terminal_output=ctx["terminal_output"],
         mode=ctx["mode"],
         week=ctx["week"],
+        course_id=course_id,
     )
 
     retrieval_result = run_retrieval(query)

@@ -14,9 +14,14 @@ The new helper functions below split prompt construction from model invocation.
 That separation keeps the service layer from re-running retrieval when it only
 needs to format a prompt, and it makes the FastAPI/Gradio wrappers easier to
 test because they can reuse the retrieval result directly.
+
+Course routing now resolves an explicit `course_id` first, then falls back to
+the legacy `course_source` compatibility path for older callers.
 """
 
 from __future__ import annotations
+
+from dataclasses import dataclass
 
 from rag.schemas import AssistMode, CourseSource, QueryInput, RetrievalResult
 from rag.query_builder import build_query
@@ -54,6 +59,42 @@ MODE_PARAMS: dict[AssistMode, dict] = {
 }
 
 
+@dataclass(frozen=True)
+class ResolvedCourseRoute:
+    """Normalized course route used by the retrieval pipeline."""
+
+    course_id: str
+    course_source: CourseSource
+
+
+_COURSE_ID_TO_SOURCE: dict[str, CourseSource] = {
+    "mit13": CourseSource.MIT_13,
+    "mit14": CourseSource.MIT_14,
+    "cs50": CourseSource.CS50,
+    "harvardcs50": CourseSource.CS50,
+}
+
+
+def _normalize_course_id(course_id: str) -> str:
+    """Normalize course IDs so minor punctuation differences still resolve."""
+    return "".join(ch for ch in course_id.casefold() if ch.isalnum())
+
+
+def _resolve_course_route(query: QueryInput) -> ResolvedCourseRoute:
+    """Resolve the active course route, preferring explicit course_id values."""
+    if query.course_id:
+        normalized = _normalize_course_id(query.course_id)
+        course_source = _COURSE_ID_TO_SOURCE.get(normalized)
+        if course_source is None:
+            raise ValueError(f"Unsupported course_id: {query.course_id}")
+        return ResolvedCourseRoute(course_id=normalized, course_source=course_source)
+
+    return ResolvedCourseRoute(
+        course_id=query.course_source.value,
+        course_source=query.course_source,
+    )
+
+
 def run_retrieval(query: QueryInput) -> RetrievalResult:
     """
     Full RAG pipeline: given a student query, return structured + formatted context.
@@ -61,12 +102,13 @@ def run_retrieval(query: QueryInput) -> RetrievalResult:
     1. Build dense query from student NL, AST, terminal
     2. Mode-aware parameter selection
     3. Parallel retrieval: syllabus (exact), semantic (vector), rules (vector+filter),
-       guidelines (vector, separate collection). Routes to MIT or Harvard collection
-       based on course_source.
+       guidelines (vector, separate collection). Routes to the resolved course
+       collection based on explicit course_id first, then legacy course_source.
     4. Merge, category-weight, MMR diversify
     5. Format into [Vector_Database_Results] block
     """
     params = MODE_PARAMS[query.mode]
+    route = _resolve_course_route(query)
     # This keeps the mode defaults intact but lets the caller request a smaller
     # or larger final diversified set for a specific query.
     requested_final_k = getattr(query, "result_count", None)
@@ -83,7 +125,7 @@ def run_retrieval(query: QueryInput) -> RetrievalResult:
         threshold=params["guidelines_threshold"],
     )
 
-    if query.course_source == CourseSource.CS50:
+    if route.course_source == CourseSource.CS50:
         # Harvard CS50: no syllabus, use CS50-specific retrievers (notes + transcripts)
         syllabus = None
         semantic = retrieve_harvard(
@@ -99,30 +141,18 @@ def run_retrieval(query: QueryInput) -> RetrievalResult:
             threshold=params["rules_threshold"],
             cumulative=params["cumulative"],
         )
-    elif query.course_source == CourseSource.MIT_13:
-        # MIT 6.0013: syllabus + course material retrievers
-        syllabus = retrieve_syllabus(query.week)
-        semantic = retrieve_semantic(
-            dense_query,
-            query.week,
-            top_k=params["semantic_top_k"],
-            cumulative=params["cumulative"],
-        )
-        rules = retrieve_strict_rules(
-            dense_query,
-            query.week,
-            top_k=params["rules_top_k"],
-            threshold=params["rules_threshold"],
-            cumulative=params["cumulative"],
-        )
     else:
-        # MIT 6.0014 (placeholder: mirrors MIT13)
-        syllabus = retrieve_syllabus(query.week)
+        # MIT 6.0013 / 6.0014: syllabus + course material retrievers
+        syllabus = retrieve_syllabus(
+            query.week,
+            course_source=route.course_source,
+        )
         semantic = retrieve_semantic(
             dense_query,
             query.week,
             top_k=params["semantic_top_k"],
             cumulative=params["cumulative"],
+            course_source=route.course_source,
         )
         rules = retrieve_strict_rules(
             dense_query,
@@ -130,6 +160,7 @@ def run_retrieval(query: QueryInput) -> RetrievalResult:
             top_k=params["rules_top_k"],
             threshold=params["rules_threshold"],
             cumulative=params["cumulative"],
+            course_source=route.course_source,
         )
 
     # Merge + rerank (now returns 5-tuple with guidelines)

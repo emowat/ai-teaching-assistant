@@ -11,7 +11,9 @@ and in the new cloud-backed `rag_eng` service without changing call sites.
 """
 from __future__ import annotations
 
-from rag.schemas import DocCategory, RetrievedDoc, SourceDomain
+from qdrant_client.models import Filter
+
+from rag.schemas import CourseSource, DocCategory, RetrievedDoc, SourceDomain
 from rag.runtime import create_qdrant_client, get_runtime_config
 
 # ---------------------------------------------------------------------------
@@ -64,6 +66,11 @@ def _hit_to_doc(hit) -> RetrievedDoc:
         source_domain=SourceDomain(p.get("source_domain", "mit_ocw_lecture")),
         source_type=p.get("source_type", ""),
     )
+
+
+def _course_collection_name(course_source: CourseSource) -> str:
+    """Resolve the Qdrant collection for a course source."""
+    return get_runtime_config().collection_for(course_source.value)
 
 
 # ---------------------------------------------------------------------------
@@ -141,13 +148,17 @@ def _rules_filter(week: int, *, cumulative: bool = False) -> Filter:
 # Retriever A: Syllabus (exact lookup, no vector search)
 # ---------------------------------------------------------------------------
 
-def retrieve_syllabus(week: int) -> RetrievedDoc | None:
+def retrieve_syllabus(
+    week: int,
+    *,
+    course_source: CourseSource = CourseSource.MIT_13,
+) -> RetrievedDoc | None:
     """Exact lookup of the syllabus document for a given week."""
     client = _get_client()
     records, _ = client.scroll(
         # The collection name is now config-driven so the same code can point
         # at any hosted Qdrant collection without code changes.
-        collection_name=get_runtime_config().collection_mit13,
+        collection_name=_course_collection_name(course_source),
         scroll_filter=_syllabus_filter(week),
         limit=1,
     )
@@ -174,7 +185,12 @@ def retrieve_syllabus(week: int) -> RetrievedDoc | None:
 # ---------------------------------------------------------------------------
 
 def retrieve_semantic(
-    dense_query: str, week: int, top_k: int = 5, *, cumulative: bool = False,
+    dense_query: str,
+    week: int,
+    top_k: int = 5,
+    *,
+    cumulative: bool = False,
+    course_source: CourseSource = CourseSource.MIT_13,
 ) -> list[RetrievedDoc]:
     """Vector similarity search. cumulative=True → weeks 1..X; False → exact week."""
     model = _get_model()
@@ -185,7 +201,7 @@ def retrieve_semantic(
     hits = client.query_points(
         # Semantic retrieval shares the same collection as the other lanes; the
         # filter is what separates concept text from rules and syllabus.
-        collection_name=get_runtime_config().collection_mit13,
+        collection_name=_course_collection_name(course_source),
         query=query_vector,
         query_filter=_semantic_filter(week, cumulative=cumulative),
         limit=top_k,
@@ -199,8 +215,13 @@ def retrieve_semantic(
 # ---------------------------------------------------------------------------
 
 def retrieve_strict_rules(
-    dense_query: str, week: int, top_k: int = 3, threshold: float = 0.55,
-    *, cumulative: bool = False,
+    dense_query: str,
+    week: int,
+    top_k: int = 3,
+    threshold: float = 0.55,
+    *,
+    cumulative: bool = False,
+    course_source: CourseSource = CourseSource.MIT_13,
 ) -> list[RetrievedDoc]:
     """Vector search for Strict_Rules. cumulative=True → weeks 1..X; False → exact week."""
     model = _get_model()
@@ -211,7 +232,7 @@ def retrieve_strict_rules(
     hits = client.query_points(
         # Thresholding keeps low-similarity rules from leaking into the
         # response when the student query is only weakly related to policy text.
-        collection_name=get_runtime_config().collection_mit13,
+        collection_name=_course_collection_name(course_source),
         query=query_vector,
         query_filter=_rules_filter(week, cumulative=cumulative),
         limit=top_k,
@@ -283,7 +304,11 @@ def _harvard_rules_filter(week: int, *, cumulative: bool = False) -> Filter:
 
 
 def retrieve_harvard(
-    dense_query: str, week: int, top_k: int = 5, *, cumulative: bool = False,
+    dense_query: str,
+    week: int,
+    top_k: int = 5,
+    *,
+    cumulative: bool = False,
 ) -> list[RetrievedDoc]:
     """Vector similarity search against the Harvard CS50 collection."""
     model = _get_model()
@@ -292,7 +317,7 @@ def retrieve_harvard(
     query_vector = model.encode(dense_query).tolist()
 
     hits = client.query_points(
-        collection_name=get_runtime_config().collection_cs50,
+        collection_name=_course_collection_name(CourseSource.CS50),
         query=query_vector,
         query_filter=_harvard_semantic_filter(week, cumulative=cumulative),
         limit=top_k,
@@ -302,8 +327,12 @@ def retrieve_harvard(
 
 
 def retrieve_harvard_rules(
-    dense_query: str, week: int, top_k: int = 3, threshold: float = 0.55,
-    *, cumulative: bool = False,
+    dense_query: str,
+    week: int,
+    top_k: int = 3,
+    threshold: float = 0.55,
+    *,
+    cumulative: bool = False,
 ) -> list[RetrievedDoc]:
     """Vector search for Strict_Rules within the Harvard CS50 collection."""
     model = _get_model()
@@ -312,7 +341,7 @@ def retrieve_harvard_rules(
     query_vector = model.encode(dense_query).tolist()
 
     hits = client.query_points(
-        collection_name=get_runtime_config().collection_cs50,
+        collection_name=_course_collection_name(CourseSource.CS50),
         query=query_vector,
         query_filter=_harvard_rules_filter(week, cumulative=cumulative),
         limit=top_k,

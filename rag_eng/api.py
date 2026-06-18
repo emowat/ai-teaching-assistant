@@ -56,6 +56,7 @@ class _ChatOptions(BaseModel):
 class ChatRequest(BaseModel):
     """Ollama-compatible chat request (sent by the VS Code extension)."""
     model: str = "codingrabbit-ta"
+    course_id: str | None = None
     messages: list[dict]
     stream: bool = False
     options: _ChatOptions = _ChatOptions()
@@ -284,6 +285,7 @@ def create_app() -> FastAPI:
                 model_name=payload.model,
                 settings=settings,
                 stream=payload.stream,
+                course_id=payload.course_id,
             )
             if payload.stream:
                 return StreamingResponse(result, media_type="application/x-ndjson")

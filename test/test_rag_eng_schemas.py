@@ -15,7 +15,19 @@ def test_query_payload_defaults_result_count() -> None:
     )
 
     assert payload.result_count == 5
+    assert payload.course_id is None
     assert QueryPayload.model_json_schema()["examples"]
+
+
+def test_query_payload_accepts_explicit_course_id() -> None:
+    """QueryPayload should accept explicit course routing metadata."""
+    payload = QueryPayload(
+        student_message="Why does this crash?",
+        week=3,
+        course_id="mit14",
+    )
+
+    assert payload.course_id == "mit14"
 
 
 @pytest.mark.parametrize("result_count", [1, 10, 20])
