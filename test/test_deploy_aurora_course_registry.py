@@ -40,6 +40,8 @@ def test_load_sql_statements_reads_repo_bootstrap_file() -> None:
     assert statements[4].startswith("CREATE TABLE IF NOT EXISTS telemetry_events")
     assert statements[5].startswith("INSERT INTO courses")
     assert statements[6].startswith("INSERT INTO course_aliases")
+    assert "'course_knowledge'" in statements[5]
+    assert "'harvard_cs50'" in statements[5]
 
 
 class _ApplySchemaClient:

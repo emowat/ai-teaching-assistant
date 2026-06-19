@@ -80,9 +80,9 @@ CREATE TABLE IF NOT EXISTS telemetry_events (
 
 INSERT INTO courses (course_id, course_source, collection_name, display_name, is_active)
 VALUES
-  ('mit13', 'mit13', 'mit13_course', 'MIT 6.0013', TRUE),
-  ('mit14', 'mit14', 'mit14_course', 'MIT 6.0014', TRUE),
-  ('cs50', 'cs50', 'cs50_course', 'Harvard CS50', TRUE)
+  ('mit13', 'mit13', 'course_knowledge', 'MIT 6.0013', TRUE),
+  ('mit14', 'mit14', 'course_knowledge', 'MIT 6.0014', TRUE),
+  ('cs50', 'cs50', 'harvard_cs50', 'Harvard CS50', TRUE)
 ON CONFLICT (course_id) DO UPDATE SET
   course_source = EXCLUDED.course_source,
   collection_name = EXCLUDED.collection_name,
