@@ -72,6 +72,20 @@ class QueryRequest(QueryPayload):
     """Compatibility alias for callers that still import the old request name."""
 
 
+class GuardrailResult(BaseModel):
+    """Structured guardrail outcome returned alongside pipeline answers."""
+
+    stage: str = ""
+    safe: bool
+    blocked: bool
+    violation_type: str
+    severity: str
+    action: str
+    evidence: str
+    final_answer: str
+    v2_score: float | None = None
+
+
 class QueryResult(BaseModel):
     """Typed response payload for a successful RAG query."""
 
@@ -92,6 +106,7 @@ class QueryResult(BaseModel):
     answer: str
     retrieval_result: RetrievalResult
     formatted_context: str
+    guardrail: GuardrailResult | None = None
     session_id: str | None = None
     request_id: str | None = None
     turn_id: str | None = None

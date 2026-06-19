@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from rag_eng.gradio_tools import SageMakerStatus, TrafficLight
 from rag_eng.ui import (
     _clear_sagemaker_request,
+    _guardrail_invoke,
     _query_api,
     _resolve_retrieval_preset,
     _pipeline_invoke,
@@ -33,6 +34,7 @@ def test_build_gradio_app_smoke() -> None:
         }
         assert "_refresh_sagemaker_status" in fn_names
         assert "_clear_sagemaker_request" in fn_names
+        assert "_guardrail_invoke" in fn_names
 
 
 def test_refresh_sagemaker_status_renders_current_status(monkeypatch) -> None:
@@ -241,3 +243,36 @@ def test_pipeline_invoke_applies_saved_preset(monkeypatch) -> None:
     assert captured["result_count"] == 8
     assert captured["rerank_strategy"] == "mmr_0.9"
     assert "preset=MMR focus (K=8, lambda=0.9)" in status
+
+
+def test_guardrail_invoke_forwards_inputs(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_invoke_guardrail_review(
+        draft_answer,
+        student_question,
+        student_code,
+        conversation_history_json,
+    ):
+        captured["draft_answer"] = draft_answer
+        captured["student_question"] = student_question
+        captured["student_code"] = student_code
+        captured["conversation_history_json"] = conversation_history_json
+        return ("final", "{}", "status")
+
+    monkeypatch.setattr("rag_eng.ui.invoke_guardrail_review", fake_invoke_guardrail_review)
+
+    response, raw, status = _guardrail_invoke(
+        "Draft answer",
+        "Why does my pointer segfault?",
+        "int *p;",
+        '[{"role": "user", "content": "previous"}]',
+    )
+
+    assert response == "final"
+    assert raw == "{}"
+    assert status == "status"
+    assert captured["draft_answer"] == "Draft answer"
+    assert captured["student_question"] == "Why does my pointer segfault?"
+    assert captured["student_code"] == "int *p;"
+    assert captured["conversation_history_json"] == '[{"role": "user", "content": "previous"}]'

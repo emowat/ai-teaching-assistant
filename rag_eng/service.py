@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import json
 import re
 import time
@@ -23,6 +24,7 @@ from rag_eng.llm_clients import (
 )
 from rag_eng.prompts import get_system_prompt
 from rag_eng.telemetry import TraceContext, TelemetryStore, get_telemetry_store
+from output_guardrails.combined import apply_all_guardrails
 from rag_eng.schemas import (
     HealthResponse,
     IndexEnsureResponse,
@@ -30,6 +32,10 @@ from rag_eng.schemas import (
     QueryPayload,
     QueryResponse,
 )
+
+
+logger = logging.getLogger(__name__)
+_GUARDRAIL_MODEL_NAME = "codebert_v2_1"
 
 
 class _PromptAdapter:
@@ -57,6 +63,17 @@ def _chat_response_payload(answer: str, trace: TraceContext) -> dict[str, Any]:
     return {"message": {"content": answer}, **_trace_payload(trace)}
 
 
+def _chat_response_payload_with_guardrail(
+    answer: str,
+    trace: TraceContext,
+    guardrail: dict[str, Any] | None,
+) -> dict[str, Any]:
+    payload = _chat_response_payload(answer, trace)
+    if guardrail is not None:
+        payload["guardrail"] = guardrail
+    return payload
+
+
 def _retrieval_summary(retrieval_result) -> dict[str, int]:
     """Summarize retrieval output without storing raw content."""
     return {
@@ -69,6 +86,89 @@ def _retrieval_summary(retrieval_result) -> dict[str, int]:
         "guidelines": len(getattr(retrieval_result, "guidelines", []) or []),
         "harvard": len(getattr(retrieval_result, "harvard", []) or []),
     }
+
+
+def _guardrail_summary(guardrail_result: dict[str, Any]) -> dict[str, Any]:
+    """Summarize guardrail output for telemetry and response metadata."""
+    summary = {
+        "guardrail_stage": guardrail_result.get("stage"),
+        "guardrail_action": guardrail_result.get("action"),
+        "guardrail_violation_type": guardrail_result.get("violation_type"),
+        "guardrail_severity": guardrail_result.get("severity"),
+        "guardrail_evidence": guardrail_result.get("evidence"),
+    }
+    if guardrail_result.get("v2_score") is not None:
+        summary["guardrail_v2_score"] = guardrail_result.get("v2_score")
+    return summary
+
+
+def _apply_pipeline_guardrails(
+    *,
+    trace: TraceContext,
+    telemetry_store: TelemetryStore,
+    answer: str,
+    user_query: str,
+    student_code: str,
+    conversation_history: list[dict],
+    retrieval_metadata: dict[str, Any],
+) -> tuple[str, dict[str, Any]]:
+    """Run output guardrails and emit telemetry without breaking the chat path."""
+    telemetry_store.record_event(
+        trace,
+        event_type="guardrail_started",
+        stage="guardrail",
+        status="started",
+        model_provider="guardrail",
+        model_name=_GUARDRAIL_MODEL_NAME,
+        metadata={
+            **retrieval_metadata,
+            "draft_answer_chars": len(answer),
+            "conversation_turns": len(conversation_history),
+        },
+    )
+    guardrail_started = time.perf_counter()
+    try:
+        guardrail = apply_all_guardrails(
+            answer,
+            user_query,
+            student_code,
+            conversation_history,
+        )
+    except Exception as exc:  # pragma: no cover - defensive fallback
+        logger.warning("Guardrail evaluation failed; returning draft answer: %s", exc)
+        guardrail = {
+            "safe": True,
+            "blocked": False,
+            "violation_type": "guardrail_error",
+            "severity": "low",
+            "action": "pass",
+            "evidence": f"guardrail error: {type(exc).__name__}",
+            "final_answer": answer,
+            "v2_score": None,
+            "stage": "guardrail_error",
+        }
+        guardrail_status = "failed"
+    else:
+        guardrail_status = guardrail.get("action", "pass")
+
+    final_answer = guardrail.get("final_answer") or answer
+    guardrail_latency_ms = int((time.perf_counter() - guardrail_started) * 1000)
+    telemetry_store.record_event(
+        trace,
+        event_type="guardrail_finished",
+        stage="guardrail",
+        status=guardrail_status,
+        latency_ms=guardrail_latency_ms,
+        model_provider="guardrail",
+        model_name=_GUARDRAIL_MODEL_NAME,
+        metadata={
+            **retrieval_metadata,
+            "draft_answer_chars": len(answer),
+            "final_answer_chars": len(final_answer),
+            **_guardrail_summary(guardrail),
+        },
+    )
+    return final_answer, guardrail
 
 
 async def _trace_stream_response(
@@ -469,6 +569,11 @@ async def run_chat(
         "result_count": getattr(query, "result_count", None),
         "rerank_strategy": getattr(query, "rerank_strategy", None),
     }
+    conversation_history = [
+        message
+        for message in messages[:-1]
+        if message.get("role") in {"user", "assistant"}
+    ]
 
     telemetry_store.record_event(
         trace,
@@ -534,8 +639,17 @@ async def run_chat(
                         **retrieval_metadata,
                         "retrieval_latency_ms": retrieval_latency_ms,
                     },
-                )
+            )
             answer = result["message"]["content"] if isinstance(result, dict) else str(result)
+            answer, guardrail = _apply_pipeline_guardrails(
+                trace=trace,
+                telemetry_store=telemetry_store,
+                answer=answer,
+                user_query=ctx["student_message"],
+                student_code=ctx["code_raw"],
+                conversation_history=conversation_history,
+                retrieval_metadata=retrieval_metadata,
+            )
             llm_latency_ms = int((time.perf_counter() - llm_started) * 1000)
             telemetry_store.record_event(
                 trace,
@@ -545,7 +659,11 @@ async def run_chat(
                 latency_ms=llm_latency_ms,
                 model_provider="sagemaker",
                 model_name=telemetry_model_name,
-                metadata={**retrieval_metadata, "answer_chars": len(answer)},
+                metadata={
+                    **retrieval_metadata,
+                    "answer_chars": len(answer),
+                    **_guardrail_summary(guardrail),
+                },
             )
             telemetry_store.finish_turn(
                 trace,
@@ -559,9 +677,10 @@ async def run_chat(
                     "retrieval_latency_ms": retrieval_latency_ms,
                     "llm_latency_ms": llm_latency_ms,
                     "answer_chars": len(answer),
+                    **_guardrail_summary(guardrail),
                 },
             )
-            return _chat_response_payload(answer, trace)
+            return _chat_response_payload_with_guardrail(answer, trace, guardrail)
 
         if chat_route.provider == "openai":
             if not settings.openai_api_key:
@@ -587,6 +706,15 @@ async def run_chat(
             )
             llm_started = time.perf_counter()
             text = await ainvoke_openai_chat_completion(api_messages, config)
+            text, guardrail = _apply_pipeline_guardrails(
+                trace=trace,
+                telemetry_store=telemetry_store,
+                answer=text,
+                user_query=ctx["student_message"],
+                student_code=ctx["code_raw"],
+                conversation_history=conversation_history,
+                retrieval_metadata=retrieval_metadata,
+            )
             llm_latency_ms = int((time.perf_counter() - llm_started) * 1000)
             telemetry_store.record_event(
                 trace,
@@ -596,7 +724,11 @@ async def run_chat(
                 latency_ms=llm_latency_ms,
                 model_provider="openai",
                 model_name=chat_route.model,
-                metadata={**retrieval_metadata, "answer_chars": len(text)},
+                metadata={
+                    **retrieval_metadata,
+                    "answer_chars": len(text),
+                    **_guardrail_summary(guardrail),
+                },
             )
             telemetry_store.finish_turn(
                 trace,
@@ -610,11 +742,12 @@ async def run_chat(
                     "retrieval_latency_ms": retrieval_latency_ms,
                     "llm_latency_ms": llm_latency_ms,
                     "answer_chars": len(text),
+                    **_guardrail_summary(guardrail),
                 },
             )
             if stream:
                 return chunk_text(text, runtime.sagemaker.streaming_chunk_size)
-            return _chat_response_payload(text, trace)
+            return _chat_response_payload_with_guardrail(text, trace, guardrail)
 
         full_system = f"{system_prompt}\n{rag_context}"
         api_messages.insert(0, {"role": "system", "content": full_system})
@@ -644,6 +777,15 @@ async def run_chat(
                 },
             )
         answer = result["message"]["content"] if isinstance(result, dict) else str(result)
+        answer, guardrail = _apply_pipeline_guardrails(
+            trace=trace,
+            telemetry_store=telemetry_store,
+            answer=answer,
+            user_query=ctx["student_message"],
+            student_code=ctx["code_raw"],
+            conversation_history=conversation_history,
+            retrieval_metadata=retrieval_metadata,
+        )
         llm_latency_ms = int((time.perf_counter() - llm_started) * 1000)
         telemetry_store.record_event(
             trace,
@@ -653,7 +795,11 @@ async def run_chat(
             latency_ms=llm_latency_ms,
             model_provider=chat_route.provider,
             model_name=telemetry_model_name,
-            metadata={**retrieval_metadata, "answer_chars": len(answer)},
+            metadata={
+                **retrieval_metadata,
+                "answer_chars": len(answer),
+                **_guardrail_summary(guardrail),
+            },
         )
         telemetry_store.finish_turn(
             trace,
@@ -667,9 +813,10 @@ async def run_chat(
                 "retrieval_latency_ms": retrieval_latency_ms,
                 "llm_latency_ms": llm_latency_ms,
                 "answer_chars": len(answer),
+                **_guardrail_summary(guardrail),
             },
         )
-        return _chat_response_payload(answer, trace)
+        return _chat_response_payload_with_guardrail(answer, trace, guardrail)
     except Exception as exc:
         telemetry_store.finish_turn(
             trace,

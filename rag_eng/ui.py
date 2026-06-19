@@ -14,6 +14,7 @@ from rag_eng.config import Settings, get_settings
 from rag_eng.gradio_tools import (
     fetch_sagemaker_status,
     format_traffic_lights_html,
+    invoke_guardrail_review,
     invoke_pipeline_chat,
     invoke_sagemaker_direct,
 )
@@ -183,6 +184,20 @@ def _pipeline_invoke(
     return answer, raw, status
 
 
+def _guardrail_invoke(
+    draft_answer: str,
+    student_question: str,
+    student_code: str,
+    conversation_history_json: str,
+) -> tuple[str, str, str]:
+    return invoke_guardrail_review(
+        draft_answer,
+        student_question,
+        student_code,
+        conversation_history_json,
+    )
+
+
 def build_gradio_app(settings: Settings | None = None) -> gr.Blocks:
     """Single Gradio app with three admin tabs, mounted once at /gradio."""
     runtime = settings or get_settings()
@@ -310,9 +325,44 @@ def build_gradio_app(settings: Settings | None = None) -> gr.Blocks:
                 "so you can press **Send again** or **Invoke SageMaker** to resubmit it."
             )
 
+        with gr.Tab("Guardrail Console"):
+            gr.Markdown(
+                "Direct V1 + V2 output guardrails for a draft answer.  \n"
+                "Use this tab to inspect pass / log_only / replace outcomes before wiring a response into the pipeline."
+            )
+            gd_draft = gr.Textbox(
+                label="Draft Answer",
+                placeholder="Paste the candidate answer from the model here.",
+                lines=10,
+            )
+            gd_question = gr.Textbox(
+                label="Student Question",
+                placeholder="Why does my pointer segfault?",
+                lines=4,
+            )
+            gd_code = gr.Textbox(
+                label="Student Code",
+                placeholder="int *p;\n*p = 42;",
+                lines=8,
+            )
+            gd_history = gr.Textbox(
+                label="Conversation History (JSON list)",
+                placeholder='[{"role": "user", "content": "..." }]',
+                lines=6,
+            )
+            gd_run = gr.Button("Run guardrails", variant="primary")
+            gd_final = gr.Textbox(label="Final Answer", lines=10)
+            gd_raw = gr.Code(label="Raw JSON response", language="json")
+            gd_status = gr.Textbox(label="Guardrail status", interactive=False)
+            gd_run.click(
+                fn=_guardrail_invoke,
+                inputs=[gd_draft, gd_question, gd_code, gd_history],
+                outputs=[gd_final, gd_raw, gd_status],
+            )
+
         with gr.Tab("Pipeline Console"):
             gr.Markdown(
-                f"Full extension-style pipeline: context extraction → RAG → prompt budget → inference.  \n"
+                f"Full extension-style pipeline: context extraction → RAG → prompt budget → inference → guardrails.  \n"
                 f"Current route: **{route_hint}**"
             )
             with gr.Row():

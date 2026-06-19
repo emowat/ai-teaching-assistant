@@ -278,6 +278,20 @@ def test_run_chat_forwards_course_id_to_query_payload(monkeypatch) -> None:
         return SimpleNamespace(formatted_context="[ctx]")
 
     monkeypatch.setattr("rag_eng.service.run_retrieval", fake_run_retrieval)
+    monkeypatch.setattr(
+        "rag_eng.service.apply_all_guardrails",
+        lambda answer, user_query, student_code, conversation_history: {
+            "safe": True,
+            "blocked": False,
+            "violation_type": "none",
+            "severity": "",
+            "action": "pass",
+            "evidence": "test pass",
+            "final_answer": answer,
+            "v2_score": 0.0,
+            "stage": "v1+v2",
+        },
+    )
 
     async def fake_openai(messages, config):
         return "openai chat answer"
@@ -321,6 +335,7 @@ def test_run_chat_forwards_course_id_to_query_payload(monkeypatch) -> None:
     assert captured["result_count"] == 8
     assert captured["rerank_strategy"] == "mmr_0.7"
     assert response["session_id"] == "chat-session"
+    assert response["guardrail"]["action"] == "pass"
     assert fake_telemetry.started
     assert fake_telemetry.finished
 
@@ -401,6 +416,20 @@ def test_run_chat_uses_openai_provider(monkeypatch) -> None:
         "rag_eng.service.run_retrieval",
         lambda query: SimpleNamespace(formatted_context="[ctx]"),
     )
+    monkeypatch.setattr(
+        "rag_eng.service.apply_all_guardrails",
+        lambda answer, user_query, student_code, conversation_history: {
+            "safe": True,
+            "blocked": False,
+            "violation_type": "none",
+            "severity": "",
+            "action": "pass",
+            "evidence": "test pass",
+            "final_answer": answer,
+            "v2_score": 0.0,
+            "stage": "v1+v2",
+        },
+    )
     fake_telemetry = _FakeTelemetryStore()
     monkeypatch.setattr(
         "rag_eng.service.get_telemetry_store",
@@ -451,3 +480,86 @@ def test_run_chat_uses_openai_provider(monkeypatch) -> None:
     assert response["session_id"] == "chat-session"
     assert fake_telemetry.started
     assert fake_telemetry.finished
+
+
+def test_run_chat_applies_guardrails_to_sagemaker_answer(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "rag_eng.service.get_inference_config",
+        lambda: _runtime_config(rag_provider="cohere", chat_provider="sagemaker"),
+    )
+    monkeypatch.setattr(
+        "rag_eng.service.get_settings",
+        lambda: SimpleNamespace(
+            cohere_api_key="cohere",
+            openai_api_key="sk-test",
+            openai_base_url="https://api.openai.com/v1",
+            sagemaker_inference_backend="vllm",
+            sagemaker_endpoint="endpoint",
+            sagemaker_poll_timeout_seconds=600,
+            s3_data_bucket="bucket",
+            aws_profile=None,
+            aws_region="us-east-1",
+            use_sagemaker=True,
+            model_family="qwen",
+        ),
+    )
+    monkeypatch.setattr(
+        "rag_eng.service.run_retrieval",
+        lambda query: SimpleNamespace(formatted_context="[ctx]"),
+    )
+    monkeypatch.setattr(
+        "rag_eng.service.apply_all_guardrails",
+        lambda answer, user_query, student_code, conversation_history: {
+            "safe": False,
+            "blocked": True,
+            "violation_type": "v2_unsafe",
+            "severity": "medium",
+            "action": "replace",
+            "evidence": "v2 score=0.835 > 0.7",
+            "final_answer": "Guarded answer",
+            "v2_score": 0.835,
+            "stage": "v2",
+        },
+    )
+    fake_telemetry = _FakeTelemetryStore()
+    monkeypatch.setattr(
+        "rag_eng.service.get_telemetry_store",
+        lambda: fake_telemetry,
+    )
+
+    async def fake_run_inference(messages, model_name, settings, stream=False):
+        return {"message": {"content": "draft answer"}}
+
+    monkeypatch.setattr("rag_eng.service.run_inference", fake_run_inference)
+
+    response = asyncio.run(
+        run_chat(
+            [
+                {
+                    "role": "user",
+                    "content": "Mode: Homework Assist\nWeek: 1\n[Student_Question]\nWhy?",
+                }
+            ],
+            model_name="codingrabbit",
+            settings=SimpleNamespace(
+                cohere_api_key="cohere",
+                openai_api_key="sk-test",
+                openai_base_url="https://api.openai.com/v1",
+                sagemaker_inference_backend="vllm",
+                sagemaker_endpoint="endpoint",
+                sagemaker_poll_timeout_seconds=600,
+                s3_data_bucket="bucket",
+                aws_profile=None,
+                aws_region="us-east-1",
+                use_sagemaker=True,
+                model_family="qwen",
+            ),
+            stream=False,
+        )
+    )
+
+    assert response["message"]["content"] == "Guarded answer"
+    assert response["guardrail"]["action"] == "replace"
+    event_types = [event["event_type"] for event in fake_telemetry.events]
+    assert "guardrail_started" in event_types
+    assert "guardrail_finished" in event_types
