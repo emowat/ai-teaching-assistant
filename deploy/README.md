@@ -248,6 +248,44 @@ Async Inference is used because the fine-tuned Qwen model is large and inference
 
 ---
 
+### `deploy-aurora-course-registry.sh`
+
+**Purpose:** Bootstrap the Aurora PostgreSQL course registry schema and seed the
+initial course mappings used by `rag/course_registry.py`.
+
+**What it does:**
+
+1. Reads the versioned schema file at `deploy/sql/aurora_course_registry.sql`
+2. Executes the DDL and seed statements through the Aurora Data API
+3. Verifies the resulting `courses` and `course_aliases` rows
+
+**Usage:**
+
+```bash
+./deploy/scripts/deploy-aurora-course-registry.sh apply \
+  --resource-arn arn:aws:rds:us-east-1:123456789012:cluster:my-course-registry \
+  --secret-arn arn:aws:secretsmanager:us-east-1:123456789012:secret:my-db-secret \
+  --database postgres \
+  --region us-east-1 \
+  --profile codingrabbit-dev
+```
+
+**Environment variables:**
+
+| Variable | Default | Description |
+|---|---|---|
+| `AURORA_COURSE_REGISTRY_RESOURCE_ARN` | — | Aurora cluster resource ARN for the Data API |
+| `AURORA_COURSE_REGISTRY_SECRET_ARN` | — | Secrets Manager ARN for the DB credentials |
+| `AURORA_COURSE_REGISTRY_DATABASE` | `postgres` | Aurora database name |
+| `AURORA_COURSE_REGISTRY_SQL_FILE` | `deploy/sql/aurora_course_registry.sql` | SQL bootstrap file |
+| `AWS_REGION` | `us-east-1` | AWS region for the Data API client |
+| `AWS_PROFILE` | — | Optional named AWS profile |
+
+If the Data API call fails, the script exits non-zero and the cluster is left in
+its previous committed state.
+
+---
+
 ## Python modules (advanced / CI)
 
 Use these directly if you need finer control or automation without the shell wrappers.
