@@ -9,7 +9,6 @@ psycopg[binary]>=3.2
 
 # LLM (TA response generation)
 langchain-cohere>=0.1
-cohere>=7.0
 python-dotenv>=1.0
 fastapi>=0.111
 uvicorn>=0.30
