@@ -19,6 +19,21 @@ from rag_eng.gradio_tools import (
 )
 from rag_eng.schemas import RERANK_STRATEGY_CHOICES
 
+RETRIEVAL_PRESET_CUSTOM = "Custom (manual controls)"
+RETRIEVAL_PRESET_CHOICES: tuple[str, ...] = (
+    RETRIEVAL_PRESET_CUSTOM,
+    "Experiment baseline (K=8, similarity)",
+    "MMR balanced (K=8, lambda=0.5)",
+    "MMR relevance (K=8, lambda=0.7)",
+    "MMR focus (K=8, lambda=0.9)",
+)
+RETRIEVAL_PRESET_CONFIGS: dict[str, tuple[int, str]] = {
+    "Experiment baseline (K=8, similarity)": (8, "similarity"),
+    "MMR balanced (K=8, lambda=0.5)": (8, "mmr_0.5"),
+    "MMR relevance (K=8, lambda=0.7)": (8, "mmr_0.7"),
+    "MMR focus (K=8, lambda=0.9)": (8, "mmr_0.9"),
+}
+
 
 def _post_json(url: str, payload: dict) -> dict:
     body = json.dumps(payload).encode("utf-8")
@@ -32,12 +47,27 @@ def _post_json(url: str, payload: dict) -> dict:
         return json.loads(response.read().decode("utf-8"))
 
 
+def _resolve_retrieval_preset(
+    retrieval_preset: str,
+    result_count: int,
+    rerank_strategy: str,
+) -> tuple[int, str, str]:
+    """Return the effective retrieval controls for the selected preset."""
+    preset = (retrieval_preset or "").strip()
+    preset_config = RETRIEVAL_PRESET_CONFIGS.get(preset)
+    if preset_config is None:
+        return int(result_count), rerank_strategy, RETRIEVAL_PRESET_CUSTOM
+    preset_count, preset_rerank = preset_config
+    return preset_count, preset_rerank, preset
+
+
 def _query_api(
     student_message: str,
     code_raw: str,
     terminal_output: str,
     week: int,
     mode: str,
+    retrieval_preset: str,
     result_count: int,
     rerank_strategy: str,
     has_pointer: bool,
@@ -50,6 +80,11 @@ def _query_api(
     has_recursion: bool,
 ) -> tuple[str, str, str, str]:
     settings = get_settings()
+    effective_result_count, effective_rerank_strategy, active_preset = _resolve_retrieval_preset(
+        retrieval_preset,
+        result_count,
+        rerank_strategy,
+    )
     payload = {
         "student_message": student_message,
         "code_raw": code_raw,
@@ -57,8 +92,8 @@ def _query_api(
         "exit_code": 0,
         "week": int(week),
         "mode": mode,
-        "result_count": int(result_count),
-        "rerank_strategy": rerank_strategy,
+        "result_count": int(effective_result_count),
+        "rerank_strategy": effective_rerank_strategy,
         "ast_features": {
             "has_pointer": has_pointer,
             "has_reference": has_reference,
@@ -77,7 +112,11 @@ def _query_api(
             data["answer"],
             json.dumps(data["retrieval_result"], indent=2),
             data["formatted_context"],
-            "Request completed successfully.",
+            (
+                "Request completed successfully."
+                if active_preset == RETRIEVAL_PRESET_CUSTOM
+                else f"Request completed successfully. Preset: {active_preset}."
+            ),
         )
     except error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
@@ -111,6 +150,7 @@ def _pipeline_invoke(
     terminal_output: str,
     week: int,
     mode: str,
+    retrieval_preset: str,
     result_count: int,
     rerank_strategy: str,
     course_id: str,
@@ -119,20 +159,28 @@ def _pipeline_invoke(
     turn_id: str,
     section_id: str,
 ) -> tuple[str, str, str]:
-    return invoke_pipeline_chat(
+    effective_result_count, effective_rerank_strategy, active_preset = _resolve_retrieval_preset(
+        retrieval_preset,
+        result_count,
+        rerank_strategy,
+    )
+    answer, raw, status = invoke_pipeline_chat(
         student_message,
         code_raw,
         terminal_output,
         week,
         mode,
-        result_count=result_count,
-        rerank_strategy=rerank_strategy,
+        result_count=effective_result_count,
+        rerank_strategy=effective_rerank_strategy,
         course_id=course_id,
         session_id=session_id,
         request_id=request_id,
         turn_id=turn_id,
         section_id=section_id,
     )
+    if active_preset != RETRIEVAL_PRESET_CUSTOM:
+        status = f"{status} · preset={active_preset}"
+    return answer, raw, status
 
 
 def build_gradio_app(settings: Settings | None = None) -> gr.Blocks:
@@ -174,6 +222,11 @@ def build_gradio_app(settings: Settings | None = None) -> gr.Blocks:
                     choices=[item.value for item in AssistMode],
                     value=AssistMode.HOMEWORK_ASSIST.value,
                 )
+                rq_preset = gr.Dropdown(
+                    label="Retrieval Preset",
+                    choices=list(RETRIEVAL_PRESET_CHOICES),
+                    value=RETRIEVAL_PRESET_CUSTOM,
+                )
                 rq_count = gr.Slider(
                     label="Top K / Final Results",
                     minimum=1,
@@ -209,7 +262,7 @@ def build_gradio_app(settings: Settings | None = None) -> gr.Blocks:
             rq_submit.click(
                 fn=_query_api,
                 inputs=[
-                    rq_student, rq_code, rq_terminal, rq_week, rq_mode, rq_count,
+                    rq_student, rq_code, rq_terminal, rq_week, rq_mode, rq_preset, rq_count,
                     rq_rerank,
                     rq_ptr, rq_ref, rq_loop, rq_new, rq_del, rq_malloc, rq_free, rq_rec,
                 ],
@@ -285,6 +338,11 @@ def build_gradio_app(settings: Settings | None = None) -> gr.Blocks:
                     choices=[item.value for item in AssistMode],
                     value=AssistMode.HOMEWORK_ASSIST.value,
                 )
+                pp_preset = gr.Dropdown(
+                    label="Retrieval Preset",
+                    choices=list(RETRIEVAL_PRESET_CHOICES),
+                    value=RETRIEVAL_PRESET_CUSTOM,
+                )
                 pp_result_count = gr.Slider(
                     label="Top K / Final Results",
                     minimum=1,
@@ -333,6 +391,7 @@ def build_gradio_app(settings: Settings | None = None) -> gr.Blocks:
                     pp_terminal,
                     pp_week,
                     pp_mode,
+                    pp_preset,
                     pp_result_count,
                     pp_rerank,
                     pp_course_id,

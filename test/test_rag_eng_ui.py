@@ -6,6 +6,7 @@ from rag_eng.gradio_tools import SageMakerStatus, TrafficLight
 from rag_eng.ui import (
     _clear_sagemaker_request,
     _query_api,
+    _resolve_retrieval_preset,
     _pipeline_invoke,
     _refresh_sagemaker_status,
     build_gradio_app,
@@ -63,6 +64,30 @@ def test_clear_sagemaker_request_returns_retry_hint() -> None:
     assert "send it again" in status.lower()
 
 
+def test_resolve_retrieval_preset_uses_saved_values() -> None:
+    result_count, rerank_strategy, active_preset = _resolve_retrieval_preset(
+        "MMR relevance (K=8, lambda=0.7)",
+        3,
+        "similarity",
+    )
+
+    assert result_count == 8
+    assert rerank_strategy == "mmr_0.7"
+    assert active_preset == "MMR relevance (K=8, lambda=0.7)"
+
+
+def test_resolve_retrieval_preset_keeps_manual_controls_for_custom() -> None:
+    result_count, rerank_strategy, active_preset = _resolve_retrieval_preset(
+        "Custom (manual controls)",
+        10,
+        "mmr_0.5",
+    )
+
+    assert result_count == 10
+    assert rerank_strategy == "mmr_0.5"
+    assert active_preset == "Custom (manual controls)"
+
+
 def test_query_api_forwards_rerank_strategy(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
@@ -88,6 +113,7 @@ def test_query_api_forwards_rerank_strategy(monkeypatch) -> None:
         "Segmentation fault",
         4,
         "Homework Assist",
+        "Custom (manual controls)",
         8,
         "mmr_0.9",
         True,
@@ -107,6 +133,7 @@ def test_query_api_forwards_rerank_strategy(monkeypatch) -> None:
     assert captured["url"] == "http://backend.example/query"
     assert captured["payload"]["result_count"] == 8
     assert captured["payload"]["rerank_strategy"] == "mmr_0.9"
+    assert "Preset: Custom" not in status
 
 
 def test_pipeline_invoke_forwards_trace_overrides(monkeypatch) -> None:
@@ -148,6 +175,7 @@ def test_pipeline_invoke_forwards_trace_overrides(monkeypatch) -> None:
         "Segmentation fault",
         4,
         "Homework Assist",
+        "Custom (manual controls)",
         8,
         "mmr_0.7",
         "mit14",
@@ -167,3 +195,49 @@ def test_pipeline_invoke_forwards_trace_overrides(monkeypatch) -> None:
     assert captured["request_id"] == "request-456"
     assert captured["turn_id"] == "turn-789"
     assert captured["section_id"] == "section-2"
+
+
+def test_pipeline_invoke_applies_saved_preset(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_invoke_pipeline_chat(
+        student_message,
+        code_raw,
+        terminal_output,
+        week,
+        mode,
+        result_count=None,
+        rerank_strategy=None,
+        course_id=None,
+        session_id=None,
+        request_id=None,
+        turn_id=None,
+        section_id=None,
+    ):
+        captured["result_count"] = result_count
+        captured["rerank_strategy"] = rerank_strategy
+        return ("answer", "{}", "ok")
+
+    monkeypatch.setattr("rag_eng.ui.invoke_pipeline_chat", fake_invoke_pipeline_chat)
+
+    response, raw, status = _pipeline_invoke(
+        "Why does my pointer segfault?",
+        "int *p;",
+        "Segmentation fault",
+        4,
+        "Homework Assist",
+        "MMR focus (K=8, lambda=0.9)",
+        3,
+        "similarity",
+        "mit14",
+        "session-123",
+        "request-456",
+        "turn-789",
+        "section-2",
+    )
+
+    assert response == "answer"
+    assert raw == "{}"
+    assert captured["result_count"] == 8
+    assert captured["rerank_strategy"] == "mmr_0.9"
+    assert "preset=MMR focus (K=8, lambda=0.9)" in status
