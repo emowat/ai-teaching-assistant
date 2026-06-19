@@ -122,6 +122,8 @@ docker run --rm -p 8001:8001 --env-file .env rag-eng
 | `ADMIN_TOKEN` | — | Bearer token for admin endpoints |
 | `OPENAI_API_KEY` | — | OpenAI API key for admin-selected OpenAI routes |
 | `OPENAI_BASE_URL` | `https://api.openai.com/v1` | Optional OpenAI-compatible base URL |
+| `COURSE_REGISTRY_DATABASE_URL` | — | Optional Aurora/PostgreSQL URL for course registry lookups |
+| `DATABASE_URL` | — | Generic Aurora/PostgreSQL fallback URL for course registry lookups |
 | `RESTART_COMMAND` | — | Optional shell command to run when the admin presses restart |
 
 The editable non-secret model routing settings live in `rag_eng/runtime_config.yaml`.

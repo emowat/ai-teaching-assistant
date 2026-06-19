@@ -4,7 +4,12 @@ from types import SimpleNamespace
 
 import pytest
 
-from rag.course_registry import CourseRegistry, resolve_course_route
+from rag.course_registry import (
+    CourseRegistry,
+    CourseRoute,
+    _load_database_routes,
+    resolve_course_route,
+)
 from rag.pipeline import run_retrieval
 from rag.schemas import AssistMode, CourseSource, QueryInput, RetrievalResult
 
@@ -21,6 +26,116 @@ def _stub_registry() -> CourseRegistry:
             collection_cs50="cs50_course",
         )
     )
+
+
+class _FakeCursor:
+    def __init__(self, course_rows, alias_rows):
+        self._course_rows = list(course_rows)
+        self._alias_rows = list(alias_rows)
+        self._call_count = 0
+
+    def execute(self, query: str) -> None:
+        self._call_count += 1
+
+    def fetchall(self):
+        if self._call_count == 1:
+            return self._course_rows
+        return self._alias_rows
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+
+class _FakeConnection:
+    def __init__(self, course_rows, alias_rows):
+        self._course_rows = course_rows
+        self._alias_rows = alias_rows
+
+    def cursor(self):
+        return _FakeCursor(self._course_rows, self._alias_rows)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+
+def test_load_database_routes_uses_canonical_rows_and_aliases(monkeypatch) -> None:
+    fake_connection = _FakeConnection(
+        [
+            ("mit13", "mit13", "mit13_course_db"),
+            ("mit14", "mit14", "mit14_course_db"),
+            ("cs50", "cs50", "cs50_course_db"),
+        ],
+        [
+            ("mit-13", "mit13"),
+            ("cs50x", "cs50"),
+        ],
+    )
+    monkeypatch.setattr(
+        "rag.course_registry._connect_postgres",
+        lambda database_url: fake_connection,
+    )
+
+    routes = _load_database_routes("postgresql://example")
+
+    assert routes["mit13"].collection_name == "mit13_course_db"
+    assert routes["mit14"].collection_name == "mit14_course_db"
+    assert routes["cs50"].collection_name == "cs50_course_db"
+
+
+def test_course_registry_overlays_database_routes(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "rag.course_registry._load_database_routes",
+        lambda database_url: {
+            "mit14": CourseRoute(
+                course_id="mit14",
+                course_source=CourseSource.MIT_14,
+                collection_name="mit14_course_db",
+            )
+        },
+    )
+
+    registry = CourseRegistry(
+        SimpleNamespace(
+            collection_mit13="mit13_course",
+            collection_mit14="mit14_course",
+            collection_cs50="cs50_course",
+        ),
+        database_url="postgresql://example",
+    )
+
+    route = registry.resolve(course_id="mit-14")
+
+    assert route.course_source is CourseSource.MIT_14
+    assert route.collection_name == "mit14_course_db"
+
+
+def test_course_registry_falls_back_to_static_routes_when_aurora_unavailable(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "rag.course_registry._load_database_routes",
+        lambda database_url: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
+
+    registry = CourseRegistry(
+        SimpleNamespace(
+            collection_mit13="mit13_course",
+            collection_mit14="mit14_course",
+            collection_cs50="cs50_course",
+        ),
+        database_url="postgresql://example",
+    )
+
+    route = registry.resolve(course_id="mit-14")
+
+    assert route.course_source is CourseSource.MIT_14
+    assert route.collection_name == "mit14_course"
 
 
 def test_resolve_course_route_prefers_explicit_course_id(monkeypatch) -> None:
