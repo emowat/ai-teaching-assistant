@@ -19,6 +19,65 @@ CREATE TABLE IF NOT EXISTS course_aliases (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS tutor_sessions (
+  session_id text PRIMARY KEY,
+  user_sub text,
+  course_id text NOT NULL DEFAULT '',
+  course_source text NOT NULL DEFAULT '',
+  section_id text,
+  first_request_id text,
+  last_request_id text,
+  turn_count integer NOT NULL DEFAULT 0,
+  status text NOT NULL DEFAULT 'active',
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  last_seen_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS tutor_turns (
+  turn_id text PRIMARY KEY,
+  session_id text NOT NULL REFERENCES tutor_sessions(session_id) ON DELETE CASCADE,
+  request_id text NOT NULL,
+  turn_index integer NOT NULL,
+  user_sub text,
+  course_id text NOT NULL DEFAULT '',
+  course_source text NOT NULL DEFAULT '',
+  section_id text,
+  mode text NOT NULL DEFAULT '',
+  week integer NOT NULL DEFAULT 0,
+  status text NOT NULL DEFAULT 'started',
+  model_provider text NOT NULL DEFAULT '',
+  model_name text NOT NULL DEFAULT '',
+  retrieval_doc_count integer NOT NULL DEFAULT 0,
+  answer_chars integer NOT NULL DEFAULT 0,
+  latency_ms integer,
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  completed_at timestamptz
+);
+
+CREATE TABLE IF NOT EXISTS telemetry_events (
+  event_id bigserial PRIMARY KEY,
+  request_id text NOT NULL,
+  session_id text NOT NULL REFERENCES tutor_sessions(session_id) ON DELETE CASCADE,
+  turn_id text NOT NULL REFERENCES tutor_turns(turn_id) ON DELETE CASCADE,
+  turn_index integer NOT NULL,
+  user_sub text,
+  course_id text NOT NULL DEFAULT '',
+  course_source text NOT NULL DEFAULT '',
+  section_id text,
+  event_type text NOT NULL,
+  stage text NOT NULL,
+  status text NOT NULL,
+  latency_ms integer,
+  model_provider text NOT NULL DEFAULT '',
+  model_name text NOT NULL DEFAULT '',
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
 INSERT INTO courses (course_id, course_source, collection_name, display_name, is_active)
 VALUES
   ('mit13', 'mit13', 'mit13_course', 'MIT 6.0013', TRUE),

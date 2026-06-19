@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import re
+import time
 from types import SimpleNamespace
-from typing import AsyncIterator
+from typing import Any, AsyncIterator
 
 from rag import build_prompt, generate_response_from_result, run_retrieval
 from rag.runtime import create_qdrant_client
@@ -20,6 +22,7 @@ from rag_eng.llm_clients import (
     invoke_openai_chat_completion,
 )
 from rag_eng.prompts import get_system_prompt
+from rag_eng.telemetry import TraceContext, TelemetryStore, get_telemetry_store
 from rag_eng.schemas import (
     HealthResponse,
     IndexEnsureResponse,
@@ -37,6 +40,101 @@ class _PromptAdapter:
 
     def invoke(self, prompt: str):
         return SimpleNamespace(content=self._fn(prompt))
+
+
+def _trace_payload(trace: TraceContext) -> dict[str, Any]:
+    """Return the public trace identifiers attached to chat/query responses."""
+    return {
+        "session_id": trace.session_id,
+        "request_id": trace.request_id,
+        "turn_id": trace.turn_id,
+        "turn_index": trace.turn_index,
+    }
+
+
+def _chat_response_payload(answer: str, trace: TraceContext) -> dict[str, Any]:
+    """Return the standard response payload for non-streaming chat calls."""
+    return {"message": {"content": answer}, **_trace_payload(trace)}
+
+
+def _retrieval_summary(retrieval_result) -> dict[str, int]:
+    """Summarize retrieval output without storing raw content."""
+    return {
+        "syllabus": 1 if getattr(retrieval_result, "syllabus", None) else 0,
+        "strict_rules": len(getattr(retrieval_result, "strict_rules", []) or []),
+        "pedagogical": len(getattr(retrieval_result, "pedagogical", []) or []),
+        "supplementary": len(
+            getattr(retrieval_result, "supplementary", []) or []
+        ),
+        "guidelines": len(getattr(retrieval_result, "guidelines", []) or []),
+        "harvard": len(getattr(retrieval_result, "harvard", []) or []),
+    }
+
+
+async def _trace_stream_response(
+    stream: AsyncIterator[bytes],
+    *,
+    telemetry_store: TelemetryStore,
+    trace: TraceContext,
+    stage_provider: str,
+    model_name: str,
+    started_at: float,
+    llm_started_at: float,
+    base_metadata: dict[str, Any],
+) -> AsyncIterator[bytes]:
+    """Proxy a streaming response while closing out telemetry when complete."""
+    answer_parts: list[str] = []
+    try:
+        async for chunk in stream:
+            try:
+                decoded = chunk.decode("utf-8").strip()
+                for line in decoded.splitlines():
+                    if not line.strip():
+                        continue
+                    payload = json.loads(line)
+                    content = payload.get("message", {}).get("content")
+                    if isinstance(content, str):
+                        answer_parts.append(content)
+            except Exception:
+                # Streaming telemetry should never interfere with the client stream.
+                pass
+            yield chunk
+    except Exception as exc:
+        telemetry_store.finish_turn(
+            trace,
+            status="failed",
+            latency_ms=int((time.perf_counter() - started_at) * 1000),
+            model_provider=stage_provider,
+            model_name=model_name,
+            metadata={**base_metadata, "error": type(exc).__name__},
+        )
+        raise
+    else:
+        answer_text = "".join(answer_parts)
+        llm_latency_ms = int((time.perf_counter() - llm_started_at) * 1000)
+        telemetry_store.record_event(
+            trace,
+            event_type="llm_finished",
+            stage="llm_inference",
+            status="completed",
+            latency_ms=llm_latency_ms,
+            model_provider=stage_provider,
+            model_name=model_name,
+            metadata={**base_metadata, "answer_chars": len(answer_text)},
+        )
+        telemetry_store.finish_turn(
+            trace,
+            status="completed",
+            latency_ms=int((time.perf_counter() - started_at) * 1000),
+            model_provider=stage_provider,
+            model_name=model_name,
+            answer_chars=len(answer_text),
+            metadata={
+                **base_metadata,
+                "llm_latency_ms": llm_latency_ms,
+                "answer_chars": len(answer_text),
+            },
+        )
 
 
 def _build_llm():
@@ -72,18 +170,107 @@ def _build_llm():
 
 def run_query(query) -> QueryResponse:
     """Execute retrieval once, then generate the TA answer from that result."""
-    retrieval_result = run_retrieval(query)
-    llm = _build_llm()
-    answer = generate_response_from_result(
-        query=query,
-        result=retrieval_result,
-        llm=llm,
+    telemetry_store = get_telemetry_store()
+    trace = telemetry_store.start_turn(query=query, source="query")
+    runtime = get_inference_config()
+    model_provider = runtime.rag.provider
+    model_name = runtime.rag.model
+    started_at = time.perf_counter()
+    base_metadata = {
+        "source": "query",
+        "mode": str(query.mode.value),
+        "week": query.week,
+        "course_id": trace.course_id,
+        "course_source": trace.course_source,
+        "result_count": getattr(query, "result_count", None),
+    }
+
+    telemetry_store.record_event(
+        trace,
+        event_type="retrieval_started",
+        stage="retrieval",
+        status="started",
+        model_provider=model_provider,
+        model_name=model_name,
+        metadata=base_metadata,
     )
-    return QueryResponse(
-        answer=answer,
-        retrieval_result=retrieval_result,
-        formatted_context=retrieval_result.formatted_context,
-    )
+
+    try:
+        retrieval_started = time.perf_counter()
+        retrieval_result = run_retrieval(query)
+        retrieval_latency_ms = int((time.perf_counter() - retrieval_started) * 1000)
+        telemetry_store.record_event(
+            trace,
+            event_type="retrieval_finished",
+            stage="retrieval",
+            status="completed",
+            latency_ms=retrieval_latency_ms,
+            model_provider=model_provider,
+            model_name=model_name,
+            metadata={**base_metadata, **_retrieval_summary(retrieval_result)},
+        )
+
+        telemetry_store.record_event(
+            trace,
+            event_type="llm_started",
+            stage="llm_inference",
+            status="started",
+            model_provider=model_provider,
+            model_name=model_name,
+            metadata=base_metadata,
+        )
+        llm_started = time.perf_counter()
+        llm = _build_llm()
+        answer = generate_response_from_result(
+            query=query,
+            result=retrieval_result,
+            llm=llm,
+        )
+        llm_latency_ms = int((time.perf_counter() - llm_started) * 1000)
+        telemetry_store.record_event(
+            trace,
+            event_type="llm_finished",
+            stage="llm_inference",
+            status="completed",
+            latency_ms=llm_latency_ms,
+            model_provider=model_provider,
+            model_name=model_name,
+            metadata={**base_metadata, "answer_chars": len(answer)},
+        )
+        telemetry_store.finish_turn(
+            trace,
+            status="completed",
+            latency_ms=int((time.perf_counter() - started_at) * 1000),
+            model_provider=model_provider,
+            model_name=model_name,
+            answer_chars=len(answer),
+            metadata={
+                **base_metadata,
+                **_retrieval_summary(retrieval_result),
+                "retrieval_latency_ms": retrieval_latency_ms,
+                "llm_latency_ms": llm_latency_ms,
+                "answer_chars": len(answer),
+            },
+        )
+        return QueryResponse(
+            answer=answer,
+            retrieval_result=retrieval_result,
+            formatted_context=retrieval_result.formatted_context,
+            session_id=trace.session_id,
+            request_id=trace.request_id,
+            turn_id=trace.turn_id,
+            turn_index=trace.turn_index,
+        )
+    except Exception as exc:
+        telemetry_store.finish_turn(
+            trace,
+            status="failed",
+            latency_ms=int((time.perf_counter() - started_at) * 1000),
+            model_provider=model_provider,
+            model_name=model_name,
+            metadata={**base_metadata, "error": type(exc).__name__},
+        )
+        raise
 
 
 def get_health() -> HealthResponse:
@@ -235,6 +422,10 @@ async def run_chat(
     settings: Settings,
     stream: bool = False,
     course_id: str | None = None,
+    session_id: str | None = None,
+    request_id: str | None = None,
+    turn_id: str | None = None,
+    section_id: str | None = None,
 ) -> dict | AsyncIterator[bytes]:
     """Full chat pipeline: context extraction -> RAG -> prompt assembly -> inference."""
     ctx = _extract_chat_context(messages)
@@ -246,45 +437,235 @@ async def run_chat(
         mode=ctx["mode"],
         week=ctx["week"],
         course_id=course_id,
+        session_id=session_id,
+        request_id=request_id,
+        turn_id=turn_id,
+        section_id=section_id,
     )
 
-    retrieval_result = run_retrieval(query)
-    rag_context = retrieval_result.formatted_context
-    api_messages = [m for m in messages if m.get("role") != "system"]
+    telemetry_store = get_telemetry_store()
+    trace = telemetry_store.start_turn(query=query, source="chat")
+    runtime = get_inference_config()
+    chat_route = runtime.chat
+    telemetry_model_name = (
+        model_name if chat_route.provider == "sagemaker" else chat_route.model
+    )
+    started_at = time.perf_counter()
+    base_metadata = {
+        "source": "chat",
+        "mode": str(query.mode.value),
+        "week": query.week,
+        "course_id": trace.course_id,
+        "course_source": trace.course_source,
+    }
 
-    system_prompt = get_system_prompt(ctx["mode"])
-    chat_route = get_inference_config().chat
+    telemetry_store.record_event(
+        trace,
+        event_type="retrieval_started",
+        stage="retrieval",
+        status="started",
+        model_provider=chat_route.provider,
+        model_name=telemetry_model_name,
+        metadata=base_metadata,
+    )
 
-    if chat_route.provider == "sagemaker":
-        from rag_eng.prompt_budget import assemble_sagemaker_messages
-
-        api_messages = assemble_sagemaker_messages(
-            system_prompt,
-            rag_context,
-            api_messages,
-            ctx["mode"],
-            get_inference_config().sagemaker,
+    try:
+        retrieval_started = time.perf_counter()
+        retrieval_result = run_retrieval(query)
+        retrieval_latency_ms = int((time.perf_counter() - retrieval_started) * 1000)
+        retrieval_metadata = {**base_metadata, **_retrieval_summary(retrieval_result)}
+        telemetry_store.record_event(
+            trace,
+            event_type="retrieval_finished",
+            stage="retrieval",
+            status="completed",
+            latency_ms=retrieval_latency_ms,
+            model_provider=chat_route.provider,
+            model_name=telemetry_model_name,
+            metadata=retrieval_metadata,
         )
-        return await run_inference(api_messages, model_name, settings, stream=stream)
 
-    if chat_route.provider == "openai":
-        if not settings.openai_api_key:
-            raise ValueError("OPENAI_API_KEY is not configured.")
-        config = OpenAIChatConfig(
-            api_key=settings.openai_api_key,
-            base_url=settings.openai_base_url or get_inference_config().openai_base_url,
-            model=chat_route.model,
-            timeout_seconds=120.0,
-            temperature=0.7,
-            top_p=0.9,
-        )
+        rag_context = retrieval_result.formatted_context
+        api_messages = [m for m in messages if m.get("role") != "system"]
+        system_prompt = get_system_prompt(ctx["mode"])
+
+        if chat_route.provider == "sagemaker":
+            from rag_eng.prompt_budget import assemble_sagemaker_messages
+
+            api_messages = assemble_sagemaker_messages(
+                system_prompt,
+                rag_context,
+                api_messages,
+                ctx["mode"],
+                runtime.sagemaker,
+            )
+            telemetry_store.record_event(
+                trace,
+                event_type="llm_started",
+                stage="llm_inference",
+                status="started",
+                model_provider="sagemaker",
+                model_name=telemetry_model_name,
+                metadata=retrieval_metadata,
+            )
+            llm_started = time.perf_counter()
+            result = await run_inference(api_messages, model_name, settings, stream=stream)
+            if stream:
+                return _trace_stream_response(
+                    result,
+                    telemetry_store=telemetry_store,
+                    trace=trace,
+                    stage_provider="sagemaker",
+                    model_name=telemetry_model_name,
+                    started_at=started_at,
+                    llm_started_at=llm_started,
+                    base_metadata={
+                        **retrieval_metadata,
+                        "retrieval_latency_ms": retrieval_latency_ms,
+                    },
+                )
+            answer = result["message"]["content"] if isinstance(result, dict) else str(result)
+            llm_latency_ms = int((time.perf_counter() - llm_started) * 1000)
+            telemetry_store.record_event(
+                trace,
+                event_type="llm_finished",
+                stage="llm_inference",
+                status="completed",
+                latency_ms=llm_latency_ms,
+                model_provider="sagemaker",
+                model_name=telemetry_model_name,
+                metadata={**retrieval_metadata, "answer_chars": len(answer)},
+            )
+            telemetry_store.finish_turn(
+                trace,
+                status="completed",
+                latency_ms=int((time.perf_counter() - started_at) * 1000),
+                model_provider="sagemaker",
+                model_name=telemetry_model_name,
+                answer_chars=len(answer),
+                metadata={
+                    **retrieval_metadata,
+                    "retrieval_latency_ms": retrieval_latency_ms,
+                    "llm_latency_ms": llm_latency_ms,
+                    "answer_chars": len(answer),
+                },
+            )
+            return _chat_response_payload(answer, trace)
+
+        if chat_route.provider == "openai":
+            if not settings.openai_api_key:
+                raise ValueError("OPENAI_API_KEY is not configured.")
+            config = OpenAIChatConfig(
+                api_key=settings.openai_api_key,
+                base_url=settings.openai_base_url or runtime.openai_base_url,
+                model=chat_route.model,
+                timeout_seconds=120.0,
+                temperature=0.7,
+                top_p=0.9,
+            )
+            full_system = f"{system_prompt}\n{rag_context}"
+            api_messages.insert(0, {"role": "system", "content": full_system})
+            telemetry_store.record_event(
+                trace,
+                event_type="llm_started",
+                stage="llm_inference",
+                status="started",
+                model_provider="openai",
+                model_name=chat_route.model,
+                metadata=retrieval_metadata,
+            )
+            llm_started = time.perf_counter()
+            text = await ainvoke_openai_chat_completion(api_messages, config)
+            llm_latency_ms = int((time.perf_counter() - llm_started) * 1000)
+            telemetry_store.record_event(
+                trace,
+                event_type="llm_finished",
+                stage="llm_inference",
+                status="completed",
+                latency_ms=llm_latency_ms,
+                model_provider="openai",
+                model_name=chat_route.model,
+                metadata={**retrieval_metadata, "answer_chars": len(text)},
+            )
+            telemetry_store.finish_turn(
+                trace,
+                status="completed",
+                latency_ms=int((time.perf_counter() - started_at) * 1000),
+                model_provider="openai",
+                model_name=chat_route.model,
+                answer_chars=len(text),
+                metadata={
+                    **retrieval_metadata,
+                    "retrieval_latency_ms": retrieval_latency_ms,
+                    "llm_latency_ms": llm_latency_ms,
+                    "answer_chars": len(text),
+                },
+            )
+            if stream:
+                return chunk_text(text, runtime.sagemaker.streaming_chunk_size)
+            return _chat_response_payload(text, trace)
+
         full_system = f"{system_prompt}\n{rag_context}"
         api_messages.insert(0, {"role": "system", "content": full_system})
-        text = await ainvoke_openai_chat_completion(api_messages, config)
+        telemetry_store.record_event(
+            trace,
+            event_type="llm_started",
+            stage="llm_inference",
+            status="started",
+            model_provider=chat_route.provider,
+            model_name=telemetry_model_name,
+            metadata=retrieval_metadata,
+        )
+        llm_started = time.perf_counter()
+        result = await run_inference(api_messages, model_name, settings, stream=stream)
         if stream:
-            return chunk_text(text, get_inference_config().sagemaker.streaming_chunk_size)
-        return {"message": {"content": text}}
-
-    full_system = f"{system_prompt}\n{rag_context}"
-    api_messages.insert(0, {"role": "system", "content": full_system})
-    return await run_inference(api_messages, model_name, settings, stream=stream)
+            return _trace_stream_response(
+                result,
+                telemetry_store=telemetry_store,
+                trace=trace,
+                stage_provider=chat_route.provider,
+                model_name=telemetry_model_name,
+                started_at=started_at,
+                llm_started_at=llm_started,
+                base_metadata={
+                    **retrieval_metadata,
+                    "retrieval_latency_ms": retrieval_latency_ms,
+                },
+            )
+        answer = result["message"]["content"] if isinstance(result, dict) else str(result)
+        llm_latency_ms = int((time.perf_counter() - llm_started) * 1000)
+        telemetry_store.record_event(
+            trace,
+            event_type="llm_finished",
+            stage="llm_inference",
+            status="completed",
+            latency_ms=llm_latency_ms,
+            model_provider=chat_route.provider,
+            model_name=telemetry_model_name,
+            metadata={**retrieval_metadata, "answer_chars": len(answer)},
+        )
+        telemetry_store.finish_turn(
+            trace,
+            status="completed",
+            latency_ms=int((time.perf_counter() - started_at) * 1000),
+            model_provider=chat_route.provider,
+            model_name=telemetry_model_name,
+            answer_chars=len(answer),
+            metadata={
+                **retrieval_metadata,
+                "retrieval_latency_ms": retrieval_latency_ms,
+                "llm_latency_ms": llm_latency_ms,
+                "answer_chars": len(answer),
+            },
+        )
+        return _chat_response_payload(answer, trace)
+    except Exception as exc:
+        telemetry_store.finish_turn(
+            trace,
+            status="failed",
+            latency_ms=int((time.perf_counter() - started_at) * 1000),
+            model_provider=chat_route.provider,
+            model_name=telemetry_model_name,
+            metadata={**base_metadata, "error": type(exc).__name__},
+        )
+        raise

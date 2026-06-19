@@ -79,6 +79,10 @@ class QueryResult(BaseModel):
     answer: str
     retrieval_result: RetrievalResult
     formatted_context: str
+    session_id: str | None = None
+    request_id: str | None = None
+    turn_id: str | None = None
+    turn_index: int | None = None
 
 
 class QueryResponse(QueryResult):

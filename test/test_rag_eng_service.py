@@ -19,6 +19,7 @@ from rag_eng.config import (
 from rag_eng.service import _extract_chat_context
 from rag_eng.service import get_health
 from rag_eng.service import run_chat, run_query
+from rag_eng.telemetry import TraceContext
 from rag.schemas import QueryInput
 from rag.schemas import RetrievalResult
 
@@ -172,6 +173,38 @@ def _health_settings():
     )
 
 
+class _FakeTelemetryStore:
+    def __init__(self) -> None:
+        self.started: list[TraceContext] = []
+        self.events: list[dict[str, object]] = []
+        self.finished: list[dict[str, object]] = []
+
+    def start_turn(self, *, query, source: str, user_sub: str | None = None):
+        trace = TraceContext(
+            request_id=query.request_id or f"{source}-request",
+            session_id=query.session_id or f"{source}-session",
+            turn_id=query.turn_id or f"{source}-turn",
+            turn_index=1,
+            source=source,
+            course_id=query.course_id or query.course_source.value,
+            course_source=query.course_source.value,
+            section_id=query.section_id,
+            user_sub=user_sub,
+            mode=str(query.mode.value),
+            week=query.week,
+        )
+        self.started.append(trace)
+        return trace
+
+    def record_event(self, trace, **kwargs):
+        self.events.append({"trace": trace, **kwargs})
+        return True
+
+    def finish_turn(self, trace, **kwargs):
+        self.finished.append({"trace": trace, **kwargs})
+        return True
+
+
 @pytest.fixture()
 def client() -> TestClient:
     return TestClient(create_app())
@@ -184,6 +217,10 @@ def test_chat_endpoint_accepts_simple_message(monkeypatch, client: TestClient) -
         settings,
         stream=False,
         course_id=None,
+        session_id=None,
+        request_id=None,
+        turn_id=None,
+        section_id=None,
     ):
         assert messages[0]["role"] == "user"
         assert course_id is None
@@ -223,6 +260,11 @@ def test_run_chat_forwards_course_id_to_query_payload(monkeypatch) -> None:
             use_sagemaker=False,
             model_family="qwen",
         ),
+    )
+    fake_telemetry = _FakeTelemetryStore()
+    monkeypatch.setattr(
+        "rag_eng.service.get_telemetry_store",
+        lambda: fake_telemetry,
     )
     captured: dict[str, object] = {}
 
@@ -269,6 +311,9 @@ def test_run_chat_forwards_course_id_to_query_payload(monkeypatch) -> None:
 
     assert response["message"]["content"] == "openai chat answer"
     assert captured["course_id"] == "mit14"
+    assert response["session_id"] == "chat-session"
+    assert fake_telemetry.started
+    assert fake_telemetry.finished
 
 
 def test_run_query_uses_openai_rag_provider(monkeypatch) -> None:
@@ -287,6 +332,11 @@ def test_run_query_uses_openai_rag_provider(monkeypatch) -> None:
     monkeypatch.setattr(
         "rag_eng.service.run_retrieval",
         lambda query: RetrievalResult(formatted_context="[ctx]"),
+    )
+    fake_telemetry = _FakeTelemetryStore()
+    monkeypatch.setattr(
+        "rag_eng.service.get_telemetry_store",
+        lambda: fake_telemetry,
     )
     captured: dict[str, str] = {}
 
@@ -308,8 +358,13 @@ def test_run_query_uses_openai_rag_provider(monkeypatch) -> None:
     )
 
     assert result.answer == "openai answer"
+    assert result.session_id == "query-session"
+    assert result.request_id == "query-request"
+    assert result.turn_id == "query-turn"
     assert captured["model"] == "gpt-5.4-mini"
     assert "Why does this crash?" in captured["prompt"]
+    assert fake_telemetry.started
+    assert fake_telemetry.finished
 
 
 def test_run_chat_uses_openai_provider(monkeypatch) -> None:
@@ -336,6 +391,11 @@ def test_run_chat_uses_openai_provider(monkeypatch) -> None:
     monkeypatch.setattr(
         "rag_eng.service.run_retrieval",
         lambda query: SimpleNamespace(formatted_context="[ctx]"),
+    )
+    fake_telemetry = _FakeTelemetryStore()
+    monkeypatch.setattr(
+        "rag_eng.service.get_telemetry_store",
+        lambda: fake_telemetry,
     )
 
     captured: dict[str, object] = {}
@@ -379,3 +439,6 @@ def test_run_chat_uses_openai_provider(monkeypatch) -> None:
     assert response["message"]["content"] == "openai chat answer"
     assert captured["model"] == "gpt-5.4-mini"
     assert isinstance(captured["messages"], list)
+    assert response["session_id"] == "chat-session"
+    assert fake_telemetry.started
+    assert fake_telemetry.finished

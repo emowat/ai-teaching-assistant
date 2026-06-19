@@ -96,6 +96,10 @@ class QueryInput(BaseModel):
     ast_features: ASTFeatures = Field(default_factory=ASTFeatures)
     course_id: Optional[str] = None
     course_source: CourseSource = CourseSource.CS50
+    session_id: Optional[str] = None
+    request_id: Optional[str] = None
+    turn_id: Optional[str] = None
+    section_id: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------

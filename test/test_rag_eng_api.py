@@ -134,8 +134,16 @@ def test_chat_endpoint_forwards_course_id(monkeypatch, client: TestClient) -> No
         settings,
         stream=False,
         course_id=None,
+        session_id=None,
+        request_id=None,
+        turn_id=None,
+        section_id=None,
     ):
         captured["course_id"] = course_id
+        captured["session_id"] = session_id
+        captured["request_id"] = request_id
+        captured["turn_id"] = turn_id
+        captured["section_id"] = section_id
         return {"message": {"content": "Try checking whether the pointer is initialized."}}
 
     monkeypatch.setattr("rag_eng.api.run_chat", fake_run_chat)
@@ -145,12 +153,20 @@ def test_chat_endpoint_forwards_course_id(monkeypatch, client: TestClient) -> No
         json={
             "model": "codingrabbit",
             "course_id": "mit14",
+            "session_id": "sess-123",
+            "request_id": "req-456",
+            "turn_id": "turn-789",
+            "section_id": "sec-1",
             "messages": [{"role": "user", "content": "Why does my pointer segfault?"}],
         },
     )
 
     assert response.status_code == 200
     assert captured["course_id"] == "mit14"
+    assert captured["session_id"] == "sess-123"
+    assert captured["request_id"] == "req-456"
+    assert captured["turn_id"] == "turn-789"
+    assert captured["section_id"] == "sec-1"
 
 
 def test_admin_ensure_requires_token_when_configured(

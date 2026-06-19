@@ -16,6 +16,7 @@ def test_query_payload_defaults_result_count() -> None:
 
     assert payload.result_count == 5
     assert payload.course_id is None
+    assert payload.session_id is None
     assert QueryPayload.model_json_schema()["examples"]
 
 
@@ -76,12 +77,18 @@ def test_query_response_serializes_nested_retrieval_result() -> None:
             formatted_context="[Pedagogical_Context]\nPointers"
         ),
         formatted_context="[Pedagogical_Context]\nPointers",
+        session_id="session-1",
+        request_id="request-1",
+        turn_id="turn-1",
+        turn_index=1,
     )
 
     dumped = response.model_dump()
 
     assert dumped["answer"]
     assert dumped["formatted_context"]
+    assert dumped["session_id"] == "session-1"
+    assert dumped["turn_index"] == 1
     assert (
         dumped["retrieval_result"]["formatted_context"]
         == "[Pedagogical_Context]\nPointers"

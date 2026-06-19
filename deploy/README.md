@@ -259,6 +259,10 @@ initial course mappings used by `rag/course_registry.py`.
 2. Executes the DDL and seed statements through the Aurora Data API
 3. Verifies the resulting `courses` and `course_aliases` rows
 
+**Temporary dev access reminder:** if you open Aurora to your laptop for local
+development, revert the public access change, route table change, and any
+temporary security-group exception after the backend is deployed.
+
 **Usage:**
 
 ```bash
