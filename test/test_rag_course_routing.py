@@ -14,6 +14,7 @@ from rag.course_registry import (
 )
 from rag.pipeline import run_retrieval
 from rag.schemas import AssistMode, CourseSource, QueryInput, RetrievalResult
+from rag_eng.schemas import QueryPayload
 
 
 def _stub_retrieval_result() -> RetrievalResult:
@@ -236,6 +237,79 @@ def test_run_retrieval_uses_registry_collection_name(monkeypatch) -> None:
     assert captured["syllabus_collection"] == "mit14_course"
     assert captured["semantic_collection"] == "mit14_course"
     assert captured["rules_collection"] == "mit14_course"
+
+
+def test_run_retrieval_applies_rerank_strategy_controls(monkeypatch) -> None:
+    captured: dict[str, int | float | str] = {}
+
+    monkeypatch.setattr(
+        "rag.course_registry.get_course_registry",
+        lambda: _stub_registry(),
+    )
+    monkeypatch.setattr("rag.pipeline.build_query", lambda query: "dense query")
+
+    def fake_guidelines(dense_query, top_k, threshold):
+        captured["guidelines_top_k"] = top_k
+        return []
+
+    monkeypatch.setattr("rag.pipeline.retrieve_guidelines", fake_guidelines)
+
+    def fake_syllabus(week, *, collection_name):
+        return SimpleNamespace()
+
+    def fake_semantic(
+        dense_query,
+        week,
+        top_k=5,
+        *,
+        cumulative=False,
+        collection_name,
+    ):
+        captured["semantic_top_k"] = top_k
+        return []
+
+    def fake_rules(
+        dense_query,
+        week,
+        top_k=3,
+        threshold=0.55,
+        *,
+        cumulative=False,
+        collection_name,
+    ):
+        captured["rules_top_k"] = top_k
+        return []
+
+    def fake_merge_and_rerank(**kwargs):
+        captured["final_k"] = kwargs["final_k"]
+        captured["lambda_param"] = kwargs["lambda_param"]
+        return (None, [], [], [], [])
+
+    monkeypatch.setattr("rag.pipeline.retrieve_syllabus", fake_syllabus)
+    monkeypatch.setattr("rag.pipeline.retrieve_semantic", fake_semantic)
+    monkeypatch.setattr("rag.pipeline.retrieve_strict_rules", fake_rules)
+    monkeypatch.setattr("rag.pipeline.merge_and_rerank", fake_merge_and_rerank)
+    monkeypatch.setattr(
+        "rag.pipeline.build_retrieval_result",
+        lambda **kwargs: _stub_retrieval_result(),
+    )
+
+    run_retrieval(
+        QueryPayload(
+            student_message="Why does this crash?",
+            week=3,
+            mode=AssistMode.HOMEWORK_ASSIST,
+            course_id="mit14",
+            rerank_strategy="mmr_0.7",
+            result_count=8,
+        )
+    )
+
+    assert captured["final_k"] == 8
+    assert captured["lambda_param"] == 0.7
+    assert captured["semantic_top_k"] == 32
+    assert captured["rules_top_k"] == 32
+    assert captured["guidelines_top_k"] == 3
 
 
 def test_run_retrieval_rejects_unknown_course_id(monkeypatch) -> None:

@@ -17,6 +17,7 @@ from rag_eng.gradio_tools import (
     invoke_pipeline_chat,
     invoke_sagemaker_direct,
 )
+from rag_eng.schemas import RERANK_STRATEGY_CHOICES
 
 
 def _post_json(url: str, payload: dict) -> dict:
@@ -38,6 +39,7 @@ def _query_api(
     week: int,
     mode: str,
     result_count: int,
+    rerank_strategy: str,
     has_pointer: bool,
     has_reference: bool,
     has_loop: bool,
@@ -56,6 +58,7 @@ def _query_api(
         "week": int(week),
         "mode": mode,
         "result_count": int(result_count),
+        "rerank_strategy": rerank_strategy,
         "ast_features": {
             "has_pointer": has_pointer,
             "has_reference": has_reference,
@@ -108,6 +111,8 @@ def _pipeline_invoke(
     terminal_output: str,
     week: int,
     mode: str,
+    result_count: int,
+    rerank_strategy: str,
     course_id: str,
     session_id: str,
     request_id: str,
@@ -120,6 +125,8 @@ def _pipeline_invoke(
         terminal_output,
         week,
         mode,
+        result_count=result_count,
+        rerank_strategy=rerank_strategy,
         course_id=course_id,
         session_id=session_id,
         request_id=request_id,
@@ -167,7 +174,18 @@ def build_gradio_app(settings: Settings | None = None) -> gr.Blocks:
                     choices=[item.value for item in AssistMode],
                     value=AssistMode.HOMEWORK_ASSIST.value,
                 )
-                rq_count = gr.Slider(label="Result Count", minimum=1, maximum=10, value=5, step=1)
+                rq_count = gr.Slider(
+                    label="Top K / Final Results",
+                    minimum=1,
+                    maximum=20,
+                    value=8,
+                    step=1,
+                )
+                rq_rerank = gr.Dropdown(
+                    label="Rerank Strategy",
+                    choices=list(RERANK_STRATEGY_CHOICES),
+                    value="similarity",
+                )
             with gr.Accordion("AST Flags", open=False):
                 with gr.Row():
                     rq_ptr = gr.Checkbox(label="Has Pointer", value=True)
@@ -192,6 +210,7 @@ def build_gradio_app(settings: Settings | None = None) -> gr.Blocks:
                 fn=_query_api,
                 inputs=[
                     rq_student, rq_code, rq_terminal, rq_week, rq_mode, rq_count,
+                    rq_rerank,
                     rq_ptr, rq_ref, rq_loop, rq_new, rq_del, rq_malloc, rq_free, rq_rec,
                 ],
                 outputs=[rq_answer, rq_docs, rq_ctx, rq_status],
@@ -266,6 +285,18 @@ def build_gradio_app(settings: Settings | None = None) -> gr.Blocks:
                     choices=[item.value for item in AssistMode],
                     value=AssistMode.HOMEWORK_ASSIST.value,
                 )
+                pp_result_count = gr.Slider(
+                    label="Top K / Final Results",
+                    minimum=1,
+                    maximum=20,
+                    value=8,
+                    step=1,
+                )
+                pp_rerank = gr.Dropdown(
+                    label="Rerank Strategy",
+                    choices=list(RERANK_STRATEGY_CHOICES),
+                    value="similarity",
+                )
             with gr.Accordion("Routing and Trace Overrides", open=False):
                 pp_course_id = gr.Textbox(
                     label="Course ID",
@@ -302,6 +333,8 @@ def build_gradio_app(settings: Settings | None = None) -> gr.Blocks:
                     pp_terminal,
                     pp_week,
                     pp_mode,
+                    pp_result_count,
+                    pp_rerank,
                     pp_course_id,
                     pp_session_id,
                     pp_request_id,

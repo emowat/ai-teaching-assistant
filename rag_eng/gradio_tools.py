@@ -257,6 +257,8 @@ async def _pipeline_chat_async(
     request_id: str | None = None,
     turn_id: str | None = None,
     section_id: str | None = None,
+    result_count: int | None = None,
+    rerank_strategy: str | None = None,
 ) -> dict[str, Any]:
     content = build_extension_user_message(
         mode=mode,
@@ -275,6 +277,8 @@ async def _pipeline_chat_async(
         request_id=(request_id or "").strip() or None,
         turn_id=(turn_id or "").strip() or None,
         section_id=(section_id or "").strip() or None,
+        result_count=result_count,
+        rerank_strategy=(rerank_strategy or "").strip() or None,
     )
 
 
@@ -289,6 +293,8 @@ def invoke_pipeline_chat(
     request_id: str | None = None,
     turn_id: str | None = None,
     section_id: str | None = None,
+    result_count: int | None = None,
+    rerank_strategy: str | None = None,
     settings: Settings | None = None,
 ) -> tuple[str, str, str]:
     """Run the full RAG + inference pipeline (POST /api/chat equivalent)."""
@@ -316,6 +322,8 @@ def invoke_pipeline_chat(
                 request_id,
                 turn_id,
                 section_id,
+                result_count,
+                rerank_strategy,
             )
         )
     except Exception as exc:
@@ -339,5 +347,9 @@ def invoke_pipeline_chat(
         )
         if trace_summary:
             meta = f"{meta} · {trace_summary}"
+        if result_count is not None:
+            meta = f"{meta} · k={int(result_count)}"
+        if rerank_strategy:
+            meta = f"{meta} · rerank={rerank_strategy}"
         return content, json.dumps(result, indent=2), meta
     return str(result), "", f"Unexpected result type after {elapsed:.1f}s"

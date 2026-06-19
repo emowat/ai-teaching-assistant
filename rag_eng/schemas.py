@@ -8,6 +8,14 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from rag.schemas import QueryInput, RetrievalResult
 
+RetrievalRerankStrategy = Literal["similarity", "mmr_0.5", "mmr_0.7", "mmr_0.9"]
+RERANK_STRATEGY_CHOICES: tuple[str, ...] = (
+    "similarity",
+    "mmr_0.5",
+    "mmr_0.7",
+    "mmr_0.9",
+)
+
 
 class QueryPayload(QueryInput):
     """Typed request payload for the RAG query endpoint.
@@ -28,7 +36,8 @@ class QueryPayload(QueryInput):
                     "mode": "Homework Assist",
                     "course_id": "mit13",
                     "course_source": "mit13",
-                    "result_count": 5,
+                    "result_count": 8,
+                    "rerank_strategy": "similarity",
                     "ast_features": {
                         "has_pointer": True,
                         "has_reference": False,
@@ -48,10 +57,14 @@ class QueryPayload(QueryInput):
     # Bound the override so the backend always knows the expected output size
     # stays in a sensible range for the UI and prompt formatting.
     result_count: int = Field(
-        default=5,
+        default=8,
         ge=1,
         le=20,
         description="Number of final retrieved documents to return.",
+    )
+    rerank_strategy: RetrievalRerankStrategy = Field(
+        default="similarity",
+        description="Reranking strategy used to diversify retrieved context.",
     )
 
 

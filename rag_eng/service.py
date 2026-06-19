@@ -183,6 +183,7 @@ def run_query(query) -> QueryResponse:
         "course_id": trace.course_id,
         "course_source": trace.course_source,
         "result_count": getattr(query, "result_count", None),
+        "rerank_strategy": getattr(query, "rerank_strategy", None),
     }
 
     telemetry_store.record_event(
@@ -426,22 +427,30 @@ async def run_chat(
     request_id: str | None = None,
     turn_id: str | None = None,
     section_id: str | None = None,
+    result_count: int | None = None,
+    rerank_strategy: str | None = None,
 ) -> dict | AsyncIterator[bytes]:
     """Full chat pipeline: context extraction -> RAG -> prompt assembly -> inference."""
     ctx = _extract_chat_context(messages)
 
-    query = QueryPayload(
-        student_message=ctx["student_message"],
-        code_raw=ctx["code_raw"],
-        terminal_output=ctx["terminal_output"],
-        mode=ctx["mode"],
-        week=ctx["week"],
-        course_id=course_id,
-        session_id=session_id,
-        request_id=request_id,
-        turn_id=turn_id,
-        section_id=section_id,
-    )
+    query_kwargs: dict[str, object] = {
+        "student_message": ctx["student_message"],
+        "code_raw": ctx["code_raw"],
+        "terminal_output": ctx["terminal_output"],
+        "mode": ctx["mode"],
+        "week": ctx["week"],
+        "course_id": course_id,
+        "session_id": session_id,
+        "request_id": request_id,
+        "turn_id": turn_id,
+        "section_id": section_id,
+    }
+    if result_count is not None:
+        query_kwargs["result_count"] = result_count
+    if rerank_strategy is not None:
+        query_kwargs["rerank_strategy"] = rerank_strategy
+
+    query = QueryPayload(**query_kwargs)
 
     telemetry_store = get_telemetry_store()
     trace = telemetry_store.start_turn(query=query, source="chat")
@@ -457,6 +466,8 @@ async def run_chat(
         "week": query.week,
         "course_id": trace.course_id,
         "course_source": trace.course_source,
+        "result_count": getattr(query, "result_count", None),
+        "rerank_strategy": getattr(query, "rerank_strategy", None),
     }
 
     telemetry_store.record_event(

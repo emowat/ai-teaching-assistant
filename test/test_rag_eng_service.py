@@ -222,6 +222,8 @@ def test_chat_endpoint_accepts_simple_message(monkeypatch, client: TestClient) -
         request_id=None,
         turn_id=None,
         section_id=None,
+        result_count=None,
+        rerank_strategy=None,
     ):
         assert messages[0]["role"] == "user"
         assert course_id is None
@@ -271,6 +273,8 @@ def test_run_chat_forwards_course_id_to_query_payload(monkeypatch) -> None:
 
     def fake_run_retrieval(query):
         captured["course_id"] = query.course_id
+        captured["result_count"] = query.result_count
+        captured["rerank_strategy"] = query.rerank_strategy
         return SimpleNamespace(formatted_context="[ctx]")
 
     monkeypatch.setattr("rag_eng.service.run_retrieval", fake_run_retrieval)
@@ -307,11 +311,15 @@ def test_run_chat_forwards_course_id_to_query_payload(monkeypatch) -> None:
             ),
             stream=False,
             course_id="mit14",
+            result_count=8,
+            rerank_strategy="mmr_0.7",
         )
     )
 
     assert response["message"]["content"] == "openai chat answer"
     assert captured["course_id"] == "mit14"
+    assert captured["result_count"] == 8
+    assert captured["rerank_strategy"] == "mmr_0.7"
     assert response["session_id"] == "chat-session"
     assert fake_telemetry.started
     assert fake_telemetry.finished

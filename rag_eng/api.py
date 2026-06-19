@@ -11,7 +11,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from rag_eng.auth.cognito import verify_cognito_access_token
 from rag_eng.auth.dependencies import require_authenticated_user
@@ -33,6 +33,7 @@ from rag_eng.schemas import (
     IndexRebuildResponse,
     QueryPayload,
     QueryResult,
+    RetrievalRerankStrategy,
     RestartResponse,
 )
 from rag_eng.runner_client import RunnerError, run_cpp_job
@@ -61,6 +62,8 @@ class ChatRequest(BaseModel):
     request_id: str | None = None
     turn_id: str | None = None
     section_id: str | None = None
+    result_count: int = Field(default=8, ge=1, le=20)
+    rerank_strategy: RetrievalRerankStrategy = "similarity"
     messages: list[dict]
     stream: bool = False
     options: _ChatOptions = _ChatOptions()
@@ -294,6 +297,8 @@ def create_app() -> FastAPI:
                 request_id=payload.request_id,
                 turn_id=payload.turn_id,
                 section_id=payload.section_id,
+                result_count=payload.result_count,
+                rerank_strategy=payload.rerank_strategy,
             )
             if payload.stream:
                 return StreamingResponse(result, media_type="application/x-ndjson")

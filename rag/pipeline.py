@@ -58,6 +58,48 @@ MODE_PARAMS: dict[AssistMode, dict] = {
     },
 }
 
+RERANK_STRATEGY_LAMBDAS: dict[str, float] = {
+    "similarity": 1.0,
+    "mmr_0.5": 0.5,
+    "mmr_0.7": 0.7,
+    "mmr_0.9": 0.9,
+}
+
+RERANK_STRATEGY_MULTIPLIERS: dict[str, int] = {
+    "similarity": 1,
+    "mmr_0.5": 4,
+    "mmr_0.7": 4,
+    "mmr_0.9": 4,
+}
+
+
+def _normalize_rerank_strategy(value: object | None) -> str:
+    """Coerce rerank strategies into a stable string key."""
+    if value is None:
+        return "similarity"
+    raw = getattr(value, "value", value)
+    normalized = str(raw).strip().casefold()
+    if normalized not in RERANK_STRATEGY_LAMBDAS:
+        raise ValueError(f"Unsupported rerank strategy: {value}")
+    return normalized
+
+
+def _resolve_retrieval_controls(
+    query: QueryInput,
+    params: dict[str, object],
+) -> tuple[int, int, float, str]:
+    """Return the effective final_k, candidate fetch k, lambda, and strategy."""
+    requested_final_k = getattr(query, "result_count", None)
+    final_k = int(params["final_k"])
+    if isinstance(requested_final_k, int) and requested_final_k > 0:
+        final_k = requested_final_k
+
+    rerank_strategy = _normalize_rerank_strategy(getattr(query, "rerank_strategy", None))
+    lambda_param = RERANK_STRATEGY_LAMBDAS[rerank_strategy]
+    fetch_multiplier = RERANK_STRATEGY_MULTIPLIERS[rerank_strategy]
+    candidate_fetch_k = final_k * fetch_multiplier
+    return final_k, candidate_fetch_k, lambda_param, rerank_strategy
+
 
 def run_retrieval(query: QueryInput) -> RetrievalResult:
     """
@@ -73,19 +115,20 @@ def run_retrieval(query: QueryInput) -> RetrievalResult:
     """
     params = MODE_PARAMS[query.mode]
     route = resolve_course_route(query)
-    # This keeps the mode defaults intact but lets the caller request a smaller
-    # or larger final diversified set for a specific query.
-    requested_final_k = getattr(query, "result_count", None)
-    final_k = params["final_k"]
-    if isinstance(requested_final_k, int) and requested_final_k > 0:
-        final_k = requested_final_k
+    # Keep the mode defaults intact unless the caller explicitly requests a
+    # different final K; MMR widens the candidate fetch behind the scenes.
+    final_k, candidate_fetch_k, lambda_param, rerank_strategy = (
+        _resolve_retrieval_controls(query, params)
+    )
+    retrieval_top_k = candidate_fetch_k if rerank_strategy != "similarity" else final_k
+    guidelines_top_k = params["guidelines_top_k"]
 
     dense_query = build_query(query)
 
     # Guidelines are always available (week-agnostic, separate collection)
     guidelines = retrieve_guidelines(
         dense_query,
-        top_k=params["guidelines_top_k"],
+        top_k=guidelines_top_k,
         threshold=params["guidelines_threshold"],
     )
 
@@ -95,14 +138,14 @@ def run_retrieval(query: QueryInput) -> RetrievalResult:
         semantic = retrieve_harvard(
             dense_query,
             query.week,
-            top_k=params["semantic_top_k"],
+            top_k=retrieval_top_k,
             cumulative=params["cumulative"],
             collection_name=route.collection_name,
         )
         rules = retrieve_harvard_rules(
             dense_query,
             query.week,
-            top_k=params["rules_top_k"],
+            top_k=retrieval_top_k,
             threshold=params["rules_threshold"],
             cumulative=params["cumulative"],
             collection_name=route.collection_name,
@@ -116,14 +159,14 @@ def run_retrieval(query: QueryInput) -> RetrievalResult:
         semantic = retrieve_semantic(
             dense_query,
             query.week,
-            top_k=params["semantic_top_k"],
+            top_k=retrieval_top_k,
             cumulative=params["cumulative"],
             collection_name=route.collection_name,
         )
         rules = retrieve_strict_rules(
             dense_query,
             query.week,
-            top_k=params["rules_top_k"],
+            top_k=retrieval_top_k,
             threshold=params["rules_threshold"],
             cumulative=params["cumulative"],
             collection_name=route.collection_name,
@@ -137,7 +180,7 @@ def run_retrieval(query: QueryInput) -> RetrievalResult:
         guidelines=guidelines,
         mode=query.mode,
         final_k=final_k,
-        lambda_param=1.0,   # similarity strategy — no MMR diversity penalty
+        lambda_param=lambda_param,
     )
 
     return build_retrieval_result(

@@ -50,10 +50,11 @@ def test_health_endpoint_returns_service_state(monkeypatch, client: TestClient) 
 def test_query_endpoint_uses_default_result_count(
     monkeypatch, client: TestClient
 ) -> None:
-    captured: dict[str, int] = {}
+    captured: dict[str, object] = {}
 
     def fake_run_query(payload):
         captured["result_count"] = payload.result_count
+        captured["rerank_strategy"] = payload.rerank_strategy
         return QueryResponse(
             answer="Check the pointer before dereferencing it.",
             retrieval_result=RetrievalResult(
@@ -67,7 +68,8 @@ def test_query_endpoint_uses_default_result_count(
     response = client.post("/query", json=_base_query_payload())
 
     assert response.status_code == 200
-    assert captured["result_count"] == 5
+    assert captured["result_count"] == 8
+    assert captured["rerank_strategy"] == "similarity"
     assert response.json()["answer"]
     assert response.json()["formatted_context"]
 
@@ -75,10 +77,11 @@ def test_query_endpoint_uses_default_result_count(
 def test_query_endpoint_forwards_explicit_result_count(
     monkeypatch, client: TestClient
 ) -> None:
-    captured: dict[str, int] = {}
+    captured: dict[str, object] = {}
 
     def fake_run_query(payload):
         captured["result_count"] = payload.result_count
+        captured["rerank_strategy"] = payload.rerank_strategy
         return QueryResponse(
             answer="Check the pointer before dereferencing it.",
             retrieval_result=RetrievalResult(
@@ -89,10 +92,17 @@ def test_query_endpoint_forwards_explicit_result_count(
 
     monkeypatch.setattr("rag_eng.api.run_query", fake_run_query)
 
-    response = client.post("/query", json=_base_query_payload() | {"result_count": 7})
+    response = client.post(
+        "/query",
+        json=_base_query_payload() | {
+            "result_count": 7,
+            "rerank_strategy": "mmr_0.7",
+        },
+    )
 
     assert response.status_code == 200
     assert captured["result_count"] == 7
+    assert captured["rerank_strategy"] == "mmr_0.7"
 
 
 def test_query_endpoint_rejects_invalid_result_count(client: TestClient) -> None:
@@ -123,6 +133,7 @@ def test_openapi_exposes_query_schema_examples(client: TestClient) -> None:
     assert schemas["QueryPayload"]["examples"]
     assert schemas["QueryResult"]["examples"]
     assert "result_count" in schemas["QueryPayload"]["properties"]
+    assert "rerank_strategy" in schemas["QueryPayload"]["properties"]
 
 
 def test_chat_endpoint_forwards_course_id(monkeypatch, client: TestClient) -> None:
@@ -138,12 +149,16 @@ def test_chat_endpoint_forwards_course_id(monkeypatch, client: TestClient) -> No
         request_id=None,
         turn_id=None,
         section_id=None,
+        result_count=None,
+        rerank_strategy=None,
     ):
         captured["course_id"] = course_id
         captured["session_id"] = session_id
         captured["request_id"] = request_id
         captured["turn_id"] = turn_id
         captured["section_id"] = section_id
+        captured["result_count"] = result_count
+        captured["rerank_strategy"] = rerank_strategy
         return {"message": {"content": "Try checking whether the pointer is initialized."}}
 
     monkeypatch.setattr("rag_eng.api.run_chat", fake_run_chat)
@@ -157,6 +172,8 @@ def test_chat_endpoint_forwards_course_id(monkeypatch, client: TestClient) -> No
             "request_id": "req-456",
             "turn_id": "turn-789",
             "section_id": "sec-1",
+            "result_count": 8,
+            "rerank_strategy": "mmr_0.9",
             "messages": [{"role": "user", "content": "Why does my pointer segfault?"}],
         },
     )
@@ -167,6 +184,8 @@ def test_chat_endpoint_forwards_course_id(monkeypatch, client: TestClient) -> No
     assert captured["request_id"] == "req-456"
     assert captured["turn_id"] == "turn-789"
     assert captured["section_id"] == "sec-1"
+    assert captured["result_count"] == 8
+    assert captured["rerank_strategy"] == "mmr_0.9"
 
 
 def test_admin_ensure_requires_token_when_configured(

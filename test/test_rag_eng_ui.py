@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from rag_eng.gradio_tools import SageMakerStatus, TrafficLight
 from rag_eng.ui import (
     _clear_sagemaker_request,
+    _query_api,
     _pipeline_invoke,
     _refresh_sagemaker_status,
     build_gradio_app,
@@ -60,6 +63,52 @@ def test_clear_sagemaker_request_returns_retry_hint() -> None:
     assert "send it again" in status.lower()
 
 
+def test_query_api_forwards_rerank_strategy(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        "rag_eng.ui.get_settings",
+        lambda: SimpleNamespace(api_base_url="http://backend.example"),
+    )
+
+    def fake_post_json(url: str, payload: dict) -> dict:
+        captured["url"] = url
+        captured["payload"] = payload
+        return {
+            "answer": "answer",
+            "retrieval_result": {"formatted_context": "[ctx]"},
+            "formatted_context": "[ctx]",
+        }
+
+    monkeypatch.setattr("rag_eng.ui._post_json", fake_post_json)
+
+    response, docs, ctx, status = _query_api(
+        "Why does my pointer segfault?",
+        "int *p;",
+        "Segmentation fault",
+        4,
+        "Homework Assist",
+        8,
+        "mmr_0.9",
+        True,
+        False,
+        False,
+        False,
+        False,
+        False,
+        False,
+        False,
+    )
+
+    assert response == "answer"
+    assert docs == '{\n  "formatted_context": "[ctx]"\n}'
+    assert ctx == "[ctx]"
+    assert status == "Request completed successfully."
+    assert captured["url"] == "http://backend.example/query"
+    assert captured["payload"]["result_count"] == 8
+    assert captured["payload"]["rerank_strategy"] == "mmr_0.9"
+
+
 def test_pipeline_invoke_forwards_trace_overrides(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
@@ -69,6 +118,8 @@ def test_pipeline_invoke_forwards_trace_overrides(monkeypatch) -> None:
         terminal_output,
         week,
         mode,
+        result_count=None,
+        rerank_strategy=None,
         course_id=None,
         session_id=None,
         request_id=None,
@@ -80,6 +131,8 @@ def test_pipeline_invoke_forwards_trace_overrides(monkeypatch) -> None:
         captured["terminal_output"] = terminal_output
         captured["week"] = week
         captured["mode"] = mode
+        captured["result_count"] = result_count
+        captured["rerank_strategy"] = rerank_strategy
         captured["course_id"] = course_id
         captured["session_id"] = session_id
         captured["request_id"] = request_id
@@ -95,6 +148,8 @@ def test_pipeline_invoke_forwards_trace_overrides(monkeypatch) -> None:
         "Segmentation fault",
         4,
         "Homework Assist",
+        8,
+        "mmr_0.7",
         "mit14",
         "session-123",
         "request-456",
@@ -105,6 +160,8 @@ def test_pipeline_invoke_forwards_trace_overrides(monkeypatch) -> None:
     assert response == "answer"
     assert raw == '{"session_id": "session-123"}'
     assert status == "ok"
+    assert captured["result_count"] == 8
+    assert captured["rerank_strategy"] == "mmr_0.7"
     assert captured["course_id"] == "mit14"
     assert captured["session_id"] == "session-123"
     assert captured["request_id"] == "request-456"

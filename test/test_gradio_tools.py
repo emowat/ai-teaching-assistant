@@ -76,6 +76,8 @@ def test_invoke_pipeline_chat_forwards_trace_fields(monkeypatch) -> None:
         request_id=None,
         turn_id=None,
         section_id=None,
+        result_count=None,
+        rerank_strategy=None,
     ):
         captured["messages"] = messages
         captured["model_name"] = model_name
@@ -85,6 +87,8 @@ def test_invoke_pipeline_chat_forwards_trace_fields(monkeypatch) -> None:
         captured["request_id"] = request_id
         captured["turn_id"] = turn_id
         captured["section_id"] = section_id
+        captured["result_count"] = result_count
+        captured["rerank_strategy"] = rerank_strategy
         return {
             "message": {"content": "Trace-aware response"},
             "session_id": "session-123",
@@ -100,6 +104,8 @@ def test_invoke_pipeline_chat_forwards_trace_fields(monkeypatch) -> None:
         "Segmentation fault",
         4,
         "Homework Assist",
+        result_count=8,
+        rerank_strategy="mmr_0.9",
         course_id="mit14",
         session_id="session-123",
         request_id="request-456",
@@ -119,5 +125,9 @@ def test_invoke_pipeline_chat_forwards_trace_fields(monkeypatch) -> None:
     assert captured["request_id"] == "request-456"
     assert captured["turn_id"] == "turn-789"
     assert captured["section_id"] == "section-2"
+    assert captured["result_count"] == 8
+    assert captured["rerank_strategy"] == "mmr_0.9"
     assert "session=session-123" in status
     assert "request=request-456" in status
+    assert "k=8" in status
+    assert "rerank=mmr_0.9" in status
