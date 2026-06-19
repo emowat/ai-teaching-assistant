@@ -29,19 +29,27 @@ uv sync
 pip install -r requirements.txt
 ```
 
-5. Ensure or rebuild the index:
+5. If you have the Aurora course registry URL, verify the runtime lookup path:
+
+```bash
+export COURSE_REGISTRY_DATABASE_URL="postgresql://user:password@aurora-endpoint:5432/postgres?sslmode=require"
+uv run python -m rag_eng.cli resolve-course --course-id mit-14
+uv run python -m rag_eng.cli resolve-course --course-source cs50
+```
+
+6. Ensure or rebuild the index:
 
 ```bash
 python -m rag_eng.cli ensure-index
 ```
 
-6. Run the service on port 8001 (frontend default):
+7. Run the service on port 8001 (frontend default):
 
 ```bash
 uv run uvicorn rag_eng.main:app --host 0.0.0.0 --port 8001
 ```
 
-7. Open:
+8. Open:
 - API docs: `http://localhost:8001/docs`
 - Gradio UI: `http://localhost:8001/gradio`
 
