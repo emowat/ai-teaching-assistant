@@ -44,6 +44,7 @@ This repository is **not end-to-end complete yet**. The plan now separates:
 - `.env.example` and `rag_eng/README.md` docs for the Aurora registry env var
 - best-effort Aurora-backed session / turn / telemetry tracing hooks in `rag_eng`
 - Gradio retrieval presets for experiment-backed tuning of `result_count` and rerank strategy
+- Gradio guardrail diagnostics plus guardrailed non-streaming and streaming chat responses
 
 ### Done in AWS
 
@@ -58,7 +59,8 @@ This repository is **not end-to-end complete yet**. The plan now separates:
 - `resolve-course` falls back locally unless the runner can reach the Aurora endpoint
 - session / telemetry persistence is wired in the codebase, but the AWS-hosted
   runtime path and analytics consumers are still pending
-- guardrail SageMaker endpoint is only planned
+- guardrail SageMaker endpoint is still planned, even though the local pipeline
+  now runs the rule-based + CodeBERT guardrail logic in-process
 - chunk / index Processing pipeline is only planned
 - analytics frontend is still stubbed
 

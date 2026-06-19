@@ -58,13 +58,18 @@ uv run uvicorn rag_eng.main:app --host 0.0.0.0 --port 8001
 ### Gradio diagnostics
 
 The Gradio backend console now exposes retrieval tuning controls in the
-Pipeline tab:
+Pipeline tab and a dedicated Guardrail Console:
 
 - `Retrieval Preset` for quick experiment-backed configurations
 - `Top K / Final Results` for the final retrieved context size
 - `Rerank Strategy` for `similarity` or MMR-based reranking
 - routing / trace overrides for `course_id`, `session_id`, `request_id`,
   `turn_id`, and `section_id`
+- the Guardrail Console for direct V1 + V2 inspection of a draft answer
+
+The pipeline response path now applies output guardrails before returning
+the answer. Non-streaming requests are guarded directly; streaming requests
+buffer the full draft, guardrail it, then re-chunk the final answer.
 
 Use `Experiment baseline (K=8, similarity)` as the known-good default. The
 MMR presets widen candidate fetch internally before reranking.
