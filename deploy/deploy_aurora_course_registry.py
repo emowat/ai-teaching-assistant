@@ -109,10 +109,18 @@ def apply_schema(
                 statement=statement,
                 transaction_id=transaction_id,
             )
-        client.commit_transaction(transactionId=transaction_id)
+        client.commit_transaction(
+            resourceArn=resource_arn,
+            secretArn=secret_arn,
+            transactionId=transaction_id,
+        )
     except Exception:
         try:
-            client.rollback_transaction(transactionId=transaction_id)
+            client.rollback_transaction(
+                resourceArn=resource_arn,
+                secretArn=secret_arn,
+                transactionId=transaction_id,
+            )
         except Exception:
             pass
         raise
