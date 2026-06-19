@@ -192,6 +192,7 @@ class _FakeTelemetryStore:
             user_sub=user_sub,
             mode=str(query.mode.value),
             week=query.week,
+            persisted=True,
         )
         self.started.append(trace)
         return trace

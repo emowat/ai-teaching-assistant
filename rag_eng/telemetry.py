@@ -64,6 +64,7 @@ class TraceContext:
     user_sub: str | None = None
     mode: str = ""
     week: int = 0
+    persisted: bool = False
 
 
 class TelemetryStore:
@@ -178,7 +179,7 @@ class TelemetryStore:
                         ),
                     )
                     turn_index = int(cursor.fetchone()[0] or 1)
-                    trace = replace(trace, turn_index=turn_index)
+                    trace = replace(trace, turn_index=turn_index, persisted=True)
                     cursor.execute(
                         """
                         INSERT INTO tutor_turns (
@@ -272,7 +273,7 @@ class TelemetryStore:
         metadata: dict[str, Any] | None = None,
     ) -> bool:
         """Write a single stage event; failures are logged and ignored."""
-        if not self.database_url:
+        if not self.database_url or not trace.persisted:
             return False
 
         try:
@@ -345,7 +346,7 @@ class TelemetryStore:
         metadata: dict[str, Any] | None = None,
     ) -> bool:
         """Mark the turn complete and emit the terminal telemetry event."""
-        if not self.database_url:
+        if not self.database_url or not trace.persisted:
             return False
 
         event_type = "request_failed" if status == "failed" else "answer_returned"
