@@ -55,6 +55,20 @@ uv run uvicorn rag_eng.main:app --host 0.0.0.0 --port 8001
 - API docs: `http://localhost:8001/docs`
 - Gradio UI: `http://localhost:8001/gradio`
 
+### Gradio diagnostics
+
+The Gradio backend console now exposes retrieval tuning controls in the
+Pipeline tab:
+
+- `Retrieval Preset` for quick experiment-backed configurations
+- `Top K / Final Results` for the final retrieved context size
+- `Rerank Strategy` for `similarity` or MMR-based reranking
+- routing / trace overrides for `course_id`, `session_id`, `request_id`,
+  `turn_id`, and `section_id`
+
+Use `Experiment baseline (K=8, similarity)` as the known-good default. The
+MMR presets widen candidate fetch internally before reranking.
+
 ## C++ sandbox (`POST /run/compile`)
 
 ### Request

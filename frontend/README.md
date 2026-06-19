@@ -96,3 +96,10 @@ The Monaco/file-explorer/console components still exist in the codebase as legac
 The "RAG Query Console" tab in `AdminDashboard` probes `VITE_API_BASE_URL/gradio` every 30 seconds:
 - Enabled → embeds Gradio in an `<iframe>`.
 - Disabled or unreachable → tab is greyed out with a tooltip.
+
+Inside the embedded backend console, the Pipeline tab exposes the retrieval
+presets used for RAG tuning:
+- experiment baseline at `K=8` with `similarity` reranking
+- MMR presets at `lambda=0.5`, `0.7`, and `0.9`
+- manual overrides for `Top K / Final Results` and `Rerank Strategy`
+- course / trace overrides for admin diagnostics
