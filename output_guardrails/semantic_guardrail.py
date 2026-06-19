@@ -15,6 +15,7 @@ Public API:
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -24,14 +25,15 @@ from .fallbacks import get_fallback
 _PASS_BELOW = 0.30
 _REPLACE_ABOVE = 0.70
 
-# Default checkpoint location: output_guardrails/models/checkpoints/codebert_v2_0/
+_CHECKPOINT_ENV_VAR = "GUARDRAILS_CODEBERT_CHECKPOINT_DIR"
 _DEFAULT_CHECKPOINT = (
-    Path(__file__).resolve().parent / "models" / "checkpoints" / "codebert_v2_0"
+    Path(__file__).resolve().parent / "models" / "checkpoints" / "codebert_v2_1"
 )
 
 # Cached singletons; populated on first real use.
 _model = None
 _tokenizer = None
+_loaded_checkpoint_dir: Optional[Path] = None
 _predict_fn: Optional[Callable[[str, str, str], float]] = None
 
 
@@ -52,23 +54,49 @@ def set_predict_fn(fn: Optional[Callable[[str, str, str], float]]) -> None:
     _predict_fn = fn
 
 
-def _try_load_model(checkpoint_dir: Path = _DEFAULT_CHECKPOINT):
+def resolve_checkpoint_dir(explicit: str | Path | None = None) -> Path:
+    """Resolve the CodeBERT checkpoint directory.
+
+    The runtime prefers an explicit path, then the environment override,
+    then the repo-local S3 restore target.
+    """
+    if explicit is not None:
+        return Path(explicit).expanduser().resolve()
+    env_path = os.getenv(_CHECKPOINT_ENV_VAR)
+    if env_path:
+        return Path(env_path).expanduser().resolve()
+    return _DEFAULT_CHECKPOINT.resolve()
+
+
+def _try_load_model(checkpoint_dir: str | Path | None = None):
     """Attempt to load CodeBERT + tokenizer. Returns (model, tokenizer)
     or (None, None) if anything goes wrong. Never raises.
     """
-    global _model, _tokenizer
-    if _model is not None and _tokenizer is not None:
+    global _model, _tokenizer, _loaded_checkpoint_dir
+    checkpoint_path = resolve_checkpoint_dir(checkpoint_dir)
+    if (
+        _model is not None
+        and _tokenizer is not None
+        and _loaded_checkpoint_dir == checkpoint_path
+    ):
         return _model, _tokenizer
-    if not checkpoint_dir.exists():
+    _model = None
+    _tokenizer = None
+    _loaded_checkpoint_dir = None
+    if not checkpoint_path.exists():
         return None, None
     try:
         # Imported lazily so the package is usable without torch.
         from transformers import AutoModelForSequenceClassification, AutoTokenizer  # noqa: WPS433
-        _tokenizer = AutoTokenizer.from_pretrained(str(checkpoint_dir))
-        _model = AutoModelForSequenceClassification.from_pretrained(str(checkpoint_dir))
+        _tokenizer = AutoTokenizer.from_pretrained(str(checkpoint_path))
+        _model = AutoModelForSequenceClassification.from_pretrained(str(checkpoint_path))
         _model.eval()
+        _loaded_checkpoint_dir = checkpoint_path
         return _model, _tokenizer
     except Exception:  # noqa: BLE001 — broad on purpose; never crash runtime
+        _model = None
+        _tokenizer = None
+        _loaded_checkpoint_dir = None
         return None, None
 
 

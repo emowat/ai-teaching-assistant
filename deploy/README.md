@@ -202,6 +202,35 @@ These are the **recommended** way to run deployment. Each script:
 
 ---
 
+### `restore-guardrail-checkpoint.sh`
+
+**Purpose:** Download the fine-tuned CodeBERT guardrail checkpoint from S3 and extract it into the local Hugging Face checkpoint directory used by `output_guardrails/semantic_guardrail.py`.
+
+**Default source and target:**
+
+- S3 source: `s3://codingrabbit-data-dev/models/guardrails/codebert_v2_1/model.tar.gz`
+- Local checkpoint target: `output_guardrails/models/checkpoints/codebert_v2_1`
+
+**Usage:**
+
+```bash
+./deploy/scripts/restore-guardrail-checkpoint.sh
+./deploy/scripts/restore-guardrail-checkpoint.sh --help
+```
+
+**Environment variables:**
+
+| Variable | Default | Description |
+|---|---|---|
+| `GUARDRAILS_CODEBERT_S3_URI` | `s3://codingrabbit-data-dev/models/guardrails/codebert_v2_1/model.tar.gz` | Source model artifact |
+| `GUARDRAILS_CODEBERT_CHECKPOINT_DIR` | `output_guardrails/models/checkpoints/codebert_v2_1` | Local checkpoint directory |
+| `AWS_PROFILE` | (none) | Optional named profile for S3 download |
+| `AWS_REGION` | (none) | Optional region override for S3 download |
+
+**Success output:** the local checkpoint directory contains `config.json`, tokenizer files, and model weights, ready for `output_guardrails.semantic_guardrail.predict_safety()`.
+
+---
+
 ### `deploy-custom-model-to-sagemaker-ai.sh`
 
 **Purpose:** Create and manage a **SageMaker Asynchronous Inference** endpoint that loads the S3 model artifact.

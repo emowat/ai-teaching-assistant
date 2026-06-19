@@ -27,14 +27,15 @@ PKG_ROOT = Path(__file__).resolve().parent.parent
 REPO_ROOT = PKG_ROOT.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from output_guardrails.models.tokenizer_utils import MODEL_NAME, encode_with_truncation
-from output_guardrails import apply_output_guardrails
+from output_guardrails.models.tokenizer_utils import encode_with_truncation  # noqa: E402
+from output_guardrails import apply_output_guardrails  # noqa: E402
+from output_guardrails.semantic_guardrail import resolve_checkpoint_dir  # noqa: E402
 
 
 DATA_PATH = PKG_ROOT / "classifier_data" / "classifier_dataset.jsonl"
 GOLD_PATH = PKG_ROOT / "classifier_data" / "gold_test_set.jsonl"
 SPLITS_PATH = PKG_ROOT / "classifier_data" / "splits.json"
-CHECKPOINT_DIR = PKG_ROOT / "models" / "checkpoints" / "codebert_v2_0"
+CHECKPOINT_DIR = resolve_checkpoint_dir()
 
 
 def load_jsonl(path):
@@ -76,7 +77,7 @@ def main():
 
     if not CHECKPOINT_DIR.exists():
         print(f"[error] checkpoint not found at {CHECKPOINT_DIR}")
-        print("        train first: python -m models.train_codebert_classifier")
+        print("        restore it first: ./deploy/scripts/restore-guardrail-checkpoint.sh")
         return
 
     tokenizer = AutoTokenizer.from_pretrained(CHECKPOINT_DIR)
@@ -114,7 +115,7 @@ def main():
     if len(set(labels)) == 2:
         print(f"roc-auc:   {roc_auc_score(labels, scores):.3f}")
 
-    safe_idx = [i for i, l in enumerate(labels) if l == 0]
+    safe_idx = [i for i, label in enumerate(labels) if label == 0]
     if safe_idx:
         fpr = sum(1 for i in safe_idx if preds[i] == 1) / len(safe_idx)
         print(f"FPR on safe: {fpr:.3f}")

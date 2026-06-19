@@ -41,6 +41,10 @@ synthetic-transcripts/*.npy
 # Local model checkpoints
 output_guardrails/models/checkpoints/
 
+# Guardrail checkpoint restore artifacts
+output_guardrails/models/checkpoints/codebert_v2_1/
+output_guardrails/models/checkpoints/codebert_v2_1*.tar.gz
+
 # SageMaker deploy artifacts (upload_model.py)
 model_download/
 model.tar.gz

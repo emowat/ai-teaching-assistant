@@ -11,12 +11,11 @@ import pytest
 
 from output_guardrails import (
     apply_all_guardrails,
-    apply_output_guardrails,
     predict_safety,
     set_predict_fn,
     set_thresholds,
 )
-from output_guardrails.fallbacks import FALLBACKS
+import output_guardrails.semantic_guardrail as sg
 
 
 STUDENT_CODE = """\
@@ -89,8 +88,13 @@ def test_v2_short_circuits_on_end_chat():
     assert r["evidence"] == "terminal state"
 
 
-def test_v2_unavailable_model_passes_safely():
-    # No predict_fn injected, no checkpoint exists → score is None.
+def test_v2_unavailable_model_passes_safely(monkeypatch, tmp_path):
+    # Point the loader at a path that does not exist and clear any cache.
+    missing_checkpoint = tmp_path / "guardrail-missing-checkpoint"
+    sg._model = None  # noqa: SLF001
+    sg._tokenizer = None  # noqa: SLF001
+    sg._loaded_checkpoint_dir = None  # noqa: SLF001
+    monkeypatch.setenv("GUARDRAILS_CODEBERT_CHECKPOINT_DIR", str(missing_checkpoint))
     r = predict_safety(
         "What is your guess about the pointer state?",
         "Why crash?", STUDENT_CODE, [],
@@ -98,6 +102,17 @@ def test_v2_unavailable_model_passes_safely():
     assert r["action"] == "pass"
     assert r["evidence"] == "v2 unavailable"
     assert r["v2_score"] == 0.0
+
+
+def test_resolve_checkpoint_dir_prefers_env_override(monkeypatch, tmp_path):
+    checkpoint_dir = tmp_path / "custom-codebert"
+    monkeypatch.setenv("GUARDRAILS_CODEBERT_CHECKPOINT_DIR", str(checkpoint_dir))
+    assert sg.resolve_checkpoint_dir() == checkpoint_dir.resolve()
+
+
+def test_resolve_checkpoint_dir_defaults_to_v2_1(monkeypatch):
+    monkeypatch.delenv("GUARDRAILS_CODEBERT_CHECKPOINT_DIR", raising=False)
+    assert sg.resolve_checkpoint_dir().name == "codebert_v2_1"
 
 
 def test_v2_threshold_tuning_works():
