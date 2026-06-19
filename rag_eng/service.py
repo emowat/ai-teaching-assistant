@@ -102,6 +102,25 @@ def _guardrail_summary(guardrail_result: dict[str, Any]) -> dict[str, Any]:
     return summary
 
 
+async def _collect_stream_answer(stream: AsyncIterator[bytes]) -> str:
+    """Buffer NDJSON stream chunks into one assistant draft."""
+    answer_parts: list[str] = []
+    async for chunk in stream:
+        try:
+            decoded = chunk.decode("utf-8").strip()
+            for line in decoded.splitlines():
+                if not line.strip():
+                    continue
+                payload = json.loads(line)
+                content = payload.get("message", {}).get("content")
+                if isinstance(content, str):
+                    answer_parts.append(content)
+        except Exception:
+            # Streaming telemetry should never interfere with the client stream.
+            pass
+    return "".join(answer_parts)
+
+
 def _apply_pipeline_guardrails(
     *,
     trace: TraceContext,
@@ -627,19 +646,47 @@ async def run_chat(
             llm_started = time.perf_counter()
             result = await run_inference(api_messages, model_name, settings, stream=stream)
             if stream:
-                return _trace_stream_response(
-                    result,
-                    telemetry_store=telemetry_store,
+                answer = await _collect_stream_answer(result)
+                answer, guardrail = _apply_pipeline_guardrails(
                     trace=trace,
-                    stage_provider="sagemaker",
+                    telemetry_store=telemetry_store,
+                    answer=answer,
+                    user_query=ctx["student_message"],
+                    student_code=ctx["code_raw"],
+                    conversation_history=conversation_history,
+                    retrieval_metadata=retrieval_metadata,
+                )
+                llm_latency_ms = int((time.perf_counter() - llm_started) * 1000)
+                telemetry_store.record_event(
+                    trace,
+                    event_type="llm_finished",
+                    stage="llm_inference",
+                    status="completed",
+                    latency_ms=llm_latency_ms,
+                    model_provider="sagemaker",
                     model_name=telemetry_model_name,
-                    started_at=started_at,
-                    llm_started_at=llm_started,
-                    base_metadata={
+                    metadata={
+                        **retrieval_metadata,
+                        "answer_chars": len(answer),
+                        **_guardrail_summary(guardrail),
+                    },
+                )
+                telemetry_store.finish_turn(
+                    trace,
+                    status="completed",
+                    latency_ms=int((time.perf_counter() - started_at) * 1000),
+                    model_provider="sagemaker",
+                    model_name=telemetry_model_name,
+                    answer_chars=len(answer),
+                    metadata={
                         **retrieval_metadata,
                         "retrieval_latency_ms": retrieval_latency_ms,
+                        "llm_latency_ms": llm_latency_ms,
+                        "answer_chars": len(answer),
+                        **_guardrail_summary(guardrail),
                     },
-            )
+                )
+                return chunk_text(answer, runtime.sagemaker.streaming_chunk_size)
             answer = result["message"]["content"] if isinstance(result, dict) else str(result)
             answer, guardrail = _apply_pipeline_guardrails(
                 trace=trace,
@@ -763,19 +810,47 @@ async def run_chat(
         llm_started = time.perf_counter()
         result = await run_inference(api_messages, model_name, settings, stream=stream)
         if stream:
-            return _trace_stream_response(
-                result,
-                telemetry_store=telemetry_store,
+            answer = await _collect_stream_answer(result)
+            answer, guardrail = _apply_pipeline_guardrails(
                 trace=trace,
-                stage_provider=chat_route.provider,
+                telemetry_store=telemetry_store,
+                answer=answer,
+                user_query=ctx["student_message"],
+                student_code=ctx["code_raw"],
+                conversation_history=conversation_history,
+                retrieval_metadata=retrieval_metadata,
+            )
+            llm_latency_ms = int((time.perf_counter() - llm_started) * 1000)
+            telemetry_store.record_event(
+                trace,
+                event_type="llm_finished",
+                stage="llm_inference",
+                status="completed",
+                latency_ms=llm_latency_ms,
+                model_provider=chat_route.provider,
                 model_name=telemetry_model_name,
-                started_at=started_at,
-                llm_started_at=llm_started,
-                base_metadata={
+                metadata={
                     **retrieval_metadata,
-                    "retrieval_latency_ms": retrieval_latency_ms,
+                    "answer_chars": len(answer),
+                    **_guardrail_summary(guardrail),
                 },
             )
+            telemetry_store.finish_turn(
+                trace,
+                status="completed",
+                latency_ms=int((time.perf_counter() - started_at) * 1000),
+                model_provider=chat_route.provider,
+                model_name=telemetry_model_name,
+                answer_chars=len(answer),
+                metadata={
+                    **retrieval_metadata,
+                    "retrieval_latency_ms": retrieval_latency_ms,
+                    "llm_latency_ms": llm_latency_ms,
+                    "answer_chars": len(answer),
+                    **_guardrail_summary(guardrail),
+                },
+            )
+            return chunk_text(answer, runtime.sagemaker.streaming_chunk_size)
         answer = result["message"]["content"] if isinstance(result, dict) else str(result)
         answer, guardrail = _apply_pipeline_guardrails(
             trace=trace,
