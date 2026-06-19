@@ -252,6 +252,11 @@ async def _pipeline_chat_async(
     week: int,
     mode: str,
     settings: Settings,
+    course_id: str | None = None,
+    session_id: str | None = None,
+    request_id: str | None = None,
+    turn_id: str | None = None,
+    section_id: str | None = None,
 ) -> dict[str, Any]:
     content = build_extension_user_message(
         mode=mode,
@@ -265,6 +270,11 @@ async def _pipeline_chat_async(
         model_name="codingrabbit",
         settings=settings,
         stream=False,
+        course_id=(course_id or "").strip() or None,
+        session_id=(session_id or "").strip() or None,
+        request_id=(request_id or "").strip() or None,
+        turn_id=(turn_id or "").strip() or None,
+        section_id=(section_id or "").strip() or None,
     )
 
 
@@ -274,6 +284,11 @@ def invoke_pipeline_chat(
     terminal_output: str,
     week: int,
     mode: str,
+    course_id: str | None = None,
+    session_id: str | None = None,
+    request_id: str | None = None,
+    turn_id: str | None = None,
+    section_id: str | None = None,
     settings: Settings | None = None,
 ) -> tuple[str, str, str]:
     """Run the full RAG + inference pipeline (POST /api/chat equivalent)."""
@@ -296,6 +311,11 @@ def invoke_pipeline_chat(
                 int(week),
                 mode,
                 settings,
+                course_id,
+                session_id,
+                request_id,
+                turn_id,
+                section_id,
             )
         )
     except Exception as exc:
@@ -307,9 +327,17 @@ def invoke_pipeline_chat(
         content = (result.get("message") or {}).get("content", "")
         if not content and "content" in result:
             content = str(result.get("content", ""))
+        trace_summary_parts = [
+            f"session={result.get('session_id')}" if result.get("session_id") else None,
+            f"request={result.get('request_id')}" if result.get("request_id") else None,
+            f"turn={result.get('turn_id')}" if result.get("turn_id") else None,
+        ]
+        trace_summary = " · ".join(part for part in trace_summary_parts if part)
         meta = (
             f"Completed in {elapsed:.1f}s · route: {route} · "
             f"USE_SAGEMAKER={settings.use_sagemaker}"
         )
+        if trace_summary:
+            meta = f"{meta} · {trace_summary}"
         return content, json.dumps(result, indent=2), meta
     return str(result), "", f"Unexpected result type after {elapsed:.1f}s"

@@ -108,8 +108,24 @@ def _pipeline_invoke(
     terminal_output: str,
     week: int,
     mode: str,
+    course_id: str,
+    session_id: str,
+    request_id: str,
+    turn_id: str,
+    section_id: str,
 ) -> tuple[str, str, str]:
-    return invoke_pipeline_chat(student_message, code_raw, terminal_output, week, mode)
+    return invoke_pipeline_chat(
+        student_message,
+        code_raw,
+        terminal_output,
+        week,
+        mode,
+        course_id=course_id,
+        session_id=session_id,
+        request_id=request_id,
+        turn_id=turn_id,
+        section_id=section_id,
+    )
 
 
 def build_gradio_app(settings: Settings | None = None) -> gr.Blocks:
@@ -250,13 +266,48 @@ def build_gradio_app(settings: Settings | None = None) -> gr.Blocks:
                     choices=[item.value for item in AssistMode],
                     value=AssistMode.HOMEWORK_ASSIST.value,
                 )
+            with gr.Accordion("Routing and Trace Overrides", open=False):
+                pp_course_id = gr.Textbox(
+                    label="Course ID",
+                    placeholder="mit14",
+                    info="Optional explicit course route for the pipeline request.",
+                )
+                with gr.Row():
+                    pp_session_id = gr.Textbox(
+                        label="Session ID",
+                        placeholder="session-123",
+                    )
+                    pp_request_id = gr.Textbox(
+                        label="Request ID",
+                        placeholder="request-123",
+                    )
+                with gr.Row():
+                    pp_turn_id = gr.Textbox(
+                        label="Turn ID",
+                        placeholder="turn-123",
+                    )
+                    pp_section_id = gr.Textbox(
+                        label="Section ID",
+                        placeholder="section-1",
+                    )
             pp_run = gr.Button("Run pipeline", variant="primary")
             pp_response = gr.Textbox(label="Assistant response", lines=14)
             pp_raw = gr.Code(label="Raw JSON response", language="json")
             pp_status = gr.Textbox(label="Pipeline status", interactive=False)
             pp_run.click(
                 fn=_pipeline_invoke,
-                inputs=[pp_question, pp_code, pp_terminal, pp_week, pp_mode],
+                inputs=[
+                    pp_question,
+                    pp_code,
+                    pp_terminal,
+                    pp_week,
+                    pp_mode,
+                    pp_course_id,
+                    pp_session_id,
+                    pp_request_id,
+                    pp_turn_id,
+                    pp_section_id,
+                ],
                 outputs=[pp_response, pp_raw, pp_status],
             )
 
