@@ -7,7 +7,9 @@ import pytest
 from rag.course_registry import (
     CourseRegistry,
     CourseRoute,
+    CourseRegistryStatus,
     _load_database_routes,
+    get_course_registry_status,
     resolve_course_route,
 )
 from rag.pipeline import run_retrieval
@@ -251,3 +253,57 @@ def test_run_retrieval_rejects_unknown_course_id(monkeypatch) -> None:
                 course_id="unknown-course",
             )
         )
+
+
+def test_get_course_registry_status_reports_unconfigured_when_env_missing(
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("COURSE_REGISTRY_DATABASE_URL", raising=False)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+
+    status = get_course_registry_status()
+
+    assert status == CourseRegistryStatus(
+        configured=False,
+        reachable=False,
+        message="Aurora course registry is not configured; using local fallback.",
+    )
+
+
+def test_get_course_registry_status_reports_reachable_when_probe_succeeds(
+    monkeypatch,
+) -> None:
+    class _ProbeCursor:
+        def execute(self, query: str) -> None:
+            self.query = query
+
+        def fetchone(self):
+            return (3,)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    class _ProbeConnection:
+        def cursor(self):
+            return _ProbeCursor()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setenv("COURSE_REGISTRY_DATABASE_URL", "postgresql://example")
+    monkeypatch.setattr(
+        "rag.course_registry._connect_postgres",
+        lambda database_url: _ProbeConnection(),
+    )
+
+    status = get_course_registry_status()
+
+    assert status.configured is True
+    assert status.reachable is True
+    assert "3 active course" in status.message

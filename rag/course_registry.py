@@ -42,7 +42,7 @@ def _connect_postgres(database_url: str):
             "psycopg is required for the Aurora-backed course registry."
         ) from exc
 
-    return psycopg.connect(database_url)
+    return psycopg.connect(database_url, connect_timeout=5)
 
 
 @dataclass(frozen=True)
@@ -52,6 +52,15 @@ class CourseRoute:
     course_id: str
     course_source: CourseSource
     collection_name: str
+
+
+@dataclass(frozen=True)
+class CourseRegistryStatus:
+    """Health information for the Aurora-backed course registry."""
+
+    configured: bool
+    reachable: bool
+    message: str = ""
 
 
 class CourseRegistry:
@@ -188,6 +197,52 @@ def _load_database_routes(database_url: str) -> dict[str, CourseRoute]:
         routes[_normalize_course_id(str(alias))] = canonical_route
 
     return routes
+
+
+def get_course_registry_status(
+    database_url: str | None = None,
+) -> CourseRegistryStatus:
+    """Probe the course registry database without relying on the cached registry.
+
+    This keeps local fallback behavior intact while letting `/health` report
+    whether the AWS runtime can actually reach the Aurora-backed registry.
+    """
+    resolved_url = database_url or (
+        os.getenv("COURSE_REGISTRY_DATABASE_URL") or os.getenv("DATABASE_URL")
+    )
+    if not resolved_url:
+        return CourseRegistryStatus(
+            configured=False,
+            reachable=False,
+            message="Aurora course registry is not configured; using local fallback.",
+        )
+
+    try:
+        with _connect_postgres(resolved_url) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT COUNT(*) FROM courses WHERE is_active = TRUE"
+                )
+                active_course_count = int(cursor.fetchone()[0] or 0)
+    except Exception as exc:
+        return CourseRegistryStatus(
+            configured=True,
+            reachable=False,
+            message=f"Aurora course registry connectivity check failed: {exc}",
+        )
+
+    if active_course_count <= 0:
+        return CourseRegistryStatus(
+            configured=True,
+            reachable=True,
+            message="Aurora course registry is reachable but has no active courses.",
+        )
+
+    return CourseRegistryStatus(
+        configured=True,
+        reachable=True,
+        message=f"Aurora course registry is reachable with {active_course_count} active course(s).",
+    )
 
 
 @lru_cache(maxsize=1)

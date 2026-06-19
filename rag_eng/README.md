@@ -6,7 +6,7 @@ FastAPI service layer for the codingrabbit.dev capstone. Provides the RAG query 
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/health` | Liveness probe |
+| `GET` | `/health` | Liveness probe plus Qdrant/Aurora/LLM dependency status |
 | `POST` | `/query` | RAG query with reranking |
 | `GET` | `/admin/llm/config` | Read editable LLM provider/model settings |
 | `POST` | `/admin/llm/config` | Save editable LLM provider/model settings |
@@ -36,6 +36,8 @@ export COURSE_REGISTRY_DATABASE_URL="postgresql://user:password@aurora-endpoint:
 uv run python -m rag_eng.cli resolve-course --course-id mit-14
 uv run python -m rag_eng.cli resolve-course --course-source cs50
 ```
+
+The `/health` endpoint now reports whether the Aurora-backed course registry is configured and reachable when that env var is present.
 
 6. Ensure or rebuild the index:
 

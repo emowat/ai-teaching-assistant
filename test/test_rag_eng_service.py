@@ -17,6 +17,7 @@ from rag_eng.config import (
     SageMakerInferenceConfig,
 )
 from rag_eng.service import _extract_chat_context
+from rag_eng.service import get_health
 from rag_eng.service import run_chat, run_query
 from rag.schemas import QueryInput
 from rag.schemas import RetrievalResult
@@ -55,6 +56,73 @@ Why does my pointer segfault?"""
     assert ctx["mode"] == "Study Assist"
 
 
+def test_get_health_reports_course_registry_status_when_unconfigured(monkeypatch):
+    class _FakeQdrantClient:
+        def get_collections(self):
+            return []
+
+        def close(self):
+            return None
+
+    monkeypatch.setattr("rag_eng.service.get_settings", lambda: _health_settings())
+    monkeypatch.setattr(
+        "rag_eng.service.get_inference_config",
+        lambda: _runtime_config(rag_provider="cohere", chat_provider="ollama"),
+    )
+    monkeypatch.setattr(
+        "rag_eng.service.create_qdrant_client",
+        lambda: _FakeQdrantClient(),
+    )
+    monkeypatch.setattr(
+        "rag_eng.service.get_course_registry_status",
+        lambda: SimpleNamespace(
+            configured=False,
+            reachable=False,
+            message="Aurora course registry is not configured; using local fallback.",
+        ),
+    )
+
+    health = get_health()
+
+    assert health.ready is True
+    assert health.course_registry_configured is False
+    assert health.course_registry_reachable is False
+
+
+def test_get_health_marks_course_registry_unreachable_when_configured(monkeypatch):
+    class _FakeQdrantClient:
+        def get_collections(self):
+            return []
+
+        def close(self):
+            return None
+
+    monkeypatch.setattr("rag_eng.service.get_settings", lambda: _health_settings())
+    monkeypatch.setattr(
+        "rag_eng.service.get_inference_config",
+        lambda: _runtime_config(rag_provider="cohere", chat_provider="ollama"),
+    )
+    monkeypatch.setattr(
+        "rag_eng.service.create_qdrant_client",
+        lambda: _FakeQdrantClient(),
+    )
+    monkeypatch.setattr(
+        "rag_eng.service.get_course_registry_status",
+        lambda: SimpleNamespace(
+            configured=True,
+            reachable=False,
+            message="Aurora course registry connectivity check failed: timeout",
+        ),
+    )
+
+    health = get_health()
+
+    assert health.ready is False
+    assert health.course_registry_configured is True
+    assert health.course_registry_reachable is False
+    assert "Aurora course registry connectivity check failed" in health.message
+
+
 def _runtime_config(*, rag_provider: str, chat_provider: str) -> InferenceConfig:
     return InferenceConfig(
         ollama=OllamaInferenceConfig(
@@ -87,6 +155,20 @@ def _runtime_config(*, rag_provider: str, chat_provider: str) -> InferenceConfig
         rag=ModelRouteConfig(provider=rag_provider, model="gpt-5.4-mini"),
         chat=ModelRouteConfig(provider=chat_provider, model="gpt-5.4-mini"),
         openai_base_url="https://api.openai.com/v1",
+    )
+
+
+def _health_settings():
+    return SimpleNamespace(
+        qdrant_url="https://qdrant.example",
+        qdrant_api_key="qdrant-key",
+        qdrant_collection_name="mit13_course",
+        qdrant_guidelines_collection_name="cpp_guidelines",
+        qdrant_harvard_collection_name="cs50_course",
+        cohere_api_key="cohere",
+        openai_api_key="sk-test",
+        openai_base_url="https://api.openai.com/v1",
+        restart_command=None,
     )
 
 

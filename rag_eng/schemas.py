@@ -90,9 +90,11 @@ class HealthResponse(BaseModel):
 
     ready: bool
     qdrant_configured: bool
+    course_registry_configured: bool = False
     cohere_configured: bool
     openai_configured: bool = False
     qdrant_reachable: bool
+    course_registry_reachable: bool = False
     cohere_reachable: bool = False
     openai_reachable: bool = False
     message: str = ""

@@ -9,6 +9,7 @@ from typing import AsyncIterator
 from rag import build_prompt, generate_response_from_result, run_retrieval
 from rag.runtime import create_qdrant_client
 
+from rag.course_registry import get_course_registry_status
 from rag_eng.config import Settings, get_inference_config, get_settings
 from rag_eng.indexing import ensure_index, rebuild_index
 from rag_eng.inference import run_inference
@@ -98,6 +99,7 @@ def get_health() -> HealthResponse:
     )
     cohere_configured = bool(settings.cohere_api_key)
     openai_configured = bool(settings.openai_api_key)
+    course_registry_status = get_course_registry_status()
     qdrant_reachable = False
     message = "Ready."
 
@@ -136,14 +138,26 @@ def get_health() -> HealthResponse:
         elif runtime.chat.provider == "openai":
             message = "OpenAI API key is not configured."
 
+    course_registry_ready = (
+        not course_registry_status.configured or course_registry_status.reachable
+    )
+    if (
+        message == "Ready."
+        and course_registry_status.configured
+        and not course_registry_status.reachable
+    ):
+        message = course_registry_status.message
+
     llm_ready = rag_ready and chat_ready
-    ready = qdrant_configured and qdrant_reachable and llm_ready
+    ready = qdrant_configured and qdrant_reachable and llm_ready and course_registry_ready
     return HealthResponse(
         ready=ready,
         qdrant_configured=qdrant_configured,
+        course_registry_configured=course_registry_status.configured,
         cohere_configured=cohere_configured,
         openai_configured=openai_configured,
         qdrant_reachable=qdrant_reachable,
+        course_registry_reachable=course_registry_status.reachable,
         cohere_reachable=cohere_configured,
         openai_reachable=openai_configured,
         message=message,
