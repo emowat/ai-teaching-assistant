@@ -60,6 +60,16 @@ npm install
 npm run dev        # http://localhost:5173
 ```
 
+### Optional: start both together
+
+If you want one shell to launch both dev servers, use:
+
+```bash
+./scripts/dev.sh
+```
+
+The script starts `rag_eng` on port `8001` and the Vite frontend on port `5173`.
+
 ## Role-based access
 
 | Role      | Dashboards accessible          |
