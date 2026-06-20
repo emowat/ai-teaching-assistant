@@ -8,7 +8,7 @@ from data_ingestion.chunking import (
     build_chunk_records_from_envelope,
     prepared_chunk_artifact_name,
 )
-from data_ingestion.ingestion_worker import ChunkIndexSummary, run_chunk_index
+from data_ingestion.ingestion_worker import ChunkIndexSummary, main, run_chunk_index
 from rag.schemas import DocCategory, SourceDomain
 
 
@@ -141,3 +141,50 @@ def test_run_chunk_index_indexes_local_envelopes(tmp_path: Path) -> None:
     assert client.upserts
     assert output_dir.exists()
     assert any(path.name.endswith("__chunks.json") for path in output_dir.iterdir())
+
+
+def test_main_chunk_index_reports_completion(monkeypatch, tmp_path: Path) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run_chunk_index(args, *, client=None, model=None):
+        return ChunkIndexSummary(
+            collection_name="cs50_course",
+            envelopes_processed=1,
+            chunks_indexed=2,
+            created_collection=True,
+            prepared_artifacts_written=1,
+        )
+
+    def fake_complete_ingestion_job(job_id, *, status, message, ecs_response=None):
+        captured["job_id"] = job_id
+        captured["status"] = status
+        captured["message"] = message
+        captured["ecs_response"] = ecs_response
+        return True
+
+    monkeypatch.setenv("INGESTION_JOB_ID", "job-123")
+    monkeypatch.setattr("data_ingestion.ingestion_worker.run_chunk_index", fake_run_chunk_index)
+    monkeypatch.setattr(
+        "data_ingestion.ingestion_worker.complete_ingestion_job",
+        fake_complete_ingestion_job,
+    )
+
+    input_dir = tmp_path / "parsed"
+    input_dir.mkdir()
+
+    main(
+        [
+            "chunk-index",
+            "--local-input-dir",
+            str(input_dir),
+            "--course-id",
+            "cs50",
+            "--collection-name",
+            "cs50_course",
+        ]
+    )
+
+    assert captured["job_id"] == "job-123"
+    assert captured["status"] == "completed"
+    assert "Indexed 2 chunk(s)" in captured["message"]
+    assert captured["ecs_response"]["collection_name"] == "cs50_course"

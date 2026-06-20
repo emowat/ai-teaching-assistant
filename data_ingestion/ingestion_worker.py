@@ -20,6 +20,7 @@ from data_ingestion.chunking import (
     load_parsed_envelopes_from_dir,
     prepared_chunk_artifact_name,
 )
+from rag_eng.ingestion_jobs import complete_ingestion_job
 from rag.runtime import create_qdrant_client, get_runtime_config
 
 
@@ -35,6 +36,28 @@ class ChunkIndexSummary:
     chunks_indexed: int
     created_collection: bool
     prepared_artifacts_written: int
+
+
+def _worker_job_id() -> str | None:
+    job_id = os.getenv("INGESTION_JOB_ID", "").strip()
+    return job_id or None
+
+
+def _finalize_worker_job(
+    *,
+    status: str,
+    message: str,
+    ecs_response: dict[str, Any] | None = None,
+) -> None:
+    job_id = _worker_job_id()
+    if not job_id:
+        return
+    complete_ingestion_job(
+        job_id,
+        status=status,
+        message=message,
+        ecs_response=ecs_response,
+    )
 
 
 def _add_teacher_parser_args(parser: argparse.ArgumentParser) -> None:
@@ -381,22 +404,38 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
 
     if args.command == "parse":
-        run_parse(args)
+        try:
+            run_parse(args)
+        except Exception as exc:
+            _finalize_worker_job(status="failed", message=str(exc))
+            raise
+        _finalize_worker_job(
+            status="completed",
+            message="Parsed envelopes written successfully.",
+        )
         return
 
     if args.command == "chunk-index":
-        summary = run_chunk_index(args)
-        print(
-            json.dumps(
-                {
-                    "collection_name": summary.collection_name,
-                    "envelopes_processed": summary.envelopes_processed,
-                    "chunks_indexed": summary.chunks_indexed,
-                    "created_collection": summary.created_collection,
-                    "prepared_artifacts_written": summary.prepared_artifacts_written,
-                },
-                indent=2,
-            )
+        try:
+            summary = run_chunk_index(args)
+        except Exception as exc:
+            _finalize_worker_job(status="failed", message=str(exc))
+            raise
+        summary_payload = {
+            "collection_name": summary.collection_name,
+            "envelopes_processed": summary.envelopes_processed,
+            "chunks_indexed": summary.chunks_indexed,
+            "created_collection": summary.created_collection,
+            "prepared_artifacts_written": summary.prepared_artifacts_written,
+        }
+        print(json.dumps(summary_payload, indent=2))
+        _finalize_worker_job(
+            status="completed",
+            message=(
+                "Indexed "
+                f"{summary.chunks_indexed} chunk(s) into {summary.collection_name}."
+            ),
+            ecs_response=summary_payload,
         )
         return
 

@@ -9,6 +9,8 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from rag.schemas import QueryInput, RetrievalResult
 
 RetrievalRerankStrategy = Literal["similarity", "mmr_0.5", "mmr_0.7", "mmr_0.9"]
+IngestionJobKind = Literal["parse", "chunk-index"]
+IngestionJobStatus = Literal["queued", "running", "completed", "failed", "launch_failed"]
 RERANK_STRATEGY_CHOICES: tuple[str, ...] = (
     "similarity",
     "mmr_0.5",
@@ -195,3 +197,49 @@ class RestartResponse(BaseModel):
     success: bool
     scheduled: bool
     message: str
+
+
+class IngestionJobLaunchRequest(BaseModel):
+    """Request to launch an on-demand ECS ingestion task."""
+
+    course_id: str = Field(min_length=1)
+    job_kind: IngestionJobKind
+    bucket: str = Field(min_length=1)
+    input_prefix: str = Field(min_length=1)
+    output_prefix: str | None = None
+    prepared_output_prefix: str | None = None
+    collection_name: str | None = None
+    recreate_collection: bool = False
+
+    @model_validator(mode="after")
+    def _validate_job_specific_fields(self) -> "IngestionJobLaunchRequest":
+        if self.job_kind == "parse" and not self.output_prefix:
+            raise ValueError("output_prefix is required for parse jobs")
+        return self
+
+
+class IngestionJobResponse(BaseModel):
+    """Status returned for ECS ingestion job launches and lookups."""
+
+    job_id: str
+    course_id: str
+    job_kind: IngestionJobKind
+    status: IngestionJobStatus
+    message: str = ""
+    registered: bool = False
+    course_corpus_version_id: str | None = None
+    ecs_cluster: str = ""
+    ecs_task_definition: str = ""
+    ecs_container_name: str = ""
+    ecs_task_arn: str | None = None
+    collection_name: str | None = None
+    bucket: str = ""
+    input_prefix: str = ""
+    output_prefix: str | None = None
+    prepared_output_prefix: str | None = None
+    request_payload: dict[str, str | int | bool | None] = Field(default_factory=dict)
+    ecs_response: dict[str, object] = Field(default_factory=dict)
+    created_at: str = ""
+    updated_at: str = ""
+    started_at: str | None = None
+    completed_at: str | None = None

@@ -19,6 +19,49 @@ CREATE TABLE IF NOT EXISTS course_aliases (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS course_corpus_versions (
+  course_corpus_version_id text PRIMARY KEY,
+  course_id text NOT NULL REFERENCES courses(course_id) ON DELETE CASCADE,
+  collection_name text NOT NULL,
+  source_bucket text NOT NULL,
+  source_prefix text NOT NULL,
+  parsed_prefix text,
+  prepared_prefix text,
+  status text NOT NULL DEFAULT 'queued',
+  active boolean NOT NULL DEFAULT FALSE,
+  recreate_collection boolean NOT NULL DEFAULT FALSE,
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  started_at timestamptz,
+  completed_at timestamptz
+);
+
+CREATE TABLE IF NOT EXISTS ingestion_jobs (
+  job_id text PRIMARY KEY,
+  course_id text NOT NULL REFERENCES courses(course_id) ON DELETE CASCADE,
+  course_corpus_version_id text REFERENCES course_corpus_versions(course_corpus_version_id) ON DELETE SET NULL,
+  job_kind text NOT NULL,
+  status text NOT NULL DEFAULT 'queued',
+  message text NOT NULL DEFAULT '',
+  bucket text NOT NULL,
+  input_prefix text NOT NULL,
+  output_prefix text,
+  prepared_output_prefix text,
+  collection_name text NOT NULL,
+  recreate_collection boolean NOT NULL DEFAULT FALSE,
+  ecs_cluster text NOT NULL DEFAULT '',
+  ecs_task_definition text NOT NULL DEFAULT '',
+  ecs_container_name text NOT NULL DEFAULT '',
+  ecs_task_arn text,
+  request_payload jsonb NOT NULL DEFAULT '{}'::jsonb,
+  ecs_response jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  started_at timestamptz,
+  completed_at timestamptz
+);
+
 CREATE TABLE IF NOT EXISTS tutor_sessions (
   session_id text PRIMARY KEY,
   user_sub text,

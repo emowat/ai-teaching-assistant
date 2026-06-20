@@ -15,6 +15,7 @@ the container packaging.
   - embeds them
   - upserts them into Qdrant
   - optionally writes prepared chunk artifacts to S3 or local disk
+  - marks the Aurora job row complete when `INGESTION_JOB_ID` is present
 
 ## Build
 
@@ -55,6 +56,9 @@ docker run --rm \
 The ECS task definition should inject runtime values, not bake them into the
 image:
 
+- `INGESTION_JOB_ID`
+- `INGESTION_JOB_KIND`
+- `INGESTION_JOBS_DATABASE_URL` or `COURSE_REGISTRY_DATABASE_URL`
 - `AWS_REGION`
 - `AWS_PROFILE` for local runs only
 - `QDRANT_URL`
@@ -71,3 +75,15 @@ For S3 mode, pass:
 - optional `--prepared-output-prefix`
 - optional `--course-id`
 
+## Worker lifecycle
+
+When the worker runs under ECS, the task definition should also set:
+
+- `INGESTION_ECS_CLUSTER`
+- `INGESTION_ECS_TASK_DEFINITION`
+- `INGESTION_ECS_CONTAINER_NAME`
+- `INGESTION_ECS_SUBNETS`
+- `INGESTION_ECS_SECURITY_GROUPS`
+
+The backend launches the task, writes the initial `ingestion_jobs` row, and
+the worker updates the job and corpus-version rows on success or failure.

@@ -11,6 +11,8 @@ FastAPI service layer for the codingrabbit.dev capstone. Provides the RAG query 
 | `GET` | `/admin/llm/config` | Read editable LLM provider/model settings |
 | `POST` | `/admin/llm/config` | Save editable LLM provider/model settings |
 | `POST` | `/admin/restart` | Reload config or schedule a restart command |
+| `POST` | `/admin/ingestion/launch` | Launch an on-demand ECS ingestion task |
+| `GET` | `/admin/ingestion/jobs/{job_id}` | Inspect an ECS ingestion job |
 | `POST` | `/run/compile` | Compile + run student C++ code |
 | `GET` | `/gradio` | Gradio RAG interrogation UI |
 | `POST` | `/admin/index/ensure` | Idempotent index bootstrap |
@@ -41,13 +43,29 @@ uv run python -m rag_eng.cli resolve-course --course-source cs50
 
 The `/health` endpoint now reports whether the Aurora-backed course registry is configured and reachable when that env var is present.
 
-6. Ensure or rebuild the index:
+7. If you want to launch offline ingestion jobs from the admin API, set the ECS
+   runtime values:
+
+```bash
+export INGESTION_ECS_CLUSTER=...
+export INGESTION_ECS_TASK_DEFINITION=...
+export INGESTION_ECS_CONTAINER_NAME=ingestion-worker
+export INGESTION_ECS_SUBNETS=subnet-...,subnet-...
+export INGESTION_ECS_SECURITY_GROUPS=sg-...
+export INGESTION_JOBS_DATABASE_URL="postgresql://user:password@aurora-endpoint:5432/postgres?sslmode=require"
+```
+
+The backend registers ingestion jobs in Aurora and launches them as on-demand
+ECS Fargate tasks. The worker updates the job row and `course_corpus_versions`
+after the ECS task finishes.
+
+8. Ensure or rebuild the index:
 
 ```bash
 python -m rag_eng.cli ensure-index
 ```
 
-7. Run the service on port 8001 (frontend default):
+9. Run the service on port 8001 (frontend default):
 
 ```bash
 uv run uvicorn rag_eng.main:app --host 0.0.0.0 --port 8001
@@ -157,6 +175,16 @@ docker run --rm -p 8001:8001 --env-file .env rag-eng
 | `AWS_PROFILE` | — | Optional AWS profile for Bedrock credentials |
 | `COURSE_REGISTRY_DATABASE_URL` | — | Optional Aurora/PostgreSQL URL for course registry lookups |
 | `DATABASE_URL` | — | Generic Aurora/PostgreSQL fallback URL for course registry lookups |
+| `INGESTION_ECS_CLUSTER` | — | ECS cluster name for on-demand ingestion tasks |
+| `INGESTION_ECS_TASK_DEFINITION` | — | ECS task definition for the ingestion worker |
+| `INGESTION_ECS_CONTAINER_NAME` | `ingestion-worker` | Container name inside the ingestion task definition |
+| `INGESTION_ECS_LAUNCH_TYPE` | `FARGATE` | ECS launch type for ingestion jobs |
+| `INGESTION_ECS_PLATFORM_VERSION` | `LATEST` | ECS platform version for ingestion jobs |
+| `INGESTION_ECS_ASSIGN_PUBLIC_IP` | `ENABLED` | Whether the task gets a public IP |
+| `INGESTION_ECS_SUBNETS` | — | Comma-separated subnets for the ingestion task |
+| `INGESTION_ECS_SECURITY_GROUPS` | — | Comma-separated security groups for the ingestion task |
+| `INGESTION_JOBS_DATABASE_URL` | — | Optional Aurora/PostgreSQL URL for ingestion job tracking |
+| `INGESTION_JOBS_CONNECT_TIMEOUT_SECONDS` | `5` | Connection timeout used by ingestion job registry updates |
 | `RESTART_COMMAND` | — | Optional shell command to run when the admin presses restart |
 
 The editable non-secret model routing settings live in `rag_eng/runtime_config.yaml`.

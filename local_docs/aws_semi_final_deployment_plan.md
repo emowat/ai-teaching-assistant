@@ -1159,10 +1159,10 @@ Likely affected areas:
 - backend tracing/wrapper code
 - deployment scripts/infrastructure config
 
-### Pending 6: implementation plan for the ECS Fargate chunk/index pipeline
+### ECS Fargate chunk/index pipeline
 
 Status:
-- pending
+- implemented in repo; ECS task definition and AWS wiring still pending
 
 Goal:
 - convert parsed S3 document envelopes into chunked, embedded, versioned course corpora stored in Qdrant Cloud using on-demand ECS Fargate tasks
@@ -1195,7 +1195,7 @@ Acceptance criteria:
 
 Likely affected areas:
 - `data_ingestion/`
-- RAG indexing code
+- `rag_eng/ingestion_jobs.py`
 - backend admin job launch/status endpoints
 - ECS task definition / container command wiring
 - course registry persistence

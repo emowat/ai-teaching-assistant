@@ -32,16 +32,20 @@ def test_split_sql_statements_ignores_comments_and_blank_lines() -> None:
 def test_load_sql_statements_reads_repo_bootstrap_file() -> None:
     statements = load_sql_statements(DEFAULT_SQL_FILE)
 
-    assert len(statements) == 7
+    assert len(statements) == 9
     assert statements[0].startswith("CREATE TABLE IF NOT EXISTS courses")
     assert statements[1].startswith("CREATE TABLE IF NOT EXISTS course_aliases")
-    assert statements[2].startswith("CREATE TABLE IF NOT EXISTS tutor_sessions")
-    assert statements[3].startswith("CREATE TABLE IF NOT EXISTS tutor_turns")
-    assert statements[4].startswith("CREATE TABLE IF NOT EXISTS telemetry_events")
-    assert statements[5].startswith("INSERT INTO courses")
-    assert statements[6].startswith("INSERT INTO course_aliases")
-    assert "'course_knowledge'" in statements[5]
-    assert "'harvard_cs50'" in statements[5]
+    assert statements[2].startswith(
+        "CREATE TABLE IF NOT EXISTS course_corpus_versions"
+    )
+    assert statements[3].startswith("CREATE TABLE IF NOT EXISTS ingestion_jobs")
+    assert statements[4].startswith("CREATE TABLE IF NOT EXISTS tutor_sessions")
+    assert statements[5].startswith("CREATE TABLE IF NOT EXISTS tutor_turns")
+    assert statements[6].startswith("CREATE TABLE IF NOT EXISTS telemetry_events")
+    assert statements[7].startswith("INSERT INTO courses")
+    assert statements[8].startswith("INSERT INTO course_aliases")
+    assert "'course_knowledge'" in statements[7]
+    assert "'harvard_cs50'" in statements[7]
 
 
 class _ApplySchemaClient:

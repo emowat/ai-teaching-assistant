@@ -28,6 +28,8 @@ from rag_eng.config import (
 from rag_eng.schemas import (
     AdminLlmConfigResponse,
     AdminLlmConfigUpdate,
+    IngestionJobLaunchRequest,
+    IngestionJobResponse,
     HealthResponse,
     IndexEnsureResponse,
     IndexRebuildResponse,
@@ -36,6 +38,7 @@ from rag_eng.schemas import (
     RetrievalRerankStrategy,
     RestartResponse,
 )
+from rag_eng.ingestion_jobs import get_ingestion_job, launch_ingestion_job
 from rag_eng.runner_client import RunnerError, run_cpp_job
 from rag_eng.run_schemas import CompileRequest, CompileResponse
 from rag_eng.service import (
@@ -174,6 +177,32 @@ def create_app() -> FastAPI:
     def admin_rebuild_index() -> IndexRebuildResponse:
         try:
             return rebuild_index_service()
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    @app.post(
+        "/admin/ingestion/launch",
+        response_model=IngestionJobResponse,
+        dependencies=[Depends(_require_admin)],
+    )
+    def admin_launch_ingestion(
+        payload: IngestionJobLaunchRequest,
+    ) -> IngestionJobResponse:
+        try:
+            return launch_ingestion_job(payload)
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    @app.get(
+        "/admin/ingestion/jobs/{job_id}",
+        response_model=IngestionJobResponse,
+        dependencies=[Depends(_require_admin)],
+    )
+    def admin_get_ingestion_job(job_id: str) -> IngestionJobResponse:
+        try:
+            return get_ingestion_job(job_id)
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
         except Exception as exc:
             raise HTTPException(status_code=500, detail=str(exc)) from exc
 

@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from rag.schemas import QueryInput, RetrievalResult
 from rag_eng.api import create_app
 from rag_eng.schemas import (
+    IngestionJobResponse,
     HealthResponse,
     IndexEnsureResponse,
     IndexRebuildResponse,
@@ -302,3 +303,126 @@ def test_admin_rebuild_returns_500_on_service_exception(
 
     assert response.status_code == 500
     assert response.json()["detail"] == "rebuild failure"
+
+
+def _ingestion_job_response(
+    *,
+    job_id: str = "job-123",
+    status: str = "running",
+) -> IngestionJobResponse:
+    return IngestionJobResponse(
+        job_id=job_id,
+        course_id="mit14",
+        job_kind="chunk-index",
+        status=status,
+        message="ECS ingestion task launched.",
+        registered=True,
+        course_corpus_version_id=job_id,
+        ecs_cluster="cluster",
+        ecs_task_definition="taskdef",
+        ecs_container_name="worker",
+        ecs_task_arn="arn:aws:ecs:task/123",
+        collection_name="course_knowledge",
+        bucket="codingrabbit-data-dev",
+        input_prefix="parsed_json/mit14",
+        output_prefix=None,
+        prepared_output_prefix="prepared_chunks/mit14",
+        request_payload={
+            "job_id": job_id,
+            "course_id": "mit14",
+            "job_kind": "chunk-index",
+            "bucket": "codingrabbit-data-dev",
+            "input_prefix": "parsed_json/mit14",
+            "prepared_output_prefix": "prepared_chunks/mit14",
+            "collection_name": "course_knowledge",
+            "recreate_collection": False,
+            "course_corpus_version_id": job_id,
+        },
+        ecs_response={
+            "tasks": [{"taskArn": "arn:aws:ecs:task/123"}],
+            "failures": [],
+        },
+        created_at="2026-06-19T00:00:00+00:00",
+        updated_at="2026-06-19T00:00:00+00:00",
+        started_at="2026-06-19T00:00:00+00:00",
+        completed_at=None,
+    )
+
+
+def test_admin_launch_ingestion_requires_token_when_configured(
+    monkeypatch, client: TestClient
+) -> None:
+    monkeypatch.setenv("ADMIN_TOKEN", "expected-token")
+    response = client.post(
+        "/admin/ingestion/launch",
+        json={
+            "course_id": "mit14",
+            "job_kind": "chunk-index",
+            "bucket": "codingrabbit-data-dev",
+            "input_prefix": "parsed_json/mit14",
+            "prepared_output_prefix": "prepared_chunks/mit14",
+        },
+    )
+
+    assert response.status_code == 401
+
+
+def test_admin_launch_ingestion_allows_authorized_request(
+    monkeypatch, client: TestClient
+) -> None:
+    monkeypatch.setenv("ADMIN_TOKEN", "expected-token")
+    monkeypatch.setattr(
+        "rag_eng.api.launch_ingestion_job",
+        lambda payload: _ingestion_job_response(),
+    )
+
+    response = client.post(
+        "/admin/ingestion/launch",
+        headers={"X-Admin-Token": "expected-token"},
+        json={
+            "course_id": "mit14",
+            "job_kind": "chunk-index",
+            "bucket": "codingrabbit-data-dev",
+            "input_prefix": "parsed_json/mit14",
+            "prepared_output_prefix": "prepared_chunks/mit14",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["job_id"] == "job-123"
+    assert response.json()["course_corpus_version_id"] == "job-123"
+
+
+def test_admin_get_ingestion_job_returns_404_when_missing(
+    monkeypatch, client: TestClient
+) -> None:
+    monkeypatch.setenv("ADMIN_TOKEN", "expected-token")
+    monkeypatch.setattr(
+        "rag_eng.api.get_ingestion_job",
+        lambda job_id: (_ for _ in ()).throw(LookupError(job_id)),
+    )
+
+    response = client.get(
+        "/admin/ingestion/jobs/job-123",
+        headers={"X-Admin-Token": "expected-token"},
+    )
+
+    assert response.status_code == 404
+
+
+def test_admin_get_ingestion_job_allows_authorized_request(
+    monkeypatch, client: TestClient
+) -> None:
+    monkeypatch.setenv("ADMIN_TOKEN", "expected-token")
+    monkeypatch.setattr(
+        "rag_eng.api.get_ingestion_job",
+        lambda job_id: _ingestion_job_response(job_id=job_id),
+    )
+
+    response = client.get(
+        "/admin/ingestion/jobs/job-123",
+        headers={"X-Admin-Token": "expected-token"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["job_id"] == "job-123"
