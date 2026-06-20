@@ -23,6 +23,22 @@ the container packaging.
 docker build -f ingestion_worker/Dockerfile -t codingrabbit-ingestion:dev .
 ```
 
+## ECS wiring helper
+
+Use the repo-side helper to describe or register the ECS task definition:
+
+```bash
+./deploy/scripts/deploy-ingestion-worker.sh describe
+./deploy/scripts/deploy-ingestion-worker.sh render-task-definition
+./deploy/scripts/deploy-ingestion-worker.sh render-backend-env
+./deploy/scripts/deploy-ingestion-worker.sh register-task-definition
+```
+
+The helper expects the worker image URI, IAM role ARNs, and ECS subnet/security
+group settings to be provided through `INGESTION_ECS_*` environment variables.
+See [deploy/README.md](/home/user/MIDS/w210/capstone/deploy/README.md) for the
+full wiring checklist and secret ARN mapping format.
+
 ## Run locally
 
 Parse mode:

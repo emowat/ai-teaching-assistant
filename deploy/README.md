@@ -21,7 +21,7 @@ Google Drive (fine-tuned Qwen)
 |---|---|---|
 | **Configuration** | `deploy/deployment.yaml` | Single source of truth for all deploy settings |
 | **Shell wrappers** (start here) | `deploy/scripts/*.sh` | Human-friendly entry points with `--help` |
-| **Python implementation** | `deploy/upload_model.py`, `deploy/deploy_sagemaker.py`, `deploy/sagemaker_io.py` | Download, S3 upload, SageMaker API calls, async payload helpers |
+| **Python implementation** | `deploy/upload_model.py`, `deploy/deploy_sagemaker.py`, `deploy/deploy_ingestion_worker.py`, `deploy/sagemaker_io.py` | Download, S3 upload, SageMaker API calls, ECS task-definition helpers, async payload helpers |
 | **Application** | `rag_eng/inference.py` | Calls the live endpoint at request time |
 
 ---
@@ -228,6 +228,66 @@ These are the **recommended** way to run deployment. Each script:
 | `AWS_REGION` | (none) | Optional region override for S3 download |
 
 **Success output:** the local checkpoint directory contains `config.json`, tokenizer files, and model weights, ready for `output_guardrails.semantic_guardrail.predict_safety()`.
+
+---
+
+### `deploy-ingestion-worker.sh`
+
+**Purpose:** Describe, render, or register the ECS Fargate task definition used by the on-demand ingestion worker.
+
+The script does not launch jobs itself. The backend already owns job launches via `/admin/ingestion/launch`; this helper only makes the ECS wiring reproducible.
+
+| Action | What it does |
+|---|---|
+| `describe` | Print the resolved ECS task-definition settings and any missing values |
+| `render-task-definition` | Emit the ECS task-definition JSON payload |
+| `render-backend-env` | Emit the backend `.env` fragment for `INGESTION_ECS_*` values |
+| `register-task-definition` | Register the task definition with ECS using boto3 |
+
+**Usage:**
+
+```bash
+./deploy/scripts/deploy-ingestion-worker.sh describe
+./deploy/scripts/deploy-ingestion-worker.sh render-task-definition
+./deploy/scripts/deploy-ingestion-worker.sh render-backend-env
+./deploy/scripts/deploy-ingestion-worker.sh register-task-definition
+```
+
+**Required worker settings:**
+
+| Variable | Description |
+|---|---|
+| `INGESTION_ECS_IMAGE_URI` | ECR image URI for the worker container |
+| `INGESTION_ECS_EXECUTION_ROLE_ARN` | ECS task execution role ARN |
+| `INGESTION_ECS_TASK_ROLE_ARN` | ECS task role ARN |
+| `INGESTION_ECS_TASK_FAMILY` | Task family name used for registration |
+| `INGESTION_ECS_TASK_DEFINITION` | Task definition name/ARN used by the backend launcher |
+| `INGESTION_ECS_CONTAINER_NAME` | Container name inside the task definition |
+| `INGESTION_ECS_SUBNETS` | Comma-separated ECS subnets for `run-task` |
+| `INGESTION_ECS_SECURITY_GROUPS` | Comma-separated ECS security groups for `run-task` |
+| `INGESTION_ECS_SECRET_ARNS_JSON` | Optional JSON map of secret env names to Secrets Manager ARNs |
+
+**Recommended secret mapping keys:**
+
+- `INGESTION_JOBS_DATABASE_URL`
+- `COURSE_REGISTRY_DATABASE_URL`
+- `QDRANT_API_KEY`
+
+**Example:**
+
+```bash
+export INGESTION_ECS_IMAGE_URI=123456789012.dkr.ecr.us-east-1.amazonaws.com/codingrabbit-ingestion:latest
+export INGESTION_ECS_EXECUTION_ROLE_ARN=arn:aws:iam::123456789012:role/ecsTaskExecutionRole
+export INGESTION_ECS_TASK_ROLE_ARN=arn:aws:iam::123456789012:role/codingrabbit-ingestion-task
+export INGESTION_ECS_TASK_FAMILY=codingrabbit-ingestion-worker
+export INGESTION_ECS_TASK_DEFINITION=codingrabbit-ingestion-worker
+export INGESTION_ECS_CONTAINER_NAME=ingestion-worker
+export INGESTION_ECS_SUBNETS=subnet-123,subnet-456
+export INGESTION_ECS_SECURITY_GROUPS=sg-123
+export INGESTION_ECS_SECRET_ARNS_JSON='{"INGESTION_JOBS_DATABASE_URL":"arn:aws:secretsmanager:...","QDRANT_API_KEY":"arn:aws:secretsmanager:..."}'
+```
+
+**Success output:** the helper prints the rendered task definition, the backend launch env fragment, or the ECS registration response, depending on the chosen action.
 
 ---
 
