@@ -18,7 +18,7 @@ Locked decisions:
 - `rag_eng` runs as an ECS Fargate service behind an ALB
 - Aurora PostgreSQL Serverless v2 becomes the application system of record
 - Main tutor model stays on SageMaker Async
-- Post-LLM guardrail moves to SageMaker AI instead of ECS
+- Post-LLM guardrail stays in the ECS Fargate app container for MVP, with SageMaker AI as the later hardening path
 - Offline parser / chunk / embed / eval jobs prefer SageMaker Processing
 - Vector database remains Qdrant Cloud as an accepted external free-tier exception for the MVP
 - Dynamic professor-uploaded course corpora are in scope, not just fixed MIT/Harvard content
@@ -60,8 +60,8 @@ This repository is **not end-to-end complete yet**. The plan now separates:
 - `resolve-course` falls back locally unless the runner can reach the Aurora endpoint
 - session / telemetry persistence is wired in the codebase, but the AWS-hosted
   runtime path and analytics consumers are still pending
-- guardrail SageMaker endpoint is still planned, even though the local pipeline
-  now runs the rule-based + CodeBERT guardrail logic in-process
+- guardrail logic now runs in-process in the ECS app container for MVP, while
+  the SageMaker endpoint remains a later hardening path
 - chunk / index Processing pipeline is only planned
 - analytics frontend is still stubbed
 
@@ -73,7 +73,7 @@ Recommended order after that:
 
 1. wire the ECS backend runtime to Aurora and verify live course resolution in AWS
 2. add session / telemetry persistence and the first analytics rollups
-3. package the guardrail as a SageMaker endpoint
+3. keep the guardrail in ECS Fargate for MVP and move it to a SageMaker endpoint only if benchmarks justify the split
 4. add the SageMaker Processing chunk/index pipeline for uploaded course content
 5. backfill the frontend analytics surface once the data contracts exist
 
@@ -216,14 +216,16 @@ Testing-only provider note:
 
 ## Post-LLM Guardrail
 
-- Deploy the semantic guardrail model as a **separate SageMaker AI endpoint**, not as an ECS service.
-- Preferred first target: **SageMaker Serverless Inference** if the packaged BERT / CodeBERT model fits the memory and latency target.
-- If latency or cold starts are not acceptable, move the same container to a **small SageMaker real-time endpoint**.
+- Keep the semantic guardrail **in-process in the ECS Fargate app container for MVP**.
+- This avoids a second service boundary and keeps the online answer path simple while we validate latency and memory usage.
+- If the in-process guardrail becomes a bottleneck, split it out later as a SageMaker AI endpoint.
+- Preferred first externalized target, if we split it out later: **SageMaker Serverless Inference** if the packaged BERT / CodeBERT model fits the memory and latency target.
+- If latency or cold starts are not acceptable, move the same contract to a **small SageMaker real-time endpoint**.
 
 Reason:
-- your credits can be spent here
-- the model is small enough to justify trying Serverless Inference first
-- this keeps both online model-serving components inside SageMaker AI
+- the model is small enough to run with the app for MVP
+- keeping it in-process minimizes integration risk while the workflow is still being stabilized
+- SageMaker remains the hardening path if we later need a separate serving boundary
 
 Recommended packaging path:
 - export the classifier to **ONNX Runtime**
@@ -1116,13 +1118,13 @@ Likely affected areas:
 - admin endpoints
 - analytics queries
 
-### Pending 5: implementation plan for the guardrail SageMaker endpoint
+### Pending 5: future hardening plan for the guardrail SageMaker endpoint
 
 Status:
 - pending
 
 Goal:
-- productionize the semantic guardrail as a SageMaker-hosted inference component callable by the backend after the tutor draft returns
+- productionize the semantic guardrail as a SageMaker-hosted inference component callable by the backend after the tutor draft returns, once the in-process ECS MVP has been validated
 
 Deliverables:
 - packaged guardrail model artifact
@@ -1146,7 +1148,7 @@ Implementation steps:
    - or fail open with explicit logging, depending on product policy
 
 Acceptance criteria:
-- backend can call the guardrail endpoint synchronously after tutor draft generation
+- backend can call the guardrail endpoint synchronously after tutor draft generation if the guardrail is later externalized
 - endpoint returns `pass`, `log_only`, or `replace`
 - latency/error metrics are visible in CloudWatch and `pipeline_step_events`
 - the backend can swap between serverless and real-time without changing its internal contract
@@ -1280,8 +1282,9 @@ Add CloudWatch logs and alarms for:
 - Application database: Aurora PostgreSQL Serverless v2 direct connection for MVP
 - RDS Proxy: deferred until needed
 - Main tutor model: SageMaker Async
-- Guardrail runtime: SageMaker AI endpoint
-- First guardrail serving candidate: SageMaker Serverless Inference
+- Guardrail runtime: ECS Fargate in-process for MVP
+- Future guardrail hardening path: SageMaker AI endpoint
+- First guardrail serving candidate if externalized later: SageMaker Serverless Inference
 - Guardrail optimization target: ONNX Runtime
 - Offline parser / chunk / eval jobs: SageMaker Processing
 - Vector DB: Qdrant Cloud free tier as an accepted external exception
