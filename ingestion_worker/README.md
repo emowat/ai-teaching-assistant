@@ -39,6 +39,10 @@ group settings to be provided through `INGESTION_ECS_*` environment variables.
 See [deploy/README.md](/home/user/MIDS/w210/capstone/deploy/README.md) for the
 full wiring checklist and secret ARN mapping format.
 
+The worker image installs the parser dependencies from `requirements.txt`, so
+the container can parse PDFs, DOCX, PPTX, HTML, TXT, and Markdown files in the
+same build.
+
 ## Run locally
 
 Parse mode:

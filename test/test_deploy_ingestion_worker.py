@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from deploy.deploy_ingestion_worker import (
     build_backend_env_fragment,
@@ -141,3 +142,12 @@ def test_register_task_definition_uses_rendered_payload() -> None:
     assert response["taskDefinitionArn"].endswith(":3")
     assert response["family"] == "codingrabbit-ingestion-worker"
     assert response["revision"] == 3
+
+
+def test_worker_requirements_include_parser_dependencies() -> None:
+    requirements = Path("requirements.txt").read_text(encoding="utf-8")
+
+    assert "pymupdf" in requirements
+    assert "python-docx" in requirements
+    assert "python-pptx" in requirements
+    assert "beautifulsoup4" in requirements
