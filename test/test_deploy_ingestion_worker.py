@@ -151,3 +151,10 @@ def test_worker_requirements_include_parser_dependencies() -> None:
     assert "python-docx" in requirements
     assert "python-pptx" in requirements
     assert "beautifulsoup4" in requirements
+
+
+def test_deploy_script_loads_the_rendered_deploy_config() -> None:
+    script = Path("deploy/scripts/deploy-ingestion-worker.sh").read_text(encoding="utf-8")
+
+    assert "load_deploy_config \"${REPO_ROOT}\" \"${PYTHON}\"" in script
+    assert 'echo "    Config:   ${DEPLOY_CONFIG_PATH}"' in script

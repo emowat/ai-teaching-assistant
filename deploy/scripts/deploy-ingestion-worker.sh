@@ -111,6 +111,7 @@ if [[ ! -f "${PYTHON_SCRIPT}" ]]; then
   exit 1
 fi
 
+load_deploy_config "${REPO_ROOT}" "${PYTHON}"
 cd "${REPO_ROOT}"
 
 ARGS=("${ACTION}")
