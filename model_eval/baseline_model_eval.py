@@ -830,6 +830,111 @@ for name, (macro_s, micro_s) in datasets_to_eval.items():
   print(name, "macro_pass_rate:", macro_pass_rate, "|", "micro_pass_rate:", micro_pass_rate, "|", "drift:", drift["drift_rate"])
 print(json.dumps(total_summary, indent=2)) #print combined summary of all datasets
 
+"""#Results
+
+##Synthetic dataset
+"""
+
+#MACRO Results
+with open(f"/content/drive/My Drive/DATASCI210/Notebooks/Model_eval_Results/Baseline_Macro_synthetic_LLM-as-a-judge_c_plus_plus_dataset.json", 'r') as f: #open synthetic dataset file
+  dataset= json.load(f)
+df_macro_sythetic= pd.DataFrame(dataset)
+print("Macro Eval Results")
+display(df_macro_sythetic)
+print(f"macro_ per metric pass rate:")
+display(pd.DataFrame(per_metric_pass_rate(df_macro_sythetic, macro_metrics)).T)
+
+print("-"*200)
+print("\n")
+#MICRO Results
+with open(f"/content/drive/My Drive/DATASCI210/Notebooks/Model_eval_Results/Baseline_Micro_synthetic_LLM-as-a-judge_c_plus_plus_dataset.json", 'r') as f: #open synthetic dataset file
+  dataset= json.load(f)
+df_micro_sythetic= pd.DataFrame(dataset)
+print("Micro Eval Results")
+display(df_micro_sythetic)
+print(f"micro_ per metric pass rate:")
+display(pd.DataFrame(per_metric_pass_rate(df_micro_sythetic, micro_metrics)).T)
+
+print("-"*200)
+print("\n")
+#Drift Results
+with open(f"/content/drive/My Drive/DATASCI210/Notebooks/Model_eval_Results/Baseline_Drift_synthetic_LLM-as-a-judge_c_plus_plus_dataset.json", 'r') as f: #open synthetic dataset file
+  dataset= json.load(f)
+df_drift_sythetic= pd.DataFrame(dataset["per_convo"])
+print("Drift Eval Results")
+display(df_drift_sythetic)
+
+"""##Eval Dataset"""
+
+#MACRO Results
+with open(f"/content/drive/My Drive/DATASCI210/Notebooks/Model_eval_Results/Baseline_Macro_eval_LLM-as-a-judge_c_plus_plus_dataset.json", 'r') as f: #open synthetic dataset file
+  dataset= json.load(f)
+df_macro_eval= pd.DataFrame(dataset)
+print("Macro Eval Results")
+display(df_macro_eval)
+print(f"macro_ per metric pass rate:")
+display(pd.DataFrame(per_metric_pass_rate(df_macro_eval, macro_metrics)).T)
+
+print("-"*200)
+print("\n")
+#MICRO Results
+with open(f"/content/drive/My Drive/DATASCI210/Notebooks/Model_eval_Results/Baseline_Micro_eval_LLM-as-a-judge_c_plus_plus_dataset.json", 'r') as f: #open synthetic dataset file
+  dataset= json.load(f)
+df_micro_eval= pd.DataFrame(dataset)
+print("Micro Eval Results")
+display(df_micro_eval)
+print(f"micro_ per metric pass rate:")
+display(pd.DataFrame(per_metric_pass_rate(df_micro_eval, micro_metrics)).T)
+
+print("-"*200)
+print("\n")
+#Drift Results
+with open(f"/content/drive/My Drive/DATASCI210/Notebooks/Model_eval_Results/Baseline_Drift_eval_LLM-as-a-judge_c_plus_plus_dataset.json", 'r') as f: #open synthetic dataset file
+  dataset= json.load(f)
+df_drift_eval= pd.DataFrame(dataset["per_convo"])
+print("Drift Eval Results")
+display(df_drift_eval)
+
+"""##CS50 Dataset"""
+
+#MACRO Results
+with open(f"/content/drive/My Drive/DATASCI210/Notebooks/Model_eval_Results/Baseline_Macro_cs50_eval_LLM-as-a-judge_c_plus_plus_dataset.json", 'r') as f: #open synthetic dataset file
+  dataset= json.load(f)
+df_macro_cs50= pd.DataFrame(dataset)
+print("Macro Eval Results")
+display(df_macro_cs50)
+print(f"macro_ per metric pass rate:")
+display(pd.DataFrame(per_metric_pass_rate(df_macro_cs50, macro_metrics)).T)
+
+print("-"*200)
+print("\n")
+#MICRO Results
+with open(f"/content/drive/My Drive/DATASCI210/Notebooks/Model_eval_Results/Baseline_Micro_cs50_eval_LLM-as-a-judge_c_plus_plus_dataset.json", 'r') as f: #open synthetic dataset file
+  dataset= json.load(f)
+df_micro_cs50= pd.DataFrame(dataset)
+print("Micro Eval Results")
+display(df_micro_cs50)
+print(f"micro_ per metric pass rate:")
+display(pd.DataFrame(per_metric_pass_rate(df_micro_cs50, micro_metrics)).T)
+
+print("-"*200)
+print("\n")
+#Drift Results
+with open(f"/content/drive/My Drive/DATASCI210/Notebooks/Model_eval_Results/Baseline_Drift_cs50_eval_LLM-as-a-judge_c_plus_plus_dataset.json", 'r') as f: #open synthetic dataset file
+  dataset= json.load(f)
+df_drift_cs50= pd.DataFrame(dataset["per_convo"])
+print("Drift Eval Results")
+display(df_drift_cs50)
+
+"""##Total Summary"""
+
+#All Datasets Results
+with open(f"/content/drive/My Drive/DATASCI210/Notebooks/Model_eval_Results/Baseline_Summary_LLM-as-a-judge_c_plus_plus_dataset.json", 'r') as f: #open synthetic dataset file
+  dataset= json.load(f)
+df_summary= pd.DataFrame(dataset)
+print("Summary Eval Results")
+display(df_summary)
+
 """#Live Generation"""
 
 from rag import setup_qdrant, close_client, generate_response, QueryInput, ASTFeatures, AssistMode
