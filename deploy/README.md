@@ -291,6 +291,114 @@ export INGESTION_ECS_SECRET_ARNS_JSON='{"INGESTION_JOBS_DATABASE_URL":"arn:aws:s
 
 ---
 
+## AWS wiring checklist for ingestion
+
+Use this when you are ready to make the on-demand ingestion worker live in AWS.
+
+### 1. Build and push the worker image to ECR
+
+Create or reuse an ECR repository for the ingestion worker, then build and push
+the image from the repo root:
+
+```bash
+docker build -f ingestion_worker/Dockerfile -t codingrabbit-ingestion:latest .
+docker tag codingrabbit-ingestion:latest 123456789012.dkr.ecr.us-east-1.amazonaws.com/codingrabbit-ingestion:latest
+docker push 123456789012.dkr.ecr.us-east-1.amazonaws.com/codingrabbit-ingestion:latest
+```
+
+The helper expects the final image URI in `INGESTION_ECS_IMAGE_URI`.
+
+### 2. Create the ECS task roles
+
+You need two roles:
+
+- **Task execution role**
+  - trusted by `ecs-tasks.amazonaws.com`
+  - permissions for ECR image pulls, CloudWatch Logs, and Secrets Manager value injection
+- **Task role**
+  - trusted by `ecs-tasks.amazonaws.com`
+  - permissions for the worker’s AWS calls at runtime, primarily S3 read/write for uploads, parsed envelopes, and prepared chunks
+
+The worker itself reads Qdrant and PostgreSQL over the network, so those do not need AWS IAM permissions.
+
+### 3. Register the ECS task definition
+
+Set the task-definition values, then register it through the helper:
+
+```bash
+export INGESTION_ECS_IMAGE_URI=123456789012.dkr.ecr.us-east-1.amazonaws.com/codingrabbit-ingestion:latest
+export INGESTION_ECS_EXECUTION_ROLE_ARN=arn:aws:iam::123456789012:role/ecsTaskExecutionRole
+export INGESTION_ECS_TASK_ROLE_ARN=arn:aws:iam::123456789012:role/codingrabbit-ingestion-task
+export INGESTION_ECS_TASK_FAMILY=codingrabbit-ingestion-worker
+export INGESTION_ECS_LOG_GROUP=/ecs/codingrabbit-ingestion-worker
+export INGESTION_ECS_LOG_STREAM_PREFIX=ecs
+export INGESTION_ECS_SECRET_ARNS_JSON='{"INGESTION_JOBS_DATABASE_URL":"arn:aws:secretsmanager:...","QDRANT_API_KEY":"arn:aws:secretsmanager:..."}'
+
+./deploy/scripts/deploy-ingestion-worker.sh register-task-definition
+```
+
+The helper will register a task definition with:
+
+- `awsvpc` networking
+- `FARGATE` compatibility
+- the worker container name from `INGESTION_ECS_CONTAINER_NAME`
+- CloudWatch Logs configuration
+- secret mappings for the worker env vars listed below
+
+### 4. Copy the backend launch settings into `.env`
+
+The backend launcher needs the ECS control-plane values, not the image URI:
+
+```bash
+./deploy/scripts/deploy-ingestion-worker.sh render-backend-env
+```
+
+Recommended backend `.env` values:
+
+| Variable | Purpose |
+|---|---|
+| `AWS_REGION` | ECS region |
+| `AWS_PROFILE` | Optional named profile for local admin launches |
+| `INGESTION_ECS_CLUSTER` | ECS cluster name |
+| `INGESTION_ECS_TASK_DEFINITION` | Task definition name or ARN |
+| `INGESTION_ECS_CONTAINER_NAME` | Container name inside the task definition |
+| `INGESTION_ECS_LAUNCH_TYPE` | Usually `FARGATE` |
+| `INGESTION_ECS_PLATFORM_VERSION` | Usually `LATEST` |
+| `INGESTION_ECS_ASSIGN_PUBLIC_IP` | Usually `ENABLED` for dev launches |
+| `INGESTION_ECS_SUBNETS` | Comma-separated subnet IDs |
+| `INGESTION_ECS_SECURITY_GROUPS` | Comma-separated security group IDs |
+
+The worker task definition itself should keep its own runtime env values for:
+
+- `INGESTION_JOB_ID`
+- `INGESTION_JOB_KIND`
+- `INGESTION_JOBS_DATABASE_URL` or `COURSE_REGISTRY_DATABASE_URL`
+- `QDRANT_URL`
+- `QDRANT_API_KEY`
+- `EMBEDDING_MODEL`
+- `QDRANT_COLLECTION_MIT13`
+- `QDRANT_COLLECTION_MIT14`
+- `QDRANT_COLLECTION_CS50`
+- `QDRANT_COLLECTION_GUIDELINES`
+
+### 5. Smoke test the control plane
+
+After the task definition and backend `.env` values are in place:
+
+1. Restart `rag_eng`
+2. Call the admin launch endpoint:
+   - `POST /admin/ingestion/launch`
+3. Poll job status:
+   - `GET /admin/ingestion/jobs/{job_id}`
+4. Confirm the worker marks the Aurora job complete and activates the corpus version for `chunk-index`
+
+If the ECS task launches but the job stays queued or failed, inspect:
+- CloudWatch logs for the ingestion task
+- the `ecs_response` and `message` fields returned by the job API
+- the task-role / execution-role permissions and secret mappings
+
+---
+
 ### `deploy-custom-model-to-sagemaker-ai.sh`
 
 **Purpose:** Create and manage a **SageMaker Asynchronous Inference** endpoint that loads the S3 model artifact.
