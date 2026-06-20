@@ -19,7 +19,7 @@ Locked decisions:
 - Aurora PostgreSQL Serverless v2 becomes the application system of record
 - Main tutor model stays on SageMaker Async
 - Post-LLM guardrail stays in the ECS Fargate app container for MVP, with SageMaker AI as the later hardening path
-- Offline parser / chunk / embed / eval jobs prefer SageMaker Processing
+- Offline parser / chunk / embed jobs run as on-demand ECS Fargate tasks; evaluation jobs remain batch-oriented and can stay on SageMaker Processing until revisited
 - Vector database remains Qdrant Cloud as an accepted external free-tier exception for the MVP
 - Dynamic professor-uploaded course corpora are in scope, not just fixed MIT/Harvard content
 - Raw model traces and large telemetry payloads are stored in S3
@@ -62,7 +62,7 @@ This repository is **not end-to-end complete yet**. The plan now separates:
   runtime path and analytics consumers are still pending
 - guardrail logic now runs in-process in the ECS app container for MVP, while
   the SageMaker endpoint remains a later hardening path
-- chunk / index Processing pipeline is only planned
+- chunk / index ingestion pipeline is only planned and now targets on-demand ECS Fargate tasks
 - analytics frontend is still stubbed
 
 ### Immediate next step
@@ -74,7 +74,7 @@ Recommended order after that:
 1. wire the ECS backend runtime to Aurora and verify live course resolution in AWS
 2. add session / telemetry persistence and the first analytics rollups
 3. keep the guardrail in ECS Fargate for MVP and move it to a SageMaker endpoint only if benchmarks justify the split
-4. add the SageMaker Processing chunk/index pipeline for uploaded course content
+4. add the on-demand ECS Fargate chunk/index pipeline for uploaded course content
 5. backfill the frontend analytics surface once the data contracts exist
 
 ### Immediate backend slice checklist
@@ -436,7 +436,7 @@ Input:
 - `s3://<bucket>/teacher_uploads/<course_id>/...`
 
 Implementation:
-- run `data_ingestion/s3_teacher_file_parser.py` as a **SageMaker Processing job**
+- run `data_ingestion/s3_teacher_file_parser.py` as an **on-demand ECS Fargate task**
 
 Output:
 - `s3://<bucket>/parsed_json/<course_id>/...`
@@ -450,8 +450,8 @@ Supported formats currently handled by the script:
 - HTML
 
 Reason:
-- this is data transformation work, which SageMaker Processing is designed for
-- using Processing lets this batch stage consume SageMaker AI credits
+- this is data transformation work, but it does not need an always-on service
+- an on-demand Fargate task keeps the parser off the live request path
 
 ### Stage B: Chunk, embed, and index parsed envelopes
 
@@ -460,7 +460,7 @@ Input:
 
 Implementation requirement:
 - add a new chunk/index job that understands the parser envelope format
-- run it as a **SageMaker Processing job**
+- run it as an **on-demand ECS Fargate task**
 
 Output:
 - optional prepared chunk artifacts in S3
@@ -509,7 +509,7 @@ Trigger methods:
 - EventBridge Scheduler for recurring jobs and reprocessing
 
 Orchestration policy:
-- backend launches SageMaker Processing jobs for parser / chunk-index / eval
+- backend launches on-demand ECS Fargate tasks for parser / chunk-index
 - backend launches SageMaker endpoints for model-serving components
 - backend stores job metadata and latest status in Aurora
 
@@ -548,9 +548,9 @@ Keep non-secret deploy settings in repo config and task / job definitions:
 - backend ECS service -> Qdrant Cloud over HTTPS
 - backend ECS service -> Aurora PostgreSQL Serverless v2 directly
 - backend ECS service -> SageMaker Async tutor endpoint
-- backend ECS service -> SageMaker guardrail endpoint
-- backend ECS service -> SageMaker Processing API for offline jobs
-- SageMaker Processing jobs -> S3 + Qdrant Cloud
+- backend ECS service -> in-process guardrail logic for MVP; future SageMaker guardrail endpoint if externalized later
+- backend ECS service -> ECS RunTask / task launcher for offline ingestion jobs
+- ECS Fargate ingestion tasks -> S3 + Qdrant Cloud
 
 Keep all AWS-managed components in the same region.
 
@@ -574,10 +574,10 @@ Add admin/backend control endpoints for offline jobs:
 - `GET /admin/jobs/{job_id}`
 
 These endpoints should:
-- launch SageMaker Processing jobs
+- launch on-demand ECS Fargate tasks
 - return job IDs
 - expose status and latest outcome
-- read status from SageMaker + Aurora + S3-backed artifacts
+- read status from ECS + Aurora + S3-backed artifacts
 
 ## Session and analytics endpoints
 
@@ -1159,23 +1159,23 @@ Likely affected areas:
 - backend tracing/wrapper code
 - deployment scripts/infrastructure config
 
-### Pending 6: implementation plan for the SageMaker Processing chunk/index pipeline
+### Pending 6: implementation plan for the ECS Fargate chunk/index pipeline
 
 Status:
 - pending
 
 Goal:
-- convert parsed S3 document envelopes into chunked, embedded, versioned course corpora stored in Qdrant Cloud
+- convert parsed S3 document envelopes into chunked, embedded, versioned course corpora stored in Qdrant Cloud using on-demand ECS Fargate tasks
 
 Deliverables:
-- one Processing entrypoint that reads parser envelopes from S3
+- one ECS task entrypoint that reads parser envelopes from S3
 - chunking logic aligned with current RAG retrieval needs
 - embedding + Qdrant upsert logic
 - status handoff back into Aurora `course_corpus_versions`
 
 Implementation steps:
 1. define the parsed envelope schema consumed from `parsed_json/<course_id>/`
-2. implement a Processing job entrypoint that:
+2. implement an ECS task entrypoint that:
    - reads envelopes from S3
    - normalizes text blocks
    - creates deterministic chunk IDs
@@ -1185,7 +1185,7 @@ Implementation steps:
 5. write prepared chunk artifacts and job summaries back to S3
 6. update `course_corpus_versions` status only after successful upsert completion
 7. add idempotency rules so reruns do not duplicate chunks
-8. add processing-job status polling and surfacing through backend admin APIs
+8. add ECS task status polling and surfacing through backend admin APIs
 
 Acceptance criteria:
 - one uploaded course can move from parsed envelopes to a retrievable Qdrant collection without manual local scripts
@@ -1197,6 +1197,7 @@ Likely affected areas:
 - `data_ingestion/`
 - RAG indexing code
 - backend admin job launch/status endpoints
+- ECS task definition / container command wiring
 - course registry persistence
 
 ## Operational Readiness and Health
@@ -1214,8 +1215,8 @@ Add CloudWatch logs and alarms for:
 - Aurora connection saturation / error alarms
 - SageMaker Async failures and backlog
 - guardrail endpoint latency / error rate
-- parser Processing job failures
-- chunk/index Processing job failures
+- parser Fargate task failures
+- chunk/index Fargate task failures
 - evaluation Processing job failures
 
 ## Test Plan
@@ -1237,8 +1238,8 @@ Add CloudWatch logs and alarms for:
 ## Offline ingestion
 
 - upload files to `teacher_uploads/<course_id>/`
-- parser Processing job writes valid envelopes to `parsed_json/<course_id>/`
-- chunk/index Processing job converts envelopes into retrievable chunks
+- parser Fargate task writes valid envelopes to `parsed_json/<course_id>/`
+- chunk/index Fargate task converts envelopes into retrievable chunks
 - Qdrant collection is created or updated correctly
 - course registry marks ingestion success only after index completion
 
@@ -1265,7 +1266,7 @@ Add CloudWatch logs and alarms for:
 ## Key Risks and Constraints
 
 - SageMaker Async with scale-to-zero is still the main latency risk.
-- The teacher parser is merged, but the S3 envelope -> chunk -> embedding -> Qdrant stage still needs to be implemented as a first-class processing job.
+- The teacher parser is merged, but the S3 envelope -> chunk -> embedding -> Qdrant stage still needs to be implemented as a first-class ECS Fargate task.
 - Dynamic course routing is not deployment-safe until the backend stops relying on implicit/default course selection.
 - Analytics are not production-ready until Aurora-backed session + telemetry capture exists.
 - Full prompt/code/message trace storage introduces privacy and retention obligations; raw traces should be access-controlled and retention-scoped.
@@ -1286,7 +1287,8 @@ Add CloudWatch logs and alarms for:
 - Future guardrail hardening path: SageMaker AI endpoint
 - First guardrail serving candidate if externalized later: SageMaker Serverless Inference
 - Guardrail optimization target: ONNX Runtime
-- Offline parser / chunk / eval jobs: SageMaker Processing
+- Offline parser / chunk / embed jobs: ECS Fargate on-demand tasks
+- Evaluation jobs: SageMaker Processing for now
 - Vector DB: Qdrant Cloud free tier as an accepted external exception
 - External hosted-model providers: OpenAI/Cohere testing-only
 - Future hosted-model replacement path: Amazon Bedrock where appropriate
