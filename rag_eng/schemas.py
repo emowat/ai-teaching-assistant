@@ -125,10 +125,12 @@ class HealthResponse(BaseModel):
     course_registry_configured: bool = False
     cohere_configured: bool
     openai_configured: bool = False
+    bedrock_configured: bool = False
     qdrant_reachable: bool
     course_registry_reachable: bool = False
     cohere_reachable: bool = False
     openai_reachable: bool = False
+    bedrock_reachable: bool = False
     message: str = ""
 
 
@@ -156,7 +158,7 @@ class IndexRebuildResponse(BaseModel):
 class ModelRouteConfig(BaseModel):
     """Non-secret provider/model pair saved by the admin UI."""
 
-    provider: Literal["cohere", "openai", "ollama", "sagemaker"]
+    provider: Literal["cohere", "openai", "ollama", "sagemaker", "bedrock"]
     model: str = Field(default="", max_length=200)
 
     @model_validator(mode="after")

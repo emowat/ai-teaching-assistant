@@ -104,6 +104,10 @@ tabs expose the runtime diagnostics used for model and RAG tuning:
 - Pipeline Console: retrieval presets, routing / trace overrides, and the
   guardrailed answer path
 
+The AI Models panel in the admin dashboard can route RAG and chat through
+Cohere, OpenAI, Bedrock, Ollama, or SageMaker. Under Bedrock, the available
+model options include Amazon Nova 2 Lite and Anthropic Claude 3.5 Haiku.
+
 The Pipeline tab exposes the retrieval presets used for RAG tuning:
 - experiment baseline at `K=8` with `similarity` reranking
 - MMR presets at `lambda=0.5`, `0.7`, and `0.9`

@@ -77,6 +77,10 @@ class ModelRouteConfig:
     model: str
 
 
+_BEDROCK_RAG_DEFAULT_MODEL = "us.amazon.nova-2-lite-v1:0"
+_BEDROCK_CHAT_DEFAULT_MODEL = "us.amazon.nova-2-lite-v1:0"
+
+
 def load_inference_config(path: Path | None = None) -> InferenceConfig:
     """Load runtime provider selections and legacy inference defaults."""
     if path is None:
@@ -138,6 +142,8 @@ def load_inference_config(path: Path | None = None) -> InferenceConfig:
         if rag_provider == "sagemaker"
         else "gpt-5.4-mini"
         if rag_provider == "openai"
+        else _BEDROCK_RAG_DEFAULT_MODEL
+        if rag_provider == "bedrock"
         else "command-xlarge-nightly"
     )
     chat_default_model = (
@@ -145,6 +151,8 @@ def load_inference_config(path: Path | None = None) -> InferenceConfig:
         if chat_provider == "sagemaker"
         else "gpt-5.4-mini"
         if chat_provider == "openai"
+        else _BEDROCK_CHAT_DEFAULT_MODEL
+        if chat_provider == "bedrock"
         else model
     )
 

@@ -50,16 +50,42 @@ const modelShare = [
 ];
 
 const CUSTOM_MODEL_VALUE = "__custom__";
-const OPENAI_MODEL_OPTIONS = ["gpt-5.4-mini", "gpt-5.4", "gpt-5.5"];
-const COHERE_MODEL_OPTIONS = ["command-r", "command-r-plus", "command-xlarge-nightly"];
-const OLLAMA_MODEL_OPTIONS = ["qwen3.5:9b", "llama3.1:8b", "llama3.2:3b"];
+interface ModelOption {
+  label: string;
+  value: string;
+}
 
-function getModelOptions(provider: LlmProvider): string[] {
+const OPENAI_MODEL_OPTIONS: ModelOption[] = [
+  { label: "gpt-5.4-mini", value: "gpt-5.4-mini" },
+  { label: "gpt-5.4", value: "gpt-5.4" },
+  { label: "gpt-5.5", value: "gpt-5.5" },
+];
+const COHERE_MODEL_OPTIONS: ModelOption[] = [
+  { label: "command-r", value: "command-r" },
+  { label: "command-r-plus", value: "command-r-plus" },
+  { label: "command-xlarge-nightly", value: "command-xlarge-nightly" },
+];
+const BEDROCK_MODEL_OPTIONS: ModelOption[] = [
+  { label: "Amazon Nova 2 Lite", value: "us.amazon.nova-2-lite-v1:0" },
+  {
+    label: "Anthropic Claude 3.5 Haiku",
+    value: "us.anthropic.claude-3-5-haiku-20241022-v1:0",
+  },
+];
+const OLLAMA_MODEL_OPTIONS: ModelOption[] = [
+  { label: "qwen3.5:9b", value: "qwen3.5:9b" },
+  { label: "llama3.1:8b", value: "llama3.1:8b" },
+  { label: "llama3.2:3b", value: "llama3.2:3b" },
+];
+
+function getModelOptions(provider: LlmProvider): ModelOption[] {
   switch (provider) {
     case "openai":
       return OPENAI_MODEL_OPTIONS;
     case "cohere":
       return COHERE_MODEL_OPTIONS;
+    case "bedrock":
+      return BEDROCK_MODEL_OPTIONS;
     case "ollama":
       return OLLAMA_MODEL_OPTIONS;
     case "sagemaker":
@@ -74,11 +100,13 @@ function resolveModelValue(selected: string, customValue: string): string {
 function getDefaultModel(provider: LlmProvider): string {
   switch (provider) {
     case "openai":
-      return "gpt-5.4-mini";
+      return OPENAI_MODEL_OPTIONS[0].value;
     case "cohere":
-      return COHERE_MODEL_OPTIONS[0];
+      return COHERE_MODEL_OPTIONS[0].value;
+    case "bedrock":
+      return BEDROCK_MODEL_OPTIONS[0].value;
     case "ollama":
-      return OLLAMA_MODEL_OPTIONS[0];
+      return OLLAMA_MODEL_OPTIONS[0].value;
     case "sagemaker":
       return "";
   }
@@ -178,12 +206,14 @@ export function AdminDashboard({
         setConfig(data);
         setRagProvider(data.rag.provider);
         const ragOptions = getModelOptions(data.rag.provider);
-        setRagModelChoice(ragOptions.includes(data.rag.model) ? data.rag.model : CUSTOM_MODEL_VALUE);
-        setRagCustomModel(ragOptions.includes(data.rag.model) ? "" : data.rag.model);
+        const ragHasModel = ragOptions.some((option) => option.value === data.rag.model);
+        setRagModelChoice(ragHasModel ? data.rag.model : CUSTOM_MODEL_VALUE);
+        setRagCustomModel(ragHasModel ? "" : data.rag.model);
         setChatProvider(data.chat.provider);
         const chatOptions = getModelOptions(data.chat.provider);
-        setChatModelChoice(chatOptions.includes(data.chat.model) ? data.chat.model : CUSTOM_MODEL_VALUE);
-        setChatCustomModel(chatOptions.includes(data.chat.model) ? "" : data.chat.model);
+        const chatHasModel = chatOptions.some((option) => option.value === data.chat.model);
+        setChatModelChoice(chatHasModel ? data.chat.model : CUSTOM_MODEL_VALUE);
+        setChatCustomModel(chatHasModel ? "" : data.chat.model);
         setOpenaiBaseUrl(data.openai_base_url || "https://api.openai.com/v1");
       })
       .catch((err: Error) => {
@@ -335,8 +365,8 @@ export function AdminDashboard({
             }}
           >
             {options.map((option) => (
-              <option key={option} value={option}>
-                {option}
+              <option key={option.value} value={option.value}>
+                {option.label}
               </option>
             ))}
             <option value={CUSTOM_MODEL_VALUE}>Custom...</option>
@@ -518,7 +548,7 @@ export function AdminDashboard({
                           setRagCustomModel("");
                           return;
                         }
-                        if (currentValue && nextOptions.includes(currentValue)) {
+                        if (currentValue && nextOptions.some((option) => option.value === currentValue)) {
                           setRagModelChoice(currentValue);
                           setRagCustomModel("");
                           return;
@@ -536,6 +566,7 @@ export function AdminDashboard({
                     >
                       <option value="cohere">Cohere</option>
                       <option value="openai">OpenAI</option>
+                      <option value="bedrock">Bedrock</option>
                     </select>
                   </label>
                   {renderModelPicker(
@@ -563,7 +594,7 @@ export function AdminDashboard({
                           setChatCustomModel("");
                           return;
                         }
-                        if (currentValue && nextOptions.includes(currentValue)) {
+                        if (currentValue && nextOptions.some((option) => option.value === currentValue)) {
                           setChatModelChoice(currentValue);
                           setChatCustomModel("");
                           return;
@@ -582,6 +613,7 @@ export function AdminDashboard({
                       <option value="ollama">Ollama</option>
                       <option value="sagemaker">SageMaker</option>
                       <option value="openai">OpenAI</option>
+                      <option value="bedrock">Bedrock</option>
                     </select>
                   </label>
                   {renderModelPicker(

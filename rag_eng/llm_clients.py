@@ -20,6 +20,17 @@ class OpenAIChatConfig:
     top_p: float = 0.9
 
 
+@dataclass(frozen=True)
+class BedrockChatConfig:
+    region: str
+    model_id: str
+    timeout_seconds: float = 120.0
+    temperature: float = 0.7
+    top_p: float = 0.9
+    max_tokens: int = 2048
+    profile_name: str | None = None
+
+
 def _chat_completion_url(base_url: str) -> str:
     return f"{base_url.rstrip('/')}/chat/completions"
 
@@ -42,6 +53,44 @@ def _normalize_messages(messages: list[dict]) -> list[dict[str, str]]:
         content = message.get("content", "")
         normalized.append({"role": role, "content": str(content)})
     return normalized
+
+
+def _normalize_bedrock_messages(messages: list[dict]) -> tuple[list[dict], list[dict]]:
+    """Split system prompts and normalize chat messages for Bedrock Converse."""
+    system_blocks: list[dict] = []
+    normalized_messages: list[dict] = []
+    for message in messages:
+        role = str(message.get("role", "user"))
+        content = str(message.get("content", "")).strip()
+        if not content:
+            continue
+        if role == "system":
+            system_blocks.append({"text": content})
+            continue
+        normalized_messages.append(
+            {
+                "role": role,
+                "content": [{"text": content}],
+            }
+        )
+    return system_blocks, normalized_messages
+
+
+def _extract_bedrock_content(payload: dict) -> str:
+    """Extract assistant text from a Bedrock Converse response."""
+    output = payload.get("output") or {}
+    message = output.get("message") or {}
+    content = message.get("content") or []
+    parts: list[str] = []
+    for block in content:
+        if not isinstance(block, dict):
+            continue
+        text = block.get("text")
+        if isinstance(text, str):
+            parts.append(text)
+    if parts:
+        return "".join(parts)
+    return ""
 
 
 def invoke_openai_chat_completion(prompt: str, config: OpenAIChatConfig) -> str:
@@ -75,6 +124,51 @@ async def ainvoke_openai_chat_completion(
         response = await client.post(_chat_completion_url(config.base_url), json=payload)
         response.raise_for_status()
         return _extract_chat_content(response.json())
+
+
+def invoke_bedrock_chat_completion(
+    messages: list[dict],
+    config: BedrockChatConfig,
+) -> str:
+    """Synchronously invoke Bedrock Converse for prompt- or message-based flows."""
+    import boto3
+    from botocore.config import Config as BotocoreConfig
+
+    system_blocks, normalized_messages = _normalize_bedrock_messages(messages)
+    payload: dict[str, object] = {
+        "modelId": config.model_id,
+        "messages": normalized_messages,
+        "inferenceConfig": {
+            "maxTokens": config.max_tokens,
+            "temperature": config.temperature,
+            "topP": config.top_p,
+        },
+    }
+    if system_blocks:
+        payload["system"] = system_blocks
+
+    session = boto3.Session(
+        profile_name=config.profile_name,
+        region_name=config.region,
+    )
+    client = session.client(
+        "bedrock-runtime",
+        region_name=config.region,
+        config=BotocoreConfig(
+            connect_timeout=config.timeout_seconds,
+            read_timeout=config.timeout_seconds,
+        ),
+    )
+    response = client.converse(**payload)
+    return _extract_bedrock_content(response)
+
+
+async def ainvoke_bedrock_chat_completion(
+    messages: list[dict],
+    config: BedrockChatConfig,
+) -> str:
+    """Asynchronously invoke Bedrock Converse using a worker thread."""
+    return await asyncio.to_thread(invoke_bedrock_chat_completion, messages, config)
 
 
 async def chunk_text(text: str, chunk_size: int = 20) -> AsyncIterator[bytes]:

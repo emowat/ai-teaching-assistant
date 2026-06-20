@@ -1,6 +1,6 @@
 import { API_BASE_URL } from "./client";
 
-export type LlmProvider = "cohere" | "openai" | "ollama" | "sagemaker";
+export type LlmProvider = "cohere" | "openai" | "ollama" | "sagemaker" | "bedrock";
 
 export interface LlmRouteConfig {
   provider: LlmProvider;

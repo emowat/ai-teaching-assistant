@@ -17,7 +17,10 @@ from rag_eng.config import Settings, get_inference_config, get_settings
 from rag_eng.indexing import ensure_index, rebuild_index
 from rag_eng.inference import run_inference
 from rag_eng.llm_clients import (
+    BedrockChatConfig,
+    ainvoke_bedrock_chat_completion,
     OpenAIChatConfig,
+    invoke_bedrock_chat_completion,
     ainvoke_openai_chat_completion,
     chunk_text,
     invoke_openai_chat_completion,
@@ -46,6 +49,40 @@ class _PromptAdapter:
 
     def invoke(self, prompt: str):
         return SimpleNamespace(content=self._fn(prompt))
+
+
+def _build_bedrock_config(
+    *,
+    model_id: str,
+    settings: Settings,
+    temperature: float,
+    top_p: float,
+    max_tokens: int,
+) -> BedrockChatConfig:
+    """Create a Bedrock runtime config from the current app settings."""
+    return BedrockChatConfig(
+        region=settings.aws_region,
+        model_id=model_id,
+        timeout_seconds=120.0,
+        temperature=temperature,
+        top_p=top_p,
+        max_tokens=max_tokens,
+        profile_name=settings.aws_profile,
+    )
+
+
+def _bedrock_ready(settings: Settings) -> bool:
+    """Return whether the app can create a Bedrock client with credentials."""
+    import boto3
+
+    try:
+        session = boto3.Session(
+            profile_name=settings.aws_profile or None,
+            region_name=settings.aws_region,
+        )
+        return session.get_credentials() is not None
+    except Exception:
+        return False
 
 
 def _trace_payload(trace: TraceContext) -> dict[str, Any]:
@@ -284,6 +321,21 @@ def _build_llm():
         )
         return _PromptAdapter(lambda prompt: invoke_openai_chat_completion(prompt, config))
 
+    if route.provider == "bedrock":
+        config = _build_bedrock_config(
+            model_id=route.model,
+            settings=settings,
+            temperature=0.3,
+            top_p=0.9,
+            max_tokens=2048,
+        )
+        return _PromptAdapter(
+            lambda prompt: invoke_bedrock_chat_completion(
+                [{"role": "user", "content": prompt}],
+                config,
+            )
+        )
+
     raise ValueError(f"Unsupported RAG provider: {route.provider}")
 
 
@@ -406,6 +458,7 @@ def get_health() -> HealthResponse:
     )
     cohere_configured = bool(settings.cohere_api_key)
     openai_configured = bool(settings.openai_api_key)
+    bedrock_configured = _bedrock_ready(settings)
     course_registry_status = get_course_registry_status()
     qdrant_reachable = False
     message = "Ready."
@@ -428,6 +481,8 @@ def get_health() -> HealthResponse:
             return cohere_configured
         if provider == "openai":
             return openai_configured
+        if provider == "bedrock":
+            return bedrock_configured
         if provider in {"ollama", "sagemaker"}:
             return True
         return False
@@ -439,11 +494,15 @@ def get_health() -> HealthResponse:
             message = "Cohere API key is not configured."
         elif runtime.rag.provider == "openai":
             message = "OpenAI API key is not configured."
+        elif runtime.rag.provider == "bedrock":
+            message = "AWS credentials for Bedrock are not configured."
     if message == "Ready." and not chat_ready:
         if runtime.chat.provider == "cohere":
             message = "Cohere API key is not configured."
         elif runtime.chat.provider == "openai":
             message = "OpenAI API key is not configured."
+        elif runtime.chat.provider == "bedrock":
+            message = "AWS credentials for Bedrock are not configured."
 
     course_registry_ready = (
         not course_registry_status.configured or course_registry_status.reachable
@@ -463,10 +522,12 @@ def get_health() -> HealthResponse:
         course_registry_configured=course_registry_status.configured,
         cohere_configured=cohere_configured,
         openai_configured=openai_configured,
+        bedrock_configured=bedrock_configured,
         qdrant_reachable=qdrant_reachable,
         course_registry_reachable=course_registry_status.reachable,
         cohere_reachable=cohere_configured,
         openai_reachable=openai_configured,
+        bedrock_reachable=bedrock_configured,
         message=message,
     )
 
@@ -728,6 +789,70 @@ async def run_chat(
                 },
             )
             return _chat_response_payload_with_guardrail(answer, trace, guardrail)
+
+        if chat_route.provider == "bedrock":
+            config = _build_bedrock_config(
+                model_id=chat_route.model,
+                settings=settings,
+                temperature=0.7,
+                top_p=0.9,
+                max_tokens=2048,
+            )
+            full_system = f"{system_prompt}\n{rag_context}"
+            api_messages.insert(0, {"role": "system", "content": full_system})
+            telemetry_store.record_event(
+                trace,
+                event_type="llm_started",
+                stage="llm_inference",
+                status="started",
+                model_provider="bedrock",
+                model_name=chat_route.model,
+                metadata=retrieval_metadata,
+            )
+            llm_started = time.perf_counter()
+            text = await ainvoke_bedrock_chat_completion(api_messages, config)
+            text, guardrail = _apply_pipeline_guardrails(
+                trace=trace,
+                telemetry_store=telemetry_store,
+                answer=text,
+                user_query=ctx["student_message"],
+                student_code=ctx["code_raw"],
+                conversation_history=conversation_history,
+                retrieval_metadata=retrieval_metadata,
+            )
+            llm_latency_ms = int((time.perf_counter() - llm_started) * 1000)
+            telemetry_store.record_event(
+                trace,
+                event_type="llm_finished",
+                stage="llm_inference",
+                status="completed",
+                latency_ms=llm_latency_ms,
+                model_provider="bedrock",
+                model_name=chat_route.model,
+                metadata={
+                    **retrieval_metadata,
+                    "answer_chars": len(text),
+                    **_guardrail_summary(guardrail),
+                },
+            )
+            telemetry_store.finish_turn(
+                trace,
+                status="completed",
+                latency_ms=int((time.perf_counter() - started_at) * 1000),
+                model_provider="bedrock",
+                model_name=chat_route.model,
+                answer_chars=len(text),
+                metadata={
+                    **retrieval_metadata,
+                    "retrieval_latency_ms": retrieval_latency_ms,
+                    "llm_latency_ms": llm_latency_ms,
+                    "answer_chars": len(text),
+                    **_guardrail_summary(guardrail),
+                },
+            )
+            if stream:
+                return chunk_text(text, runtime.sagemaker.streaming_chunk_size)
+            return _chat_response_payload_with_guardrail(text, trace, guardrail)
 
         if chat_route.provider == "openai":
             if not settings.openai_api_key:

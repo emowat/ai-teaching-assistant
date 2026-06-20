@@ -21,7 +21,9 @@ FastAPI service layer for the codingrabbit.dev capstone. Provides the RAG query 
 1. Copy `.env.example` to `.env` at the repo root.
 2. Fill in `QDRANT_URL`, `QDRANT_API_KEY`, `COHERE_API_KEY`, and Cognito variables.
 3. Fill in `OPENAI_API_KEY` if you plan to route either chat or RAG through OpenAI.
-4. Install dependencies:
+4. Fill in `AWS_REGION` and optionally `AWS_PROFILE` if you plan to route either
+   chat or RAG through Amazon Bedrock.
+5. Install dependencies:
 
 ```bash
 uv sync
@@ -29,7 +31,7 @@ uv sync
 pip install -r requirements.txt
 ```
 
-5. If you have the Aurora course registry URL, verify the runtime lookup path:
+6. If you have the Aurora course registry URL, verify the runtime lookup path:
 
 ```bash
 export COURSE_REGISTRY_DATABASE_URL="postgresql://user:password@aurora-endpoint:5432/postgres?sslmode=require"
@@ -151,8 +153,13 @@ docker run --rm -p 8001:8001 --env-file .env rag-eng
 | `ADMIN_TOKEN` | — | Bearer token for admin endpoints |
 | `OPENAI_API_KEY` | — | OpenAI API key for admin-selected OpenAI routes |
 | `OPENAI_BASE_URL` | `https://api.openai.com/v1` | Optional OpenAI-compatible base URL |
+| `AWS_REGION` | `us-east-1` | AWS region used for Bedrock inference profiles |
+| `AWS_PROFILE` | — | Optional AWS profile for Bedrock credentials |
 | `COURSE_REGISTRY_DATABASE_URL` | — | Optional Aurora/PostgreSQL URL for course registry lookups |
 | `DATABASE_URL` | — | Generic Aurora/PostgreSQL fallback URL for course registry lookups |
 | `RESTART_COMMAND` | — | Optional shell command to run when the admin presses restart |
 
 The editable non-secret model routing settings live in `rag_eng/runtime_config.yaml`.
+`openai`, `cohere`, `ollama`, `sagemaker`, and `bedrock` are all valid provider
+choices in the admin UI. Bedrock uses Converse on `bedrock-runtime` and supports
+models such as Amazon Nova 2 Lite and Anthropic Claude 3.5 Haiku.

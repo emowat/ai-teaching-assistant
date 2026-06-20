@@ -24,7 +24,7 @@ Locked decisions:
 - Dynamic professor-uploaded course corpora are in scope, not just fixed MIT/Harvard content
 - Raw model traces and large telemetry payloads are stored in S3
 - OpenAI and Cohere remain available only as testing adapters, not as funded production dependencies
-- Future hosted-model replacement target is AWS-native model access through Amazon Bedrock where custom SageMaker hosting is not required
+- Amazon Bedrock is the AWS-native hosted-model path for admin-managed foundation-model routes when custom SageMaker hosting is not required
 
 ## Current Implementation Status
 
@@ -45,6 +45,7 @@ This repository is **not end-to-end complete yet**. The plan now separates:
 - best-effort Aurora-backed session / turn / telemetry tracing hooks in `rag_eng`
 - Gradio retrieval presets for experiment-backed tuning of `result_count` and rerank strategy
 - Gradio guardrail diagnostics plus guardrailed non-streaming and streaming chat responses
+- Bedrock provider support in the admin model configuration UI for both RAG and chat routes
 
 ### Done in AWS
 
@@ -119,7 +120,7 @@ The practical adjustment is:
 - keep non-ML app services on ECS / S3 / CloudFront
 - move ML serving and ML-oriented batch work onto SageMaker AI wherever it fits the runtime
 - keep OpenAI/Cohere only for comparison and testing, not as required production services
-- treat Amazon Bedrock as the planned AWS-native replacement path for hosted foundation-model dependencies that should no longer rely on external APIs
+- treat Amazon Bedrock as the AWS-native replacement path for hosted foundation-model dependencies that should no longer rely on external APIs
 
 ## Current Codebase Facts That Drive This Plan
 
