@@ -123,11 +123,11 @@ const professors = [
 ];
 
 const baseAdminTabs: SidebarTab[] = [
-  { key: "stats", icon: "📊", label: "Evaluation" },
-  { key: "models", icon: "🤖", label: "AI Models" },
-  { key: "rag", icon: "📚", label: "RAG Docs" },
   { key: "users", icon: "👥", label: "Users" },
   { key: "courses", icon: "🎓", label: "Courses" },
+  { key: "rag", icon: "📚", label: "RAG Docs" },
+  { key: "stats", icon: "📊", label: "Evaluation" },
+  { key: "models", icon: "🤖", label: "AI Models" },
 ];
 
 export function AdminDashboard({
@@ -136,7 +136,7 @@ export function AdminDashboard({
   onSignOut,
   accessToken,
 }: AdminDashboardProps) {
-  const [tab, setTab] = useState("stats");
+  const [tab, setTab] = useState("backend-console");
   const [healthOk, setHealthOk] = useState<boolean | null>(null);
   const [cohereConfigured, setCohereConfigured] = useState<boolean | null>(null);
   const [gradioAvailable, setGradioAvailable] = useState<boolean | null>(null);
@@ -229,15 +229,10 @@ export function AdminDashboard({
       disabled: gradioDisabled,
       title: gradioTitle,
     };
-    const ragIndex = baseAdminTabs.findIndex((t) => t.key === "rag");
-    return [
-      ...baseAdminTabs.slice(0, ragIndex + 1),
-      backendConsoleTab,
-      ...baseAdminTabs.slice(ragIndex + 1),
-    ];
+    return [...baseAdminTabs, backendConsoleTab];
   }, [gradioAvailable]);
 
-  const activeTab = tab === "backend-console" && gradioAvailable === false ? "stats" : tab;
+  const activeTab = tab;
 
   const footer = (
     <Card style={{ padding: "10px 12px", marginTop: 12, borderRadius: 8 }}>
@@ -443,6 +438,25 @@ export function AdminDashboard({
                   background: D.surface,
                 }}
               />
+            </div>
+          )}
+
+          {activeTab === "backend-console" && !gradioAvailable && (
+            <div style={{ padding: 22 }}>
+              <Card style={{ display: "grid", gap: 8, maxWidth: 640 }}>
+                <div style={{ fontSize: 18, fontWeight: 600 }}>
+                  Backend Diagnostic Console
+                </div>
+                <div style={{ fontSize: 13, color: D.muted, lineHeight: 1.5 }}>
+                  The Gradio diagnostics app is not available right now. Start the
+                  `rag_eng` backend with the diagnostic console enabled to use this
+                  tab.
+                </div>
+                <div style={{ fontSize: 12, color: D.dim }}>
+                  The sidebar will keep this tab selected by default once the backend
+                  console is available.
+                </div>
+              </Card>
             </div>
           )}
 
