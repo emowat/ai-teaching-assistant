@@ -4,6 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from rag_eng.api import create_app
+from rag_eng.auth.models import CurrentUser
 from rag_eng.course_admin import CourseConflictError, CourseNotFoundError
 from rag_eng.schemas import AdminCourse
 
@@ -50,6 +51,35 @@ def test_admin_list_courses_allows_authorized_request(
     response = client.get(
         "/admin/courses",
         headers={"X-Admin-Token": "expected-token"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()[0]["course_id"] == "cs202"
+
+
+def test_admin_list_courses_allows_admin_bearer_request(
+    monkeypatch: pytest.MonkeyPatch,
+    client: TestClient,
+) -> None:
+    monkeypatch.setenv("ADMIN_TOKEN", "expected-token")
+    monkeypatch.setattr(
+        "rag_eng.api.list_admin_courses",
+        lambda: [_course()],
+    )
+
+    def _admin(_token: str, _settings) -> CurrentUser:
+        return CurrentUser(
+            cognito_sub="admin-sub-1",
+            email="admin@test.codingrabbit.dev",
+            groups=["Admins"],
+            primary_role="admin",
+        )
+
+    monkeypatch.setattr("rag_eng.api.verify_cognito_access_token", _admin)
+
+    response = client.get(
+        "/admin/courses",
+        headers={"Authorization": "Bearer valid-token"},
     )
 
     assert response.status_code == 200

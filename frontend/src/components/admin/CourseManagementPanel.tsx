@@ -10,7 +10,7 @@ interface CourseManagementPanelProps {
 interface CreateDraft {
   course_id: string;
   display_name: string;
-  course_source: AdminCourseSource;
+  retrieval_profile: RetrievalProfile;
   collection_name: string;
   aliases_text: string;
   is_active: boolean;
@@ -18,21 +18,31 @@ interface CreateDraft {
 
 interface EditDraft {
   display_name: string;
-  course_source: AdminCourseSource;
+  retrieval_profile: RetrievalProfile;
   collection_name: string;
   is_active: boolean;
 }
 
-const COURSE_SOURCE_OPTIONS: Array<{
-  value: AdminCourseSource;
+type RetrievalProfile = "mit" | "cs50";
+
+const RETRIEVAL_PROFILE_OPTIONS: Array<{
+  value: RetrievalProfile;
   label: string;
+  help: string;
 }> = [
-  { value: "mit14", label: "MIT 6.0014" },
-  { value: "mit13", label: "MIT 6.0013" },
-  { value: "cs50", label: "Harvard CS50" },
+  {
+    value: "mit",
+    label: "MIT-style",
+    help: "Uses the standard syllabus + semantic + strict-rules retrieval flow.",
+  },
+  {
+    value: "cs50",
+    label: "CS50-style",
+    help: "Uses the Harvard/CS50 retrieval flow for notes and transcripts.",
+  },
 ];
 
-const DEFAULT_SOURCE: AdminCourseSource = "mit14";
+const DEFAULT_PROFILE: RetrievalProfile = "mit";
 
 function normalizeCollectionName(courseId: string): string {
   const normalized = courseId
@@ -61,9 +71,27 @@ function parseAliases(rawValue: string): string[] {
   return aliases;
 }
 
-function sourceLabel(value: AdminCourseSource): string {
+function profileFromCourseSource(value: AdminCourseSource): RetrievalProfile {
+  return value === "cs50" ? "cs50" : "mit";
+}
+
+function courseSourceFromProfile(
+  profile: RetrievalProfile,
+  currentSource?: AdminCourseSource
+): AdminCourseSource {
+  if (profile === "cs50") {
+    return "cs50";
+  }
+  if (currentSource === "mit13") {
+    return "mit13";
+  }
+  return "mit14";
+}
+
+function retrievalProfileLabel(value: AdminCourseSource): string {
+  const profile = profileFromCourseSource(value);
   return (
-    COURSE_SOURCE_OPTIONS.find((option) => option.value === value)?.label ?? value
+    RETRIEVAL_PROFILE_OPTIONS.find((option) => option.value === profile)?.label ?? value
   );
 }
 
@@ -71,7 +99,7 @@ function emptyCreateDraft(): CreateDraft {
   return {
     course_id: "",
     display_name: "",
-    course_source: DEFAULT_SOURCE,
+    retrieval_profile: DEFAULT_PROFILE,
     collection_name: "",
     aliases_text: "",
     is_active: true,
@@ -81,7 +109,7 @@ function emptyCreateDraft(): CreateDraft {
 function emptyEditDraft(): EditDraft {
   return {
     display_name: "",
-    course_source: DEFAULT_SOURCE,
+    retrieval_profile: DEFAULT_PROFILE,
     collection_name: "",
     is_active: true,
   };
@@ -113,7 +141,7 @@ export function CourseManagementPanel({ accessToken }: CourseManagementPanelProp
 
     setEditDraft({
       display_name: course.display_name,
-      course_source: course.course_source,
+      retrieval_profile: profileFromCourseSource(course.course_source),
       collection_name: course.collection_name,
       is_active: course.is_active,
     });
@@ -185,7 +213,7 @@ export function CourseManagementPanel({ accessToken }: CourseManagementPanelProp
       const created = await createAdminCourse(accessToken, {
         course_id: courseId,
         display_name: displayName,
-        course_source: createDraft.course_source,
+        course_source: courseSourceFromProfile(createDraft.retrieval_profile),
         collection_name: collectionName,
         is_active: createDraft.is_active,
         aliases,
@@ -224,7 +252,10 @@ export function CourseManagementPanel({ accessToken }: CourseManagementPanelProp
 
       const updated = await updateAdminCourse(selectedCourse.course_id, accessToken, {
         display_name: displayName,
-        course_source: editDraft.course_source,
+        course_source: courseSourceFromProfile(
+          editDraft.retrieval_profile,
+          selectedCourse.course_source
+        ),
         collection_name: collectionName,
         is_active: editDraft.is_active,
       });
@@ -373,13 +404,13 @@ export function CourseManagementPanel({ accessToken }: CourseManagementPanelProp
               />
             </label>
             <label style={{ display: "grid", gap: 5 }}>
-              <span style={{ fontSize: 12, color: D.muted }}>Course source</span>
+                <span style={{ fontSize: 12, color: D.muted }}>Retrieval profile</span>
               <select
-                value={createDraft.course_source}
+                value={createDraft.retrieval_profile}
                 onChange={(e) =>
                   setCreateDraft((current) => ({
                     ...current,
-                    course_source: e.target.value as AdminCourseSource,
+                    retrieval_profile: e.target.value as RetrievalProfile,
                   }))
                 }
                 style={{
@@ -390,12 +421,19 @@ export function CourseManagementPanel({ accessToken }: CourseManagementPanelProp
                   padding: "10px 12px",
                 }}
               >
-                {COURSE_SOURCE_OPTIONS.map((option) => (
+                {RETRIEVAL_PROFILE_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}
                   </option>
                 ))}
               </select>
+              <div style={{ fontSize: 11, color: D.muted }}>
+                {
+                  RETRIEVAL_PROFILE_OPTIONS.find(
+                    (option) => option.value === createDraft.retrieval_profile
+                  )?.help
+                }
+              </div>
             </label>
             <label style={{ display: "grid", gap: 5 }}>
               <span style={{ fontSize: 12, color: D.muted }}>Collection name</span>
@@ -507,13 +545,13 @@ export function CourseManagementPanel({ accessToken }: CourseManagementPanelProp
                 />
               </label>
               <label style={{ display: "grid", gap: 5 }}>
-                <span style={{ fontSize: 12, color: D.muted }}>Course source</span>
+                <span style={{ fontSize: 12, color: D.muted }}>Retrieval profile</span>
                 <select
-                  value={editDraft.course_source}
+                  value={editDraft.retrieval_profile}
                   onChange={(e) =>
                     setEditDraft((current) => ({
                       ...current,
-                      course_source: e.target.value as AdminCourseSource,
+                      retrieval_profile: e.target.value as RetrievalProfile,
                     }))
                   }
                   style={{
@@ -524,12 +562,19 @@ export function CourseManagementPanel({ accessToken }: CourseManagementPanelProp
                     padding: "10px 12px",
                   }}
                 >
-                  {COURSE_SOURCE_OPTIONS.map((option) => (
+                  {RETRIEVAL_PROFILE_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
                     </option>
                   ))}
                 </select>
+                <div style={{ fontSize: 11, color: D.muted }}>
+                  {
+                    RETRIEVAL_PROFILE_OPTIONS.find(
+                      (option) => option.value === editDraft.retrieval_profile
+                    )?.help
+                  }
+                </div>
               </label>
               <label style={{ display: "grid", gap: 5 }}>
                 <span style={{ fontSize: 12, color: D.muted }}>Collection name</span>
@@ -626,7 +671,8 @@ export function CourseManagementPanel({ accessToken }: CourseManagementPanelProp
                 </div>
 
                 <div style={{ display: "grid", gap: 4, fontSize: 11, color: D.muted }}>
-                  <div>Source: {sourceLabel(selectedCourse.course_source)}</div>
+                  <div>Retrieval profile: {retrievalProfileLabel(selectedCourse.course_source)}</div>
+                  <div>Stored route key: {selectedCourse.course_source}</div>
                   <div>Collection: {selectedCourse.collection_name}</div>
                   <div>Created: {selectedCourse.created_at || "—"}</div>
                   <div>Updated: {selectedCourse.updated_at || "—"}</div>
@@ -680,7 +726,7 @@ export function CourseManagementPanel({ accessToken }: CourseManagementPanelProp
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontSize: 14, fontWeight: 500 }}>{course.display_name}</div>
                       <div style={{ fontSize: 12, color: D.muted, marginTop: 2 }}>
-                        {sourceLabel(course.course_source)} · {course.collection_name} · {course.aliases.length} alias
+                        {retrievalProfileLabel(course.course_source)} · {course.collection_name} · {course.aliases.length} alias
                         {course.aliases.length === 1 ? "" : "es"}
                       </div>
                     </div>

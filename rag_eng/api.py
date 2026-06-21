@@ -207,7 +207,7 @@ def create_app() -> FastAPI:
     @app.get(
         "/admin/courses",
         response_model=list[AdminCourse],
-        dependencies=[Depends(_require_admin)],
+        dependencies=[Depends(_require_admin_access)],
     )
     def admin_list_courses() -> list[AdminCourse]:
         try:
@@ -218,7 +218,7 @@ def create_app() -> FastAPI:
     @app.get(
         "/admin/courses/{course_id}",
         response_model=AdminCourse,
-        dependencies=[Depends(_require_admin)],
+        dependencies=[Depends(_require_admin_access)],
     )
     def admin_get_course(course_id: str) -> AdminCourse:
         try:
@@ -229,7 +229,7 @@ def create_app() -> FastAPI:
     @app.post(
         "/admin/courses",
         response_model=AdminCourse,
-        dependencies=[Depends(_require_admin)],
+        dependencies=[Depends(_require_admin_access)],
     )
     def admin_create_course(payload: AdminCourseCreate) -> AdminCourse:
         try:
@@ -240,7 +240,7 @@ def create_app() -> FastAPI:
     @app.patch(
         "/admin/courses/{course_id}",
         response_model=AdminCourse,
-        dependencies=[Depends(_require_admin)],
+        dependencies=[Depends(_require_admin_access)],
     )
     def admin_update_course(course_id: str, payload: AdminCourseUpdate) -> AdminCourse:
         try:
@@ -251,7 +251,7 @@ def create_app() -> FastAPI:
     @app.post(
         "/admin/courses/{course_id}/aliases",
         response_model=AdminCourse,
-        dependencies=[Depends(_require_admin)],
+        dependencies=[Depends(_require_admin_access)],
     )
     def admin_add_course_aliases(
         course_id: str,
@@ -265,7 +265,7 @@ def create_app() -> FastAPI:
     @app.delete(
         "/admin/courses/{course_id}/aliases/{alias}",
         response_model=AdminCourse,
-        dependencies=[Depends(_require_admin)],
+        dependencies=[Depends(_require_admin_access)],
     )
     def admin_delete_course_alias(course_id: str, alias: str) -> AdminCourse:
         try:
@@ -276,7 +276,7 @@ def create_app() -> FastAPI:
     @app.post(
         "/admin/ingestion/launch",
         response_model=IngestionJobResponse,
-        dependencies=[Depends(_require_admin)],
+        dependencies=[Depends(_require_admin_access)],
     )
     def admin_launch_ingestion(
         payload: IngestionJobLaunchRequest,
@@ -289,7 +289,7 @@ def create_app() -> FastAPI:
     @app.get(
         "/admin/ingestion/jobs/{job_id}",
         response_model=IngestionJobResponse,
-        dependencies=[Depends(_require_admin)],
+        dependencies=[Depends(_require_admin_access)],
     )
     def admin_get_ingestion_job(job_id: str) -> IngestionJobResponse:
         try:

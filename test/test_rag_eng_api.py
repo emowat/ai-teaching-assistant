@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 
 from rag.schemas import QueryInput, RetrievalResult
 from rag_eng.api import create_app
+from rag_eng.auth.models import CurrentUser
 from rag_eng.schemas import (
     IngestionJobResponse,
     HealthResponse,
@@ -391,6 +392,41 @@ def test_admin_launch_ingestion_allows_authorized_request(
     assert response.status_code == 200
     assert response.json()["job_id"] == "job-123"
     assert response.json()["course_corpus_version_id"] == "job-123"
+
+
+def test_admin_launch_ingestion_allows_admin_bearer_request(
+    monkeypatch, client: TestClient
+) -> None:
+    monkeypatch.setenv("ADMIN_TOKEN", "expected-token")
+    monkeypatch.setattr(
+        "rag_eng.api.launch_ingestion_job",
+        lambda payload: _ingestion_job_response(),
+    )
+
+    def _admin(_token: str, _settings) -> CurrentUser:
+        return CurrentUser(
+            cognito_sub="admin-sub-1",
+            email="admin@test.codingrabbit.dev",
+            groups=["Admins"],
+            primary_role="admin",
+        )
+
+    monkeypatch.setattr("rag_eng.api.verify_cognito_access_token", _admin)
+
+    response = client.post(
+        "/admin/ingestion/launch",
+        headers={"Authorization": "Bearer valid-token"},
+        json={
+            "course_id": "mit14",
+            "job_kind": "chunk-index",
+            "bucket": "codingrabbit-data-dev",
+            "input_prefix": "parsed_json/mit14",
+            "prepared_output_prefix": "prepared_chunks/mit14",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["job_id"] == "job-123"
 
 
 def test_admin_get_ingestion_job_returns_404_when_missing(
