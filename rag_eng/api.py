@@ -28,6 +28,7 @@ from rag_eng.course_admin import (
 )
 from rag_eng.document_admin import (
     create_admin_course_upload_url,
+    delete_admin_course_document,
     list_admin_course_corpus_versions,
     list_admin_course_documents,
 )
@@ -47,6 +48,7 @@ from rag_eng.schemas import (
     AdminCourseAliasCreate,
     AdminCourseCreate,
     AdminCourseCorpusVersion,
+    AdminCourseDocumentDeleteResponse,
     AdminCourseDocumentListResponse,
     AdminCourseDocumentUploadRequest,
     AdminCourseDocumentUploadResponse,
@@ -308,6 +310,20 @@ def create_app() -> FastAPI:
     ) -> AdminCourseDocumentUploadResponse:
         try:
             return create_admin_course_upload_url(course_id, payload)
+        except Exception as exc:
+            raise _course_admin_http_error(exc) from exc
+
+    @app.delete(
+        "/admin/courses/{course_id}/documents",
+        response_model=AdminCourseDocumentDeleteResponse,
+        dependencies=[Depends(_require_admin_access)],
+    )
+    def admin_delete_course_document(
+        course_id: str,
+        key: str = Query(min_length=1),
+    ) -> AdminCourseDocumentDeleteResponse:
+        try:
+            return delete_admin_course_document(course_id, key=key)
         except Exception as exc:
             raise _course_admin_http_error(exc) from exc
 

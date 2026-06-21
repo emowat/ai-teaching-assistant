@@ -306,6 +306,15 @@ class AdminCourseDocumentUploadResponse(BaseModel):
     required_headers: dict[str, str] = Field(default_factory=dict)
 
 
+class AdminCourseDocumentDeleteResponse(BaseModel):
+    """Response returned after deleting a course document from S3."""
+
+    course_id: str
+    bucket: str
+    key: str
+    deleted: bool = True
+
+
 class AdminCourseCorpusVersion(BaseModel):
     """Aurora-backed history entry for a course corpus build."""
 

@@ -9,6 +9,7 @@ from rag_eng.course_admin import CourseNotFoundError
 from rag_eng.schemas import (
     AdminCourseCorpusVersion,
     AdminCourseDocument,
+    AdminCourseDocumentDeleteResponse,
     AdminCourseDocumentListResponse,
     AdminCourseDocumentUploadResponse,
     IngestionJobResponse,
@@ -50,6 +51,15 @@ def _upload_response() -> AdminCourseDocumentUploadResponse:
         upload_url="https://example.test/upload",
         expires_in_seconds=900,
         required_headers={"Content-Type": "application/pdf"},
+    )
+
+
+def _delete_response() -> AdminCourseDocumentDeleteResponse:
+    return AdminCourseDocumentDeleteResponse(
+        course_id="mit20",
+        bucket="codingrabbit-data-dev",
+        key="teacher_uploads/mit20/syllabus.pdf",
+        deleted=True,
     )
 
 
@@ -159,6 +169,26 @@ def test_admin_course_document_upload_url_allows_admin_bearer_request(
 
     assert response.status_code == 200
     assert response.json()["required_headers"]["Content-Type"] == "application/pdf"
+
+
+def test_admin_course_document_delete_allows_authorized_request(
+    monkeypatch: pytest.MonkeyPatch,
+    client: TestClient,
+) -> None:
+    monkeypatch.setenv("ADMIN_TOKEN", "expected-token")
+    monkeypatch.setattr(
+        "rag_eng.api.delete_admin_course_document",
+        lambda course_id, key: _delete_response(),
+    )
+
+    response = client.delete(
+        "/admin/courses/mit20/documents?key=teacher_uploads%2Fmit20%2Fsyllabus.pdf",
+        headers={"X-Admin-Token": "expected-token"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["deleted"] is True
+    assert response.json()["key"] == "teacher_uploads/mit20/syllabus.pdf"
 
 
 def test_admin_course_corpus_versions_map_missing_course_to_404(

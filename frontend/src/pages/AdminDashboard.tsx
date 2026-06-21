@@ -24,6 +24,7 @@ import { chartTooltipStyle, D, mono } from "../design/tokens";
 import { Sidebar, type SidebarTab } from "../components/Sidebar";
 import { TopBar } from "../components/TopBar";
 import { CourseManagementPanel } from "../components/admin/CourseManagementPanel";
+import { RagDocsPanel } from "../components/admin/RagDocsPanel";
 import type { AppView } from "../types/navigation";
 
 interface AdminDashboardProps {
@@ -119,13 +120,6 @@ const professors = [
   { name: "Dr. Rivera", email: "crivera@university.edu", courses: 3, students: 87, status: "active" },
   { name: "Prof. Kim", email: "jkim@university.edu", courses: 2, students: 54, status: "active" },
   { name: "Dr. Patel", email: "rpatel@university.edu", courses: 1, students: 30, status: "invited" },
-];
-
-// STUB — replace when GET /admin/rag/docs is available
-const docs = [
-  { name: "CS101_Week1_Pointers.pdf", course: "CS101", size: "2.4 MB", status: "indexed" },
-  { name: "CS201_Trees_Lecture.pdf", course: "CS201", size: "1.8 MB", status: "indexed" },
-  { name: "CS101_Week3_OOP.pdf", course: "CS101", size: "3.1 MB", status: "indexing" },
 ];
 
 const baseAdminTabs: SidebarTab[] = [
@@ -742,33 +736,7 @@ export function AdminDashboard({
           )}
 
           {activeTab === "rag" && (
-            <div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
-                <div style={{ fontSize: 18, fontWeight: 600 }}>
-                  RAG document library <Tag color={D.muted}>STUB</Tag>
-                </div>
-                <Btn small>+ Upload document</Btn>
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {docs.map((d) => (
-                  <Card key={d.name} style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 16px" }}>
-                    <span style={{ fontSize: 16, flexShrink: 0 }}>📄</span>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 13, fontWeight: 500 }}>{d.name}</div>
-                      <div style={{ fontSize: 11, color: D.muted, marginTop: 2 }}>
-                        {d.course} · {d.size}
-                      </div>
-                    </div>
-                    <Tag color={d.status === "indexed" ? D.green : D.yellow}>
-                      {d.status === "indexed" ? "✓ indexed" : "⏳ indexing"}
-                    </Tag>
-                    <Btn variant="danger" small>
-                      Remove
-                    </Btn>
-                  </Card>
-                ))}
-              </div>
-            </div>
+            <RagDocsPanel accessToken={accessToken} />
           )}
 
           {activeTab === "users" && (

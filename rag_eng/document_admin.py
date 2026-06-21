@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 from rag_eng.course_admin import CourseNotFoundError
 from rag_eng.schemas import (
     AdminCourseCorpusVersion,
+    AdminCourseDocumentDeleteResponse,
     AdminCourseDocument,
     AdminCourseDocumentListResponse,
     AdminCourseDocumentUploadRequest,
@@ -113,6 +114,27 @@ def build_course_storage_layout(course_id: str) -> CourseStorageLayout:
         parsed_prefix=f"parsed_json/{normalized}/",
         prepared_prefix=f"prepared_chunks/{normalized}/",
     )
+
+
+def _validate_course_document_key(course_id: str, key: str) -> tuple[CourseStorageLayout, str]:
+    """Ensure the requested document key belongs to the course upload prefix."""
+    normalized_key = key.strip()
+    if not normalized_key:
+        raise ValueError("Document key is required.")
+
+    layout = build_course_storage_layout(course_id)
+    if not normalized_key.startswith(layout.upload_prefix):
+        raise ValueError("Document key must belong to the course upload prefix.")
+    if normalized_key.endswith("/"):
+        raise ValueError("Document key must reference a file, not a prefix.")
+
+    relative_path = normalized_key.removeprefix(layout.upload_prefix)
+    if not relative_path:
+        raise ValueError("Document key must reference a file.")
+    if any(part in {"", ".", ".."} for part in relative_path.split("/")):
+        raise ValueError("Document key contains an invalid path segment.")
+
+    return layout, normalized_key
 
 
 def _require_course_exists(connection, course_id: str) -> None:
@@ -250,6 +272,37 @@ def create_admin_course_upload_url(
         upload_url=upload_url,
         expires_in_seconds=runtime.presign_expiry_seconds,
         required_headers=headers,
+    )
+
+
+def delete_admin_course_document(
+    course_id: str,
+    *,
+    key: str,
+    runtime: DocumentAdminRuntimeConfig | None = None,
+    s3_client=None,
+) -> AdminCourseDocumentDeleteResponse:
+    """Delete a course document from the S3 upload prefix."""
+    runtime = runtime or load_document_admin_runtime_config()
+    if not runtime.database_url:
+        raise RuntimeError("Course registry database URL is not configured.")
+
+    _, normalized_key = _validate_course_document_key(course_id, key)
+
+    with _connect_postgres(
+        runtime.database_url,
+        runtime.connect_timeout_seconds,
+    ) as connection:
+        _require_course_exists(connection, course_id)
+
+    client = s3_client or _build_s3_client(runtime)
+    client.delete_object(Bucket=runtime.s3_data_bucket, Key=normalized_key)
+
+    return AdminCourseDocumentDeleteResponse(
+        course_id=course_id,
+        bucket=runtime.s3_data_bucket,
+        key=normalized_key,
+        deleted=True,
     )
 
 

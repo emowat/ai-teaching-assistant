@@ -99,6 +99,7 @@ class _FakeS3Client:
     def __init__(self, objects: list[dict[str, object]] | None = None):
         self.objects = objects or []
         self.presign_calls: list[dict[str, object]] = []
+        self.delete_calls: list[dict[str, object]] = []
 
     def list_objects_v2(self, **kwargs):
         return {
@@ -115,6 +116,10 @@ class _FakeS3Client:
             }
         )
         return f"https://example.test/upload/{Params['Key']}"
+
+    def delete_object(self, **kwargs):
+        self.delete_calls.append(dict(kwargs))
+        return {}
 
 
 def _runtime() -> document_admin.DocumentAdminRuntimeConfig:
@@ -274,6 +279,51 @@ def test_list_admin_course_corpus_versions_returns_latest_first(
     ]
     assert versions[0].metadata["message"] == "Indexed 12 chunk(s)."
     assert versions[0].active is True
+
+
+def test_delete_admin_course_document_deletes_expected_s3_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _FakeState(
+        courses={"mit20": {"course_id": "mit20"}},
+        corpus_versions=[],
+    )
+    _patch_connection(monkeypatch, state)
+    s3_client = _FakeS3Client()
+
+    response = document_admin.delete_admin_course_document(
+        "mit20",
+        key="teacher_uploads/mit20/syllabus.pdf",
+        runtime=_runtime(),
+        s3_client=s3_client,
+    )
+
+    assert response.deleted is True
+    assert response.key == "teacher_uploads/mit20/syllabus.pdf"
+    assert s3_client.delete_calls == [
+        {
+            "Bucket": "codingrabbit-data-dev",
+            "Key": "teacher_uploads/mit20/syllabus.pdf",
+        }
+    ]
+
+
+def test_delete_admin_course_document_rejects_key_outside_course_prefix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _FakeState(
+        courses={"mit20": {"course_id": "mit20"}},
+        corpus_versions=[],
+    )
+    _patch_connection(monkeypatch, state)
+
+    with pytest.raises(ValueError, match="course upload prefix"):
+        document_admin.delete_admin_course_document(
+            "mit20",
+            key="teacher_uploads/mit21/syllabus.pdf",
+            runtime=_runtime(),
+            s3_client=_FakeS3Client(),
+        )
 
 
 def test_list_admin_course_documents_rejects_unknown_course(
