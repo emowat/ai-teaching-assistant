@@ -3,7 +3,15 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from rag_eng.schemas import QueryPayload, QueryRequest, QueryResponse, QueryResult
+from rag_eng.schemas import (
+    AdminCourseAliasCreate,
+    AdminCourseCreate,
+    AdminCourseUpdate,
+    QueryPayload,
+    QueryRequest,
+    QueryResponse,
+    QueryResult,
+)
 from rag.schemas import RetrievalResult
 
 
@@ -14,7 +22,7 @@ def test_query_payload_defaults_result_count() -> None:
         week=3,
     )
 
-    assert payload.result_count == 5
+    assert payload.result_count == 8
     assert payload.course_id is None
     assert payload.session_id is None
     assert QueryPayload.model_json_schema()["examples"]
@@ -61,7 +69,7 @@ def test_query_request_alias_matches_query_payload() -> None:
         week=3,
     )
 
-    assert request.result_count == 5
+    assert request.result_count == 8
 
 
 def test_query_result_schema_exposes_examples() -> None:
@@ -93,3 +101,25 @@ def test_query_response_serializes_nested_retrieval_result() -> None:
         dumped["retrieval_result"]["formatted_context"]
         == "[Pedagogical_Context]\nPointers"
     )
+
+
+def test_admin_course_create_schema_parses_course_source() -> None:
+    course = AdminCourseCreate(
+        course_id="cs202",
+        display_name="Advanced C++",
+        course_source="mit14",
+        collection_name="course_cs202",
+    )
+
+    assert course.course_source.value == "mit14"
+    assert course.is_active is True
+
+
+def test_admin_course_update_requires_at_least_one_field() -> None:
+    with pytest.raises(ValidationError):
+        AdminCourseUpdate()
+
+
+def test_admin_course_alias_create_requires_one_alias() -> None:
+    with pytest.raises(ValidationError):
+        AdminCourseAliasCreate(aliases=[])

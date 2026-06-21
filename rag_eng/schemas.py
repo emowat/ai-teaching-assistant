@@ -6,7 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from rag.schemas import QueryInput, RetrievalResult
+from rag.schemas import CourseSource as RagCourseSource, QueryInput, RetrievalResult
 
 RetrievalRerankStrategy = Literal["similarity", "mmr_0.5", "mmr_0.7", "mmr_0.9"]
 IngestionJobKind = Literal["parse", "chunk-index"]
@@ -197,6 +197,56 @@ class RestartResponse(BaseModel):
     success: bool
     scheduled: bool
     message: str
+
+
+class AdminCourse(BaseModel):
+    """Admin-facing course metadata for CRUD and dashboard views."""
+
+    course_id: str
+    display_name: str
+    course_source: RagCourseSource
+    collection_name: str
+    is_active: bool
+    aliases: list[str] = Field(default_factory=list)
+    created_at: str = ""
+    updated_at: str = ""
+
+
+class AdminCourseCreate(BaseModel):
+    """Payload used to create a course in Aurora."""
+
+    course_id: str = Field(min_length=1)
+    display_name: str = Field(min_length=1)
+    course_source: RagCourseSource
+    collection_name: str = Field(min_length=1)
+    is_active: bool = True
+    aliases: list[str] = Field(default_factory=list)
+
+
+class AdminCourseUpdate(BaseModel):
+    """Payload used to update a course in Aurora."""
+
+    display_name: str | None = None
+    course_source: RagCourseSource | None = None
+    collection_name: str | None = None
+    is_active: bool | None = None
+
+    @model_validator(mode="after")
+    def _validate_non_empty_update(self) -> "AdminCourseUpdate":
+        if (
+            self.display_name is None
+            and self.course_source is None
+            and self.collection_name is None
+            and self.is_active is None
+        ):
+            raise ValueError("At least one course field must be provided.")
+        return self
+
+
+class AdminCourseAliasCreate(BaseModel):
+    """Payload used to add one or more aliases to a course."""
+
+    aliases: list[str] = Field(min_length=1)
 
 
 class IngestionJobLaunchRequest(BaseModel):

@@ -16,6 +16,16 @@ from pydantic import BaseModel, Field
 from rag_eng.auth.cognito import verify_cognito_access_token
 from rag_eng.auth.dependencies import require_authenticated_user
 from rag_eng.auth.models import MeResponse
+from rag_eng.course_admin import (
+    CourseConflictError,
+    CourseNotFoundError,
+    add_admin_course_aliases,
+    create_admin_course,
+    deactivate_admin_course_alias,
+    get_admin_course,
+    list_admin_courses,
+    update_admin_course,
+)
 from rag_eng.config import (
     Settings,
     get_inference_config,
@@ -28,6 +38,10 @@ from rag_eng.config import (
 from rag_eng.schemas import (
     AdminLlmConfigResponse,
     AdminLlmConfigUpdate,
+    AdminCourse,
+    AdminCourseAliasCreate,
+    AdminCourseCreate,
+    AdminCourseUpdate,
     IngestionJobLaunchRequest,
     IngestionJobResponse,
     HealthResponse,
@@ -125,6 +139,16 @@ def _runtime_config_payload() -> AdminLlmConfigResponse:
     )
 
 
+def _course_admin_http_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, CourseNotFoundError):
+        return HTTPException(status_code=404, detail=str(exc))
+    if isinstance(exc, CourseConflictError):
+        return HTTPException(status_code=409, detail=str(exc))
+    if isinstance(exc, ValueError):
+        return HTTPException(status_code=400, detail=str(exc))
+    return HTTPException(status_code=500, detail=str(exc))
+
+
 def create_app() -> FastAPI:
     """Create the FastAPI app for the RAG service."""
     settings = get_settings()
@@ -179,6 +203,75 @@ def create_app() -> FastAPI:
             return rebuild_index_service()
         except Exception as exc:
             raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    @app.get(
+        "/admin/courses",
+        response_model=list[AdminCourse],
+        dependencies=[Depends(_require_admin)],
+    )
+    def admin_list_courses() -> list[AdminCourse]:
+        try:
+            return list_admin_courses()
+        except Exception as exc:
+            raise _course_admin_http_error(exc) from exc
+
+    @app.get(
+        "/admin/courses/{course_id}",
+        response_model=AdminCourse,
+        dependencies=[Depends(_require_admin)],
+    )
+    def admin_get_course(course_id: str) -> AdminCourse:
+        try:
+            return get_admin_course(course_id)
+        except Exception as exc:
+            raise _course_admin_http_error(exc) from exc
+
+    @app.post(
+        "/admin/courses",
+        response_model=AdminCourse,
+        dependencies=[Depends(_require_admin)],
+    )
+    def admin_create_course(payload: AdminCourseCreate) -> AdminCourse:
+        try:
+            return create_admin_course(payload)
+        except Exception as exc:
+            raise _course_admin_http_error(exc) from exc
+
+    @app.patch(
+        "/admin/courses/{course_id}",
+        response_model=AdminCourse,
+        dependencies=[Depends(_require_admin)],
+    )
+    def admin_update_course(course_id: str, payload: AdminCourseUpdate) -> AdminCourse:
+        try:
+            return update_admin_course(course_id, payload)
+        except Exception as exc:
+            raise _course_admin_http_error(exc) from exc
+
+    @app.post(
+        "/admin/courses/{course_id}/aliases",
+        response_model=AdminCourse,
+        dependencies=[Depends(_require_admin)],
+    )
+    def admin_add_course_aliases(
+        course_id: str,
+        payload: AdminCourseAliasCreate,
+    ) -> AdminCourse:
+        try:
+            return add_admin_course_aliases(course_id, payload)
+        except Exception as exc:
+            raise _course_admin_http_error(exc) from exc
+
+    @app.delete(
+        "/admin/courses/{course_id}/aliases/{alias}",
+        response_model=AdminCourse,
+        dependencies=[Depends(_require_admin)],
+    )
+    def admin_delete_course_alias(course_id: str, alias: str) -> AdminCourse:
+        try:
+            return deactivate_admin_course_alias(course_id, alias)
+        except Exception as exc:
+            raise _course_admin_http_error(exc) from exc
 
     @app.post(
         "/admin/ingestion/launch",
