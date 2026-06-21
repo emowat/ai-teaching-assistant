@@ -53,6 +53,7 @@ class _CourseState:
     aliases_by_course: dict[str, list[str]]
     course_ids_by_normalized: dict[str, str]
     aliases_by_normalized: dict[str, dict[str, Any]]
+    ingestion_history_by_course: dict[str, bool]
 
 
 def _normalize_course_key(value: str) -> str:
@@ -168,11 +169,20 @@ def _load_course_state(connection) -> _CourseState:
             """
         )
         alias_rows = cursor.fetchall()
+        cursor.execute(
+            """
+            SELECT course_id, COUNT(*)
+            FROM course_corpus_versions
+            GROUP BY course_id
+            """
+        )
+        history_rows = cursor.fetchall()
 
     courses_by_id: dict[str, dict[str, Any]] = {}
     aliases_by_course: dict[str, list[str]] = defaultdict(list)
     course_ids_by_normalized: dict[str, str] = {}
     aliases_by_normalized: dict[str, dict[str, Any]] = {}
+    ingestion_history_by_course: dict[str, bool] = {}
 
     for row in course_rows:
         (
@@ -191,6 +201,7 @@ def _load_course_state(connection) -> _CourseState:
             "collection_name": str(collection_name),
             "display_name": str(display_name or ""),
             "is_active": bool(is_active),
+            "has_ingestion_history": False,
             "created_at": created_at,
             "updated_at": updated_at,
         }
@@ -209,11 +220,20 @@ def _load_course_state(connection) -> _CourseState:
         if bool(is_active) and stored_course_id in courses_by_id:
             aliases_by_course[stored_course_id].append(stored_alias)
 
+    for row in history_rows:
+        course_id, count = row[:2]
+        has_history = int(count or 0) > 0
+        course_key = str(course_id)
+        ingestion_history_by_course[course_key] = has_history
+        if course_key in courses_by_id:
+            courses_by_id[course_key]["has_ingestion_history"] = has_history
+
     return _CourseState(
         courses_by_id=courses_by_id,
         aliases_by_course=aliases_by_course,
         course_ids_by_normalized=course_ids_by_normalized,
         aliases_by_normalized=aliases_by_normalized,
+        ingestion_history_by_course=ingestion_history_by_course,
     )
 
 
@@ -224,6 +244,7 @@ def _state_to_course(course_data: dict[str, Any], aliases: list[str]) -> AdminCo
         course_source=course_data["course_source"],
         collection_name=course_data["collection_name"],
         is_active=course_data["is_active"],
+        has_ingestion_history=course_data["has_ingestion_history"],
         aliases=list(aliases),
         created_at=_format_timestamp(course_data["created_at"]),
         updated_at=_format_timestamp(course_data["updated_at"]),

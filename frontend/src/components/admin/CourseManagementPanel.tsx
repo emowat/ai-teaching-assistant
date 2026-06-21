@@ -130,6 +130,11 @@ export function CourseManagementPanel({ accessToken }: CourseManagementPanelProp
   const [aliasInput, setAliasInput] = useState("");
 
   const selectedCourse = courses.find((course) => course.course_id === selectedCourseId) ?? null;
+  const selectedCourseCollectionChanged =
+    selectedCourse !== null &&
+    editDraft.collection_name.trim() !== selectedCourse.collection_name.trim();
+  const selectedCourseCollectionWarning =
+    Boolean(selectedCourse?.has_ingestion_history) && selectedCourseCollectionChanged;
 
   const applySelectedCourse = (course: AdminCourse | null) => {
     setSelectedCourseId(course?.course_id ?? null);
@@ -248,6 +253,15 @@ export function CourseManagementPanel({ accessToken }: CourseManagementPanelProp
       }
       if (!collectionName) {
         throw new Error("Collection name is required.");
+      }
+      if (selectedCourse.has_ingestion_history && collectionName !== selectedCourse.collection_name) {
+        const confirmed = window.confirm(
+          "This course already has ingestion history. Changing the collection name can point retrieval at a different Qdrant collection. Continue?"
+        );
+        if (!confirmed) {
+          setSavingCourseId(null);
+          return;
+        }
       }
 
       const updated = await updateAdminCourse(selectedCourse.course_id, accessToken, {
@@ -591,6 +605,21 @@ export function CourseManagementPanel({ accessToken }: CourseManagementPanelProp
                     padding: "10px 12px",
                   }}
                 />
+                {selectedCourse && (
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: selectedCourseCollectionWarning ? D.yellow : D.muted,
+                      lineHeight: 1.4,
+                    }}
+                  >
+                    {selectedCourse.has_ingestion_history
+                      ? selectedCourseCollectionWarning
+                        ? "Warning: this course already has ingestion history. Changing the collection name will point retrieval at a different Qdrant collection."
+                        : "This course already has ingestion history. Changing the collection name will affect where retrieval points."
+                      : "Used by Qdrant. Changing it is safe for a brand-new course before any ingestion runs."}
+                  </div>
+                )}
               </label>
               <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: D.muted }}>
                 <input

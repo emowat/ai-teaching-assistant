@@ -20,6 +20,7 @@ NOW = datetime(2026, 6, 20, tzinfo=timezone.utc)
 class _FakeState:
     courses: dict[str, dict[str, object]]
     aliases: dict[str, dict[str, object]]
+    corpus_versions: list[dict[str, object]] | None = None
 
 
 class _FakeCursor:
@@ -71,6 +72,16 @@ class _FakeCursor:
                     key=lambda record: str(record["alias"]),
                 )
             ]
+            return
+
+        if sql.startswith(
+            "SELECT course_id, COUNT(*) FROM course_corpus_versions GROUP BY course_id"
+        ):
+            counts: dict[str, int] = {}
+            for record in self.state.corpus_versions or []:
+                course_id = str(record["course_id"])
+                counts[course_id] = counts.get(course_id, 0) + 1
+            self._rows = [(course_id, count) for course_id, count in sorted(counts.items())]
             return
 
         if sql.startswith(
@@ -205,8 +216,13 @@ class _FakeConnection:
 def _make_state(
     courses: dict[str, dict[str, object]] | None = None,
     aliases: dict[str, dict[str, object]] | None = None,
+    corpus_versions: list[dict[str, object]] | None = None,
 ) -> _FakeState:
-    return _FakeState(courses=courses or {}, aliases=aliases or {})
+    return _FakeState(
+        courses=courses or {},
+        aliases=aliases or {},
+        corpus_versions=corpus_versions,
+    )
 
 
 def _runtime() -> course_admin.CourseAdminRuntimeConfig:
@@ -262,6 +278,7 @@ def test_list_admin_courses_returns_active_aliases(monkeypatch: pytest.MonkeyPat
                 "updated_at": NOW,
             },
         },
+        corpus_versions=[{"course_id": "mit14"}],
     )
     _patch_connection(monkeypatch, state)
 
@@ -270,6 +287,35 @@ def test_list_admin_courses_returns_active_aliases(monkeypatch: pytest.MonkeyPat
     assert [course.course_id for course in courses] == ["cs202", "mit14"]
     assert courses[1].aliases == ["mit-14"]
     assert courses[0].is_active is False
+    assert courses[1].has_ingestion_history is True
+    assert courses[0].has_ingestion_history is False
+
+
+def test_list_admin_courses_marks_courses_with_corpus_versions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _make_state(
+        courses={
+            "mit14": {
+                "course_id": "mit14",
+                "course_source": "mit14",
+                "collection_name": "course_knowledge",
+                "display_name": "MIT 6.0014",
+                "is_active": True,
+                "created_at": NOW,
+                "updated_at": NOW,
+            }
+        },
+        corpus_versions=[
+            {"course_id": "mit14"},
+            {"course_id": "mit14"},
+        ],
+    )
+    _patch_connection(monkeypatch, state)
+
+    courses = course_admin.list_admin_courses(runtime=_runtime())
+
+    assert courses[0].has_ingestion_history is True
 
 
 def test_create_admin_course_inserts_course_and_aliases(

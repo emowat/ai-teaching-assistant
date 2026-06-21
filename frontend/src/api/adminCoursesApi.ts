@@ -8,6 +8,7 @@ export interface AdminCourse {
   course_source: AdminCourseSource;
   collection_name: string;
   is_active: boolean;
+  has_ingestion_history: boolean;
   aliases: string[];
   created_at: string;
   updated_at: string;

@@ -207,6 +207,7 @@ class AdminCourse(BaseModel):
     course_source: RagCourseSource
     collection_name: str
     is_active: bool
+    has_ingestion_history: bool = False
     aliases: list[str] = Field(default_factory=list)
     created_at: str = ""
     updated_at: str = ""

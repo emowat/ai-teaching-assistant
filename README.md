@@ -47,7 +47,9 @@ uv run uvicorn rag_eng.main:app --host 0.0.0.0 --port 8001
 
 Endpoints:
 - `GET  /health` — liveness probe
+- `GET  /me` — authenticated profile + role
 - `POST /query` — RAG query
+- `POST /api/chat` — VS Code extension / chat API
 - `POST /run/compile` — C++ compile + run
 - `GET  /gradio` — Gradio RAG interrogation UI
 - `POST /admin/index/ensure` — idempotent index bootstrap
@@ -79,6 +81,28 @@ The script starts `rag_eng` on port `8001` and the Vite frontend on port `5173`.
 | student   | Student only                   |
 
 Roles are derived from the Cognito JWT `custom:role` claim. The TopBar shows a switcher for all views the current user may access.
+
+## Using the app
+
+### Admin workflow
+
+1. Sign in through the frontend at `http://localhost:5173`.
+2. Open the Admin dashboard.
+3. Create or edit courses in the `Courses` tab.
+4. Upload source files and launch `parse` / `chunk-index` jobs from `RAG Docs`.
+5. Use `AI Models` to change non-secret model routing and `Backend Diagnostic Console` for retrieval/debug inspection.
+
+### Student workflow
+
+1. Sign in through the frontend.
+2. Open the student dashboard.
+3. Use chat for tutoring help and the C++ console for `POST /run/compile`.
+
+### API and workflow references
+
+- [rag_eng/README.md](/home/user/MIDS/w210/capstone/rag_eng/README.md) — backend setup, auth, endpoint inventory
+- [docs/api_workflows.md](/home/user/MIDS/w210/capstone/docs/api_workflows.md) — detailed `curl` examples for runtime and admin workflows
+- FastAPI OpenAPI docs: `http://localhost:8001/docs`
 
 ## C++ sandbox (Phase 1 — local Docker)
 
