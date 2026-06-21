@@ -23,6 +23,7 @@ import { Avatar, Btn, Card, Stat, Tag } from "../design/atoms";
 import { chartTooltipStyle, D, mono } from "../design/tokens";
 import { Sidebar, type SidebarTab } from "../components/Sidebar";
 import { TopBar } from "../components/TopBar";
+import { CourseManagementPanel } from "../components/admin/CourseManagementPanel";
 import type { AppView } from "../types/navigation";
 
 interface AdminDashboardProps {
@@ -118,13 +119,6 @@ const professors = [
   { name: "Dr. Rivera", email: "crivera@university.edu", courses: 3, students: 87, status: "active" },
   { name: "Prof. Kim", email: "jkim@university.edu", courses: 2, students: 54, status: "active" },
   { name: "Dr. Patel", email: "rpatel@university.edu", courses: 1, students: 30, status: "invited" },
-];
-
-// STUB — replace when GET /admin/courses is available
-const courses = [
-  { code: "CS101", name: "Intro to C++", prof: "Dr. Rivera", students: 32, status: "active" },
-  { code: "CS201", name: "Data Structures", prof: "Prof. Kim", students: 28, status: "active" },
-  { code: "CS301", name: "Algorithms", prof: "Dr. Rivera", students: 27, status: "draft" },
 ];
 
 // STUB — replace when GET /admin/rag/docs is available
@@ -804,43 +798,7 @@ export function AdminDashboard({
           )}
 
           {activeTab === "courses" && (
-            <div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
-                <div style={{ fontSize: 18, fontWeight: 600 }}>
-                  Courses <Tag color={D.muted}>STUB</Tag>
-                </div>
-                <Btn small>+ Create course</Btn>
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {courses.map((c) => (
-                  <Card key={c.code} style={{ display: "flex", alignItems: "center", gap: 16 }}>
-                    <div
-                      style={{
-                        background: D.orangeGlow,
-                        border: `1px solid ${D.orangeBorder}`,
-                        borderRadius: 6,
-                        padding: "5px 11px",
-                        ...mono,
-                        fontSize: 13,
-                        fontWeight: 600,
-                        color: D.orange,
-                        flexShrink: 0,
-                      }}
-                    >
-                      {c.code}
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 14, fontWeight: 500 }}>{c.name}</div>
-                      <div style={{ fontSize: 12, color: D.muted, marginTop: 2 }}>Prof: {c.prof}</div>
-                    </div>
-                    <Tag color={c.status === "active" ? D.green : D.yellow}>{c.status}</Tag>
-                    <Btn variant="ghost" small>
-                      Manage
-                    </Btn>
-                  </Card>
-                ))}
-              </div>
-            </div>
+            <CourseManagementPanel accessToken={accessToken} />
           )}
         </div>
       </div>
