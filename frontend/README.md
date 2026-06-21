@@ -96,3 +96,20 @@ The Monaco/file-explorer/console components still exist in the codebase as legac
 The "RAG Query Console" tab in `AdminDashboard` probes `VITE_API_BASE_URL/gradio` every 30 seconds:
 - Enabled → embeds Gradio in an `<iframe>`.
 - Disabled or unreachable → tab is greyed out with a tooltip.
+
+Inside the embedded backend console, the SageMaker, Guardrail, and Pipeline
+tabs expose the runtime diagnostics used for model and RAG tuning:
+- SageMaker Console: endpoint health, direct invoke, and traffic lights
+- Guardrail Console: direct V1 + V2 review of a draft answer before release
+- Pipeline Console: retrieval presets, routing / trace overrides, and the
+  guardrailed answer path
+
+The AI Models panel in the admin dashboard can route RAG and chat through
+Cohere, OpenAI, Bedrock, Ollama, or SageMaker. Under Bedrock, the available
+model options include Amazon Nova 2 Lite and Anthropic Claude 3.5 Haiku.
+
+The Pipeline tab exposes the retrieval presets used for RAG tuning:
+- experiment baseline at `K=8` with `similarity` reranking
+- MMR presets at `lambda=0.5`, `0.7`, and `0.9`
+- manual overrides for `Top K / Final Results` and `Rerank Strategy`
+- course / trace overrides for admin diagnostics

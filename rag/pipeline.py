@@ -14,10 +14,15 @@ The new helper functions below split prompt construction from model invocation.
 That separation keeps the service layer from re-running retrieval when it only
 needs to format a prompt, and it makes the FastAPI/Gradio wrappers easier to
 test because they can reuse the retrieval result directly.
+
+Course routing now resolves an explicit `course_id` first, then falls back to
+the legacy `course_source` compatibility path for older callers through the
+course registry layer.
 """
 
 from __future__ import annotations
 
+from rag.course_registry import resolve_course_route
 from rag.schemas import AssistMode, CourseSource, QueryInput, RetrievalResult
 from rag.query_builder import build_query
 from rag.retrievers import (
@@ -53,6 +58,48 @@ MODE_PARAMS: dict[AssistMode, dict] = {
     },
 }
 
+RERANK_STRATEGY_LAMBDAS: dict[str, float] = {
+    "similarity": 1.0,
+    "mmr_0.5": 0.5,
+    "mmr_0.7": 0.7,
+    "mmr_0.9": 0.9,
+}
+
+RERANK_STRATEGY_MULTIPLIERS: dict[str, int] = {
+    "similarity": 1,
+    "mmr_0.5": 4,
+    "mmr_0.7": 4,
+    "mmr_0.9": 4,
+}
+
+
+def _normalize_rerank_strategy(value: object | None) -> str:
+    """Coerce rerank strategies into a stable string key."""
+    if value is None:
+        return "similarity"
+    raw = getattr(value, "value", value)
+    normalized = str(raw).strip().casefold()
+    if normalized not in RERANK_STRATEGY_LAMBDAS:
+        raise ValueError(f"Unsupported rerank strategy: {value}")
+    return normalized
+
+
+def _resolve_retrieval_controls(
+    query: QueryInput,
+    params: dict[str, object],
+) -> tuple[int, int, float, str]:
+    """Return the effective final_k, candidate fetch k, lambda, and strategy."""
+    requested_final_k = getattr(query, "result_count", None)
+    final_k = int(params["final_k"])
+    if isinstance(requested_final_k, int) and requested_final_k > 0:
+        final_k = requested_final_k
+
+    rerank_strategy = _normalize_rerank_strategy(getattr(query, "rerank_strategy", None))
+    lambda_param = RERANK_STRATEGY_LAMBDAS[rerank_strategy]
+    fetch_multiplier = RERANK_STRATEGY_MULTIPLIERS[rerank_strategy]
+    candidate_fetch_k = final_k * fetch_multiplier
+    return final_k, candidate_fetch_k, lambda_param, rerank_strategy
+
 
 def run_retrieval(query: QueryInput) -> RetrievalResult:
     """
@@ -61,75 +108,68 @@ def run_retrieval(query: QueryInput) -> RetrievalResult:
     1. Build dense query from student NL, AST, terminal
     2. Mode-aware parameter selection
     3. Parallel retrieval: syllabus (exact), semantic (vector), rules (vector+filter),
-       guidelines (vector, separate collection). Routes to MIT or Harvard collection
-       based on course_source.
+       guidelines (vector, separate collection). Routes to the resolved course
+       collection based on explicit course_id first, then legacy course_source.
     4. Merge, category-weight, MMR diversify
     5. Format into [Vector_Database_Results] block
     """
     params = MODE_PARAMS[query.mode]
-    # This keeps the mode defaults intact but lets the caller request a smaller
-    # or larger final diversified set for a specific query.
-    requested_final_k = getattr(query, "result_count", None)
-    final_k = params["final_k"]
-    if isinstance(requested_final_k, int) and requested_final_k > 0:
-        final_k = requested_final_k
+    route = resolve_course_route(query)
+    # Keep the mode defaults intact unless the caller explicitly requests a
+    # different final K; MMR widens the candidate fetch behind the scenes.
+    final_k, candidate_fetch_k, lambda_param, rerank_strategy = (
+        _resolve_retrieval_controls(query, params)
+    )
+    retrieval_top_k = candidate_fetch_k if rerank_strategy != "similarity" else final_k
+    guidelines_top_k = params["guidelines_top_k"]
 
     dense_query = build_query(query)
 
     # Guidelines are always available (week-agnostic, separate collection)
     guidelines = retrieve_guidelines(
         dense_query,
-        top_k=params["guidelines_top_k"],
+        top_k=guidelines_top_k,
         threshold=params["guidelines_threshold"],
     )
 
-    if query.course_source == CourseSource.CS50:
+    if route.course_source == CourseSource.CS50:
         # Harvard CS50: no syllabus, use CS50-specific retrievers (notes + transcripts)
         syllabus = None
         semantic = retrieve_harvard(
             dense_query,
             query.week,
-            top_k=params["semantic_top_k"],
+            top_k=retrieval_top_k,
             cumulative=params["cumulative"],
+            collection_name=route.collection_name,
         )
         rules = retrieve_harvard_rules(
             dense_query,
             query.week,
-            top_k=params["rules_top_k"],
+            top_k=retrieval_top_k,
             threshold=params["rules_threshold"],
             cumulative=params["cumulative"],
-        )
-    elif query.course_source == CourseSource.MIT_13:
-        # MIT 6.0013: syllabus + course material retrievers
-        syllabus = retrieve_syllabus(query.week)
-        semantic = retrieve_semantic(
-            dense_query,
-            query.week,
-            top_k=params["semantic_top_k"],
-            cumulative=params["cumulative"],
-        )
-        rules = retrieve_strict_rules(
-            dense_query,
-            query.week,
-            top_k=params["rules_top_k"],
-            threshold=params["rules_threshold"],
-            cumulative=params["cumulative"],
+            collection_name=route.collection_name,
         )
     else:
-        # MIT 6.0014 (placeholder: mirrors MIT13)
-        syllabus = retrieve_syllabus(query.week)
+        # MIT 6.0013 / 6.0014: syllabus + course material retrievers
+        syllabus = retrieve_syllabus(
+            query.week,
+            collection_name=route.collection_name,
+        )
         semantic = retrieve_semantic(
             dense_query,
             query.week,
-            top_k=params["semantic_top_k"],
+            top_k=retrieval_top_k,
             cumulative=params["cumulative"],
+            collection_name=route.collection_name,
         )
         rules = retrieve_strict_rules(
             dense_query,
             query.week,
-            top_k=params["rules_top_k"],
+            top_k=retrieval_top_k,
             threshold=params["rules_threshold"],
             cumulative=params["cumulative"],
+            collection_name=route.collection_name,
         )
 
     # Merge + rerank (now returns 5-tuple with guidelines)
@@ -140,7 +180,7 @@ def run_retrieval(query: QueryInput) -> RetrievalResult:
         guidelines=guidelines,
         mode=query.mode,
         final_k=final_k,
-        lambda_param=1.0,   # similarity strategy — no MMR diversity penalty
+        lambda_param=lambda_param,
     )
 
     return build_retrieval_result(

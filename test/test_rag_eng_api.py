@@ -5,7 +5,9 @@ from fastapi.testclient import TestClient
 
 from rag.schemas import QueryInput, RetrievalResult
 from rag_eng.api import create_app
+from rag_eng.auth.models import CurrentUser
 from rag_eng.schemas import (
+    IngestionJobResponse,
     HealthResponse,
     IndexEnsureResponse,
     IndexRebuildResponse,
@@ -50,10 +52,11 @@ def test_health_endpoint_returns_service_state(monkeypatch, client: TestClient) 
 def test_query_endpoint_uses_default_result_count(
     monkeypatch, client: TestClient
 ) -> None:
-    captured: dict[str, int] = {}
+    captured: dict[str, object] = {}
 
     def fake_run_query(payload):
         captured["result_count"] = payload.result_count
+        captured["rerank_strategy"] = payload.rerank_strategy
         return QueryResponse(
             answer="Check the pointer before dereferencing it.",
             retrieval_result=RetrievalResult(
@@ -67,7 +70,8 @@ def test_query_endpoint_uses_default_result_count(
     response = client.post("/query", json=_base_query_payload())
 
     assert response.status_code == 200
-    assert captured["result_count"] == 5
+    assert captured["result_count"] == 8
+    assert captured["rerank_strategy"] == "similarity"
     assert response.json()["answer"]
     assert response.json()["formatted_context"]
 
@@ -75,10 +79,11 @@ def test_query_endpoint_uses_default_result_count(
 def test_query_endpoint_forwards_explicit_result_count(
     monkeypatch, client: TestClient
 ) -> None:
-    captured: dict[str, int] = {}
+    captured: dict[str, object] = {}
 
     def fake_run_query(payload):
         captured["result_count"] = payload.result_count
+        captured["rerank_strategy"] = payload.rerank_strategy
         return QueryResponse(
             answer="Check the pointer before dereferencing it.",
             retrieval_result=RetrievalResult(
@@ -89,10 +94,17 @@ def test_query_endpoint_forwards_explicit_result_count(
 
     monkeypatch.setattr("rag_eng.api.run_query", fake_run_query)
 
-    response = client.post("/query", json=_base_query_payload() | {"result_count": 7})
+    response = client.post(
+        "/query",
+        json=_base_query_payload() | {
+            "result_count": 7,
+            "rerank_strategy": "mmr_0.7",
+        },
+    )
 
     assert response.status_code == 200
     assert captured["result_count"] == 7
+    assert captured["rerank_strategy"] == "mmr_0.7"
 
 
 def test_query_endpoint_rejects_invalid_result_count(client: TestClient) -> None:
@@ -123,6 +135,60 @@ def test_openapi_exposes_query_schema_examples(client: TestClient) -> None:
     assert schemas["QueryPayload"]["examples"]
     assert schemas["QueryResult"]["examples"]
     assert "result_count" in schemas["QueryPayload"]["properties"]
+    assert "rerank_strategy" in schemas["QueryPayload"]["properties"]
+    assert "guardrail" in schemas["QueryResult"]["properties"]
+
+
+def test_chat_endpoint_forwards_course_id(monkeypatch, client: TestClient) -> None:
+    captured: dict[str, str | None] = {}
+
+    async def fake_run_chat(
+        messages,
+        model_name,
+        settings,
+        stream=False,
+        course_id=None,
+        session_id=None,
+        request_id=None,
+        turn_id=None,
+        section_id=None,
+        result_count=None,
+        rerank_strategy=None,
+    ):
+        captured["course_id"] = course_id
+        captured["session_id"] = session_id
+        captured["request_id"] = request_id
+        captured["turn_id"] = turn_id
+        captured["section_id"] = section_id
+        captured["result_count"] = result_count
+        captured["rerank_strategy"] = rerank_strategy
+        return {"message": {"content": "Try checking whether the pointer is initialized."}}
+
+    monkeypatch.setattr("rag_eng.api.run_chat", fake_run_chat)
+
+    response = client.post(
+        "/api/chat",
+        json={
+            "model": "codingrabbit",
+            "course_id": "mit14",
+            "session_id": "sess-123",
+            "request_id": "req-456",
+            "turn_id": "turn-789",
+            "section_id": "sec-1",
+            "result_count": 8,
+            "rerank_strategy": "mmr_0.9",
+            "messages": [{"role": "user", "content": "Why does my pointer segfault?"}],
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured["course_id"] == "mit14"
+    assert captured["session_id"] == "sess-123"
+    assert captured["request_id"] == "req-456"
+    assert captured["turn_id"] == "turn-789"
+    assert captured["section_id"] == "sec-1"
+    assert captured["result_count"] == 8
+    assert captured["rerank_strategy"] == "mmr_0.9"
 
 
 def test_admin_ensure_requires_token_when_configured(
@@ -238,3 +304,161 @@ def test_admin_rebuild_returns_500_on_service_exception(
 
     assert response.status_code == 500
     assert response.json()["detail"] == "rebuild failure"
+
+
+def _ingestion_job_response(
+    *,
+    job_id: str = "job-123",
+    status: str = "running",
+) -> IngestionJobResponse:
+    return IngestionJobResponse(
+        job_id=job_id,
+        course_id="mit14",
+        job_kind="chunk-index",
+        status=status,
+        message="ECS ingestion task launched.",
+        registered=True,
+        course_corpus_version_id=job_id,
+        ecs_cluster="cluster",
+        ecs_task_definition="taskdef",
+        ecs_container_name="worker",
+        ecs_task_arn="arn:aws:ecs:task/123",
+        collection_name="course_knowledge",
+        bucket="codingrabbit-data-dev",
+        input_prefix="parsed_json/mit14",
+        output_prefix=None,
+        prepared_output_prefix="prepared_chunks/mit14",
+        request_payload={
+            "job_id": job_id,
+            "course_id": "mit14",
+            "job_kind": "chunk-index",
+            "bucket": "codingrabbit-data-dev",
+            "input_prefix": "parsed_json/mit14",
+            "prepared_output_prefix": "prepared_chunks/mit14",
+            "collection_name": "course_knowledge",
+            "recreate_collection": False,
+            "course_corpus_version_id": job_id,
+        },
+        ecs_response={
+            "tasks": [{"taskArn": "arn:aws:ecs:task/123"}],
+            "failures": [],
+        },
+        created_at="2026-06-19T00:00:00+00:00",
+        updated_at="2026-06-19T00:00:00+00:00",
+        started_at="2026-06-19T00:00:00+00:00",
+        completed_at=None,
+    )
+
+
+def test_admin_launch_ingestion_requires_token_when_configured(
+    monkeypatch, client: TestClient
+) -> None:
+    monkeypatch.setenv("ADMIN_TOKEN", "expected-token")
+    response = client.post(
+        "/admin/ingestion/launch",
+        json={
+            "course_id": "mit14",
+            "job_kind": "chunk-index",
+            "bucket": "codingrabbit-data-dev",
+            "input_prefix": "parsed_json/mit14",
+            "prepared_output_prefix": "prepared_chunks/mit14",
+        },
+    )
+
+    assert response.status_code == 401
+
+
+def test_admin_launch_ingestion_allows_authorized_request(
+    monkeypatch, client: TestClient
+) -> None:
+    monkeypatch.setenv("ADMIN_TOKEN", "expected-token")
+    monkeypatch.setattr(
+        "rag_eng.api.launch_ingestion_job",
+        lambda payload: _ingestion_job_response(),
+    )
+
+    response = client.post(
+        "/admin/ingestion/launch",
+        headers={"X-Admin-Token": "expected-token"},
+        json={
+            "course_id": "mit14",
+            "job_kind": "chunk-index",
+            "bucket": "codingrabbit-data-dev",
+            "input_prefix": "parsed_json/mit14",
+            "prepared_output_prefix": "prepared_chunks/mit14",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["job_id"] == "job-123"
+    assert response.json()["course_corpus_version_id"] == "job-123"
+
+
+def test_admin_launch_ingestion_allows_admin_bearer_request(
+    monkeypatch, client: TestClient
+) -> None:
+    monkeypatch.setenv("ADMIN_TOKEN", "expected-token")
+    monkeypatch.setattr(
+        "rag_eng.api.launch_ingestion_job",
+        lambda payload: _ingestion_job_response(),
+    )
+
+    def _admin(_token: str, _settings) -> CurrentUser:
+        return CurrentUser(
+            cognito_sub="admin-sub-1",
+            email="admin@test.codingrabbit.dev",
+            groups=["Admins"],
+            primary_role="admin",
+        )
+
+    monkeypatch.setattr("rag_eng.api.verify_cognito_access_token", _admin)
+
+    response = client.post(
+        "/admin/ingestion/launch",
+        headers={"Authorization": "Bearer valid-token"},
+        json={
+            "course_id": "mit14",
+            "job_kind": "chunk-index",
+            "bucket": "codingrabbit-data-dev",
+            "input_prefix": "parsed_json/mit14",
+            "prepared_output_prefix": "prepared_chunks/mit14",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["job_id"] == "job-123"
+
+
+def test_admin_get_ingestion_job_returns_404_when_missing(
+    monkeypatch, client: TestClient
+) -> None:
+    monkeypatch.setenv("ADMIN_TOKEN", "expected-token")
+    monkeypatch.setattr(
+        "rag_eng.api.get_ingestion_job",
+        lambda job_id: (_ for _ in ()).throw(LookupError(job_id)),
+    )
+
+    response = client.get(
+        "/admin/ingestion/jobs/job-123",
+        headers={"X-Admin-Token": "expected-token"},
+    )
+
+    assert response.status_code == 404
+
+
+def test_admin_get_ingestion_job_allows_authorized_request(
+    monkeypatch, client: TestClient
+) -> None:
+    monkeypatch.setenv("ADMIN_TOKEN", "expected-token")
+    monkeypatch.setattr(
+        "rag_eng.api.get_ingestion_job",
+        lambda job_id: _ingestion_job_response(job_id=job_id),
+    )
+
+    response = client.get(
+        "/admin/ingestion/jobs/job-123",
+        headers={"X-Admin-Token": "expected-token"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["job_id"] == "job-123"

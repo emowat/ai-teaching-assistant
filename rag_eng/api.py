@@ -7,15 +7,31 @@ import subprocess
 import uuid
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, Header, HTTPException, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from rag_eng.auth.cognito import verify_cognito_access_token
 from rag_eng.auth.dependencies import require_authenticated_user
 from rag_eng.auth.models import MeResponse
+from rag_eng.course_admin import (
+    CourseConflictError,
+    CourseNotFoundError,
+    add_admin_course_aliases,
+    create_admin_course,
+    deactivate_admin_course_alias,
+    get_admin_course,
+    list_admin_courses,
+    update_admin_course,
+)
+from rag_eng.document_admin import (
+    create_admin_course_upload_url,
+    delete_admin_course_document,
+    list_admin_course_corpus_versions,
+    list_admin_course_documents,
+)
 from rag_eng.config import (
     Settings,
     get_inference_config,
@@ -28,12 +44,29 @@ from rag_eng.config import (
 from rag_eng.schemas import (
     AdminLlmConfigResponse,
     AdminLlmConfigUpdate,
+    AdminCourse,
+    AdminCourseAliasCreate,
+    AdminCourseCreate,
+    AdminCourseCorpusVersion,
+    AdminCourseDocumentDeleteResponse,
+    AdminCourseDocumentListResponse,
+    AdminCourseDocumentUploadRequest,
+    AdminCourseDocumentUploadResponse,
+    AdminCourseUpdate,
+    IngestionJobLaunchRequest,
+    IngestionJobResponse,
     HealthResponse,
     IndexEnsureResponse,
     IndexRebuildResponse,
     QueryPayload,
     QueryResult,
+    RetrievalRerankStrategy,
     RestartResponse,
+)
+from rag_eng.ingestion_jobs import (
+    get_ingestion_job,
+    launch_ingestion_job,
+    list_ingestion_jobs,
 )
 from rag_eng.runner_client import RunnerError, run_cpp_job
 from rag_eng.run_schemas import CompileRequest, CompileResponse
@@ -56,6 +89,13 @@ class _ChatOptions(BaseModel):
 class ChatRequest(BaseModel):
     """Ollama-compatible chat request (sent by the VS Code extension)."""
     model: str = "codingrabbit-ta"
+    course_id: str | None = None
+    session_id: str | None = None
+    request_id: str | None = None
+    turn_id: str | None = None
+    section_id: str | None = None
+    result_count: int = Field(default=8, ge=1, le=20)
+    rerank_strategy: RetrievalRerankStrategy = "similarity"
     messages: list[dict]
     stream: bool = False
     options: _ChatOptions = _ChatOptions()
@@ -114,6 +154,16 @@ def _runtime_config_payload() -> AdminLlmConfigResponse:
     )
 
 
+def _course_admin_http_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, CourseNotFoundError):
+        return HTTPException(status_code=404, detail=str(exc))
+    if isinstance(exc, CourseConflictError):
+        return HTTPException(status_code=409, detail=str(exc))
+    if isinstance(exc, ValueError):
+        return HTTPException(status_code=400, detail=str(exc))
+    return HTTPException(status_code=500, detail=str(exc))
+
+
 def create_app() -> FastAPI:
     """Create the FastAPI app for the RAG service."""
     settings = get_settings()
@@ -166,6 +216,168 @@ def create_app() -> FastAPI:
     def admin_rebuild_index() -> IndexRebuildResponse:
         try:
             return rebuild_index_service()
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    @app.get(
+        "/admin/courses",
+        response_model=list[AdminCourse],
+        dependencies=[Depends(_require_admin_access)],
+    )
+    def admin_list_courses() -> list[AdminCourse]:
+        try:
+            return list_admin_courses()
+        except Exception as exc:
+            raise _course_admin_http_error(exc) from exc
+
+    @app.get(
+        "/admin/courses/{course_id}",
+        response_model=AdminCourse,
+        dependencies=[Depends(_require_admin_access)],
+    )
+    def admin_get_course(course_id: str) -> AdminCourse:
+        try:
+            return get_admin_course(course_id)
+        except Exception as exc:
+            raise _course_admin_http_error(exc) from exc
+
+    @app.post(
+        "/admin/courses",
+        response_model=AdminCourse,
+        dependencies=[Depends(_require_admin_access)],
+    )
+    def admin_create_course(payload: AdminCourseCreate) -> AdminCourse:
+        try:
+            return create_admin_course(payload)
+        except Exception as exc:
+            raise _course_admin_http_error(exc) from exc
+
+    @app.patch(
+        "/admin/courses/{course_id}",
+        response_model=AdminCourse,
+        dependencies=[Depends(_require_admin_access)],
+    )
+    def admin_update_course(course_id: str, payload: AdminCourseUpdate) -> AdminCourse:
+        try:
+            return update_admin_course(course_id, payload)
+        except Exception as exc:
+            raise _course_admin_http_error(exc) from exc
+
+    @app.post(
+        "/admin/courses/{course_id}/aliases",
+        response_model=AdminCourse,
+        dependencies=[Depends(_require_admin_access)],
+    )
+    def admin_add_course_aliases(
+        course_id: str,
+        payload: AdminCourseAliasCreate,
+    ) -> AdminCourse:
+        try:
+            return add_admin_course_aliases(course_id, payload)
+        except Exception as exc:
+            raise _course_admin_http_error(exc) from exc
+
+    @app.delete(
+        "/admin/courses/{course_id}/aliases/{alias}",
+        response_model=AdminCourse,
+        dependencies=[Depends(_require_admin_access)],
+    )
+    def admin_delete_course_alias(course_id: str, alias: str) -> AdminCourse:
+        try:
+            return deactivate_admin_course_alias(course_id, alias)
+        except Exception as exc:
+            raise _course_admin_http_error(exc) from exc
+
+    @app.get(
+        "/admin/courses/{course_id}/documents",
+        response_model=AdminCourseDocumentListResponse,
+        dependencies=[Depends(_require_admin_access)],
+    )
+    def admin_list_course_documents(course_id: str) -> AdminCourseDocumentListResponse:
+        try:
+            return list_admin_course_documents(course_id)
+        except Exception as exc:
+            raise _course_admin_http_error(exc) from exc
+
+    @app.post(
+        "/admin/courses/{course_id}/documents/upload-url",
+        response_model=AdminCourseDocumentUploadResponse,
+        dependencies=[Depends(_require_admin_access)],
+    )
+    def admin_create_course_document_upload_url(
+        course_id: str,
+        payload: AdminCourseDocumentUploadRequest,
+    ) -> AdminCourseDocumentUploadResponse:
+        try:
+            return create_admin_course_upload_url(course_id, payload)
+        except Exception as exc:
+            raise _course_admin_http_error(exc) from exc
+
+    @app.delete(
+        "/admin/courses/{course_id}/documents",
+        response_model=AdminCourseDocumentDeleteResponse,
+        dependencies=[Depends(_require_admin_access)],
+    )
+    def admin_delete_course_document(
+        course_id: str,
+        key: str = Query(min_length=1),
+    ) -> AdminCourseDocumentDeleteResponse:
+        try:
+            return delete_admin_course_document(course_id, key=key)
+        except Exception as exc:
+            raise _course_admin_http_error(exc) from exc
+
+    @app.get(
+        "/admin/courses/{course_id}/corpus-versions",
+        response_model=list[AdminCourseCorpusVersion],
+        dependencies=[Depends(_require_admin_access)],
+    )
+    def admin_list_course_corpus_versions(
+        course_id: str,
+        limit: int = Query(default=25, ge=1, le=100),
+    ) -> list[AdminCourseCorpusVersion]:
+        try:
+            return list_admin_course_corpus_versions(course_id, limit=limit)
+        except Exception as exc:
+            raise _course_admin_http_error(exc) from exc
+
+    @app.get(
+        "/admin/ingestion/jobs",
+        response_model=list[IngestionJobResponse],
+        dependencies=[Depends(_require_admin_access)],
+    )
+    def admin_list_ingestion_jobs(
+        course_id: str | None = None,
+        limit: int = Query(default=25, ge=1, le=100),
+    ) -> list[IngestionJobResponse]:
+        try:
+            return list_ingestion_jobs(course_id=course_id, limit=limit)
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    @app.post(
+        "/admin/ingestion/launch",
+        response_model=IngestionJobResponse,
+        dependencies=[Depends(_require_admin_access)],
+    )
+    def admin_launch_ingestion(
+        payload: IngestionJobLaunchRequest,
+    ) -> IngestionJobResponse:
+        try:
+            return launch_ingestion_job(payload)
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    @app.get(
+        "/admin/ingestion/jobs/{job_id}",
+        response_model=IngestionJobResponse,
+        dependencies=[Depends(_require_admin_access)],
+    )
+    def admin_get_ingestion_job(job_id: str) -> IngestionJobResponse:
+        try:
+            return get_ingestion_job(job_id)
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
         except Exception as exc:
             raise HTTPException(status_code=500, detail=str(exc)) from exc
 
@@ -284,6 +496,13 @@ def create_app() -> FastAPI:
                 model_name=payload.model,
                 settings=settings,
                 stream=payload.stream,
+                course_id=payload.course_id,
+                session_id=payload.session_id,
+                request_id=payload.request_id,
+                turn_id=payload.turn_id,
+                section_id=payload.section_id,
+                result_count=payload.result_count,
+                rerank_strategy=payload.rerank_strategy,
             )
             if payload.stream:
                 return StreamingResponse(result, media_type="application/x-ndjson")

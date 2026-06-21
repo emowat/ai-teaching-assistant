@@ -23,6 +23,8 @@ import { Avatar, Btn, Card, Stat, Tag } from "../design/atoms";
 import { chartTooltipStyle, D, mono } from "../design/tokens";
 import { Sidebar, type SidebarTab } from "../components/Sidebar";
 import { TopBar } from "../components/TopBar";
+import { CourseManagementPanel } from "../components/admin/CourseManagementPanel";
+import { RagDocsPanel } from "../components/admin/RagDocsPanel";
 import type { AppView } from "../types/navigation";
 
 interface AdminDashboardProps {
@@ -50,16 +52,42 @@ const modelShare = [
 ];
 
 const CUSTOM_MODEL_VALUE = "__custom__";
-const OPENAI_MODEL_OPTIONS = ["gpt-5.4-mini", "gpt-5.4", "gpt-5.5"];
-const COHERE_MODEL_OPTIONS = ["command-r", "command-r-plus", "command-xlarge-nightly"];
-const OLLAMA_MODEL_OPTIONS = ["qwen3.5:9b", "llama3.1:8b", "llama3.2:3b"];
+interface ModelOption {
+  label: string;
+  value: string;
+}
 
-function getModelOptions(provider: LlmProvider): string[] {
+const OPENAI_MODEL_OPTIONS: ModelOption[] = [
+  { label: "gpt-5.4-mini", value: "gpt-5.4-mini" },
+  { label: "gpt-5.4", value: "gpt-5.4" },
+  { label: "gpt-5.5", value: "gpt-5.5" },
+];
+const COHERE_MODEL_OPTIONS: ModelOption[] = [
+  { label: "command-r", value: "command-r" },
+  { label: "command-r-plus", value: "command-r-plus" },
+  { label: "command-xlarge-nightly", value: "command-xlarge-nightly" },
+];
+const BEDROCK_MODEL_OPTIONS: ModelOption[] = [
+  { label: "Amazon Nova 2 Lite", value: "us.amazon.nova-2-lite-v1:0" },
+  {
+    label: "Anthropic Claude 3.5 Haiku",
+    value: "us.anthropic.claude-3-5-haiku-20241022-v1:0",
+  },
+];
+const OLLAMA_MODEL_OPTIONS: ModelOption[] = [
+  { label: "qwen3.5:9b", value: "qwen3.5:9b" },
+  { label: "llama3.1:8b", value: "llama3.1:8b" },
+  { label: "llama3.2:3b", value: "llama3.2:3b" },
+];
+
+function getModelOptions(provider: LlmProvider): ModelOption[] {
   switch (provider) {
     case "openai":
       return OPENAI_MODEL_OPTIONS;
     case "cohere":
       return COHERE_MODEL_OPTIONS;
+    case "bedrock":
+      return BEDROCK_MODEL_OPTIONS;
     case "ollama":
       return OLLAMA_MODEL_OPTIONS;
     case "sagemaker":
@@ -74,11 +102,13 @@ function resolveModelValue(selected: string, customValue: string): string {
 function getDefaultModel(provider: LlmProvider): string {
   switch (provider) {
     case "openai":
-      return "gpt-5.4-mini";
+      return OPENAI_MODEL_OPTIONS[0].value;
     case "cohere":
-      return COHERE_MODEL_OPTIONS[0];
+      return COHERE_MODEL_OPTIONS[0].value;
+    case "bedrock":
+      return BEDROCK_MODEL_OPTIONS[0].value;
     case "ollama":
-      return OLLAMA_MODEL_OPTIONS[0];
+      return OLLAMA_MODEL_OPTIONS[0].value;
     case "sagemaker":
       return "";
   }
@@ -92,26 +122,12 @@ const professors = [
   { name: "Dr. Patel", email: "rpatel@university.edu", courses: 1, students: 30, status: "invited" },
 ];
 
-// STUB — replace when GET /admin/courses is available
-const courses = [
-  { code: "CS101", name: "Intro to C++", prof: "Dr. Rivera", students: 32, status: "active" },
-  { code: "CS201", name: "Data Structures", prof: "Prof. Kim", students: 28, status: "active" },
-  { code: "CS301", name: "Algorithms", prof: "Dr. Rivera", students: 27, status: "draft" },
-];
-
-// STUB — replace when GET /admin/rag/docs is available
-const docs = [
-  { name: "CS101_Week1_Pointers.pdf", course: "CS101", size: "2.4 MB", status: "indexed" },
-  { name: "CS201_Trees_Lecture.pdf", course: "CS201", size: "1.8 MB", status: "indexed" },
-  { name: "CS101_Week3_OOP.pdf", course: "CS101", size: "3.1 MB", status: "indexing" },
-];
-
 const baseAdminTabs: SidebarTab[] = [
-  { key: "stats", icon: "📊", label: "Evaluation" },
-  { key: "models", icon: "🤖", label: "AI Models" },
-  { key: "rag", icon: "📚", label: "RAG Docs" },
   { key: "users", icon: "👥", label: "Users" },
   { key: "courses", icon: "🎓", label: "Courses" },
+  { key: "rag", icon: "📚", label: "RAG Docs" },
+  { key: "stats", icon: "📊", label: "Evaluation" },
+  { key: "models", icon: "🤖", label: "AI Models" },
 ];
 
 export function AdminDashboard({
@@ -120,7 +136,7 @@ export function AdminDashboard({
   onSignOut,
   accessToken,
 }: AdminDashboardProps) {
-  const [tab, setTab] = useState("stats");
+  const [tab, setTab] = useState("backend-console");
   const [healthOk, setHealthOk] = useState<boolean | null>(null);
   const [cohereConfigured, setCohereConfigured] = useState<boolean | null>(null);
   const [gradioAvailable, setGradioAvailable] = useState<boolean | null>(null);
@@ -178,12 +194,14 @@ export function AdminDashboard({
         setConfig(data);
         setRagProvider(data.rag.provider);
         const ragOptions = getModelOptions(data.rag.provider);
-        setRagModelChoice(ragOptions.includes(data.rag.model) ? data.rag.model : CUSTOM_MODEL_VALUE);
-        setRagCustomModel(ragOptions.includes(data.rag.model) ? "" : data.rag.model);
+        const ragHasModel = ragOptions.some((option) => option.value === data.rag.model);
+        setRagModelChoice(ragHasModel ? data.rag.model : CUSTOM_MODEL_VALUE);
+        setRagCustomModel(ragHasModel ? "" : data.rag.model);
         setChatProvider(data.chat.provider);
         const chatOptions = getModelOptions(data.chat.provider);
-        setChatModelChoice(chatOptions.includes(data.chat.model) ? data.chat.model : CUSTOM_MODEL_VALUE);
-        setChatCustomModel(chatOptions.includes(data.chat.model) ? "" : data.chat.model);
+        const chatHasModel = chatOptions.some((option) => option.value === data.chat.model);
+        setChatModelChoice(chatHasModel ? data.chat.model : CUSTOM_MODEL_VALUE);
+        setChatCustomModel(chatHasModel ? "" : data.chat.model);
         setOpenaiBaseUrl(data.openai_base_url || "https://api.openai.com/v1");
       })
       .catch((err: Error) => {
@@ -211,15 +229,10 @@ export function AdminDashboard({
       disabled: gradioDisabled,
       title: gradioTitle,
     };
-    const ragIndex = baseAdminTabs.findIndex((t) => t.key === "rag");
-    return [
-      ...baseAdminTabs.slice(0, ragIndex + 1),
-      backendConsoleTab,
-      ...baseAdminTabs.slice(ragIndex + 1),
-    ];
+    return [...baseAdminTabs, backendConsoleTab];
   }, [gradioAvailable]);
 
-  const activeTab = tab === "backend-console" && gradioAvailable === false ? "stats" : tab;
+  const activeTab = tab;
 
   const footer = (
     <Card style={{ padding: "10px 12px", marginTop: 12, borderRadius: 8 }}>
@@ -335,8 +348,8 @@ export function AdminDashboard({
             }}
           >
             {options.map((option) => (
-              <option key={option} value={option}>
-                {option}
+              <option key={option.value} value={option.value}>
+                {option.label}
               </option>
             ))}
             <option value={CUSTOM_MODEL_VALUE}>Custom...</option>
@@ -425,6 +438,25 @@ export function AdminDashboard({
                   background: D.surface,
                 }}
               />
+            </div>
+          )}
+
+          {activeTab === "backend-console" && !gradioAvailable && (
+            <div style={{ padding: 22 }}>
+              <Card style={{ display: "grid", gap: 8, maxWidth: 640 }}>
+                <div style={{ fontSize: 18, fontWeight: 600 }}>
+                  Backend Diagnostic Console
+                </div>
+                <div style={{ fontSize: 13, color: D.muted, lineHeight: 1.5 }}>
+                  The Gradio diagnostics app is not available right now. Start the
+                  `rag_eng` backend with the diagnostic console enabled to use this
+                  tab.
+                </div>
+                <div style={{ fontSize: 12, color: D.dim }}>
+                  The sidebar will keep this tab selected by default once the backend
+                  console is available.
+                </div>
+              </Card>
             </div>
           )}
 
@@ -518,7 +550,7 @@ export function AdminDashboard({
                           setRagCustomModel("");
                           return;
                         }
-                        if (currentValue && nextOptions.includes(currentValue)) {
+                        if (currentValue && nextOptions.some((option) => option.value === currentValue)) {
                           setRagModelChoice(currentValue);
                           setRagCustomModel("");
                           return;
@@ -536,6 +568,7 @@ export function AdminDashboard({
                     >
                       <option value="cohere">Cohere</option>
                       <option value="openai">OpenAI</option>
+                      <option value="bedrock">Bedrock</option>
                     </select>
                   </label>
                   {renderModelPicker(
@@ -563,7 +596,7 @@ export function AdminDashboard({
                           setChatCustomModel("");
                           return;
                         }
-                        if (currentValue && nextOptions.includes(currentValue)) {
+                        if (currentValue && nextOptions.some((option) => option.value === currentValue)) {
                           setChatModelChoice(currentValue);
                           setChatCustomModel("");
                           return;
@@ -582,6 +615,7 @@ export function AdminDashboard({
                       <option value="ollama">Ollama</option>
                       <option value="sagemaker">SageMaker</option>
                       <option value="openai">OpenAI</option>
+                      <option value="bedrock">Bedrock</option>
                     </select>
                   </label>
                   {renderModelPicker(
@@ -716,33 +750,7 @@ export function AdminDashboard({
           )}
 
           {activeTab === "rag" && (
-            <div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
-                <div style={{ fontSize: 18, fontWeight: 600 }}>
-                  RAG document library <Tag color={D.muted}>STUB</Tag>
-                </div>
-                <Btn small>+ Upload document</Btn>
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {docs.map((d) => (
-                  <Card key={d.name} style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 16px" }}>
-                    <span style={{ fontSize: 16, flexShrink: 0 }}>📄</span>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 13, fontWeight: 500 }}>{d.name}</div>
-                      <div style={{ fontSize: 11, color: D.muted, marginTop: 2 }}>
-                        {d.course} · {d.size}
-                      </div>
-                    </div>
-                    <Tag color={d.status === "indexed" ? D.green : D.yellow}>
-                      {d.status === "indexed" ? "✓ indexed" : "⏳ indexing"}
-                    </Tag>
-                    <Btn variant="danger" small>
-                      Remove
-                    </Btn>
-                  </Card>
-                ))}
-              </div>
-            </div>
+            <RagDocsPanel accessToken={accessToken} />
           )}
 
           {activeTab === "users" && (
@@ -772,43 +780,7 @@ export function AdminDashboard({
           )}
 
           {activeTab === "courses" && (
-            <div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
-                <div style={{ fontSize: 18, fontWeight: 600 }}>
-                  Courses <Tag color={D.muted}>STUB</Tag>
-                </div>
-                <Btn small>+ Create course</Btn>
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {courses.map((c) => (
-                  <Card key={c.code} style={{ display: "flex", alignItems: "center", gap: 16 }}>
-                    <div
-                      style={{
-                        background: D.orangeGlow,
-                        border: `1px solid ${D.orangeBorder}`,
-                        borderRadius: 6,
-                        padding: "5px 11px",
-                        ...mono,
-                        fontSize: 13,
-                        fontWeight: 600,
-                        color: D.orange,
-                        flexShrink: 0,
-                      }}
-                    >
-                      {c.code}
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 14, fontWeight: 500 }}>{c.name}</div>
-                      <div style={{ fontSize: 12, color: D.muted, marginTop: 2 }}>Prof: {c.prof}</div>
-                    </div>
-                    <Tag color={c.status === "active" ? D.green : D.yellow}>{c.status}</Tag>
-                    <Btn variant="ghost" small>
-                      Manage
-                    </Btn>
-                  </Card>
-                ))}
-              </div>
-            </div>
+            <CourseManagementPanel accessToken={accessToken} />
           )}
         </div>
       </div>

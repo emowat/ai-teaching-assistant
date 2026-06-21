@@ -21,7 +21,7 @@ Google Drive (fine-tuned Qwen)
 |---|---|---|
 | **Configuration** | `deploy/deployment.yaml` | Single source of truth for all deploy settings |
 | **Shell wrappers** (start here) | `deploy/scripts/*.sh` | Human-friendly entry points with `--help` |
-| **Python implementation** | `deploy/upload_model.py`, `deploy/deploy_sagemaker.py`, `deploy/sagemaker_io.py` | Download, S3 upload, SageMaker API calls, async payload helpers |
+| **Python implementation** | `deploy/upload_model.py`, `deploy/deploy_sagemaker.py`, `deploy/deploy_ingestion_worker.py`, `deploy/sagemaker_io.py` | Download, S3 upload, SageMaker API calls, ECS task-definition helpers, async payload helpers |
 | **Application** | `rag_eng/inference.py` | Calls the live endpoint at request time |
 
 ---
@@ -202,6 +202,203 @@ These are the **recommended** way to run deployment. Each script:
 
 ---
 
+### `restore-guardrail-checkpoint.sh`
+
+**Purpose:** Download the fine-tuned CodeBERT guardrail checkpoint from S3 and extract it into the local Hugging Face checkpoint directory used by `output_guardrails/semantic_guardrail.py`.
+
+**Default source and target:**
+
+- S3 source: `s3://codingrabbit-data-dev/models/guardrails/codebert_v2_1/model.tar.gz`
+- Local checkpoint target: `output_guardrails/models/checkpoints/codebert_v2_1`
+
+**Usage:**
+
+```bash
+./deploy/scripts/restore-guardrail-checkpoint.sh
+./deploy/scripts/restore-guardrail-checkpoint.sh --help
+```
+
+**Environment variables:**
+
+| Variable | Default | Description |
+|---|---|---|
+| `GUARDRAILS_CODEBERT_S3_URI` | `s3://codingrabbit-data-dev/models/guardrails/codebert_v2_1/model.tar.gz` | Source model artifact |
+| `GUARDRAILS_CODEBERT_CHECKPOINT_DIR` | `output_guardrails/models/checkpoints/codebert_v2_1` | Local checkpoint directory |
+| `AWS_PROFILE` | (none) | Optional named profile for S3 download |
+| `AWS_REGION` | (none) | Optional region override for S3 download |
+
+**Success output:** the local checkpoint directory contains `config.json`, tokenizer files, and model weights, ready for `output_guardrails.semantic_guardrail.predict_safety()`.
+
+---
+
+### `deploy-ingestion-worker.sh`
+
+**Purpose:** Describe, render, or register the ECS Fargate task definition used by the on-demand ingestion worker.
+
+The script does not launch jobs itself. The backend already owns job launches via `/admin/ingestion/launch`; this helper only makes the ECS wiring reproducible.
+
+| Action | What it does |
+|---|---|
+| `describe` | Print the resolved ECS task-definition settings and any missing values |
+| `render-task-definition` | Emit the ECS task-definition JSON payload |
+| `render-backend-env` | Emit the backend `.env` fragment for `INGESTION_ECS_*` values |
+| `register-task-definition` | Register the task definition with ECS using boto3 |
+
+**Usage:**
+
+```bash
+./deploy/scripts/deploy-ingestion-worker.sh describe
+./deploy/scripts/deploy-ingestion-worker.sh render-task-definition
+./deploy/scripts/deploy-ingestion-worker.sh render-backend-env
+./deploy/scripts/deploy-ingestion-worker.sh register-task-definition
+```
+
+**Required worker settings:**
+
+| Variable | Description |
+|---|---|
+| `INGESTION_ECS_IMAGE_URI` | ECR image URI for the worker container |
+| `INGESTION_ECS_EXECUTION_ROLE_ARN` | ECS task execution role ARN |
+| `INGESTION_ECS_TASK_ROLE_ARN` | ECS task role ARN |
+| `INGESTION_ECS_TASK_FAMILY` | Task family name used for registration |
+| `INGESTION_ECS_TASK_DEFINITION` | Task definition name/ARN used by the backend launcher |
+| `INGESTION_ECS_CONTAINER_NAME` | Container name inside the task definition |
+| `INGESTION_ECS_SUBNETS` | Comma-separated ECS subnets for `run-task` |
+| `INGESTION_ECS_SECURITY_GROUPS` | Comma-separated ECS security groups for `run-task` |
+| `INGESTION_ECS_SECRET_ARNS_JSON` | Optional JSON map of secret env names to Secrets Manager ARNs |
+
+**Recommended secret mapping keys:**
+
+- `INGESTION_JOBS_DATABASE_URL`
+- `COURSE_REGISTRY_DATABASE_URL`
+- `QDRANT_API_KEY`
+
+**Example:**
+
+```bash
+export INGESTION_ECS_IMAGE_URI=123456789012.dkr.ecr.us-east-1.amazonaws.com/codingrabbit-ingestion:latest
+export INGESTION_ECS_EXECUTION_ROLE_ARN=arn:aws:iam::123456789012:role/ecsTaskExecutionRole
+export INGESTION_ECS_TASK_ROLE_ARN=arn:aws:iam::123456789012:role/codingrabbit-ingestion-task
+export INGESTION_ECS_TASK_FAMILY=codingrabbit-ingestion-worker
+export INGESTION_ECS_TASK_DEFINITION=codingrabbit-ingestion-worker
+export INGESTION_ECS_CONTAINER_NAME=ingestion-worker
+export INGESTION_ECS_SUBNETS=subnet-123,subnet-456
+export INGESTION_ECS_SECURITY_GROUPS=sg-123
+export INGESTION_ECS_SECRET_ARNS_JSON='{"INGESTION_JOBS_DATABASE_URL":"arn:aws:secretsmanager:...","QDRANT_API_KEY":"arn:aws:secretsmanager:..."}'
+```
+
+**Success output:** the helper prints the rendered task definition, the backend launch env fragment, or the ECS registration response, depending on the chosen action.
+
+---
+
+## AWS wiring checklist for ingestion
+
+Use this when you are ready to make the on-demand ingestion worker live in AWS.
+
+### 1. Build and push the worker image to ECR
+
+Create or reuse an ECR repository for the ingestion worker, then build and push
+the image from the repo root:
+
+```bash
+docker build -f ingestion_worker/Dockerfile -t codingrabbit-ingestion:latest .
+docker tag codingrabbit-ingestion:latest 123456789012.dkr.ecr.us-east-1.amazonaws.com/codingrabbit-ingestion:latest
+docker push 123456789012.dkr.ecr.us-east-1.amazonaws.com/codingrabbit-ingestion:latest
+```
+
+The helper expects the final image URI in `INGESTION_ECS_IMAGE_URI`.
+
+### 2. Create the ECS task roles
+
+You need two roles:
+
+- **Task execution role**
+  - trusted by `ecs-tasks.amazonaws.com`
+  - permissions for ECR image pulls, CloudWatch Logs, and Secrets Manager value injection
+- **Task role**
+  - trusted by `ecs-tasks.amazonaws.com`
+  - permissions for the worker’s AWS calls at runtime, primarily S3 read/write for uploads, parsed envelopes, and prepared chunks
+
+The worker itself reads Qdrant and PostgreSQL over the network, so those do not need AWS IAM permissions.
+
+### 3. Register the ECS task definition
+
+Set the task-definition values, then register it through the helper:
+
+```bash
+export INGESTION_ECS_IMAGE_URI=123456789012.dkr.ecr.us-east-1.amazonaws.com/codingrabbit-ingestion:latest
+export INGESTION_ECS_EXECUTION_ROLE_ARN=arn:aws:iam::123456789012:role/ecsTaskExecutionRole
+export INGESTION_ECS_TASK_ROLE_ARN=arn:aws:iam::123456789012:role/codingrabbit-ingestion-task
+export INGESTION_ECS_TASK_FAMILY=codingrabbit-ingestion-worker
+export INGESTION_ECS_LOG_GROUP=/ecs/codingrabbit-ingestion-worker
+export INGESTION_ECS_LOG_STREAM_PREFIX=ecs
+export INGESTION_ECS_SECRET_ARNS_JSON='{"INGESTION_JOBS_DATABASE_URL":"arn:aws:secretsmanager:...","QDRANT_API_KEY":"arn:aws:secretsmanager:..."}'
+
+./deploy/scripts/deploy-ingestion-worker.sh register-task-definition
+```
+
+The helper will register a task definition with:
+
+- `awsvpc` networking
+- `FARGATE` compatibility
+- the worker container name from `INGESTION_ECS_CONTAINER_NAME`
+- CloudWatch Logs configuration
+- secret mappings for the worker env vars listed below
+
+### 4. Copy the backend launch settings into `.env`
+
+The backend launcher needs the ECS control-plane values, not the image URI:
+
+```bash
+./deploy/scripts/deploy-ingestion-worker.sh render-backend-env
+```
+
+Recommended backend `.env` values:
+
+| Variable | Purpose |
+|---|---|
+| `AWS_REGION` | ECS region |
+| `AWS_PROFILE` | Optional named profile for local admin launches |
+| `INGESTION_ECS_CLUSTER` | ECS cluster name |
+| `INGESTION_ECS_TASK_DEFINITION` | Task definition name or ARN |
+| `INGESTION_ECS_CONTAINER_NAME` | Container name inside the task definition |
+| `INGESTION_ECS_LAUNCH_TYPE` | Usually `FARGATE` |
+| `INGESTION_ECS_PLATFORM_VERSION` | Usually `LATEST` |
+| `INGESTION_ECS_ASSIGN_PUBLIC_IP` | Usually `ENABLED` for dev launches |
+| `INGESTION_ECS_SUBNETS` | Comma-separated subnet IDs |
+| `INGESTION_ECS_SECURITY_GROUPS` | Comma-separated security group IDs |
+
+The worker task definition itself should keep its own runtime env values for:
+
+- `INGESTION_JOB_ID`
+- `INGESTION_JOB_KIND`
+- `INGESTION_JOBS_DATABASE_URL` or `COURSE_REGISTRY_DATABASE_URL`
+- `QDRANT_URL`
+- `QDRANT_API_KEY`
+- `EMBEDDING_MODEL`
+- `QDRANT_COLLECTION_MIT13`
+- `QDRANT_COLLECTION_MIT14`
+- `QDRANT_COLLECTION_CS50`
+- `QDRANT_COLLECTION_GUIDELINES`
+
+### 5. Smoke test the control plane
+
+After the task definition and backend `.env` values are in place:
+
+1. Restart `rag_eng`
+2. Call the admin launch endpoint:
+   - `POST /admin/ingestion/launch`
+3. Poll job status:
+   - `GET /admin/ingestion/jobs/{job_id}`
+4. Confirm the worker marks the Aurora job complete and activates the corpus version for `chunk-index`
+
+If the ECS task launches but the job stays queued or failed, inspect:
+- CloudWatch logs for the ingestion task
+- the `ecs_response` and `message` fields returned by the job API
+- the task-role / execution-role permissions and secret mappings
+
+---
+
 ### `deploy-custom-model-to-sagemaker-ai.sh`
 
 **Purpose:** Create and manage a **SageMaker Asynchronous Inference** endpoint that loads the S3 model artifact.
@@ -245,6 +442,48 @@ Async Inference is used because the fine-tuned Qwen model is large and inference
 | `AWS_PROFILE` | (none) | Optional named profile |
 
 **After `deploy` succeeds:** set `USE_SAGEMAKER=true` in `.env` and restart `rag_eng`. The VS Code extension’s `codingRabbit.apiUrl` should point at your deployed API (`POST /api/chat`).
+
+---
+
+### `deploy-aurora-course-registry.sh`
+
+**Purpose:** Bootstrap the Aurora PostgreSQL course registry schema and seed the
+initial course mappings used by `rag/course_registry.py`.
+
+**What it does:**
+
+1. Reads the versioned schema file at `deploy/sql/aurora_course_registry.sql`
+2. Executes the DDL and seed statements through the Aurora Data API
+3. Verifies the resulting `courses` and `course_aliases` rows
+
+**Temporary dev access reminder:** if you open Aurora to your laptop for local
+development, revert the public access change, route table change, and any
+temporary security-group exception after the backend is deployed.
+
+**Usage:**
+
+```bash
+./deploy/scripts/deploy-aurora-course-registry.sh apply \
+  --resource-arn arn:aws:rds:us-east-1:123456789012:cluster:my-course-registry \
+  --secret-arn arn:aws:secretsmanager:us-east-1:123456789012:secret:my-db-secret \
+  --database postgres \
+  --region us-east-1 \
+  --profile codingrabbit-dev
+```
+
+**Environment variables:**
+
+| Variable | Default | Description |
+|---|---|---|
+| `AURORA_COURSE_REGISTRY_RESOURCE_ARN` | — | Aurora cluster resource ARN for the Data API |
+| `AURORA_COURSE_REGISTRY_SECRET_ARN` | — | Secrets Manager ARN for the DB credentials |
+| `AURORA_COURSE_REGISTRY_DATABASE` | `postgres` | Aurora database name |
+| `AURORA_COURSE_REGISTRY_SQL_FILE` | `deploy/sql/aurora_course_registry.sql` | SQL bootstrap file |
+| `AWS_REGION` | `us-east-1` | AWS region for the Data API client |
+| `AWS_PROFILE` | — | Optional named AWS profile |
+
+If the Data API call fails, the script exits non-zero and the cluster is left in
+its previous committed state.
 
 ---
 

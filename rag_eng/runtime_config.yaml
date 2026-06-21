@@ -1,7 +1,7 @@
 runtime:
   rag:
-    provider: openai
-    model: gpt-5.4-mini
+    provider: bedrock
+    model: us.amazon.nova-2-lite-v1:0
   chat:
     provider: sagemaker
     model: ''

@@ -11,6 +11,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from output_guardrails.combined import apply_all_guardrails
+
 from rag_eng.config import Settings, get_settings
 from rag_eng.inference import _invoke_sagemaker
 from rag_eng.service import run_chat
@@ -245,6 +247,58 @@ def build_extension_user_message(
     )
 
 
+def _parse_conversation_history(conversation_history_json: str | None) -> list[dict[str, Any]]:
+    """Parse the optional guardrail history input."""
+    raw = (conversation_history_json or "").strip()
+    if not raw:
+        return []
+    parsed = json.loads(raw)
+    if not isinstance(parsed, list):
+        raise ValueError("Conversation history must be a JSON list.")
+    return parsed
+
+
+def invoke_guardrail_review(
+    draft_answer: str,
+    student_question: str,
+    student_code: str,
+    conversation_history_json: str | None = None,
+) -> tuple[str, str, str]:
+    """Run the guardrail chain directly for diagnostic review."""
+    started = time.time()
+    try:
+        conversation_history = _parse_conversation_history(conversation_history_json)
+    except Exception as exc:
+        return "", "", f"Invalid conversation history: {exc}"
+
+    try:
+        result = apply_all_guardrails(
+            draft_answer or "",
+            student_question or "",
+            student_code or "",
+            conversation_history,
+        )
+    except Exception as exc:
+        elapsed = time.time() - started
+        return "", "", f"Guardrail review failed after {elapsed:.1f}s: {exc}"
+
+    elapsed = time.time() - started
+    status = (
+        f"Completed in {elapsed:.1f}s · stage={result.get('stage', 'n/a')} · "
+        f"action={result.get('action', 'pass')}"
+    )
+    severity = result.get("severity")
+    if severity:
+        status = f"{status} · severity={severity}"
+    violation_type = result.get("violation_type")
+    if violation_type and violation_type != "none":
+        status = f"{status} · violation={violation_type}"
+    v2_score = result.get("v2_score")
+    if v2_score is not None:
+        status = f"{status} · v2={v2_score:.3f}"
+    return result.get("final_answer", ""), json.dumps(result, indent=2), status
+
+
 async def _pipeline_chat_async(
     student_message: str,
     code_raw: str,
@@ -252,6 +306,13 @@ async def _pipeline_chat_async(
     week: int,
     mode: str,
     settings: Settings,
+    course_id: str | None = None,
+    session_id: str | None = None,
+    request_id: str | None = None,
+    turn_id: str | None = None,
+    section_id: str | None = None,
+    result_count: int | None = None,
+    rerank_strategy: str | None = None,
 ) -> dict[str, Any]:
     content = build_extension_user_message(
         mode=mode,
@@ -265,6 +326,13 @@ async def _pipeline_chat_async(
         model_name="codingrabbit",
         settings=settings,
         stream=False,
+        course_id=(course_id or "").strip() or None,
+        session_id=(session_id or "").strip() or None,
+        request_id=(request_id or "").strip() or None,
+        turn_id=(turn_id or "").strip() or None,
+        section_id=(section_id or "").strip() or None,
+        result_count=result_count,
+        rerank_strategy=(rerank_strategy or "").strip() or None,
     )
 
 
@@ -274,6 +342,13 @@ def invoke_pipeline_chat(
     terminal_output: str,
     week: int,
     mode: str,
+    course_id: str | None = None,
+    session_id: str | None = None,
+    request_id: str | None = None,
+    turn_id: str | None = None,
+    section_id: str | None = None,
+    result_count: int | None = None,
+    rerank_strategy: str | None = None,
     settings: Settings | None = None,
 ) -> tuple[str, str, str]:
     """Run the full RAG + inference pipeline (POST /api/chat equivalent)."""
@@ -296,6 +371,13 @@ def invoke_pipeline_chat(
                 int(week),
                 mode,
                 settings,
+                course_id,
+                session_id,
+                request_id,
+                turn_id,
+                section_id,
+                result_count,
+                rerank_strategy,
             )
         )
     except Exception as exc:
@@ -307,9 +389,32 @@ def invoke_pipeline_chat(
         content = (result.get("message") or {}).get("content", "")
         if not content and "content" in result:
             content = str(result.get("content", ""))
+        guardrail = result.get("guardrail") if isinstance(result.get("guardrail"), dict) else None
+        trace_summary_parts = [
+            f"session={result.get('session_id')}" if result.get("session_id") else None,
+            f"request={result.get('request_id')}" if result.get("request_id") else None,
+            f"turn={result.get('turn_id')}" if result.get("turn_id") else None,
+        ]
+        trace_summary = " · ".join(part for part in trace_summary_parts if part)
         meta = (
             f"Completed in {elapsed:.1f}s · route: {route} · "
             f"USE_SAGEMAKER={settings.use_sagemaker}"
         )
+        if trace_summary:
+            meta = f"{meta} · {trace_summary}"
+        if result_count is not None:
+            meta = f"{meta} · k={int(result_count)}"
+        if rerank_strategy:
+            meta = f"{meta} · rerank={rerank_strategy}"
+        if guardrail:
+            guardrail_bits = [
+                f"guardrail={guardrail.get('stage', 'n/a')}",
+                f"action={guardrail.get('action', 'pass')}",
+            ]
+            if guardrail.get("severity"):
+                guardrail_bits.append(f"severity={guardrail['severity']}")
+            if guardrail.get("v2_score") is not None:
+                guardrail_bits.append(f"v2={float(guardrail['v2_score']):.3f}")
+            meta = f"{meta} · {' · '.join(guardrail_bits)}"
         return content, json.dumps(result, indent=2), meta
     return str(result), "", f"Unexpected result type after {elapsed:.1f}s"

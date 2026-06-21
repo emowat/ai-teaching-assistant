@@ -6,7 +6,17 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from rag.schemas import QueryInput, RetrievalResult
+from rag.schemas import CourseSource as RagCourseSource, QueryInput, RetrievalResult
+
+RetrievalRerankStrategy = Literal["similarity", "mmr_0.5", "mmr_0.7", "mmr_0.9"]
+IngestionJobKind = Literal["parse", "chunk-index"]
+IngestionJobStatus = Literal["queued", "running", "completed", "failed", "launch_failed"]
+RERANK_STRATEGY_CHOICES: tuple[str, ...] = (
+    "similarity",
+    "mmr_0.5",
+    "mmr_0.7",
+    "mmr_0.9",
+)
 
 
 class QueryPayload(QueryInput):
@@ -26,8 +36,10 @@ class QueryPayload(QueryInput):
                     "exit_code": 139,
                     "week": 3,
                     "mode": "Homework Assist",
-                    "course_source": "mit",
-                    "result_count": 5,
+                    "course_id": "mit13",
+                    "course_source": "mit13",
+                    "result_count": 8,
+                    "rerank_strategy": "similarity",
                     "ast_features": {
                         "has_pointer": True,
                         "has_reference": False,
@@ -47,15 +59,33 @@ class QueryPayload(QueryInput):
     # Bound the override so the backend always knows the expected output size
     # stays in a sensible range for the UI and prompt formatting.
     result_count: int = Field(
-        default=5,
+        default=8,
         ge=1,
         le=20,
         description="Number of final retrieved documents to return.",
+    )
+    rerank_strategy: RetrievalRerankStrategy = Field(
+        default="similarity",
+        description="Reranking strategy used to diversify retrieved context.",
     )
 
 
 class QueryRequest(QueryPayload):
     """Compatibility alias for callers that still import the old request name."""
+
+
+class GuardrailResult(BaseModel):
+    """Structured guardrail outcome returned alongside pipeline answers."""
+
+    stage: str = ""
+    safe: bool
+    blocked: bool
+    violation_type: str
+    severity: str
+    action: str
+    evidence: str
+    final_answer: str
+    v2_score: float | None = None
 
 
 class QueryResult(BaseModel):
@@ -78,6 +108,11 @@ class QueryResult(BaseModel):
     answer: str
     retrieval_result: RetrievalResult
     formatted_context: str
+    guardrail: GuardrailResult | None = None
+    session_id: str | None = None
+    request_id: str | None = None
+    turn_id: str | None = None
+    turn_index: int | None = None
 
 
 class QueryResponse(QueryResult):
@@ -89,11 +124,15 @@ class HealthResponse(BaseModel):
 
     ready: bool
     qdrant_configured: bool
+    course_registry_configured: bool = False
     cohere_configured: bool
     openai_configured: bool = False
+    bedrock_configured: bool = False
     qdrant_reachable: bool
+    course_registry_reachable: bool = False
     cohere_reachable: bool = False
     openai_reachable: bool = False
+    bedrock_reachable: bool = False
     message: str = ""
 
 
@@ -121,7 +160,7 @@ class IndexRebuildResponse(BaseModel):
 class ModelRouteConfig(BaseModel):
     """Non-secret provider/model pair saved by the admin UI."""
 
-    provider: Literal["cohere", "openai", "ollama", "sagemaker"]
+    provider: Literal["cohere", "openai", "ollama", "sagemaker", "bedrock"]
     model: str = Field(default="", max_length=200)
 
     @model_validator(mode="after")
@@ -158,3 +197,186 @@ class RestartResponse(BaseModel):
     success: bool
     scheduled: bool
     message: str
+
+
+class AdminCourse(BaseModel):
+    """Admin-facing course metadata for CRUD and dashboard views."""
+
+    course_id: str
+    display_name: str
+    course_source: RagCourseSource
+    collection_name: str
+    is_active: bool
+    has_ingestion_history: bool = False
+    aliases: list[str] = Field(default_factory=list)
+    created_at: str = ""
+    updated_at: str = ""
+
+
+class AdminCourseCreate(BaseModel):
+    """Payload used to create a course in Aurora."""
+
+    course_id: str = Field(min_length=1)
+    display_name: str = Field(min_length=1)
+    course_source: RagCourseSource
+    collection_name: str = Field(min_length=1)
+    is_active: bool = True
+    aliases: list[str] = Field(default_factory=list)
+
+
+class AdminCourseUpdate(BaseModel):
+    """Payload used to update a course in Aurora."""
+
+    display_name: str | None = None
+    course_source: RagCourseSource | None = None
+    collection_name: str | None = None
+    is_active: bool | None = None
+
+    @model_validator(mode="after")
+    def _validate_non_empty_update(self) -> "AdminCourseUpdate":
+        if (
+            self.display_name is None
+            and self.course_source is None
+            and self.collection_name is None
+            and self.is_active is None
+        ):
+            raise ValueError("At least one course field must be provided.")
+        return self
+
+
+class AdminCourseAliasCreate(BaseModel):
+    """Payload used to add one or more aliases to a course."""
+
+    aliases: list[str] = Field(min_length=1)
+
+
+class AdminCourseDocument(BaseModel):
+    """S3-backed source document metadata for a course."""
+
+    key: str
+    file_name: str
+    size_bytes: int
+    last_modified: str = ""
+    etag: str | None = None
+
+
+class AdminCourseDocumentListResponse(BaseModel):
+    """Course-scoped view of uploaded source documents in S3."""
+
+    course_id: str
+    bucket: str
+    upload_prefix: str
+    parsed_prefix: str
+    prepared_prefix: str
+    documents: list[AdminCourseDocument] = Field(default_factory=list)
+
+
+class AdminCourseDocumentUploadRequest(BaseModel):
+    """Payload used to request a presigned upload URL for a course document."""
+
+    file_name: str = Field(min_length=1, max_length=255)
+    content_type: str | None = Field(default=None, max_length=255)
+
+    @model_validator(mode="after")
+    def _validate_file_name(self) -> "AdminCourseDocumentUploadRequest":
+        cleaned = self.file_name.strip()
+        if not cleaned:
+            raise ValueError("file_name is required.")
+        if "/" in cleaned or "\\" in cleaned:
+            raise ValueError("file_name must be a single file name, not a path.")
+        if cleaned in {".", ".."}:
+            raise ValueError("file_name must name a real file.")
+        self.file_name = cleaned
+        if self.content_type is not None:
+            self.content_type = self.content_type.strip() or None
+        return self
+
+
+class AdminCourseDocumentUploadResponse(BaseModel):
+    """Presigned upload target for a course document."""
+
+    course_id: str
+    bucket: str
+    key: str
+    upload_prefix: str
+    parsed_prefix: str
+    prepared_prefix: str
+    upload_url: str
+    upload_method: str = "PUT"
+    expires_in_seconds: int
+    required_headers: dict[str, str] = Field(default_factory=dict)
+
+
+class AdminCourseDocumentDeleteResponse(BaseModel):
+    """Response returned after deleting a course document from S3."""
+
+    course_id: str
+    bucket: str
+    key: str
+    deleted: bool = True
+
+
+class AdminCourseCorpusVersion(BaseModel):
+    """Aurora-backed history entry for a course corpus build."""
+
+    course_corpus_version_id: str
+    course_id: str
+    collection_name: str
+    source_bucket: str
+    source_prefix: str
+    parsed_prefix: str | None = None
+    prepared_prefix: str | None = None
+    status: str
+    active: bool
+    recreate_collection: bool
+    metadata: dict[str, object] = Field(default_factory=dict)
+    created_at: str = ""
+    updated_at: str = ""
+    started_at: str | None = None
+    completed_at: str | None = None
+
+
+class IngestionJobLaunchRequest(BaseModel):
+    """Request to launch an on-demand ECS ingestion task."""
+
+    course_id: str = Field(min_length=1)
+    job_kind: IngestionJobKind
+    bucket: str = Field(min_length=1)
+    input_prefix: str = Field(min_length=1)
+    output_prefix: str | None = None
+    prepared_output_prefix: str | None = None
+    collection_name: str | None = None
+    recreate_collection: bool = False
+
+    @model_validator(mode="after")
+    def _validate_job_specific_fields(self) -> "IngestionJobLaunchRequest":
+        if self.job_kind == "parse" and not self.output_prefix:
+            raise ValueError("output_prefix is required for parse jobs")
+        return self
+
+
+class IngestionJobResponse(BaseModel):
+    """Status returned for ECS ingestion job launches and lookups."""
+
+    job_id: str
+    course_id: str
+    job_kind: IngestionJobKind
+    status: IngestionJobStatus
+    message: str = ""
+    registered: bool = False
+    course_corpus_version_id: str | None = None
+    ecs_cluster: str = ""
+    ecs_task_definition: str = ""
+    ecs_container_name: str = ""
+    ecs_task_arn: str | None = None
+    collection_name: str | None = None
+    bucket: str = ""
+    input_prefix: str = ""
+    output_prefix: str | None = None
+    prepared_output_prefix: str | None = None
+    request_payload: dict[str, str | int | bool | None] = Field(default_factory=dict)
+    ecs_response: dict[str, object] = Field(default_factory=dict)
+    created_at: str = ""
+    updated_at: str = ""
+    started_at: str | None = None
+    completed_at: str | None = None

@@ -54,6 +54,16 @@ def test_model_route_config_allows_sagemaker_without_model() -> None:
     assert route.model == ""
 
 
+def test_model_route_config_allows_bedrock() -> None:
+    route = ModelRouteConfig(
+        provider="bedrock",
+        model="us.amazon.nova-2-lite-v1:0",
+    )
+
+    assert route.provider == "bedrock"
+    assert route.model == "us.amazon.nova-2-lite-v1:0"
+
+
 def test_model_route_config_requires_model_for_non_sagemaker() -> None:
     with pytest.raises(ValueError, match="model is required"):
         ModelRouteConfig(provider="openai", model="")
