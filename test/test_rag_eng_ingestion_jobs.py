@@ -6,6 +6,7 @@ from rag_eng.ingestion_jobs import (
     IngestionRuntimeConfig,
     build_ingestion_worker_command,
     complete_ingestion_job,
+    list_ingestion_jobs,
     launch_ingestion_job,
     _json_safe_value,
 )
@@ -104,6 +105,7 @@ class _FakeCursor:
     def __init__(self, store: _FakeStore) -> None:
         self.store = store
         self.fetchone_result = None
+        self.fetchall_result = []
 
     def __enter__(self):
         return self
@@ -238,39 +240,32 @@ class _FakeCursor:
                 row["completed_at"] = self.store._now()
             return {}
 
-        if statement.startswith("SELECT"):
+        if statement.startswith("SELECT") and "WHERE JOB_ID = %S" in statement:
             job_id = str(params[0])
             row = self.store.jobs[job_id]
-            self.fetchone_result = (
-                row["job_id"],
-                row["course_id"],
-                row["course_corpus_version_id"],
-                row["job_kind"],
-                row["status"],
-                row["message"],
-                row["ecs_cluster"],
-                row["ecs_task_definition"],
-                row["ecs_container_name"],
-                row["ecs_task_arn"],
-                row["collection_name"],
-                row["bucket"],
-                row["input_prefix"],
-                row["output_prefix"],
-                row["prepared_output_prefix"],
-                row["recreate_collection"],
-                row["request_payload"],
-                row["ecs_response"],
-                row["created_at"],
-                row["updated_at"],
-                row["started_at"],
-                row["completed_at"],
-            )
+            self.fetchone_result = _job_row(row)
+            return {}
+
+        if statement.startswith("SELECT") and "FROM INGESTION_JOBS" in statement:
+            selected_rows = list(self.store.jobs.values())
+            if "WHERE COURSE_ID = %S" in statement:
+                selected_rows = [
+                    row for row in selected_rows if str(row["course_id"]) == str(params[0])
+                ]
+                limit = int(params[1])
+            else:
+                limit = int(params[0])
+            selected_rows.sort(key=lambda row: str(row["created_at"]), reverse=True)
+            self.fetchall_result = [_job_row(row) for row in selected_rows[:limit]]
             return {}
 
         raise AssertionError(f"Unexpected SQL: {sql}")
 
     def fetchone(self):
         return self.fetchone_result
+
+    def fetchall(self):
+        return list(self.fetchall_result)
 
 
 class _FakeConnection:
@@ -285,6 +280,33 @@ class _FakeConnection:
 
     def cursor(self):
         return _FakeCursor(self.store)
+
+
+def _job_row(row: dict[str, object]) -> tuple[object, ...]:
+    return (
+        row["job_id"],
+        row["course_id"],
+        row["course_corpus_version_id"],
+        row["job_kind"],
+        row["status"],
+        row["message"],
+        row["ecs_cluster"],
+        row["ecs_task_definition"],
+        row["ecs_container_name"],
+        row["ecs_task_arn"],
+        row["collection_name"],
+        row["bucket"],
+        row["input_prefix"],
+        row["output_prefix"],
+        row["prepared_output_prefix"],
+        row["recreate_collection"],
+        row["request_payload"],
+        row["ecs_response"],
+        row["created_at"],
+        row["updated_at"],
+        row["started_at"],
+        row["completed_at"],
+    )
 
 
 class _FakeEcsClient:
@@ -389,3 +411,65 @@ def test_launch_ingestion_job_parse_omits_corpus_version(monkeypatch) -> None:
     assert overrides["command"][0] == "parse"
     assert "--collection-name" not in overrides["command"]
     assert "--output-prefix" in overrides["command"]
+
+
+def test_list_ingestion_jobs_filters_by_course(monkeypatch) -> None:
+    store = _FakeStore()
+    store.jobs["job-a"] = {
+        "job_id": "job-a",
+        "course_id": "mit14",
+        "course_corpus_version_id": None,
+        "job_kind": "parse",
+        "status": "completed",
+        "message": "ok",
+        "ecs_cluster": "cluster",
+        "ecs_task_definition": "taskdef",
+        "ecs_container_name": "worker",
+        "ecs_task_arn": "arn:aws:ecs:task/a",
+        "collection_name": "course_mit14",
+        "bucket": "codingrabbit-data-dev",
+        "input_prefix": "teacher_uploads/mit14/",
+        "output_prefix": "parsed_json/mit14/",
+        "prepared_output_prefix": None,
+        "recreate_collection": False,
+        "request_payload": {},
+        "ecs_response": {},
+        "created_at": "2026-06-21T00:00:00+00:00",
+        "updated_at": "2026-06-21T00:00:00+00:00",
+        "started_at": "2026-06-21T00:00:01+00:00",
+        "completed_at": "2026-06-21T00:00:02+00:00",
+    }
+    store.jobs["job-b"] = {
+        "job_id": "job-b",
+        "course_id": "cs50",
+        "course_corpus_version_id": None,
+        "job_kind": "parse",
+        "status": "completed",
+        "message": "ok",
+        "ecs_cluster": "cluster",
+        "ecs_task_definition": "taskdef",
+        "ecs_container_name": "worker",
+        "ecs_task_arn": "arn:aws:ecs:task/b",
+        "collection_name": "harvard_cs50",
+        "bucket": "codingrabbit-data-dev",
+        "input_prefix": "teacher_uploads/cs50/",
+        "output_prefix": "parsed_json/cs50/",
+        "prepared_output_prefix": None,
+        "recreate_collection": False,
+        "request_payload": {},
+        "ecs_response": {},
+        "created_at": "2026-06-20T00:00:00+00:00",
+        "updated_at": "2026-06-20T00:00:00+00:00",
+        "started_at": "2026-06-20T00:00:01+00:00",
+        "completed_at": "2026-06-20T00:00:02+00:00",
+    }
+
+    monkeypatch.setattr(
+        "rag_eng.ingestion_jobs._connect_postgres",
+        lambda *args, **kwargs: _FakeConnection(store),
+    )
+
+    jobs = list_ingestion_jobs(course_id="mit14", limit=10, runtime=_runtime())
+
+    assert [job.job_id for job in jobs] == ["job-a"]
+    assert jobs[0].course_id == "mit14"

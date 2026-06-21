@@ -249,6 +249,83 @@ class AdminCourseAliasCreate(BaseModel):
     aliases: list[str] = Field(min_length=1)
 
 
+class AdminCourseDocument(BaseModel):
+    """S3-backed source document metadata for a course."""
+
+    key: str
+    file_name: str
+    size_bytes: int
+    last_modified: str = ""
+    etag: str | None = None
+
+
+class AdminCourseDocumentListResponse(BaseModel):
+    """Course-scoped view of uploaded source documents in S3."""
+
+    course_id: str
+    bucket: str
+    upload_prefix: str
+    parsed_prefix: str
+    prepared_prefix: str
+    documents: list[AdminCourseDocument] = Field(default_factory=list)
+
+
+class AdminCourseDocumentUploadRequest(BaseModel):
+    """Payload used to request a presigned upload URL for a course document."""
+
+    file_name: str = Field(min_length=1, max_length=255)
+    content_type: str | None = Field(default=None, max_length=255)
+
+    @model_validator(mode="after")
+    def _validate_file_name(self) -> "AdminCourseDocumentUploadRequest":
+        cleaned = self.file_name.strip()
+        if not cleaned:
+            raise ValueError("file_name is required.")
+        if "/" in cleaned or "\\" in cleaned:
+            raise ValueError("file_name must be a single file name, not a path.")
+        if cleaned in {".", ".."}:
+            raise ValueError("file_name must name a real file.")
+        self.file_name = cleaned
+        if self.content_type is not None:
+            self.content_type = self.content_type.strip() or None
+        return self
+
+
+class AdminCourseDocumentUploadResponse(BaseModel):
+    """Presigned upload target for a course document."""
+
+    course_id: str
+    bucket: str
+    key: str
+    upload_prefix: str
+    parsed_prefix: str
+    prepared_prefix: str
+    upload_url: str
+    upload_method: str = "PUT"
+    expires_in_seconds: int
+    required_headers: dict[str, str] = Field(default_factory=dict)
+
+
+class AdminCourseCorpusVersion(BaseModel):
+    """Aurora-backed history entry for a course corpus build."""
+
+    course_corpus_version_id: str
+    course_id: str
+    collection_name: str
+    source_bucket: str
+    source_prefix: str
+    parsed_prefix: str | None = None
+    prepared_prefix: str | None = None
+    status: str
+    active: bool
+    recreate_collection: bool
+    metadata: dict[str, object] = Field(default_factory=dict)
+    created_at: str = ""
+    updated_at: str = ""
+    started_at: str | None = None
+    completed_at: str | None = None
+
+
 class IngestionJobLaunchRequest(BaseModel):
     """Request to launch an on-demand ECS ingestion task."""
 

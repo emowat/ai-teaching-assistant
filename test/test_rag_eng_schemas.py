@@ -6,6 +6,7 @@ from pydantic import ValidationError
 from rag_eng.schemas import (
     AdminCourseAliasCreate,
     AdminCourseCreate,
+    AdminCourseDocumentUploadRequest,
     AdminCourseUpdate,
     QueryPayload,
     QueryRequest,
@@ -123,3 +124,18 @@ def test_admin_course_update_requires_at_least_one_field() -> None:
 def test_admin_course_alias_create_requires_one_alias() -> None:
     with pytest.raises(ValidationError):
         AdminCourseAliasCreate(aliases=[])
+
+
+def test_admin_course_document_upload_request_rejects_nested_paths() -> None:
+    with pytest.raises(ValidationError):
+        AdminCourseDocumentUploadRequest(file_name="slides/week1.pdf")
+
+
+def test_admin_course_document_upload_request_trims_fields() -> None:
+    request = AdminCourseDocumentUploadRequest(
+        file_name="  lecture-01.pdf  ",
+        content_type="  application/pdf  ",
+    )
+
+    assert request.file_name == "lecture-01.pdf"
+    assert request.content_type == "application/pdf"

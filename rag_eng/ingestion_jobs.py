@@ -506,6 +506,55 @@ def _fetch_job_row(
     return row
 
 
+def _fetch_job_rows(
+    *,
+    connection,
+    course_id: str | None,
+    limit: int,
+) -> list[tuple[Any, ...]]:
+    where_sql = ""
+    params: list[Any] = []
+    if course_id is not None:
+        where_sql = "WHERE course_id = %s"
+        params.append(course_id)
+    params.append(limit)
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"""
+            SELECT
+              job_id,
+              course_id,
+              course_corpus_version_id,
+              job_kind,
+              status,
+              message,
+              ecs_cluster,
+              ecs_task_definition,
+              ecs_container_name,
+              ecs_task_arn,
+              collection_name,
+              bucket,
+              input_prefix,
+              output_prefix,
+              prepared_output_prefix,
+              recreate_collection,
+              request_payload,
+              ecs_response,
+              created_at,
+              updated_at,
+              started_at,
+              completed_at
+            FROM ingestion_jobs
+            {where_sql}
+            ORDER BY created_at DESC
+            LIMIT %s
+            """,
+            tuple(params),
+        )
+        return list(cursor.fetchall())
+
+
 def _ecs_run_task_response_to_dict(response: dict[str, Any]) -> dict[str, Any]:
     return {
         "tasks": response.get("tasks", []) or [],
@@ -673,6 +722,29 @@ def get_ingestion_job(
         runtime.connect_timeout_seconds,
     ) as connection:
         return _row_to_response(_fetch_job_row(connection=connection, job_id=job_id))
+
+
+def list_ingestion_jobs(
+    *,
+    course_id: str | None = None,
+    limit: int = 25,
+    runtime: IngestionRuntimeConfig | None = None,
+) -> list[IngestionJobResponse]:
+    """List recent ingestion jobs, optionally filtered to one course."""
+    runtime = runtime or load_ingestion_runtime_config()
+    if not runtime.database_url:
+        raise RuntimeError("Ingestion jobs database URL is not configured.")
+
+    with _connect_postgres(
+        runtime.database_url,
+        runtime.connect_timeout_seconds,
+    ) as connection:
+        rows = _fetch_job_rows(
+            connection=connection,
+            course_id=course_id.strip() if course_id else None,
+            limit=limit,
+        )
+    return [_row_to_response(row) for row in rows]
 
 
 def complete_ingestion_job(

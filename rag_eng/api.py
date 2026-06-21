@@ -7,7 +7,7 @@ import subprocess
 import uuid
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, Header, HTTPException, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -26,6 +26,11 @@ from rag_eng.course_admin import (
     list_admin_courses,
     update_admin_course,
 )
+from rag_eng.document_admin import (
+    create_admin_course_upload_url,
+    list_admin_course_corpus_versions,
+    list_admin_course_documents,
+)
 from rag_eng.config import (
     Settings,
     get_inference_config,
@@ -41,6 +46,10 @@ from rag_eng.schemas import (
     AdminCourse,
     AdminCourseAliasCreate,
     AdminCourseCreate,
+    AdminCourseCorpusVersion,
+    AdminCourseDocumentListResponse,
+    AdminCourseDocumentUploadRequest,
+    AdminCourseDocumentUploadResponse,
     AdminCourseUpdate,
     IngestionJobLaunchRequest,
     IngestionJobResponse,
@@ -52,7 +61,11 @@ from rag_eng.schemas import (
     RetrievalRerankStrategy,
     RestartResponse,
 )
-from rag_eng.ingestion_jobs import get_ingestion_job, launch_ingestion_job
+from rag_eng.ingestion_jobs import (
+    get_ingestion_job,
+    launch_ingestion_job,
+    list_ingestion_jobs,
+)
 from rag_eng.runner_client import RunnerError, run_cpp_job
 from rag_eng.run_schemas import CompileRequest, CompileResponse
 from rag_eng.service import (
@@ -272,6 +285,59 @@ def create_app() -> FastAPI:
             return deactivate_admin_course_alias(course_id, alias)
         except Exception as exc:
             raise _course_admin_http_error(exc) from exc
+
+    @app.get(
+        "/admin/courses/{course_id}/documents",
+        response_model=AdminCourseDocumentListResponse,
+        dependencies=[Depends(_require_admin_access)],
+    )
+    def admin_list_course_documents(course_id: str) -> AdminCourseDocumentListResponse:
+        try:
+            return list_admin_course_documents(course_id)
+        except Exception as exc:
+            raise _course_admin_http_error(exc) from exc
+
+    @app.post(
+        "/admin/courses/{course_id}/documents/upload-url",
+        response_model=AdminCourseDocumentUploadResponse,
+        dependencies=[Depends(_require_admin_access)],
+    )
+    def admin_create_course_document_upload_url(
+        course_id: str,
+        payload: AdminCourseDocumentUploadRequest,
+    ) -> AdminCourseDocumentUploadResponse:
+        try:
+            return create_admin_course_upload_url(course_id, payload)
+        except Exception as exc:
+            raise _course_admin_http_error(exc) from exc
+
+    @app.get(
+        "/admin/courses/{course_id}/corpus-versions",
+        response_model=list[AdminCourseCorpusVersion],
+        dependencies=[Depends(_require_admin_access)],
+    )
+    def admin_list_course_corpus_versions(
+        course_id: str,
+        limit: int = Query(default=25, ge=1, le=100),
+    ) -> list[AdminCourseCorpusVersion]:
+        try:
+            return list_admin_course_corpus_versions(course_id, limit=limit)
+        except Exception as exc:
+            raise _course_admin_http_error(exc) from exc
+
+    @app.get(
+        "/admin/ingestion/jobs",
+        response_model=list[IngestionJobResponse],
+        dependencies=[Depends(_require_admin_access)],
+    )
+    def admin_list_ingestion_jobs(
+        course_id: str | None = None,
+        limit: int = Query(default=25, ge=1, le=100),
+    ) -> list[IngestionJobResponse]:
+        try:
+            return list_ingestion_jobs(course_id=course_id, limit=limit)
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     @app.post(
         "/admin/ingestion/launch",
