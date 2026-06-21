@@ -6,6 +6,7 @@ import logging
 import os
 import uuid
 from dataclasses import dataclass
+from datetime import date, datetime
 from typing import Any, Mapping
 
 from dotenv import load_dotenv
@@ -29,6 +30,23 @@ def _format_timestamp(value: object | None) -> str:
     return str(value)
 
 
+def _json_safe_value(value: object) -> object:
+    """Recursively convert Python objects into JSON-serializable values."""
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    if isinstance(value, Mapping):
+        return {str(key): _json_safe_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe_value(item) for item in value]
+    if isinstance(value, set):
+        return [_json_safe_value(item) for item in sorted(value, key=str)]
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return str(value)
+
+
 def _json_adapter(data: dict[str, Any]) -> Any:
     """Adapt dictionaries to JSONB if psycopg is available."""
     try:
@@ -36,7 +54,7 @@ def _json_adapter(data: dict[str, Any]) -> Any:
     except ImportError:  # pragma: no cover - handled by the connection helper
         return data
 
-    return Jsonb(data)
+    return Jsonb(_json_safe_value(data))
 
 
 def _connect_postgres(database_url: str, connect_timeout_seconds: int):
@@ -134,11 +152,12 @@ def build_ingestion_worker_command(
     course_id: str,
     collection_name: str,
 ) -> list[str]:
-    """Build the ECS task command for the ingestion worker."""
+    """Build the ECS task command for the ingestion worker.
+
+    The container image already sets the Python module entrypoint, so ECS only
+    needs the subcommand plus its arguments here.
+    """
     command = [
-        "python",
-        "-m",
-        "data_ingestion.ingestion_worker",
         request.job_kind,
         "--bucket",
         request.bucket,

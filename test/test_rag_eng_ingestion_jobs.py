@@ -7,6 +7,7 @@ from rag_eng.ingestion_jobs import (
     build_ingestion_worker_command,
     complete_ingestion_job,
     launch_ingestion_job,
+    _json_safe_value,
 )
 from rag_eng.schemas import IngestionJobLaunchRequest
 
@@ -61,24 +62,32 @@ def test_build_ingestion_worker_command_matches_job_kind() -> None:
         collection_name="course_knowledge",
     )
 
-    assert parse_command[:4] == [
-        "python",
-        "-m",
-        "data_ingestion.ingestion_worker",
-        "parse",
-    ]
+    assert parse_command[0] == "parse"
     assert "--output-prefix" in parse_command
     assert "--collection-name" not in parse_command
 
-    assert chunk_command[:4] == [
-        "python",
-        "-m",
-        "data_ingestion.ingestion_worker",
-        "chunk-index",
-    ]
+    assert chunk_command[0] == "chunk-index"
     assert "--collection-name" in chunk_command
     assert "--prepared-output-prefix" in chunk_command
     assert "--recreate-collection" in chunk_command
+
+
+def test_json_safe_value_recursively_stringifies_datetimes() -> None:
+    value = {
+        "created_at": datetime(2026, 6, 20, 12, 34, 56, tzinfo=timezone.utc),
+        "tasks": [
+            {
+                "startedAt": datetime(2026, 6, 20, 12, 35, 0, tzinfo=timezone.utc),
+                "tags": {"a", "b"},
+            }
+        ],
+    }
+
+    safe = _json_safe_value(value)
+
+    assert safe["created_at"] == "2026-06-20T12:34:56+00:00"
+    assert safe["tasks"][0]["startedAt"] == "2026-06-20T12:35:00+00:00"
+    assert sorted(safe["tasks"][0]["tags"]) == ["a", "b"]
 
 
 class _FakeStore:
@@ -377,6 +386,6 @@ def test_launch_ingestion_job_parse_omits_corpus_version(monkeypatch) -> None:
     assert response.course_corpus_version_id is None
     assert store.versions == {}
     overrides = fake_ecs.calls[0]["overrides"]["containerOverrides"][0]
+    assert overrides["command"][0] == "parse"
     assert "--collection-name" not in overrides["command"]
     assert "--output-prefix" in overrides["command"]
-    assert overrides["command"][3] == "parse"
