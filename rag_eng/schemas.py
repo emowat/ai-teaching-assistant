@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -109,6 +109,7 @@ class QueryResult(BaseModel):
     retrieval_result: RetrievalResult
     formatted_context: str
     guardrail: GuardrailResult | None = None
+    input_guardrail: dict[str, Any] | None = None
     session_id: str | None = None
     request_id: str | None = None
     turn_id: str | None = None

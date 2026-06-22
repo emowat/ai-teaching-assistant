@@ -27,6 +27,7 @@ from rag_eng.llm_clients import (
 )
 from rag_eng.prompts import get_system_prompt
 from rag_eng.telemetry import TraceContext, TelemetryStore, get_telemetry_store
+from input_guardrails.runtime import evaluate_input_guardrail
 from output_guardrails.combined import apply_all_guardrails
 from rag_eng.schemas import (
     HealthResponse,
@@ -35,6 +36,7 @@ from rag_eng.schemas import (
     QueryPayload,
     QueryResponse,
 )
+from rag.schemas import RetrievalResult
 
 
 logger = logging.getLogger(__name__)
@@ -104,10 +106,13 @@ def _chat_response_payload_with_guardrail(
     answer: str,
     trace: TraceContext,
     guardrail: dict[str, Any] | None,
+    input_guardrail: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     payload = _chat_response_payload(answer, trace)
     if guardrail is not None:
         payload["guardrail"] = guardrail
+    if input_guardrail is not None:
+        payload["input_guardrail"] = input_guardrail
     return payload
 
 
@@ -137,6 +142,143 @@ def _guardrail_summary(guardrail_result: dict[str, Any]) -> dict[str, Any]:
     if guardrail_result.get("v2_score") is not None:
         summary["guardrail_v2_score"] = guardrail_result.get("v2_score")
     return summary
+
+
+def _input_guardrail_summary(input_guardrail_result: dict[str, Any]) -> dict[str, Any]:
+    """Summarize input guardrail output for telemetry and response metadata."""
+    summary = {
+        "input_guardrail_stage": input_guardrail_result.get("stage"),
+        "input_guardrail_action": input_guardrail_result.get("action"),
+        "input_guardrail_safe": input_guardrail_result.get("safe"),
+        "input_guardrail_blocked": input_guardrail_result.get("blocked"),
+        "input_guardrail_violation_type": input_guardrail_result.get("violation_type"),
+        "input_guardrail_severity": input_guardrail_result.get("severity"),
+        "input_guardrail_evidence": input_guardrail_result.get("evidence"),
+    }
+    rules = input_guardrail_result.get("rules") or {}
+    if isinstance(rules, dict):
+        summary["input_guardrail_rule_action"] = rules.get("action")
+        summary["input_guardrail_rule_flag_reason"] = rules.get("flag_reason")
+        summary["input_guardrail_rule_confidence"] = rules.get("confidence")
+        summary["input_guardrail_rule_latency_ms"] = rules.get("latency_ms")
+    model = input_guardrail_result.get("model") or {}
+    if isinstance(model, dict):
+        summary["input_guardrail_model_enabled"] = model.get("enabled")
+        summary["input_guardrail_model_available"] = model.get("available")
+        summary["input_guardrail_model_decision"] = model.get("decision")
+        summary["input_guardrail_model_score"] = model.get("score")
+    return summary
+
+
+def _build_input_guardrail_context(query) -> tuple[str, str]:
+    """Synthesize the input-guardrail model fields from a query."""
+    course_topic = query.course_id or query.course_source.value
+    assignment_context_bits = [
+        f"course_source={query.course_source.value}",
+        f"mode={query.mode.value}",
+        f"week={query.week}",
+    ]
+    if query.section_id:
+        assignment_context_bits.append(f"section_id={query.section_id}")
+    if query.terminal_output:
+        assignment_context_bits.append(
+            f"terminal_output={query.terminal_output.strip()[:240]}"
+        )
+    return course_topic, " | ".join(assignment_context_bits)
+
+
+def _run_input_guardrail(
+    *,
+    query,
+    trace: TraceContext,
+    telemetry_store: TelemetryStore,
+) -> dict[str, Any]:
+    """Evaluate the pre-RAG input guardrail and emit telemetry."""
+    settings = get_settings()
+    course_topic, assignment_context = _build_input_guardrail_context(query)
+    started_at = time.perf_counter()
+    base_metadata = {
+        "source": trace.source,
+        "mode": trace.mode,
+        "week": trace.week,
+        "course_id": trace.course_id,
+        "course_source": trace.course_source,
+        "student_message_chars": len(query.student_message or ""),
+        "student_code_chars": len(query.code_raw or ""),
+    }
+
+    telemetry_store.record_event(
+        trace,
+        event_type="input_guardrail_started",
+        stage="input_guardrail",
+        status="started",
+        model_provider="input_guardrail",
+        model_name="codebert_v1",
+        metadata=base_metadata,
+    )
+
+    try:
+        result = evaluate_input_guardrail(
+            student_message=query.student_message or "",
+            student_code=query.code_raw or "",
+            course_topic=course_topic,
+            assignment_context=assignment_context,
+            checkpoint_dir=getattr(
+                settings,
+                "input_guardrails_codebert_checkpoint_dir",
+                None,
+            ),
+        )
+    except Exception as exc:  # pragma: no cover - defensive fallback
+        logger.warning("Input guardrail evaluation failed; continuing to RAG: %s", exc)
+        result = {
+            "stage": "input_guardrail_error",
+            "action": "pass",
+            "safe": True,
+            "blocked": False,
+            "violation_type": "input_guardrail_error",
+            "severity": "low",
+            "evidence": f"input guardrail error: {type(exc).__name__}",
+            "final_answer": "",
+            "version": "input_guardrail_error",
+            "rules": {},
+            "model": {
+                "enabled": False,
+                "available": False,
+                "decision": "pass",
+                "score": None,
+                "pass_below": None,
+                "block_above": None,
+                "checkpoint_dir": getattr(
+                    settings,
+                    "input_guardrails_codebert_checkpoint_dir",
+                    "",
+                ),
+            },
+            "latency_ms": int((time.perf_counter() - started_at) * 1000),
+        }
+
+    guardrail_status = (
+        "blocked"
+        if result.get("blocked")
+        else "log_only"
+        if result.get("action") == "log_only"
+        else "passed"
+    )
+    telemetry_store.record_event(
+        trace,
+        event_type="input_guardrail_finished",
+        stage="input_guardrail",
+        status=guardrail_status,
+        latency_ms=int((time.perf_counter() - started_at) * 1000),
+        model_provider="input_guardrail",
+        model_name="codebert_v1",
+        metadata={
+            **base_metadata,
+            **_input_guardrail_summary(result),
+        },
+    )
+    return result
 
 
 async def _collect_stream_answer(stream: AsyncIterator[bytes]) -> str:
@@ -293,6 +435,11 @@ async def _trace_stream_response(
         )
 
 
+async def _single_chunk_stream(payload: dict[str, Any]) -> AsyncIterator[bytes]:
+    """Return a one-chunk NDJSON stream for short-circuited requests."""
+    yield (json.dumps(payload) + "\n").encode("utf-8")
+
+
 def _build_llm():
     """Create the configured RAG chat model lazily."""
     settings = get_settings()
@@ -347,6 +494,11 @@ def run_query(query) -> QueryResponse:
     model_provider = runtime.rag.provider
     model_name = runtime.rag.model
     started_at = time.perf_counter()
+    input_guardrail = _run_input_guardrail(
+        query=query,
+        trace=trace,
+        telemetry_store=telemetry_store,
+    )
     base_metadata = {
         "source": "query",
         "mode": str(query.mode.value),
@@ -355,7 +507,33 @@ def run_query(query) -> QueryResponse:
         "course_source": trace.course_source,
         "result_count": getattr(query, "result_count", None),
         "rerank_strategy": getattr(query, "rerank_strategy", None),
+        **_input_guardrail_summary(input_guardrail),
     }
+
+    if input_guardrail.get("blocked"):
+        answer = input_guardrail.get("final_answer") or ""
+        telemetry_store.finish_turn(
+            trace,
+            status="completed",
+            latency_ms=int((time.perf_counter() - started_at) * 1000),
+            model_provider="input_guardrail",
+            model_name="codebert_v1",
+            answer_chars=len(answer),
+            metadata={
+                **base_metadata,
+                "answer_chars": len(answer),
+            },
+        )
+        return QueryResponse(
+            answer=answer,
+            retrieval_result=RetrievalResult(),
+            formatted_context="",
+            input_guardrail=input_guardrail,
+            session_id=trace.session_id,
+            request_id=trace.request_id,
+            turn_id=trace.turn_id,
+            turn_index=trace.turn_index,
+        )
 
     telemetry_store.record_event(
         trace,
@@ -428,6 +606,7 @@ def run_query(query) -> QueryResponse:
             answer=answer,
             retrieval_result=retrieval_result,
             formatted_context=retrieval_result.formatted_context,
+            input_guardrail=input_guardrail,
             session_id=trace.session_id,
             request_id=trace.request_id,
             turn_id=trace.turn_id,
@@ -640,6 +819,11 @@ async def run_chat(
         model_name if chat_route.provider == "sagemaker" else chat_route.model
     )
     started_at = time.perf_counter()
+    input_guardrail = _run_input_guardrail(
+        query=query,
+        trace=trace,
+        telemetry_store=telemetry_store,
+    )
     base_metadata = {
         "source": "chat",
         "mode": str(query.mode.value),
@@ -648,12 +832,37 @@ async def run_chat(
         "course_source": trace.course_source,
         "result_count": getattr(query, "result_count", None),
         "rerank_strategy": getattr(query, "rerank_strategy", None),
+        **_input_guardrail_summary(input_guardrail),
     }
     conversation_history = [
         message
         for message in messages[:-1]
         if message.get("role") in {"user", "assistant"}
     ]
+
+    if input_guardrail.get("blocked"):
+        answer = input_guardrail.get("final_answer") or ""
+        payload = _chat_response_payload_with_guardrail(
+            answer,
+            trace,
+            None,
+            input_guardrail=input_guardrail,
+        )
+        telemetry_store.finish_turn(
+            trace,
+            status="completed",
+            latency_ms=int((time.perf_counter() - started_at) * 1000),
+            model_provider="input_guardrail",
+            model_name="codebert_v1",
+            answer_chars=len(answer),
+            metadata={
+                **base_metadata,
+                "answer_chars": len(answer),
+            },
+        )
+        if stream:
+            return _single_chunk_stream(payload)
+        return payload
 
     telemetry_store.record_event(
         trace,
@@ -730,6 +939,7 @@ async def run_chat(
                         **retrieval_metadata,
                         "answer_chars": len(answer),
                         **_guardrail_summary(guardrail),
+                        **_input_guardrail_summary(input_guardrail),
                     },
                 )
                 telemetry_store.finish_turn(
@@ -745,6 +955,7 @@ async def run_chat(
                         "llm_latency_ms": llm_latency_ms,
                         "answer_chars": len(answer),
                         **_guardrail_summary(guardrail),
+                        **_input_guardrail_summary(input_guardrail),
                     },
                 )
                 return chunk_text(answer, runtime.sagemaker.streaming_chunk_size)
@@ -771,6 +982,7 @@ async def run_chat(
                     **retrieval_metadata,
                     "answer_chars": len(answer),
                     **_guardrail_summary(guardrail),
+                    **_input_guardrail_summary(input_guardrail),
                 },
             )
             telemetry_store.finish_turn(
@@ -786,9 +998,15 @@ async def run_chat(
                     "llm_latency_ms": llm_latency_ms,
                     "answer_chars": len(answer),
                     **_guardrail_summary(guardrail),
+                    **_input_guardrail_summary(input_guardrail),
                 },
             )
-            return _chat_response_payload_with_guardrail(answer, trace, guardrail)
+            return _chat_response_payload_with_guardrail(
+                answer,
+                trace,
+                guardrail,
+                input_guardrail=input_guardrail,
+            )
 
         if chat_route.provider == "bedrock":
             config = _build_bedrock_config(
@@ -833,6 +1051,7 @@ async def run_chat(
                     **retrieval_metadata,
                     "answer_chars": len(text),
                     **_guardrail_summary(guardrail),
+                    **_input_guardrail_summary(input_guardrail),
                 },
             )
             telemetry_store.finish_turn(
@@ -848,11 +1067,17 @@ async def run_chat(
                     "llm_latency_ms": llm_latency_ms,
                     "answer_chars": len(text),
                     **_guardrail_summary(guardrail),
+                    **_input_guardrail_summary(input_guardrail),
                 },
             )
             if stream:
                 return chunk_text(text, runtime.sagemaker.streaming_chunk_size)
-            return _chat_response_payload_with_guardrail(text, trace, guardrail)
+            return _chat_response_payload_with_guardrail(
+                text,
+                trace,
+                guardrail,
+                input_guardrail=input_guardrail,
+            )
 
         if chat_route.provider == "openai":
             if not settings.openai_api_key:
@@ -900,6 +1125,7 @@ async def run_chat(
                     **retrieval_metadata,
                     "answer_chars": len(text),
                     **_guardrail_summary(guardrail),
+                    **_input_guardrail_summary(input_guardrail),
                 },
             )
             telemetry_store.finish_turn(
@@ -915,11 +1141,17 @@ async def run_chat(
                     "llm_latency_ms": llm_latency_ms,
                     "answer_chars": len(text),
                     **_guardrail_summary(guardrail),
+                    **_input_guardrail_summary(input_guardrail),
                 },
             )
             if stream:
                 return chunk_text(text, runtime.sagemaker.streaming_chunk_size)
-            return _chat_response_payload_with_guardrail(text, trace, guardrail)
+            return _chat_response_payload_with_guardrail(
+                text,
+                trace,
+                guardrail,
+                input_guardrail=input_guardrail,
+            )
 
         full_system = f"{system_prompt}\n{rag_context}"
         api_messages.insert(0, {"role": "system", "content": full_system})
@@ -958,6 +1190,7 @@ async def run_chat(
                     **retrieval_metadata,
                     "answer_chars": len(answer),
                     **_guardrail_summary(guardrail),
+                    **_input_guardrail_summary(input_guardrail),
                 },
             )
             telemetry_store.finish_turn(
@@ -973,6 +1206,7 @@ async def run_chat(
                     "llm_latency_ms": llm_latency_ms,
                     "answer_chars": len(answer),
                     **_guardrail_summary(guardrail),
+                    **_input_guardrail_summary(input_guardrail),
                 },
             )
             return chunk_text(answer, runtime.sagemaker.streaming_chunk_size)
@@ -999,6 +1233,7 @@ async def run_chat(
                 **retrieval_metadata,
                 "answer_chars": len(answer),
                 **_guardrail_summary(guardrail),
+                **_input_guardrail_summary(input_guardrail),
             },
         )
         telemetry_store.finish_turn(
@@ -1014,9 +1249,15 @@ async def run_chat(
                 "llm_latency_ms": llm_latency_ms,
                 "answer_chars": len(answer),
                 **_guardrail_summary(guardrail),
+                **_input_guardrail_summary(input_guardrail),
             },
         )
-        return _chat_response_payload_with_guardrail(answer, trace, guardrail)
+        return _chat_response_payload_with_guardrail(
+            answer,
+            trace,
+            guardrail,
+            input_guardrail=input_guardrail,
+        )
     except Exception as exc:
         telemetry_store.finish_turn(
             trace,

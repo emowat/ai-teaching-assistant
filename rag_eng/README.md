@@ -27,6 +27,11 @@ There are three auth patterns in the service today:
 | most `/admin/*` routes | admin Cognito bearer token or `X-Admin-Token` |
 | `POST /admin/index/ensure`, `POST /admin/index/rebuild` | `X-Admin-Token` only |
 
+`POST /query` and `POST /api/chat` now run the pre-RAG input guardrail before
+retrieval. If the guardrail blocks a request, the service short-circuits and
+returns a safe redirect response without spending retrieval or inference
+compute.
+
 Admin bearer auth means:
 
 - `Authorization: Bearer <access-token>`
@@ -46,9 +51,9 @@ routes accept either auth style.
 | `GET` | `/health` | none | readiness plus dependency status |
 | `GET` | `/me` | bearer | current authenticated user / role |
 | `POST` | `/query` | none | RAG query with reranking |
-| `POST` | `/api/chat` | none | chat / VS Code extension endpoint |
+| `POST` | `/api/chat` | none | full pipeline chat / VS Code extension endpoint |
 | `POST` | `/run/compile` | bearer | compile + run C++ code |
-| `GET` | `/gradio` | browser | Gradio diagnostic console |
+| `GET` | `/gradio` | browser | Gradio diagnostic console, including the Input Guardrail tab |
 | `GET` | `/admin/courses` | admin bearer or `X-Admin-Token` | list courses |
 | `GET` | `/admin/courses/{course_id}` | admin bearer or `X-Admin-Token` | get one course |
 | `POST` | `/admin/courses` | admin bearer or `X-Admin-Token` | create course |
@@ -109,7 +114,16 @@ export INGESTION_ECS_SECURITY_GROUPS=sg-...
 export INGESTION_JOBS_DATABASE_URL="postgresql://user:password@aurora-endpoint:5432/postgres?sslmode=require"
 ```
 
-8. Start the service:
+8. If you want the input guardrail model stage active, restore the checkpoint:
+
+```bash
+./deploy/scripts/restore-input-guardrail-checkpoint.sh
+```
+
+By default this downloads from `s3://codingrabbit-data-dev/models/input_codebert_v1/`
+into `input_guardrails/models/checkpoints/input_codebert_v1`.
+
+9. Start the service:
 
 ```bash
 uv run uvicorn rag_eng.main:app --host 0.0.0.0 --port 8001
@@ -149,6 +163,10 @@ curl -s http://localhost:8001/query \
   }'
 ```
 
+The query endpoint now runs the input guardrail before retrieval. If the input
+is blocked, the response returns the guardrail metadata plus a safe redirect
+answer and no retrieval context.
+
 ### `POST /run/compile`
 
 ```bash
@@ -180,6 +198,17 @@ curl -s http://localhost:8001/api/chat \
   }'
 ```
 
+This is the full pipeline path:
+
+1. input guardrail
+2. retrieval
+3. prompt assembly
+4. inference
+5. output guardrails
+
+If the input guardrail blocks the request, the backend skips retrieval and
+inference and returns the safe redirect response immediately.
+
 ## Admin workflows
 
 For the full course creation, document upload, parse, and chunk-index flow, use:
@@ -199,11 +228,15 @@ That guide includes:
 
 The Gradio backend console exposes:
 
+- input guardrail inspection
 - retrieval presets
 - top-k / final result count controls
 - rerank strategy selection
 - route / trace overrides
 - a guardrail console
+
+The Input Guardrail tab is the quickest way to inspect the new pre-RAG model
+decision before the request reaches retrieval.
 
 Use `Experiment baseline (K=8, similarity)` as the default-safe preset.
 
@@ -249,6 +282,11 @@ Build the runner image before using docker mode:
 | `INGESTION_ECS_SECURITY_GROUPS` | — | comma-separated security groups |
 | `INGESTION_JOBS_DATABASE_URL` | — | Aurora/PostgreSQL URL for ingestion job tracking |
 | `INGESTION_JOBS_CONNECT_TIMEOUT_SECONDS` | `5` | DB connect timeout for job tracking |
+| `INPUT_GUARDRAILS_ENABLED` | `true` | enable the pre-RAG input guardrail model stage |
+| `INPUT_GUARDRAILS_CODEBERT_S3_URI` | `s3://codingrabbit-data-dev/models/input_codebert_v1/` | S3 checkpoint or tarball for the input guardrail model |
+| `INPUT_GUARDRAILS_CODEBERT_CHECKPOINT_DIR` | `input_guardrails/models/checkpoints/input_codebert_v1` | local Hugging Face checkpoint directory |
+| `INPUT_GUARDRAILS_CODEBERT_PASS_BELOW` | `0.30` | model score below which the request is treated as pass |
+| `INPUT_GUARDRAILS_CODEBERT_BLOCK_ABOVE` | `0.70` | model score above which the request is blocked |
 | `RESTART_COMMAND` | — | optional backend restart command |
 
 The editable non-secret route settings live in `rag_eng/runtime_config.yaml`.

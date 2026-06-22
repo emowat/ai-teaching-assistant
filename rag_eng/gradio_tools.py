@@ -15,6 +15,7 @@ from output_guardrails.combined import apply_all_guardrails
 
 from rag_eng.config import Settings, get_settings
 from rag_eng.inference import _invoke_sagemaker
+from input_guardrails.runtime import evaluate_input_guardrail, runtime_status
 from rag_eng.service import run_chat
 
 _DEPLOY_DIR = Path(__file__).resolve().parent.parent / "deploy"
@@ -36,6 +37,19 @@ class SageMakerStatus:
     use_sagemaker: bool
     inference_backend: str
     max_model_len: str | None
+    lights: list[TrafficLight]
+    summary: str
+    checked_at: str
+
+
+@dataclass(frozen=True)
+class InputGuardrailStatus:
+    checkpoint_dir: str
+    checkpoint_exists: bool
+    enabled: bool
+    pass_below: float
+    block_above: float
+    version: str
     lights: list[TrafficLight]
     summary: str
     checked_at: str
@@ -201,6 +215,79 @@ def format_traffic_lights_html(status: SageMakerStatus) -> str:
     )
 
 
+def fetch_input_guardrail_status() -> InputGuardrailStatus:
+    """Collect input-guardrail status for the diagnostics tab."""
+    runtime = runtime_status()
+    lights = [
+        TrafficLight(
+            "Rules",
+            "ok",
+            "Deterministic rules are always active before RAG.",
+        ),
+        TrafficLight(
+            "Model enabled",
+            "ok" if runtime["enabled"] else "warn",
+            "CodeBERT model stage enabled"
+            if runtime["enabled"]
+            else "Model stage disabled; rules-only fallback",
+        ),
+        TrafficLight(
+            "Checkpoint",
+            "ok" if runtime["checkpoint_exists"] else "warn",
+            runtime["checkpoint_dir"],
+        ),
+    ]
+    summary = (
+        f"Input guardrail model is {'enabled' if runtime['enabled'] else 'disabled'} "
+        f"and checkpoint {'exists' if runtime['checkpoint_exists'] else 'is missing'}."
+    )
+    return InputGuardrailStatus(
+        checkpoint_dir=str(runtime["checkpoint_dir"]),
+        checkpoint_exists=bool(runtime["checkpoint_exists"]),
+        enabled=bool(runtime["enabled"]),
+        pass_below=float(runtime["pass_below"]),
+        block_above=float(runtime["block_above"]),
+        version=str(runtime["version"]),
+        lights=lights,
+        summary=summary,
+        checked_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
+    )
+
+
+def format_input_guardrail_status_html(status: InputGuardrailStatus) -> str:
+    """Render input guardrail runtime state as HTML for Gradio."""
+    colors = {
+        "ok": "#22c55e",
+        "warn": "#eab308",
+        "error": "#ef4444",
+        "unknown": "#94a3b8",
+    }
+    rows = []
+    for light in status.lights:
+        color = colors.get(light.state, colors["unknown"])
+        rows.append(
+            f"""
+            <div style="display:flex;align-items:center;gap:10px;margin:8px 0;">
+              <span style="width:14px;height:14px;border-radius:50%;background:{color};
+                display:inline-block;box-shadow:0 0 6px {color};"></span>
+              <div>
+                <div style="font-weight:600;">{light.label}</div>
+                <div style="font-size:12px;color:#64748b;">{light.detail}</div>
+              </div>
+            </div>
+            """
+        )
+    return (
+        f"<div style='font-family:system-ui,sans-serif;'>"
+        f"<p><strong>{status.summary}</strong></p>"
+        f"<p style='font-size:12px;color:#64748b;'>"
+        f"Checked {status.checked_at} · threshold pass&lt;{status.pass_below:.2f} · "
+        f"block&gt;{status.block_above:.2f} · version={status.version}"
+        f"</p>"
+        f"{''.join(rows)}</div>"
+    )
+
+
 def invoke_sagemaker_direct(prompt: str, settings: Settings | None = None) -> tuple[str, str]:
     """Smoke-test the async endpoint (deploy invoke style)."""
     settings = settings or get_settings()
@@ -227,6 +314,42 @@ def invoke_sagemaker_direct(prompt: str, settings: Settings | None = None) -> tu
 
     elapsed = time.time() - started
     return text, f"Completed in {elapsed:.1f}s via {settings.sagemaker_endpoint}"
+
+
+def invoke_input_guardrail_review(
+    student_message: str,
+    student_code: str,
+    course_topic: str,
+    assignment_context: str,
+) -> tuple[str, str, str]:
+    """Run the input guardrail chain directly for diagnostic review."""
+    started = time.time()
+    try:
+        result = evaluate_input_guardrail(
+            student_message=student_message or "",
+            student_code=student_code or "",
+            course_topic=course_topic or "",
+            assignment_context=assignment_context or "",
+        )
+    except Exception as exc:
+        elapsed = time.time() - started
+        return "", "", f"Input guardrail review failed after {elapsed:.1f}s: {exc}"
+
+    elapsed = time.time() - started
+    status = (
+        f"Completed in {elapsed:.1f}s · stage={result.get('stage', 'n/a')} · "
+        f"action={result.get('action', 'pass')}"
+    )
+    if result.get("blocked"):
+        status = f"{status} · blocked=true"
+    violation_type = result.get("violation_type")
+    if violation_type and violation_type != "none":
+        status = f"{status} · violation={violation_type}"
+    model = result.get("model") or {}
+    score = model.get("score")
+    if score is not None:
+        status = f"{status} · score={float(score):.3f}"
+    return result.get("final_answer", ""), json.dumps(result, indent=2), status
 
 
 def build_extension_user_message(

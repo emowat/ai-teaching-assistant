@@ -175,6 +175,13 @@ def load_inference_config(path: Path | None = None) -> InferenceConfig:
     )
 
 
+def _env_bool(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 _inference_config: InferenceConfig | None = None
 
 
@@ -285,6 +292,11 @@ class Settings:
     runner_image: str
     cors_origins: tuple[str, ...]
     restart_command: str | None
+    input_guardrails_enabled: bool
+    input_guardrails_codebert_s3_uri: str
+    input_guardrails_codebert_checkpoint_dir: str
+    input_guardrails_codebert_pass_below: float
+    input_guardrails_codebert_block_above: float
 
     # --- Inference routing ---
     use_sagemaker: bool
@@ -372,6 +384,21 @@ def get_settings() -> Settings:
             if origin.strip()
         ),
         restart_command=os.getenv("RESTART_COMMAND") or None,
+        input_guardrails_enabled=_env_bool("INPUT_GUARDRAILS_ENABLED", True),
+        input_guardrails_codebert_s3_uri=os.getenv(
+            "INPUT_GUARDRAILS_CODEBERT_S3_URI",
+            "s3://codingrabbit-data-dev/models/input_codebert_v1/",
+        ),
+        input_guardrails_codebert_checkpoint_dir=os.getenv(
+            "INPUT_GUARDRAILS_CODEBERT_CHECKPOINT_DIR",
+            str(repo_root / "input_guardrails" / "models" / "checkpoints" / "input_codebert_v1"),
+        ),
+        input_guardrails_codebert_pass_below=float(
+            os.getenv("INPUT_GUARDRAILS_CODEBERT_PASS_BELOW", "0.30")
+        ),
+        input_guardrails_codebert_block_above=float(
+            os.getenv("INPUT_GUARDRAILS_CODEBERT_BLOCK_ABOVE", "0.70")
+        ),
         use_sagemaker=os.getenv("USE_SAGEMAKER", "false").lower() == "true",
         sagemaker_endpoint=os.getenv(
             "SAGEMAKER_ENDPOINT", "codingrabbit-sagemaker-async-endpoint"

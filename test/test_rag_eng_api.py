@@ -137,6 +137,7 @@ def test_openapi_exposes_query_schema_examples(client: TestClient) -> None:
     assert "result_count" in schemas["QueryPayload"]["properties"]
     assert "rerank_strategy" in schemas["QueryPayload"]["properties"]
     assert "guardrail" in schemas["QueryResult"]["properties"]
+    assert "input_guardrail" in schemas["QueryResult"]["properties"]
 
 
 def test_chat_endpoint_forwards_course_id(monkeypatch, client: TestClient) -> None:
