@@ -120,8 +120,10 @@ export INGESTION_JOBS_DATABASE_URL="postgresql://user:password@aurora-endpoint:5
 ./deploy/scripts/restore-input-guardrail-checkpoint.sh
 ```
 
-By default this downloads from `s3://codingrabbit-data-dev/models/input_codebert_v1/`
+By default this downloads from `s3://codingrabbit-data-dev/models/guardrails/input_codebert_v1/`
 into `input_guardrails/models/checkpoints/input_codebert_v1`.
+If that S3 location is a prefix containing `model.tar.gz`, the restore helper
+will extract the archive into the local checkpoint directory automatically.
 
 9. Start the service:
 
@@ -283,7 +285,7 @@ Build the runner image before using docker mode:
 | `INGESTION_JOBS_DATABASE_URL` | — | Aurora/PostgreSQL URL for ingestion job tracking |
 | `INGESTION_JOBS_CONNECT_TIMEOUT_SECONDS` | `5` | DB connect timeout for job tracking |
 | `INPUT_GUARDRAILS_ENABLED` | `true` | enable the pre-RAG input guardrail model stage |
-| `INPUT_GUARDRAILS_CODEBERT_S3_URI` | `s3://codingrabbit-data-dev/models/input_codebert_v1/` | S3 checkpoint or tarball for the input guardrail model |
+| `INPUT_GUARDRAILS_CODEBERT_S3_URI` | `s3://codingrabbit-data-dev/models/guardrails/input_codebert_v1/` | S3 checkpoint or tarball for the input guardrail model |
 | `INPUT_GUARDRAILS_CODEBERT_CHECKPOINT_DIR` | `input_guardrails/models/checkpoints/input_codebert_v1` | local Hugging Face checkpoint directory |
 | `INPUT_GUARDRAILS_CODEBERT_PASS_BELOW` | `0.30` | model score below which the request is treated as pass |
 | `INPUT_GUARDRAILS_CODEBERT_BLOCK_ABOVE` | `0.70` | model score above which the request is blocked |

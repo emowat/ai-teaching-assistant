@@ -25,7 +25,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from input_guardrails.runtime import resolve_checkpoint_dir  # noqa: E402
 
-DEFAULT_S3_URI = "s3://codingrabbit-data-dev/models/input_codebert_v1/"
+DEFAULT_S3_URI = "s3://codingrabbit-data-dev/models/guardrails/input_codebert_v1/"
 
 
 def parse_s3_uri(s3_uri: str) -> tuple[str, str]:
@@ -58,6 +58,23 @@ def _find_checkpoint_root(extract_root: Path) -> Path:
         f"Unable to locate a checkpoint root in {extract_root}. "
         "Expected config.json at the tarball root or in a single nested directory.",
     )
+
+
+def _find_tarball_file(search_root: Path) -> Path | None:
+    """Find a tarball file within a downloaded S3 prefix, if one exists."""
+    tarballs = [
+        path
+        for path in search_root.rglob("*")
+        if path.is_file() and path.name.endswith((".tar.gz", ".tgz", ".tar"))
+    ]
+    if not tarballs:
+        return None
+    if len(tarballs) > 1:
+        raise RuntimeError(
+            f"Multiple checkpoint archives found under {search_root}: "
+            f"{', '.join(str(path) for path in tarballs)}"
+        )
+    return tarballs[0]
 
 
 def extract_checkpoint_tarball(tarball_path: Path, output_dir: Path) -> Path:
@@ -105,8 +122,21 @@ def _sync_prefix_from_s3(
         output_dir = output_dir.expanduser().resolve()
         if output_dir.exists():
             shutil.rmtree(output_dir)
-        shutil.copytree(temp_root, output_dir)
-    return output_dir
+        checkpoint_root = None
+        try:
+            checkpoint_root = _find_checkpoint_root(temp_root)
+        except RuntimeError:
+            checkpoint_root = None
+        if checkpoint_root is not None:
+            shutil.copytree(checkpoint_root, output_dir)
+            return output_dir
+
+        tarball_path = _find_tarball_file(temp_root)
+        if tarball_path is None:
+            raise RuntimeError(
+                f"No checkpoint root or archive found under s3://{bucket}/{prefix}"
+            )
+        return extract_checkpoint_tarball(tarball_path, output_dir)
 
 
 def restore_checkpoint_from_s3(
