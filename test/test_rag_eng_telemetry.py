@@ -1,143 +1,89 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from dataclasses import dataclass
 
-from rag.schemas import CourseSource, QueryInput
-from rag_eng.telemetry import TelemetryStore
+from rag_eng.telemetry import TelemetryStore, TraceContext
 
 
+@dataclass
 class _FakeCursor:
-    def __init__(self, statements: list[tuple[str, tuple | None]]) -> None:
-        self._statements = statements
+    statements: list[tuple[str, tuple]]
 
-    def __enter__(self) -> "_FakeCursor":
+    def __enter__(self):
         return self
 
-    def __exit__(self, _exc_type, _exc, _tb) -> None:
-        return None
+    def __exit__(self, exc_type, exc, tb):
+        return False
 
-    def execute(self, sql: str, params: tuple | None = None) -> None:
-        self._statements.append((sql.strip(), params))
-
-    def fetchone(self):
-        return [1]
+    def execute(self, sql, params):
+        self.statements.append((sql, params))
 
 
+@dataclass
 class _FakeConnection:
-    def __init__(self, statements: list[tuple[str, tuple | None]]) -> None:
-        self._statements = statements
+    cursor_obj: _FakeCursor
 
-    def __enter__(self) -> "_FakeConnection":
+    def __enter__(self):
         return self
 
-    def __exit__(self, _exc_type, _exc, _tb) -> None:
-        return None
+    def __exit__(self, exc_type, exc, tb):
+        return False
 
-    def cursor(self) -> _FakeCursor:
-        return _FakeCursor(self._statements)
-
-
-def _fake_connect_factory(
-    statements: list[tuple[str, tuple | None]],
-) -> Callable[[str, int], _FakeConnection]:
-    def _connect(_database_url: str, _connect_timeout_seconds: int) -> _FakeConnection:
-        return _FakeConnection(statements)
-
-    return _connect
+    def cursor(self):
+        return self.cursor_obj
 
 
-def test_telemetry_store_persists_session_turn_and_events(monkeypatch) -> None:
-    statements: list[tuple[str, tuple | None]] = []
+def test_record_turn_snapshot_writes_aura_sql(monkeypatch) -> None:
+    statements: list[tuple[str, tuple]] = []
+    fake_connection = _FakeConnection(cursor_obj=_FakeCursor(statements))
+
     monkeypatch.setattr(
         "rag_eng.telemetry._connect_postgres",
-        _fake_connect_factory(statements),
+        lambda *_args, **_kwargs: fake_connection,
+    )
+    monkeypatch.setattr(
+        "rag_eng.telemetry._json_adapter",
+        lambda data: data,
     )
 
     store = TelemetryStore(database_url="postgresql://example")
-    trace = store.start_turn(
-        query=QueryInput(
-            student_message="Why does this crash?",
-            week=2,
-            course_id="mit14",
-            course_source=CourseSource.MIT_14,
-            session_id="session-1",
-            request_id="request-1",
-            turn_id="turn-1",
-        ),
+    trace = TraceContext(
+        request_id="req-1",
+        session_id="sess-1",
+        turn_id="turn-1",
+        turn_index=3,
         source="chat",
+        course_id="mit14",
+        course_source="mit14",
+        section_id="week-6",
+        user_sub="student-1",
+        mode="Homework Assist",
+        week=6,
+        persisted=True,
     )
+    snapshot = {
+        "schema_version": "v1",
+        "trace": {
+            "request_id": "req-1",
+            "session_id": "sess-1",
+            "turn_id": "turn-1",
+            "turn_index": 3,
+            "source": "chat",
+        },
+        "final_response": {
+            "text": "hello",
+            "source": "model",
+        },
+    }
 
-    assert trace.session_id == "session-1"
-    assert trace.request_id == "request-1"
-    assert trace.turn_id == "turn-1"
-    assert trace.turn_index == 1
-    assert trace.persisted is True
-
-    assert store.record_event(
-        trace,
-        event_type="retrieval_started",
-        stage="retrieval",
-        status="started",
-        metadata={"source": "chat"},
-    )
-
-    assert store.finish_turn(
-        trace,
-        status="completed",
-        latency_ms=42,
-        model_provider="sagemaker",
-        model_name="codingrabbit-ta",
-        answer_chars=128,
-        metadata={"source": "chat"},
-    )
-
-    sql_text = "\n".join(statement for statement, _ in statements)
-    assert "INSERT INTO tutor_sessions" in sql_text
-    assert "INSERT INTO tutor_turns" in sql_text
-    assert "INSERT INTO telemetry_events" in sql_text
-    assert "UPDATE tutor_sessions" in sql_text
-    assert "UPDATE tutor_turns" in sql_text
-
-    event_types = [params[8] for statement, params in statements if "telemetry_events" in statement]
-    assert "request_started" in event_types
-    assert "retrieval_started" in event_types
-    assert "answer_returned" in event_types
-
-
-def test_telemetry_store_skips_event_writes_when_start_turn_fails(monkeypatch) -> None:
-    def _raise_timeout(_database_url: str, _connect_timeout_seconds: int):
-        raise TimeoutError("connection timeout expired")
-
-    monkeypatch.setattr("rag_eng.telemetry._connect_postgres", _raise_timeout)
-
-    store = TelemetryStore(database_url="postgresql://example")
-    trace = store.start_turn(
-        query=QueryInput(
-            student_message="Why does this crash?",
-            week=2,
-            course_id="mit14",
-            course_source=CourseSource.MIT_14,
-            session_id="session-1",
-            request_id="request-1",
-            turn_id="turn-1",
-        ),
-        source="chat",
-    )
-
-    assert trace.persisted is False
-    assert not store.record_event(
-        trace,
-        event_type="retrieval_started",
-        stage="retrieval",
-        status="started",
-        metadata={"source": "chat"},
-    )
-    assert not store.finish_turn(
-        trace,
-        status="completed",
-        latency_ms=42,
-        model_provider="sagemaker",
-        model_name="codingrabbit-ta",
-        answer_chars=128,
-        metadata={"source": "chat"},
-    )
+    assert store.record_turn_snapshot(trace, snapshot) is True
+    assert len(statements) == 1
+    sql, params = statements[0]
+    assert "INSERT INTO tutor_turn_snapshots" in sql
+    assert params[0] == "turn-1"
+    assert params[1] == "sess-1"
+    assert params[2] == "req-1"
+    assert params[3] == 3
+    assert params[5] == "mit14"
+    assert params[8] == "v1"
+    assert params[9] == snapshot

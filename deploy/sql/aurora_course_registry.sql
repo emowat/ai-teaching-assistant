@@ -101,6 +101,21 @@ CREATE TABLE IF NOT EXISTS tutor_turns (
   completed_at timestamptz
 );
 
+CREATE TABLE IF NOT EXISTS tutor_turn_snapshots (
+  turn_id text PRIMARY KEY REFERENCES tutor_turns(turn_id) ON DELETE CASCADE,
+  session_id text NOT NULL REFERENCES tutor_sessions(session_id) ON DELETE CASCADE,
+  request_id text NOT NULL,
+  turn_index integer NOT NULL,
+  user_sub text,
+  course_id text NOT NULL DEFAULT '',
+  course_source text NOT NULL DEFAULT '',
+  section_id text,
+  schema_version text NOT NULL DEFAULT 'v1',
+  snapshot jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS telemetry_events (
   event_id bigserial PRIMARY KEY,
   request_id text NOT NULL,

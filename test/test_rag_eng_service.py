@@ -258,6 +258,7 @@ class _FakeTelemetryStore:
         self.started: list[TraceContext] = []
         self.events: list[dict[str, object]] = []
         self.finished: list[dict[str, object]] = []
+        self.snapshots: list[dict[str, object]] = []
 
     def start_turn(self, *, query, source: str, user_sub: str | None = None):
         trace = TraceContext(
@@ -283,6 +284,10 @@ class _FakeTelemetryStore:
 
     def finish_turn(self, trace, **kwargs):
         self.finished.append({"trace": trace, **kwargs})
+        return True
+
+    def record_turn_snapshot(self, trace, snapshot):
+        self.snapshots.append({"trace": trace, "snapshot": snapshot})
         return True
 
 
@@ -469,6 +474,12 @@ def test_run_query_uses_openai_rag_provider(monkeypatch) -> None:
     assert "Why does this crash?" in captured["prompt"]
     assert fake_telemetry.started
     assert fake_telemetry.finished
+    assert len(fake_telemetry.snapshots) == 1
+    assert (
+        fake_telemetry.snapshots[0]["snapshot"]["ta_generation_phase"]["raw_generation"]
+        == "openai answer"
+    )
+    assert fake_telemetry.snapshots[0]["snapshot"]["final_response"]["text"] == "openai answer"
 
 
 def test_run_query_uses_bedrock_rag_provider(monkeypatch) -> None:
@@ -564,6 +575,8 @@ def test_run_query_short_circuits_on_input_guardrail_block(monkeypatch) -> None:
     assert result.input_guardrail is not None
     assert result.input_guardrail["blocked"] is True
     assert result.retrieval_result.formatted_context == ""
+    assert len(fake_telemetry.snapshots) == 1
+    assert fake_telemetry.snapshots[0]["snapshot"]["final_response"]["source"] == "input_guardrail"
     event_types = [event["event_type"] for event in fake_telemetry.events]
     assert "input_guardrail_started" in event_types
     assert "input_guardrail_finished" in event_types
@@ -637,6 +650,8 @@ def test_run_chat_short_circuits_on_input_guardrail_block(monkeypatch) -> None:
 
     assert response["message"]["content"] == "Let's keep this focused on your C++ work."
     assert response["input_guardrail"]["blocked"] is True
+    assert len(fake_telemetry.snapshots) == 1
+    assert fake_telemetry.snapshots[0]["snapshot"]["final_response"]["source"] == "input_guardrail"
     event_types = [event["event_type"] for event in fake_telemetry.events]
     assert "input_guardrail_started" in event_types
     assert "input_guardrail_finished" in event_types
@@ -732,6 +747,8 @@ def test_run_chat_uses_openai_provider(monkeypatch) -> None:
     assert response["session_id"] == "chat-session"
     assert fake_telemetry.started
     assert fake_telemetry.finished
+    assert len(fake_telemetry.snapshots) == 1
+    assert fake_telemetry.snapshots[0]["snapshot"]["final_response"]["text"] == "openai chat answer"
 
 
 def test_run_chat_uses_bedrock_provider(monkeypatch) -> None:

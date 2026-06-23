@@ -68,7 +68,7 @@ class TraceContext:
 
 
 class TelemetryStore:
-    """Write session, turn, and coarse telemetry events to Aurora."""
+    """Write session, turn, snapshot, and coarse telemetry events to Aurora."""
 
     def __init__(
         self,
@@ -328,6 +328,72 @@ class TelemetryStore:
         except Exception as exc:
             logger.warning(
                 "Aurora telemetry event skipped for %s/%s: %s",
+                trace.session_id,
+                trace.turn_id,
+                exc,
+            )
+            return False
+
+    def record_turn_snapshot(
+        self,
+        trace: TraceContext,
+        snapshot: dict[str, Any],
+    ) -> bool:
+        """Persist the canonical per-turn evaluation snapshot."""
+        if not self.database_url or not trace.persisted:
+            return False
+
+        schema_version = _normalize_text(snapshot.get("schema_version") or "v1")
+        try:
+            with _connect_postgres(
+                self.database_url,
+                self.connect_timeout_seconds,
+            ) as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        INSERT INTO tutor_turn_snapshots (
+                          turn_id,
+                          session_id,
+                          request_id,
+                          turn_index,
+                          user_sub,
+                          course_id,
+                          course_source,
+                          section_id,
+                          schema_version,
+                          snapshot
+                        )
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (turn_id) DO UPDATE SET
+                          session_id = EXCLUDED.session_id,
+                          request_id = EXCLUDED.request_id,
+                          turn_index = EXCLUDED.turn_index,
+                          user_sub = EXCLUDED.user_sub,
+                          course_id = EXCLUDED.course_id,
+                          course_source = EXCLUDED.course_source,
+                          section_id = EXCLUDED.section_id,
+                          schema_version = EXCLUDED.schema_version,
+                          snapshot = EXCLUDED.snapshot,
+                          updated_at = now()
+                        """,
+                        (
+                            trace.turn_id,
+                            trace.session_id,
+                            trace.request_id,
+                            trace.turn_index,
+                            trace.user_sub,
+                            trace.course_id,
+                            trace.course_source,
+                            trace.section_id,
+                            schema_version,
+                            _json_adapter(snapshot),
+                        ),
+                    )
+            return True
+        except Exception as exc:
+            logger.warning(
+                "Aurora turn snapshot skipped for %s/%s: %s",
                 trace.session_id,
                 trace.turn_id,
                 exc,

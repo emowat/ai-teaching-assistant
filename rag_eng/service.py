@@ -27,6 +27,7 @@ from rag_eng.llm_clients import (
 )
 from rag_eng.prompts import get_system_prompt
 from rag_eng.telemetry import TraceContext, TelemetryStore, get_telemetry_store
+from rag_eng.turn_snapshot import build_turn_snapshot
 from input_guardrails.runtime import evaluate_input_guardrail
 from output_guardrails.combined import apply_all_guardrails
 from rag_eng.schemas import (
@@ -281,6 +282,39 @@ def _run_input_guardrail(
     return result
 
 
+def _persist_turn_snapshot(
+    *,
+    telemetry_store: TelemetryStore,
+    trace: TraceContext,
+    query,
+    source: str,
+    input_guardrail: dict[str, Any] | None,
+    retrieval_result: RetrievalResult | None = None,
+    guardrail: dict[str, Any] | None = None,
+    raw_generation: str | None = None,
+    final_answer: str | None = None,
+    model_provider: str | None = None,
+    model_name: str | None = None,
+    retrieval_latency_ms: int | None = None,
+    llm_latency_ms: int | None = None,
+) -> None:
+    snapshot = build_turn_snapshot(
+        trace=trace,
+        query=query,
+        source=source,
+        input_guardrail=input_guardrail,
+        retrieval_result=retrieval_result,
+        guardrail=guardrail,
+        raw_generation=raw_generation,
+        final_answer=final_answer,
+        model_provider=model_provider,
+        model_name=model_name,
+        retrieval_latency_ms=retrieval_latency_ms,
+        llm_latency_ms=llm_latency_ms,
+    )
+    telemetry_store.record_turn_snapshot(trace, snapshot)
+
+
 async def _collect_stream_answer(stream: AsyncIterator[bytes]) -> str:
     """Buffer NDJSON stream chunks into one assistant draft."""
     answer_parts: list[str] = []
@@ -351,6 +385,10 @@ def _apply_pipeline_guardrails(
 
     final_answer = guardrail.get("final_answer") or answer
     guardrail_latency_ms = int((time.perf_counter() - guardrail_started) * 1000)
+    guardrail = {
+        **guardrail,
+        "latency_ms": guardrail_latency_ms,
+    }
     telemetry_store.record_event(
         trace,
         event_type="guardrail_finished",
@@ -524,6 +562,16 @@ def run_query(query) -> QueryResponse:
                 "answer_chars": len(answer),
             },
         )
+        _persist_turn_snapshot(
+            telemetry_store=telemetry_store,
+            trace=trace,
+            query=query,
+            source="query",
+            input_guardrail=input_guardrail,
+            final_answer=answer,
+            model_provider="input_guardrail",
+            model_name="codebert_v1",
+        )
         return QueryResponse(
             answer=answer,
             retrieval_result=RetrievalResult(),
@@ -601,6 +649,20 @@ def run_query(query) -> QueryResponse:
                 "llm_latency_ms": llm_latency_ms,
                 "answer_chars": len(answer),
             },
+        )
+        _persist_turn_snapshot(
+            telemetry_store=telemetry_store,
+            trace=trace,
+            query=query,
+            source="query",
+            input_guardrail=input_guardrail,
+            retrieval_result=retrieval_result,
+            raw_generation=answer,
+            final_answer=answer,
+            model_provider=model_provider,
+            model_name=model_name,
+            retrieval_latency_ms=retrieval_latency_ms,
+            llm_latency_ms=llm_latency_ms,
         )
         return QueryResponse(
             answer=answer,
@@ -860,6 +922,16 @@ async def run_chat(
                 "answer_chars": len(answer),
             },
         )
+        _persist_turn_snapshot(
+            telemetry_store=telemetry_store,
+            trace=trace,
+            query=query,
+            source="chat",
+            input_guardrail=input_guardrail,
+            final_answer=answer,
+            model_provider="input_guardrail",
+            model_name="codebert_v1",
+        )
         if stream:
             return _single_chunk_stream(payload)
         return payload
@@ -916,11 +988,11 @@ async def run_chat(
             llm_started = time.perf_counter()
             result = await run_inference(api_messages, model_name, settings, stream=stream)
             if stream:
-                answer = await _collect_stream_answer(result)
+                raw_generation = await _collect_stream_answer(result)
                 answer, guardrail = _apply_pipeline_guardrails(
                     trace=trace,
                     telemetry_store=telemetry_store,
-                    answer=answer,
+                    answer=raw_generation,
                     user_query=ctx["student_message"],
                     student_code=ctx["code_raw"],
                     conversation_history=conversation_history,
@@ -958,12 +1030,29 @@ async def run_chat(
                         **_input_guardrail_summary(input_guardrail),
                     },
                 )
+                _persist_turn_snapshot(
+                    telemetry_store=telemetry_store,
+                    trace=trace,
+                    query=query,
+                    source="chat",
+                    input_guardrail=input_guardrail,
+                    retrieval_result=retrieval_result,
+                    guardrail=guardrail,
+                    raw_generation=raw_generation,
+                    final_answer=answer,
+                    model_provider="sagemaker",
+                    model_name=telemetry_model_name,
+                    retrieval_latency_ms=retrieval_latency_ms,
+                    llm_latency_ms=llm_latency_ms,
+                )
                 return chunk_text(answer, runtime.sagemaker.streaming_chunk_size)
-            answer = result["message"]["content"] if isinstance(result, dict) else str(result)
+            raw_generation = (
+                result["message"]["content"] if isinstance(result, dict) else str(result)
+            )
             answer, guardrail = _apply_pipeline_guardrails(
                 trace=trace,
                 telemetry_store=telemetry_store,
-                answer=answer,
+                answer=raw_generation,
                 user_query=ctx["student_message"],
                 student_code=ctx["code_raw"],
                 conversation_history=conversation_history,
@@ -1001,6 +1090,21 @@ async def run_chat(
                     **_input_guardrail_summary(input_guardrail),
                 },
             )
+            _persist_turn_snapshot(
+                telemetry_store=telemetry_store,
+                trace=trace,
+                query=query,
+                source="chat",
+                input_guardrail=input_guardrail,
+                retrieval_result=retrieval_result,
+                guardrail=guardrail,
+                raw_generation=raw_generation,
+                final_answer=answer,
+                model_provider="sagemaker",
+                model_name=telemetry_model_name,
+                retrieval_latency_ms=retrieval_latency_ms,
+                llm_latency_ms=llm_latency_ms,
+            )
             return _chat_response_payload_with_guardrail(
                 answer,
                 trace,
@@ -1029,10 +1133,11 @@ async def run_chat(
             )
             llm_started = time.perf_counter()
             text = await ainvoke_bedrock_chat_completion(api_messages, config)
+            raw_generation = text
             text, guardrail = _apply_pipeline_guardrails(
                 trace=trace,
                 telemetry_store=telemetry_store,
-                answer=text,
+                answer=raw_generation,
                 user_query=ctx["student_message"],
                 student_code=ctx["code_raw"],
                 conversation_history=conversation_history,
@@ -1069,6 +1174,21 @@ async def run_chat(
                     **_guardrail_summary(guardrail),
                     **_input_guardrail_summary(input_guardrail),
                 },
+            )
+            _persist_turn_snapshot(
+                telemetry_store=telemetry_store,
+                trace=trace,
+                query=query,
+                source="chat",
+                input_guardrail=input_guardrail,
+                retrieval_result=retrieval_result,
+                guardrail=guardrail,
+                raw_generation=raw_generation,
+                final_answer=text,
+                model_provider="bedrock",
+                model_name=chat_route.model,
+                retrieval_latency_ms=retrieval_latency_ms,
+                llm_latency_ms=llm_latency_ms,
             )
             if stream:
                 return chunk_text(text, runtime.sagemaker.streaming_chunk_size)
@@ -1103,10 +1223,11 @@ async def run_chat(
             )
             llm_started = time.perf_counter()
             text = await ainvoke_openai_chat_completion(api_messages, config)
+            raw_generation = text
             text, guardrail = _apply_pipeline_guardrails(
                 trace=trace,
                 telemetry_store=telemetry_store,
-                answer=text,
+                answer=raw_generation,
                 user_query=ctx["student_message"],
                 student_code=ctx["code_raw"],
                 conversation_history=conversation_history,
@@ -1144,6 +1265,21 @@ async def run_chat(
                     **_input_guardrail_summary(input_guardrail),
                 },
             )
+            _persist_turn_snapshot(
+                telemetry_store=telemetry_store,
+                trace=trace,
+                query=query,
+                source="chat",
+                input_guardrail=input_guardrail,
+                retrieval_result=retrieval_result,
+                guardrail=guardrail,
+                raw_generation=raw_generation,
+                final_answer=text,
+                model_provider="openai",
+                model_name=chat_route.model,
+                retrieval_latency_ms=retrieval_latency_ms,
+                llm_latency_ms=llm_latency_ms,
+            )
             if stream:
                 return chunk_text(text, runtime.sagemaker.streaming_chunk_size)
             return _chat_response_payload_with_guardrail(
@@ -1167,11 +1303,11 @@ async def run_chat(
         llm_started = time.perf_counter()
         result = await run_inference(api_messages, model_name, settings, stream=stream)
         if stream:
-            answer = await _collect_stream_answer(result)
+            raw_generation = await _collect_stream_answer(result)
             answer, guardrail = _apply_pipeline_guardrails(
                 trace=trace,
                 telemetry_store=telemetry_store,
-                answer=answer,
+                answer=raw_generation,
                 user_query=ctx["student_message"],
                 student_code=ctx["code_raw"],
                 conversation_history=conversation_history,
@@ -1209,12 +1345,29 @@ async def run_chat(
                     **_input_guardrail_summary(input_guardrail),
                 },
             )
+            _persist_turn_snapshot(
+                telemetry_store=telemetry_store,
+                trace=trace,
+                query=query,
+                source="chat",
+                input_guardrail=input_guardrail,
+                retrieval_result=retrieval_result,
+                guardrail=guardrail,
+                raw_generation=raw_generation,
+                final_answer=answer,
+                model_provider=chat_route.provider,
+                model_name=telemetry_model_name,
+                retrieval_latency_ms=retrieval_latency_ms,
+                llm_latency_ms=llm_latency_ms,
+            )
             return chunk_text(answer, runtime.sagemaker.streaming_chunk_size)
-        answer = result["message"]["content"] if isinstance(result, dict) else str(result)
+        raw_generation = (
+            result["message"]["content"] if isinstance(result, dict) else str(result)
+        )
         answer, guardrail = _apply_pipeline_guardrails(
             trace=trace,
             telemetry_store=telemetry_store,
-            answer=answer,
+            answer=raw_generation,
             user_query=ctx["student_message"],
             student_code=ctx["code_raw"],
             conversation_history=conversation_history,
@@ -1251,6 +1404,21 @@ async def run_chat(
                 **_guardrail_summary(guardrail),
                 **_input_guardrail_summary(input_guardrail),
             },
+        )
+        _persist_turn_snapshot(
+            telemetry_store=telemetry_store,
+            trace=trace,
+            query=query,
+            source="chat",
+            input_guardrail=input_guardrail,
+            retrieval_result=retrieval_result,
+            guardrail=guardrail,
+            raw_generation=raw_generation,
+            final_answer=answer,
+            model_provider=chat_route.provider,
+            model_name=telemetry_model_name,
+            retrieval_latency_ms=retrieval_latency_ms,
+            llm_latency_ms=llm_latency_ms,
         )
         return _chat_response_payload_with_guardrail(
             answer,
