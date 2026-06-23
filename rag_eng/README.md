@@ -131,6 +131,25 @@ will extract the archive into the local checkpoint directory automatically.
 uv run uvicorn rag_eng.main:app --host 0.0.0.0 --port 8001
 ```
 
+10. If you want to export offline-eval turn logs from Aurora to S3, use:
+
+```bash
+uv run python -m rag_eng.cli export-turn-snapshots \
+  --database-url "$COURSE_REGISTRY_DATABASE_URL" \
+  --bucket "$S3_DATA_BUCKET" \
+  --start-date 2026-06-23 \
+  --end-date 2026-06-23
+```
+
+By default the exporter writes JSONL files under:
+
+```text
+eval/chat_logs/turn_logs/date=YYYY-MM-DD/turn_snapshots.jsonl
+```
+
+If you pass `--course-id`, the exporter adds a `course_id=...` partition
+between the prefix and the date partition.
+
 ## Common runtime examples
 
 ### `GET /health`
@@ -241,6 +260,24 @@ The Input Guardrail tab is the quickest way to inspect the new pre-RAG model
 decision before the request reaches retrieval.
 
 Use `Experiment baseline (K=8, similarity)` as the default-safe preset.
+
+## Offline eval exports
+
+The per-turn snapshot table can be exported to S3 JSONL for offline evaluation
+jobs and LLM-as-a-judge tooling.
+
+```bash
+uv run python -m rag_eng.cli export-turn-snapshots \
+  --database-url "$COURSE_REGISTRY_DATABASE_URL" \
+  --bucket "$S3_DATA_BUCKET" \
+  --prefix eval/chat_logs/turn_logs \
+  --start-date 2026-06-23 \
+  --end-date 2026-06-23
+```
+
+The exported JSONL records are the canonical turn snapshots captured in
+`tutor_turn_snapshots`; each line includes the trace ids, course metadata,
+input/output guardrail phases, retrieval metadata, and final rendered text.
 
 ## C++ sandbox security constraints
 
