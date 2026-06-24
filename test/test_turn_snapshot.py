@@ -93,6 +93,84 @@ def test_build_turn_snapshot_for_blocked_input() -> None:
     assert snapshot["final_response"]["text"] == "Stay focused on your C++ work."
 
 
+def test_build_turn_snapshot_includes_policy_and_session_state() -> None:
+    snapshot = build_turn_snapshot(
+        trace=_trace(),
+        query=_query(),
+        source="chat",
+        input_guardrail={
+            "stage": "input_guardrail",
+            "action": "pass",
+            "blocked": False,
+            "safe": True,
+            "violation_type": "none",
+            "severity": "",
+            "evidence": "rules passed",
+            "final_answer": "",
+            "latency_ms": 19,
+            "rules": {
+                "processed_input": "How should I structure this loop?",
+            },
+            "model": {
+                "enabled": True,
+                "available": True,
+                "decision": "pass",
+                "score": 0.11,
+            },
+        },
+        final_answer="I'm sorry, but I have to end this chat. [END_CHAT]",
+        orchestrator_context={
+            "session_state_before": {
+                "Session_Adversarial_Warnings": 1,
+                "Session_Adversarial_Terminated": False,
+                "Session_Adversarial_Termination_Reason": None,
+                "Session_Adversarial_Last_Flag_Reason": "ERR_PROMPT_INJECTION",
+                "Session_Adversarial_Last_Action": "CANNED_WARNING",
+            },
+            "session_state_after": {
+                "Session_Adversarial_Warnings": 2,
+                "Session_Adversarial_Terminated": True,
+                "Session_Adversarial_Termination_Reason": "end_chat_threshold_reached",
+                "Session_Adversarial_Last_Flag_Reason": "ERR_PROMPT_INJECTION",
+                "Session_Adversarial_Last_Action": "CANNED_END_CHAT",
+            },
+            "policy_snapshot": {
+                "enabled": True,
+                "warning_threshold": 1,
+                "end_chat_threshold": 2,
+                "session_termination_enabled": True,
+                "penalty": {"enabled": True, "amount": 5},
+            },
+            "response_source": "orchestrator",
+            "violation_count_before": 1,
+            "violation_count_after": 2,
+            "action_taken": "CANNED_END_CHAT",
+            "short_circuit_stage": "input_guardrail",
+            "end_chat": True,
+            "carrot_penalty_triggered": True,
+            "final_rendered_text": "I'm sorry, but I have to end this chat. [END_CHAT]",
+        },
+        policy_snapshot={
+            "enabled": True,
+            "warning_threshold": 1,
+            "end_chat_threshold": 2,
+            "session_termination_enabled": True,
+            "penalty": {"enabled": True, "amount": 5},
+        },
+    )
+
+    assert snapshot["policy_snapshot"]["penalty"]["amount"] == 5
+    assert (
+        snapshot["orchestrator_phase"]["session_state_after"][
+            "Session_Adversarial_Terminated"
+        ]
+        is True
+    )
+    assert snapshot["orchestrator_phase"]["action_taken"] == "CANNED_END_CHAT"
+    assert snapshot["final_response"]["source"] == "orchestrator"
+    assert snapshot["final_response"]["text"].endswith("[END_CHAT]")
+
+
 def test_build_turn_snapshot_for_guardrailed_generation() -> None:
     retrieval_result = RetrievalResult(
         syllabus=RetrievedDoc(

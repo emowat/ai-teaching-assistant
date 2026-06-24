@@ -32,6 +32,14 @@ retrieval. If the guardrail blocks a request, the service short-circuits and
 returns a safe redirect response without spending retrieval or inference
 compute.
 
+The orchestrator keeps the session-level warning count in Aurora under
+`tutor_sessions.metadata` using the `Session_Adversarial_Warnings` family of
+keys. The warning and end-chat thresholds are configured in
+[`runtime_config.yaml`](./runtime_config.yaml)
+under `runtime.input_guardrail_orchestration`, and every persisted turn snapshot
+now records the policy snapshot plus the session state before and after the
+orchestrator decision.
+
 Admin bearer auth means:
 
 - `Authorization: Bearer <access-token>`
@@ -149,6 +157,11 @@ eval/chat_logs/turn_logs/date=YYYY-MM-DD/turn_snapshots.jsonl
 
 If you pass `--course-id`, the exporter adds a `course_id=...` partition
 between the prefix and the date partition.
+
+Each exported turn snapshot includes the `policy_snapshot` and the
+`orchestrator_phase` block, which makes it easier to audit whether a turn was
+handled by the input guardrail, a session-level end-chat decision, or the main
+model path.
 
 ## Common runtime examples
 

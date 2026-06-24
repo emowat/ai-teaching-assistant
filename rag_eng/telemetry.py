@@ -6,7 +6,7 @@ import logging
 import os
 import uuid
 from dataclasses import dataclass, replace
-from typing import Any
+from typing import Any, Mapping
 
 from rag.schemas import QueryInput
 from rag_eng.aurora_retry import connect_postgres_with_retry
@@ -63,6 +63,77 @@ class TraceContext:
     mode: str = ""
     week: int = 0
     persisted: bool = False
+
+
+@dataclass(frozen=True)
+class SessionOrchestrationState:
+    """Session-scoped orchestrator state stored in `tutor_sessions.metadata`."""
+
+    adversarial_warnings: int = 0
+    terminated: bool = False
+    termination_reason: str = ""
+    last_flag_reason: str = ""
+    last_action_taken: str = ""
+
+    @classmethod
+    def from_metadata(
+        cls,
+        metadata: Mapping[str, Any] | None,
+        *,
+        status: str | None = None,
+    ) -> SessionOrchestrationState:
+        payload = dict(metadata or {})
+        warnings_value = (
+            payload.get("Session_Adversarial_Warnings")
+            or payload.get("session_adversarial_warnings")
+            or 0
+        )
+        return cls(
+            adversarial_warnings=int(warnings_value),
+            terminated=bool(
+                payload.get("Session_Adversarial_Terminated")
+                or payload.get("session_terminated")
+                or status == "ended"
+            ),
+            termination_reason=_normalize_text(
+                payload.get("Session_Adversarial_Termination_Reason")
+                or payload.get("session_termination_reason")
+            ),
+            last_flag_reason=_normalize_text(
+                payload.get("Session_Adversarial_Last_Flag_Reason")
+                or payload.get("session_last_flag_reason")
+            ),
+            last_action_taken=_normalize_text(
+                payload.get("Session_Adversarial_Last_Action")
+                or payload.get("session_last_action_taken")
+            ),
+        )
+
+    def to_metadata_patch(self) -> dict[str, Any]:
+        """Return the canonical metadata keys persisted on `tutor_sessions`."""
+        patch: dict[str, Any] = {
+            "Session_Adversarial_Warnings": self.adversarial_warnings,
+            "Session_Adversarial_Terminated": self.terminated,
+        }
+        if self.termination_reason:
+            patch["Session_Adversarial_Termination_Reason"] = self.termination_reason
+        if self.last_flag_reason:
+            patch["Session_Adversarial_Last_Flag_Reason"] = self.last_flag_reason
+        if self.last_action_taken:
+            patch["Session_Adversarial_Last_Action"] = self.last_action_taken
+        return patch
+
+    def to_snapshot_dict(self) -> dict[str, Any]:
+        """Return a snapshot-friendly representation for turn logs."""
+        return {
+            "Session_Adversarial_Warnings": self.adversarial_warnings,
+            "Session_Adversarial_Terminated": self.terminated,
+            "Session_Adversarial_Termination_Reason": (
+                self.termination_reason or None
+            ),
+            "Session_Adversarial_Last_Flag_Reason": self.last_flag_reason or None,
+            "Session_Adversarial_Last_Action": self.last_action_taken or None,
+        }
 
 
 class TelemetryStore:
@@ -332,6 +403,78 @@ class TelemetryStore:
             )
             return False
 
+    def get_session_orchestration_state(
+        self,
+        session_id: str,
+    ) -> SessionOrchestrationState:
+        """Read the current session-level guardrail/orchestrator state."""
+        if not self.database_url:
+            return SessionOrchestrationState()
+
+        try:
+            with _connect_postgres(
+                self.database_url,
+                self.connect_timeout_seconds,
+            ) as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        SELECT metadata, status
+                        FROM tutor_sessions
+                        WHERE session_id = %s
+                        """,
+                        (session_id,),
+                    )
+                    row = cursor.fetchone()
+        except Exception as exc:
+            logger.warning(
+                "Aurora session state lookup skipped for %s: %s",
+                session_id,
+                exc,
+            )
+            return SessionOrchestrationState()
+
+        if row is None:
+            return SessionOrchestrationState()
+
+        metadata, status = row
+        return SessionOrchestrationState.from_metadata(metadata, status=status)
+
+    def update_session_orchestration_state(
+        self,
+        session_id: str,
+        state: SessionOrchestrationState,
+    ) -> bool:
+        """Persist the orchestrator state back onto the session row."""
+        if not self.database_url:
+            return False
+
+        try:
+            with _connect_postgres(
+                self.database_url,
+                self.connect_timeout_seconds,
+            ) as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        UPDATE tutor_sessions
+                        SET
+                          metadata = COALESCE(metadata, '{}'::jsonb) || COALESCE(%s, '{}'::jsonb),
+                          updated_at = now(),
+                          last_seen_at = now()
+                        WHERE session_id = %s
+                        """,
+                        (_json_adapter(state.to_metadata_patch()), session_id),
+                    )
+            return True
+        except Exception as exc:
+            logger.warning(
+                "Aurora session state update skipped for %s: %s",
+                session_id,
+                exc,
+            )
+            return False
+
     def record_turn_snapshot(
         self,
         trace: TraceContext,
@@ -414,6 +557,7 @@ class TelemetryStore:
             return False
 
         event_type = "request_failed" if status == "failed" else "answer_returned"
+        session_status = "ended" if (metadata or {}).get("session_terminated") else status
         try:
             with _connect_postgres(
                 self.database_url,
@@ -429,7 +573,7 @@ class TelemetryStore:
                           status = %s
                         WHERE session_id = %s
                         """,
-                        (trace.request_id, status, trace.session_id),
+                        (trace.request_id, session_status, trace.session_id),
                     )
                     cursor.execute(
                         """

@@ -109,9 +109,10 @@ def _orchestrator_phase(
     input_guardrail: dict[str, Any] | None,
     guardrail: dict[str, Any] | None,
     final_answer: str,
+    orchestrator_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if input_guardrail and input_guardrail.get("blocked"):
-        return {
+        phase = {
             "violation_count_before": None,
             "violation_count_after": None,
             "action_taken": "CANNED_WARNING",
@@ -120,9 +121,12 @@ def _orchestrator_phase(
             "carrot_penalty_triggered": False,
             "final_rendered_text": final_answer,
         }
+        if orchestrator_context:
+            phase.update(orchestrator_context)
+        return phase
 
     if guardrail and guardrail.get("action") == "replace":
-        return {
+        phase = {
             "violation_count_before": None,
             "violation_count_after": None,
             "action_taken": "OUTPUT_GUARDRAIL_REPLACE",
@@ -131,9 +135,12 @@ def _orchestrator_phase(
             "carrot_penalty_triggered": False,
             "final_rendered_text": final_answer,
         }
+        if orchestrator_context:
+            phase.update(orchestrator_context)
+        return phase
 
     if guardrail and guardrail.get("action") == "log_only":
-        return {
+        phase = {
             "violation_count_before": None,
             "violation_count_after": None,
             "action_taken": "OUTPUT_GUARDRAIL_LOG_ONLY",
@@ -142,8 +149,11 @@ def _orchestrator_phase(
             "carrot_penalty_triggered": False,
             "final_rendered_text": final_answer,
         }
+        if orchestrator_context:
+            phase.update(orchestrator_context)
+        return phase
 
-    return {
+    phase = {
         "violation_count_before": None,
         "violation_count_after": None,
         "action_taken": "PASS_THROUGH",
@@ -152,13 +162,21 @@ def _orchestrator_phase(
         "carrot_penalty_triggered": False,
         "final_rendered_text": final_answer,
     }
+    if orchestrator_context:
+        phase.update(orchestrator_context)
+    return phase
 
 
 def _final_response_source(
     *,
     input_guardrail: dict[str, Any] | None,
     guardrail: dict[str, Any] | None,
+    orchestrator_context: dict[str, Any] | None = None,
 ) -> str:
+    if orchestrator_context:
+        response_source = orchestrator_context.get("response_source")
+        if response_source:
+            return str(response_source)
     if input_guardrail and input_guardrail.get("blocked"):
         return "input_guardrail"
     if guardrail and guardrail.get("action") == "replace":
@@ -180,6 +198,8 @@ def build_turn_snapshot(
     model_name: str | None = None,
     retrieval_latency_ms: int | None = None,
     llm_latency_ms: int | None = None,
+    policy_snapshot: dict[str, Any] | None = None,
+    orchestrator_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a versioned, eval-friendly snapshot for one tutoring turn."""
     final_text = final_answer
@@ -191,7 +211,7 @@ def build_turn_snapshot(
         else:
             final_text = raw_generation or ""
 
-    return {
+    snapshot = {
         "schema_version": TURN_SNAPSHOT_SCHEMA_VERSION,
         "timestamp": _utc_now_iso(),
         "trace": {
@@ -221,6 +241,7 @@ def build_turn_snapshot(
             input_guardrail=input_guardrail,
             guardrail=guardrail,
             final_answer=final_text,
+            orchestrator_context=orchestrator_context,
         ),
         "ta_generation_phase": (
             None
@@ -238,6 +259,10 @@ def build_turn_snapshot(
             "source": _final_response_source(
                 input_guardrail=input_guardrail,
                 guardrail=guardrail,
+                orchestrator_context=orchestrator_context,
             ),
         },
     }
+    if policy_snapshot is not None:
+        snapshot["policy_snapshot"] = policy_snapshot
+    return snapshot

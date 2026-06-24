@@ -6,6 +6,7 @@ import logging
 import json
 import re
 import time
+from dataclasses import asdict, replace
 from types import SimpleNamespace
 from typing import Any, AsyncIterator
 
@@ -14,6 +15,7 @@ from rag.runtime import create_qdrant_client
 
 from rag.course_registry import get_course_registry_status
 from rag_eng.config import Settings, get_inference_config, get_settings
+from rag_eng.config import get_runtime_policy_config
 from rag_eng.indexing import ensure_index, rebuild_index
 from rag_eng.inference import run_inference
 from rag_eng.llm_clients import (
@@ -26,9 +28,15 @@ from rag_eng.llm_clients import (
     invoke_openai_chat_completion,
 )
 from rag_eng.prompts import get_system_prompt
-from rag_eng.telemetry import TraceContext, TelemetryStore, get_telemetry_store
+from rag_eng.telemetry import (
+    SessionOrchestrationState,
+    TraceContext,
+    TelemetryStore,
+    get_telemetry_store,
+)
 from rag_eng.turn_snapshot import build_turn_snapshot
 from input_guardrails.runtime import evaluate_input_guardrail
+from input_guardrails.responses import repeated_violation_response, response_for
 from output_guardrails.combined import apply_all_guardrails
 from rag_eng.schemas import (
     HealthResponse,
@@ -171,6 +179,163 @@ def _input_guardrail_summary(input_guardrail_result: dict[str, Any]) -> dict[str
     return summary
 
 
+def _policy_snapshot() -> dict[str, Any]:
+    """Serialize the active input-guardrail orchestration policy."""
+    return asdict(get_runtime_policy_config().input_guardrail_orchestration)
+
+
+def _input_guardrail_flag_reason(input_guardrail_result: dict[str, Any] | None) -> str:
+    rules = (input_guardrail_result or {}).get("rules") or {}
+    if isinstance(rules, dict):
+        flag_reason = rules.get("flag_reason")
+        if flag_reason:
+            return str(flag_reason)
+    violation_type = (input_guardrail_result or {}).get("violation_type")
+    return str(violation_type or "")
+
+
+def _session_state_snapshot(state: SessionOrchestrationState) -> dict[str, Any]:
+    return state.to_snapshot_dict()
+
+
+def _build_orchestrator_context(
+    *,
+    input_guardrail_result: dict[str, Any] | None,
+    state_before: SessionOrchestrationState,
+    state_after: SessionOrchestrationState,
+    action_taken: str,
+    short_circuit_stage: str | None,
+    response_source: str,
+    policy_snapshot: dict[str, Any],
+    answer: str,
+) -> dict[str, Any]:
+    return {
+        "session_state_before": _session_state_snapshot(state_before),
+        "session_state_after": _session_state_snapshot(state_after),
+        "policy_snapshot": policy_snapshot,
+        "input_guardrail_flag_reason": _input_guardrail_flag_reason(
+            input_guardrail_result
+        )
+        or None,
+        "response_source": response_source,
+        "violation_count_before": state_before.adversarial_warnings,
+        "violation_count_after": state_after.adversarial_warnings,
+        "action_taken": action_taken,
+        "short_circuit_stage": short_circuit_stage,
+        "end_chat": state_after.terminated,
+        "carrot_penalty_triggered": (
+            state_after.terminated and not state_before.terminated
+        ),
+        "final_rendered_text": answer,
+    }
+
+
+def _maybe_handle_orchestrator_short_circuit(
+    *,
+    trace: TraceContext,
+    telemetry_store: TelemetryStore,
+    input_guardrail_result: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Resolve session-level warning state and short-circuit when needed."""
+    policy = get_runtime_policy_config().input_guardrail_orchestration
+    policy_snapshot = _policy_snapshot()
+    state_before = telemetry_store.get_session_orchestration_state(trace.session_id)
+    flag_reason = _input_guardrail_flag_reason(input_guardrail_result)
+
+    if state_before.terminated:
+        state_after = replace(
+            state_before,
+            last_flag_reason=flag_reason or state_before.last_flag_reason,
+            last_action_taken="SESSION_ALREADY_TERMINATED",
+        )
+        answer = repeated_violation_response()
+        action_taken = "SESSION_ALREADY_TERMINATED"
+        short_circuit_stage = "session_state"
+        response_source = "orchestrator"
+    elif not policy.enabled:
+        if not (input_guardrail_result or {}).get("blocked"):
+            return None
+        state_after = replace(
+            state_before,
+            last_flag_reason=flag_reason,
+            last_action_taken="CANNED_WARNING",
+        )
+        answer = (input_guardrail_result or {}).get("final_answer") or response_for(
+            flag_reason
+        )
+        action_taken = "CANNED_WARNING"
+        short_circuit_stage = "input_guardrail"
+        response_source = "input_guardrail"
+    elif (input_guardrail_result or {}).get("blocked"):
+        next_warning_count = state_before.adversarial_warnings + 1
+        terminated = (
+            policy.session_termination_enabled
+            and next_warning_count >= policy.end_chat_threshold
+        )
+        state_after = replace(
+            state_before,
+            adversarial_warnings=next_warning_count,
+            terminated=terminated,
+            termination_reason=(
+                "end_chat_threshold_reached" if terminated else ""
+            ),
+            last_flag_reason=flag_reason,
+            last_action_taken=(
+                "CANNED_END_CHAT" if terminated else "CANNED_WARNING"
+            ),
+        )
+        if terminated:
+            answer = repeated_violation_response()
+            action_taken = "CANNED_END_CHAT"
+            response_source = "orchestrator"
+        else:
+            answer = (input_guardrail_result or {}).get("final_answer") or response_for(
+                flag_reason
+            )
+            action_taken = "CANNED_WARNING"
+            response_source = "input_guardrail"
+        short_circuit_stage = "input_guardrail"
+    else:
+        return None
+
+    if state_after != state_before:
+        telemetry_store.update_session_orchestration_state(trace.session_id, state_after)
+
+    telemetry_store.record_event(
+        trace,
+        event_type="orchestrator_decision",
+        stage="orchestrator",
+        status="completed",
+        model_provider="orchestrator",
+        model_name="input_guardrail_orchestrator",
+        metadata=_build_orchestrator_context(
+            input_guardrail_result=input_guardrail_result,
+            state_before=state_before,
+            state_after=state_after,
+            action_taken=action_taken,
+            short_circuit_stage=short_circuit_stage,
+            response_source=response_source,
+            policy_snapshot=policy_snapshot,
+            answer=answer,
+        ),
+    )
+    return {
+        "answer": answer,
+        "orchestrator_context": _build_orchestrator_context(
+            input_guardrail_result=input_guardrail_result,
+            state_before=state_before,
+            state_after=state_after,
+            action_taken=action_taken,
+            short_circuit_stage=short_circuit_stage,
+            response_source=response_source,
+            policy_snapshot=policy_snapshot,
+            answer=answer,
+        ),
+        "session_terminated": state_after.terminated,
+        "policy_snapshot": policy_snapshot,
+    }
+
+
 def _build_input_guardrail_context(query) -> tuple[str, str]:
     """Synthesize the input-guardrail model fields from a query."""
     course_topic = query.course_id or query.course_source.value
@@ -297,6 +462,8 @@ def _persist_turn_snapshot(
     model_name: str | None = None,
     retrieval_latency_ms: int | None = None,
     llm_latency_ms: int | None = None,
+    policy_snapshot: dict[str, Any] | None = None,
+    orchestrator_context: dict[str, Any] | None = None,
 ) -> None:
     snapshot = build_turn_snapshot(
         trace=trace,
@@ -311,6 +478,8 @@ def _persist_turn_snapshot(
         model_name=model_name,
         retrieval_latency_ms=retrieval_latency_ms,
         llm_latency_ms=llm_latency_ms,
+        policy_snapshot=policy_snapshot,
+        orchestrator_context=orchestrator_context,
     )
     telemetry_store.record_turn_snapshot(trace, snapshot)
 
@@ -547,19 +716,26 @@ def run_query(query) -> QueryResponse:
         "rerank_strategy": getattr(query, "rerank_strategy", None),
         **_input_guardrail_summary(input_guardrail),
     }
+    policy_snapshot = _policy_snapshot()
+    orchestration_result = _maybe_handle_orchestrator_short_circuit(
+        trace=trace,
+        telemetry_store=telemetry_store,
+        input_guardrail_result=input_guardrail,
+    )
 
-    if input_guardrail.get("blocked"):
-        answer = input_guardrail.get("final_answer") or ""
+    if orchestration_result is not None:
+        answer = orchestration_result["answer"]
         telemetry_store.finish_turn(
             trace,
             status="completed",
             latency_ms=int((time.perf_counter() - started_at) * 1000),
-            model_provider="input_guardrail",
-            model_name="codebert_v1",
+            model_provider="orchestrator",
+            model_name="input_guardrail_orchestrator",
             answer_chars=len(answer),
             metadata={
                 **base_metadata,
                 "answer_chars": len(answer),
+                "session_terminated": orchestration_result["session_terminated"],
             },
         )
         _persist_turn_snapshot(
@@ -569,8 +745,10 @@ def run_query(query) -> QueryResponse:
             source="query",
             input_guardrail=input_guardrail,
             final_answer=answer,
-            model_provider="input_guardrail",
-            model_name="codebert_v1",
+            model_provider="orchestrator",
+            model_name="input_guardrail_orchestrator",
+            policy_snapshot=policy_snapshot,
+            orchestrator_context=orchestration_result["orchestrator_context"],
         )
         return QueryResponse(
             answer=answer,
@@ -663,6 +841,7 @@ def run_query(query) -> QueryResponse:
             model_name=model_name,
             retrieval_latency_ms=retrieval_latency_ms,
             llm_latency_ms=llm_latency_ms,
+            policy_snapshot=policy_snapshot,
         )
         return QueryResponse(
             answer=answer,
@@ -901,9 +1080,15 @@ async def run_chat(
         for message in messages[:-1]
         if message.get("role") in {"user", "assistant"}
     ]
+    policy_snapshot = _policy_snapshot()
+    orchestration_result = _maybe_handle_orchestrator_short_circuit(
+        trace=trace,
+        telemetry_store=telemetry_store,
+        input_guardrail_result=input_guardrail,
+    )
 
-    if input_guardrail.get("blocked"):
-        answer = input_guardrail.get("final_answer") or ""
+    if orchestration_result is not None:
+        answer = orchestration_result["answer"]
         payload = _chat_response_payload_with_guardrail(
             answer,
             trace,
@@ -914,12 +1099,13 @@ async def run_chat(
             trace,
             status="completed",
             latency_ms=int((time.perf_counter() - started_at) * 1000),
-            model_provider="input_guardrail",
-            model_name="codebert_v1",
+            model_provider="orchestrator",
+            model_name="input_guardrail_orchestrator",
             answer_chars=len(answer),
             metadata={
                 **base_metadata,
                 "answer_chars": len(answer),
+                "session_terminated": orchestration_result["session_terminated"],
             },
         )
         _persist_turn_snapshot(
@@ -929,8 +1115,10 @@ async def run_chat(
             source="chat",
             input_guardrail=input_guardrail,
             final_answer=answer,
-            model_provider="input_guardrail",
-            model_name="codebert_v1",
+            model_provider="orchestrator",
+            model_name="input_guardrail_orchestrator",
+            policy_snapshot=policy_snapshot,
+            orchestrator_context=orchestration_result["orchestrator_context"],
         )
         if stream:
             return _single_chunk_stream(payload)
@@ -1044,6 +1232,7 @@ async def run_chat(
                     model_name=telemetry_model_name,
                     retrieval_latency_ms=retrieval_latency_ms,
                     llm_latency_ms=llm_latency_ms,
+                    policy_snapshot=policy_snapshot,
                 )
                 return chunk_text(answer, runtime.sagemaker.streaming_chunk_size)
             raw_generation = (
@@ -1104,6 +1293,7 @@ async def run_chat(
                 model_name=telemetry_model_name,
                 retrieval_latency_ms=retrieval_latency_ms,
                 llm_latency_ms=llm_latency_ms,
+                policy_snapshot=policy_snapshot,
             )
             return _chat_response_payload_with_guardrail(
                 answer,
@@ -1189,6 +1379,7 @@ async def run_chat(
                 model_name=chat_route.model,
                 retrieval_latency_ms=retrieval_latency_ms,
                 llm_latency_ms=llm_latency_ms,
+                policy_snapshot=policy_snapshot,
             )
             if stream:
                 return chunk_text(text, runtime.sagemaker.streaming_chunk_size)
@@ -1279,6 +1470,7 @@ async def run_chat(
                 model_name=chat_route.model,
                 retrieval_latency_ms=retrieval_latency_ms,
                 llm_latency_ms=llm_latency_ms,
+                policy_snapshot=policy_snapshot,
             )
             if stream:
                 return chunk_text(text, runtime.sagemaker.streaming_chunk_size)
@@ -1359,6 +1551,7 @@ async def run_chat(
                 model_name=telemetry_model_name,
                 retrieval_latency_ms=retrieval_latency_ms,
                 llm_latency_ms=llm_latency_ms,
+                policy_snapshot=policy_snapshot,
             )
             return chunk_text(answer, runtime.sagemaker.streaming_chunk_size)
         raw_generation = (
@@ -1419,6 +1612,7 @@ async def run_chat(
             model_name=telemetry_model_name,
             retrieval_latency_ms=retrieval_latency_ms,
             llm_latency_ms=llm_latency_ms,
+            policy_snapshot=policy_snapshot,
         )
         return _chat_response_payload_with_guardrail(
             answer,
