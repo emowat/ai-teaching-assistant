@@ -64,7 +64,11 @@ def test_runtime_config_round_trip(tmp_path: Path) -> None:
                     "retry_sleep_seconds": 1.0,
                 },
             },
-            "chat_log_export": {"prefix": "eval/chat_logs/turn_logs"},
+            "chat_log_export": {
+                "prefix": "eval/chat_logs/turn_logs",
+                "bucket": "codingrabbit-data-dev",
+                "connect_timeout_seconds": 3,
+            },
         }
     }
 
@@ -96,7 +100,11 @@ def test_load_runtime_policy_config_reads_nested_sections(tmp_path: Path) -> Non
                     "retry_sleep_seconds": 0.25,
                 },
             },
-            "chat_log_export": {"prefix": "eval/custom"},
+            "chat_log_export": {
+                "prefix": "eval/custom",
+                "bucket": "codingrabbit-data-dev",
+                "connect_timeout_seconds": 11,
+            },
         }
     }
 
@@ -117,6 +125,8 @@ def test_load_runtime_policy_config_reads_nested_sections(tmp_path: Path) -> Non
     assert policy.aurora_retry.reliable.max_attempts == 4
     assert policy.aurora_retry.reliable.retry_sleep_seconds == 0.25
     assert policy.chat_log_export.prefix == "eval/custom"
+    assert policy.chat_log_export.bucket == "codingrabbit-data-dev"
+    assert policy.chat_log_export.connect_timeout_seconds == 11
 
 
 def test_model_route_config_allows_sagemaker_without_model() -> None:

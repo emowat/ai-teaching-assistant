@@ -166,6 +166,60 @@ def test_export_turn_snapshots_groups_by_date_and_uploads_jsonl(monkeypatch):
     assert len(params) == 2
 
 
+def test_export_turn_snapshots_uses_runtime_defaults_when_bucket_is_omitted(
+    monkeypatch,
+):
+    rows = [
+        (
+            datetime(2026, 6, 23, 1, 2, tzinfo=timezone.utc),
+            {
+                "schema_version": "v1",
+                "trace": {
+                    "request_id": "req-1",
+                    "session_id": "sess-1",
+                    "turn_id": "turn-1",
+                    "turn_index": 1,
+                    "source": "chat",
+                },
+                "final_response": {"text": "one", "source": "model"},
+            },
+        )
+    ]
+    statements: list[dict[str, object]] = []
+    fake_connection = _FakeConnection(cursor_obj=_FakeCursor(rows, statements=[]))
+    fake_client = _FakeS3Client()
+    fake_session = _FakeSession(fake_client)
+
+    monkeypatch.setattr(
+        "rag_eng.chat_log_export.DEFAULT_EXPORT_BUCKET",
+        "codingrabbit-data-dev",
+    )
+    monkeypatch.setattr(
+        "rag_eng.chat_log_export.DEFAULT_EXPORT_CONNECT_TIMEOUT_SECONDS",
+        11,
+    )
+
+    def _connect_postgres(*args, **kwargs):
+        statements.append({"args": args, "kwargs": kwargs})
+        return fake_connection
+
+    monkeypatch.setattr("rag_eng.chat_log_export._connect_postgres", _connect_postgres)
+    monkeypatch.setattr(
+        "rag_eng.chat_log_export.boto3.Session",
+        lambda **kwargs: fake_session,
+    )
+
+    result = export_turn_snapshots_to_s3(
+        database_url="postgresql://example",
+        start_date=date(2026, 6, 23),
+        end_date=date(2026, 6, 23),
+    )
+
+    assert result[0]["bucket"] == "codingrabbit-data-dev"
+    assert statements[0]["args"][1] == 11
+    assert fake_client.put_objects[0]["Bucket"] == "codingrabbit-data-dev"
+
+
 def test_export_turn_snapshots_adds_course_partition(monkeypatch):
     rows = [
         (

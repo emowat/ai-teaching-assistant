@@ -13,6 +13,8 @@ from rag.runtime import get_runtime_config
 from rag.schemas import CourseSource
 
 from rag_eng.chat_log_export import DEFAULT_EXPORT_PREFIX
+from rag_eng.chat_log_export import DEFAULT_EXPORT_BUCKET
+from rag_eng.chat_log_export import DEFAULT_EXPORT_CONNECT_TIMEOUT_SECONDS
 from rag_eng.chat_log_export import export_turn_snapshots_to_s3
 from rag_eng.indexing import ensure_index, rebuild_index
 
@@ -52,7 +54,7 @@ def main(argv: list[str] | None = None) -> None:
     )
     export_turn_snapshots.add_argument(
         "--bucket",
-        default=os.getenv("S3_DATA_BUCKET"),
+        default=DEFAULT_EXPORT_BUCKET or None,
         help="S3 bucket that will receive the exported JSONL files.",
     )
     export_turn_snapshots.add_argument(
@@ -88,7 +90,7 @@ def main(argv: list[str] | None = None) -> None:
     export_turn_snapshots.add_argument(
         "--connect-timeout-seconds",
         type=int,
-        default=3,
+        default=DEFAULT_EXPORT_CONNECT_TIMEOUT_SECONDS,
         help="psycopg connect timeout for the Aurora query.",
     )
     resolve_course = subparsers.add_parser(
@@ -118,9 +120,14 @@ def main(argv: list[str] | None = None) -> None:
     elif args.command == "rebuild-index":
         result = rebuild_index()
     elif args.command == "export-turn-snapshots":
+        bucket = args.bucket or DEFAULT_EXPORT_BUCKET or os.getenv("S3_DATA_BUCKET")
+        if not bucket:
+            parser.error(
+                "export-turn-snapshots requires --bucket or a configured S3 bucket"
+            )
         result = export_turn_snapshots_to_s3(
             database_url=args.database_url,
-            bucket=args.bucket or "codingrabbit-data-dev",
+            bucket=bucket,
             prefix=args.prefix or DEFAULT_EXPORT_PREFIX,
             start_date=date.fromisoformat(args.start_date)
             if args.start_date

@@ -144,3 +144,43 @@ def test_export_turn_snapshots_command_forwards_arguments(
     assert captured["end_date"] == date(2026, 6, 24)
     assert captured["course_id"] == "mit14"
     assert payload[0]["s3_uri"].endswith("turn_snapshots.jsonl")
+
+
+def test_export_turn_snapshots_command_uses_runtime_defaults(
+    monkeypatch, capsys
+) -> None:
+    captured: dict[str, object] = {}
+
+    def _export(**kwargs):
+        captured.update(kwargs)
+        return [
+            {
+                "date": "2026-06-23",
+                "record_count": 1,
+                "bucket": kwargs["bucket"],
+                "key": "eval/chat_logs/turn_logs/date=2026-06-23/turn_snapshots.jsonl",
+                "s3_uri": (
+                    "s3://"
+                    f"{kwargs['bucket']}/"
+                    "eval/chat_logs/turn_logs/date=2026-06-23/turn_snapshots.jsonl"
+                ),
+            }
+        ]
+
+    monkeypatch.setattr(cli, "DEFAULT_EXPORT_BUCKET", "codingrabbit-data-dev")
+    monkeypatch.setattr(cli, "DEFAULT_EXPORT_CONNECT_TIMEOUT_SECONDS", 11)
+    monkeypatch.setattr(cli, "export_turn_snapshots_to_s3", _export)
+
+    cli.main(
+        [
+            "export-turn-snapshots",
+            "--database-url",
+            "postgresql://example",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+
+    assert captured["bucket"] == "codingrabbit-data-dev"
+    assert captured["connect_timeout_seconds"] == 11
+    assert payload[0]["s3_uri"].startswith("s3://codingrabbit-data-dev/")

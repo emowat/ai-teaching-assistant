@@ -13,15 +13,22 @@ from typing import Any
 from urllib.parse import urlparse
 
 import boto3
-from rag_eng.config import get_runtime_policy_config
 from rag_eng.aurora_retry import connect_postgres_with_retry
+from rag_eng.config import get_runtime_policy_config
 
 
 logger = logging.getLogger(__name__)
 try:
-    DEFAULT_EXPORT_PREFIX = get_runtime_policy_config().chat_log_export.prefix
+    _RUNTIME_EXPORT_CONFIG = get_runtime_policy_config().chat_log_export
+    DEFAULT_EXPORT_PREFIX = _RUNTIME_EXPORT_CONFIG.prefix
+    DEFAULT_EXPORT_BUCKET = _RUNTIME_EXPORT_CONFIG.bucket
+    DEFAULT_EXPORT_CONNECT_TIMEOUT_SECONDS = (
+        _RUNTIME_EXPORT_CONFIG.connect_timeout_seconds
+    )
 except Exception:
     DEFAULT_EXPORT_PREFIX = "eval/chat_logs/turn_logs"
+    DEFAULT_EXPORT_BUCKET = os.getenv("S3_DATA_BUCKET", "codingrabbit-data-dev")
+    DEFAULT_EXPORT_CONNECT_TIMEOUT_SECONDS = 3
 
 
 def _connect_postgres(database_url: str, connect_timeout_seconds: int):
@@ -162,16 +169,25 @@ class ExportPartition:
 def export_turn_snapshots_to_s3(
     *,
     database_url: str,
-    bucket: str,
-    prefix: str = DEFAULT_EXPORT_PREFIX,
+    bucket: str | None = None,
+    prefix: str | None = None,
     start_date: date | None = None,
     end_date: date | None = None,
     course_id: str | None = None,
     profile: str | None = None,
     region: str | None = None,
-    connect_timeout_seconds: int = 3,
+    connect_timeout_seconds: int | None = None,
 ) -> list[dict[str, Any]]:
     """Export one JSONL object per UTC date partition to S3."""
+    if bucket is None:
+        bucket = DEFAULT_EXPORT_BUCKET or os.getenv("S3_DATA_BUCKET", "")
+    if not bucket:
+        raise ValueError("A bucket is required for turn snapshot exports")
+    if prefix is None:
+        prefix = DEFAULT_EXPORT_PREFIX
+    if connect_timeout_seconds is None:
+        connect_timeout_seconds = DEFAULT_EXPORT_CONNECT_TIMEOUT_SECONDS
+
     if start_date is None:
         start_date = datetime.now(timezone.utc).date()
     if end_date is None:
@@ -244,7 +260,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--bucket",
-        default=os.getenv("S3_DATA_BUCKET", "codingrabbit-data-dev"),
+        default=DEFAULT_EXPORT_BUCKET or None,
         help="S3 bucket that will receive the exported JSONL files.",
     )
     parser.add_argument(
@@ -280,7 +296,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--connect-timeout-seconds",
         type=int,
-        default=20,
+        default=DEFAULT_EXPORT_CONNECT_TIMEOUT_SECONDS,
         help="psycopg connect timeout for the Aurora query.",
     )
     args = parser.parse_args(argv)
@@ -289,12 +305,16 @@ def main(argv: list[str] | None = None) -> int:
     if not database_url:
         parser.error("export-turn-snapshots requires --database-url or a configured Aurora URL")
 
+    bucket = args.bucket or DEFAULT_EXPORT_BUCKET or os.getenv("S3_DATA_BUCKET")
+    if not bucket:
+        parser.error("export-turn-snapshots requires --bucket or a configured S3 bucket")
+
     start_date = _parse_date(args.start_date, default=datetime.now(timezone.utc).date())
     end_date = _parse_date(args.end_date, default=start_date)
 
     exported = export_turn_snapshots_to_s3(
         database_url=database_url,
-        bucket=args.bucket,
+        bucket=bucket,
         prefix=args.prefix,
         start_date=start_date,
         end_date=end_date,

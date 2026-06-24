@@ -158,6 +158,11 @@ eval/chat_logs/turn_logs/date=YYYY-MM-DD/turn_snapshots.jsonl
 If you pass `--course-id`, the exporter adds a `course_id=...` partition
 between the prefix and the date partition.
 
+The export destination and Aurora query timeout are configured in
+[`runtime_config.yaml`](./runtime_config.yaml) under
+`runtime.chat_log_export`. `--bucket` and `--connect-timeout-seconds` still
+override those defaults for one-off runs.
+
 Each exported turn snapshot includes the `policy_snapshot` and the
 `orchestrator_phase` block, which makes it easier to audit whether a turn was
 handled by the input guardrail, a session-level end-chat decision, or the main

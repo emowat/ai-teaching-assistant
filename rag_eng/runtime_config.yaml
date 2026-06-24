@@ -25,4 +25,6 @@ runtime:
       max_attempts: 8
       retry_sleep_seconds: 1.0
   chat_log_export:
+    bucket: codingrabbit-data-dev
+    connect_timeout_seconds: 3
     prefix: eval/chat_logs/turn_logs

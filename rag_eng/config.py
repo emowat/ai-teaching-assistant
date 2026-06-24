@@ -108,6 +108,8 @@ class AuroraRetryConfig:
 @dataclass(frozen=True)
 class ChatLogExportConfig:
     prefix: str
+    bucket: str
+    connect_timeout_seconds: int
 
 
 @dataclass(frozen=True)
@@ -273,6 +275,13 @@ def _bool_or_default(value: object, default: bool) -> bool:
     return bool(value)
 
 
+def _str_or_default(value: object, default: str) -> str:
+    if value is None:
+        return default
+    text = str(value).strip()
+    return text if text else default
+
+
 def load_runtime_policy_config(path: Path | None = None) -> RuntimePolicyConfig:
     """Load runtime policy knobs used by orchestration and operational helpers."""
     p = path or _RUNTIME_CONFIG_PATH
@@ -323,7 +332,14 @@ def load_runtime_policy_config(path: Path | None = None) -> RuntimePolicyConfig:
             ),
         ),
         chat_log_export=ChatLogExportConfig(
-            prefix=str(export_raw.get("prefix", "eval/chat_logs/turn_logs")),
+            prefix=_str_or_default(export_raw.get("prefix"), "eval/chat_logs/turn_logs"),
+            bucket=_str_or_default(
+                export_raw.get("bucket"),
+                os.getenv("S3_DATA_BUCKET", "codingrabbit-data-dev"),
+            ),
+            connect_timeout_seconds=int(
+                export_raw.get("connect_timeout_seconds", 3)
+            ),
         ),
     )
 
