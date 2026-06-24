@@ -3,7 +3,7 @@ runtime:
     provider: bedrock
     model: us.amazon.nova-2-lite-v1:0
   chat:
-    provider: sagemaker
-    model: ''
+    provider: bedrock
+    model: us.amazon.nova-2-lite-v1:0
   openai:
     base_url: https://api.openai.com/v1

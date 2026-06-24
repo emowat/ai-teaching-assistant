@@ -7,6 +7,7 @@ from rag_eng.ui import (
     _clear_sagemaker_request,
     _input_guardrail_invoke,
     _guardrail_invoke,
+    _refresh_pipeline_route,
     _query_api,
     _resolve_retrieval_preset,
     _pipeline_invoke,
@@ -38,6 +39,7 @@ def test_build_gradio_app_smoke() -> None:
         assert "_guardrail_invoke" in fn_names
         assert "_input_guardrail_invoke" in fn_names
         assert "_refresh_input_guardrail_status" in fn_names
+        assert "_refresh_pipeline_route" in fn_names
 
 
 def test_refresh_sagemaker_status_renders_current_status(monkeypatch) -> None:
@@ -67,6 +69,17 @@ def test_clear_sagemaker_request_returns_retry_hint() -> None:
     response, status = _clear_sagemaker_request()
     assert response == ""
     assert "send it again" in status.lower()
+
+
+def test_refresh_pipeline_route_uses_runtime_route(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "rag_eng.ui.describe_chat_route",
+        lambda: "Bedrock (us.amazon.nova-2-lite-v1:0)",
+    )
+
+    text = _refresh_pipeline_route()
+    assert "Current runtime route" in text
+    assert "Bedrock (us.amazon.nova-2-lite-v1:0)" in text
 
 
 def test_resolve_retrieval_preset_uses_saved_values() -> None:

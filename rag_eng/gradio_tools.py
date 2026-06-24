@@ -13,7 +13,7 @@ from typing import Any
 
 from output_guardrails.combined import apply_all_guardrails
 
-from rag_eng.config import Settings, get_settings
+from rag_eng.config import Settings, get_inference_config, get_settings
 from rag_eng.inference import _invoke_sagemaker
 from input_guardrails.runtime import evaluate_input_guardrail, runtime_status
 from rag_eng.service import run_chat
@@ -81,6 +81,27 @@ def _boto_session(settings: Settings):
         profile_name=settings.aws_profile or None,
         region_name=settings.aws_region,
     )
+
+
+def describe_chat_route(settings: Settings | None = None) -> str:
+    """Return a human-readable summary of the active chat inference route."""
+    runtime = get_inference_config()
+    route = runtime.chat
+    resolved_settings = settings or get_settings()
+
+    if route.provider == "sagemaker":
+        return f"SageMaker endpoint ({resolved_settings.sagemaker_endpoint})"
+    if route.provider == "bedrock":
+        return f"Bedrock ({route.model})"
+    if route.provider == "openai":
+        return f"OpenAI ({route.model})"
+    if route.provider == "cohere":
+        return f"Cohere ({route.model})"
+    if route.provider == "ollama":
+        return f"Ollama ({route.model})"
+    if route.model:
+        return f"{route.provider} ({route.model})"
+    return route.provider
 
 
 def fetch_sagemaker_status(settings: Settings | None = None) -> SageMakerStatus:
@@ -479,11 +500,7 @@ def invoke_pipeline_chat(
     if not (student_message or "").strip():
         return "", "", "Enter a student question."
 
-    route = (
-        f"SageMaker ({settings.sagemaker_endpoint})"
-        if settings.use_sagemaker
-        else f"Ollama ({settings.ollama_url})"
-    )
+    route = describe_chat_route(settings)
     started = time.time()
     try:
         result = asyncio.run(
@@ -512,6 +529,11 @@ def invoke_pipeline_chat(
         content = (result.get("message") or {}).get("content", "")
         if not content and "content" in result:
             content = str(result.get("content", ""))
+        input_guardrail = (
+            result.get("input_guardrail")
+            if isinstance(result.get("input_guardrail"), dict)
+            else None
+        )
         guardrail = result.get("guardrail") if isinstance(result.get("guardrail"), dict) else None
         trace_summary_parts = [
             f"session={result.get('session_id')}" if result.get("session_id") else None,
@@ -519,25 +541,41 @@ def invoke_pipeline_chat(
             f"turn={result.get('turn_id')}" if result.get("turn_id") else None,
         ]
         trace_summary = " · ".join(part for part in trace_summary_parts if part)
-        meta = (
-            f"Completed in {elapsed:.1f}s · route: {route} · "
-            f"USE_SAGEMAKER={settings.use_sagemaker}"
-        )
+        meta = f"Completed in {elapsed:.1f}s · route: {route}"
         if trace_summary:
             meta = f"{meta} · {trace_summary}"
         if result_count is not None:
             meta = f"{meta} · k={int(result_count)}"
         if rerank_strategy:
             meta = f"{meta} · rerank={rerank_strategy}"
+        if input_guardrail:
+            input_guardrail_bits = [
+                "input_guardrail=block"
+                if input_guardrail.get("blocked")
+                else "input_guardrail=pass"
+            ]
+            if input_guardrail.get("violation_type") not in {None, "", "none"}:
+                input_guardrail_bits.append(
+                    f"input_violation={input_guardrail['violation_type']}"
+                )
+            model = input_guardrail.get("model")
+            if isinstance(model, dict):
+                if model.get("decision") not in {None, "", "skipped"}:
+                    input_guardrail_bits.append(f"input_model={model['decision']}")
+                if model.get("score") is not None:
+                    input_guardrail_bits.append(
+                        f"input_score={float(model['score']):.3f}"
+                    )
+            meta = f"{meta} · {' · '.join(input_guardrail_bits)}"
         if guardrail:
             guardrail_bits = [
-                f"guardrail={guardrail.get('stage', 'n/a')}",
-                f"action={guardrail.get('action', 'pass')}",
+                f"output_guardrail={guardrail.get('stage', 'n/a')}",
+                f"output_action={guardrail.get('action', 'pass')}",
             ]
             if guardrail.get("severity"):
-                guardrail_bits.append(f"severity={guardrail['severity']}")
+                guardrail_bits.append(f"output_severity={guardrail['severity']}")
             if guardrail.get("v2_score") is not None:
-                guardrail_bits.append(f"v2={float(guardrail['v2_score']):.3f}")
+                guardrail_bits.append(f"output_v2={float(guardrail['v2_score']):.3f}")
             meta = f"{meta} · {' · '.join(guardrail_bits)}"
         return content, json.dumps(result, indent=2), meta
     return str(result), "", f"Unexpected result type after {elapsed:.1f}s"
