@@ -88,7 +88,7 @@ def main(argv: list[str] | None = None) -> None:
     export_turn_snapshots.add_argument(
         "--connect-timeout-seconds",
         type=int,
-        default=5,
+        default=3,
         help="psycopg connect timeout for the Aurora query.",
     )
     resolve_course = subparsers.add_parser(

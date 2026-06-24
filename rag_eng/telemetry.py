@@ -9,6 +9,7 @@ from dataclasses import dataclass, replace
 from typing import Any
 
 from rag.schemas import QueryInput
+from rag_eng.aurora_retry import connect_postgres_with_retry
 
 
 logger = logging.getLogger(__name__)
@@ -28,15 +29,12 @@ def _normalize_course_key(value: str | None) -> str:
 
 
 def _connect_postgres(database_url: str, connect_timeout_seconds: int):
-    """Create a psycopg connection lazily so local tests do not need it imported."""
-    try:
-        import psycopg
-    except ImportError as exc:  # pragma: no cover - only when dependency missing
-        raise RuntimeError(
-            "psycopg is required for Aurora telemetry persistence."
-        ) from exc
-
-    return psycopg.connect(database_url, connect_timeout=connect_timeout_seconds)
+    """Open Aurora telemetry connections with the interactive retry profile."""
+    return connect_postgres_with_retry(
+        database_url,
+        profile="interactive",
+        connect_timeout_seconds=connect_timeout_seconds,
+    )
 
 
 def _json_adapter(data: dict[str, Any]) -> Any:
@@ -74,7 +72,7 @@ class TelemetryStore:
         self,
         database_url: str | None = None,
         *,
-        connect_timeout_seconds: int = 5,
+        connect_timeout_seconds: int = 3,
     ) -> None:
         self.database_url = database_url
         self.connect_timeout_seconds = connect_timeout_seconds

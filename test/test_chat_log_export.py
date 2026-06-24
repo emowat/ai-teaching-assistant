@@ -57,6 +57,28 @@ class _FakeSession:
         return self._client
 
 
+def test_connect_postgres_uses_reliable_retry_profile(monkeypatch):
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        "rag_eng.chat_log_export.connect_postgres_with_retry",
+        lambda database_url, **kwargs: captured.update(
+            {"database_url": database_url, **kwargs}
+        )
+        or object(),
+    )
+
+    from rag_eng.chat_log_export import _connect_postgres
+
+    _connect_postgres("postgresql://example", 3)
+
+    assert captured == {
+        "database_url": "postgresql://example",
+        "profile": "reliable",
+        "connect_timeout_seconds": 3,
+    }
+
+
 def test_export_turn_snapshots_groups_by_date_and_uploads_jsonl(monkeypatch):
     rows = [
         (
@@ -141,8 +163,7 @@ def test_export_turn_snapshots_groups_by_date_and_uploads_jsonl(monkeypatch):
 
     sql, params = statements[0]
     assert "FROM tutor_turn_snapshots" in sql
-    assert params[2] is None
-    assert params[3] is None
+    assert len(params) == 2
 
 
 def test_export_turn_snapshots_adds_course_partition(monkeypatch):
@@ -193,3 +214,4 @@ def test_export_turn_snapshots_adds_course_partition(monkeypatch):
     assert result[0]["key"] == (
         "eval/chat_logs/turn_logs/course_id=mit14/date=2026-06-23/turn_snapshots.jsonl"
     )
+    assert len(fake_connection.cursor_obj.statements[0][1]) == 3

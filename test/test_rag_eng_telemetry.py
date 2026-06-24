@@ -33,6 +33,28 @@ class _FakeConnection:
         return self.cursor_obj
 
 
+def test_connect_postgres_uses_interactive_retry_profile(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        "rag_eng.telemetry.connect_postgres_with_retry",
+        lambda database_url, **kwargs: captured.update(
+            {"database_url": database_url, **kwargs}
+        )
+        or object(),
+    )
+
+    from rag_eng.telemetry import _connect_postgres
+
+    _connect_postgres("postgresql://example", 3)
+
+    assert captured == {
+        "database_url": "postgresql://example",
+        "profile": "interactive",
+        "connect_timeout_seconds": 3,
+    }
+
+
 def test_record_turn_snapshot_writes_aura_sql(monkeypatch) -> None:
     statements: list[tuple[str, tuple]] = []
     fake_connection = _FakeConnection(cursor_obj=_FakeCursor(statements))

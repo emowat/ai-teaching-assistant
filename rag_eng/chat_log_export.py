@@ -13,6 +13,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 import boto3
+from rag_eng.aurora_retry import connect_postgres_with_retry
 
 
 logger = logging.getLogger(__name__)
@@ -20,15 +21,12 @@ DEFAULT_EXPORT_PREFIX = "eval/chat_logs/turn_logs"
 
 
 def _connect_postgres(database_url: str, connect_timeout_seconds: int):
-    """Create a psycopg connection lazily so local tests do not need it imported."""
-    try:
-        import psycopg
-    except ImportError as exc:  # pragma: no cover - only when dependency missing
-        raise RuntimeError(
-            "psycopg is required for chat log export."
-        ) from exc
-
-    return psycopg.connect(database_url, connect_timeout=connect_timeout_seconds)
+    """Open Aurora export connections with the reliable retry profile."""
+    return connect_postgres_with_retry(
+        database_url,
+        profile="reliable",
+        connect_timeout_seconds=connect_timeout_seconds,
+    )
 
 
 def _parse_date(value: str | None, *, default: date | None = None) -> date:
@@ -93,26 +91,36 @@ def _query_turn_snapshots(
     start_at: datetime,
     end_at: datetime,
     course_id: str | None = None,
-    connect_timeout_seconds: int = 5,
+    connect_timeout_seconds: int = 3,
 ) -> list[tuple[datetime, dict[str, Any]]]:
     """Fetch snapshots from Aurora for a UTC time window."""
-    params = (start_at, end_at, course_id, course_id)
+    if course_id is None:
+        sql = """
+            SELECT
+              created_at,
+              snapshot
+            FROM tutor_turn_snapshots
+            WHERE created_at >= %s
+              AND created_at < %s
+            ORDER BY created_at ASC, session_id ASC, turn_index ASC, turn_id ASC
+        """
+        params: tuple[datetime, datetime] = (start_at, end_at)
+    else:
+        sql = """
+            SELECT
+              created_at,
+              snapshot
+            FROM tutor_turn_snapshots
+            WHERE created_at >= %s
+              AND created_at < %s
+              AND course_id = %s
+            ORDER BY created_at ASC, session_id ASC, turn_index ASC, turn_id ASC
+        """
+        params = (start_at, end_at, course_id)
     try:
         with _connect_postgres(database_url, connect_timeout_seconds) as connection:
             with connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    SELECT
-                      created_at,
-                      snapshot
-                    FROM tutor_turn_snapshots
-                    WHERE created_at >= %s
-                      AND created_at < %s
-                      AND (%s IS NULL OR course_id = %s)
-                    ORDER BY created_at ASC, session_id ASC, turn_index ASC, turn_id ASC
-                    """,
-                    params,
-                )
+                cursor.execute(sql, params)
                 rows = cursor.fetchall()
     except Exception as exc:
         logger.warning("Aurora chat log export query failed: %s", exc)
@@ -157,7 +165,7 @@ def export_turn_snapshots_to_s3(
     course_id: str | None = None,
     profile: str | None = None,
     region: str | None = None,
-    connect_timeout_seconds: int = 5,
+    connect_timeout_seconds: int = 3,
 ) -> list[dict[str, Any]]:
     """Export one JSONL object per UTC date partition to S3."""
     if start_date is None:
@@ -268,7 +276,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--connect-timeout-seconds",
         type=int,
-        default=5,
+        default=20,
         help="psycopg connect timeout for the Aurora query.",
     )
     args = parser.parse_args(argv)
