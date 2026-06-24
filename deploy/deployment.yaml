@@ -1,9 +1,9 @@
 # =============================================================================
-# CodingRabbit — SageMaker deployment configuration
+# CodingRabbit — AWS deployment configuration
 # =============================================================================
 #
 # Single source of truth for deploy/upload_model.py, deploy/deploy_sagemaker.py,
-# and deploy/scripts/*.sh
+# deploy/deploy_rag_eng_ecs.py, and deploy/scripts/*.sh
 #
 # Override precedence (highest wins):
 #   1. CLI flags (--bucket, --role-arn, etc.)
@@ -189,6 +189,82 @@ rag_eng:
   use_sagemaker: false
   inference_backend: "vllm"
 
+# -----------------------------------------------------------------------------
+# `rag_eng` ECS/Fargate service (online orchestrator)
+# -----------------------------------------------------------------------------
+rag_eng_ecs:
+  # ECS service / task family names for the online orchestrator container.
+  cluster: "codingrabbit-rag-eng"
+  service_name: "codingrabbit-rag-eng"
+  task_family: "codingrabbit-rag-eng"
+  task_definition: "codingrabbit-rag-eng"
+  container_name: "rag-eng"
+
+  # ECS launch and placement settings.
+  launch_type: "FARGATE"
+  platform_version: "LATEST"
+  assign_public_ip: "ENABLED"
+  subnet_ids: []
+  security_group_ids: []
+  target_group_arn: null
+
+  # Container image and task sizing.
+  image_uri: null
+  execution_role_arn: null
+  task_role_arn: null
+  cpu: 1024
+  memory: 2048
+  container_port: 8001
+  desired_count: 1
+  health_check_path: "/health"
+  health_check_grace_period_seconds: 120
+
+  # CloudWatch Logs for the service task definition.
+  log_group: "/ecs/codingrabbit-rag-eng"
+  log_stream_prefix: "ecs"
+
+  # Non-secret runtime env values baked into the ECS task definition.
+  environment:
+    APP_PORT: "8001"
+    AWS_REGION: "us-east-1"
+    CORS_ORIGINS: "http://localhost:5173"
+    COGNITO_REGION: "us-east-1"
+    COGNITO_USER_POOL_ID: "us-east-1_Z5DAb8wni"
+    COGNITO_APP_CLIENT_ID: "5k11ek5do9l3p6vhpev3aifh0f"
+    COGNITO_ISSUER: "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_Z5DAb8wni"
+    COGNITO_JWKS_URL: "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_Z5DAb8wni/.well-known/jwks.json"
+    LOG_LEVEL: "INFO"
+    OPENAI_BASE_URL: "https://api.openai.com/v1"
+    QDRANT_URL: "https://ccc1cf4f-26c6-441c-ab70-a2a8f2da9464.us-east-1-1.aws.cloud.qdrant.io:6333"
+    QDRANT_COLLECTION_NAME: "codingrabbit_rag_vectordb"
+    QDRANT_GUIDELINES_COLLECTION_NAME: "cpp_guidelines"
+    QDRANT_HARVARD_COLLECTION_NAME: "harvard_cs50"
+    QDRANT_COLLECTION_MIT13: "mit13_course"
+    QDRANT_COLLECTION_MIT14: "mit14_course"
+    QDRANT_COLLECTION_CS50: "cs50_course"
+    QDRANT_COLLECTION_GUIDELINES: "cpp_guidelines"
+    EMBEDDING_MODEL: "sentence-transformers/multi-qa-mpnet-base-dot-v1"
+    INPUT_GUARDRAILS_ENABLED: "true"
+    INPUT_GUARDRAILS_CODEBERT_S3_URI: "s3://codingrabbit-data-dev/models/guardrails/input_codebert_v1/"
+    INPUT_GUARDRAILS_CODEBERT_CHECKPOINT_DIR: "input_guardrails/models/checkpoints/input_codebert_v1"
+    INPUT_GUARDRAILS_CODEBERT_PASS_BELOW: "0.30"
+    INPUT_GUARDRAILS_CODEBERT_BLOCK_ABOVE: "0.70"
+    USE_SAGEMAKER: "true"
+    SAGEMAKER_ENDPOINT: "codingrabbit-qwen-async"
+    SAGEMAKER_INFERENCE_BACKEND: "vllm"
+    SAGEMAKER_POLL_TIMEOUT_SECONDS: "900"
+    S3_DATA_BUCKET: "codingrabbit-data-dev"
+    MODEL_FAMILY: "qwen"
+
+  # Secrets injected at task launch.
+  secret_arn_map:
+    ADMIN_TOKEN: null
+    COHERE_API_KEY: null
+    OPENAI_API_KEY: null
+    QDRANT_API_KEY: null
+    COURSE_REGISTRY_DATABASE_URL: null
+    INGESTION_JOBS_DATABASE_URL: null
+
 # =============================================================================
 # Field reference (documentation — ignored by loader, used by `describe` CLI)
 # =============================================================================
@@ -272,3 +348,28 @@ _reference:
   rag_eng.model_family:
     description: Set MODEL_FAMILY in .env after deploy.
     env_override: MODEL_FAMILY
+  rag_eng_ecs.cluster:
+    description: ECS cluster name for the online orchestrator service.
+    env_override: RAG_ENG_ECS_CLUSTER
+  rag_eng_ecs.service_name:
+    description: ECS service name for the online orchestrator service.
+    env_override: RAG_ENG_ECS_SERVICE_NAME
+  rag_eng_ecs.task_family:
+    description: ECS task family name for the orchestrator task definition.
+    env_override: RAG_ENG_ECS_TASK_FAMILY
+  rag_eng_ecs.task_definition:
+    description: ECS task definition name or ARN used by the service.
+    env_override: RAG_ENG_ECS_TASK_DEFINITION
+  rag_eng_ecs.container_name:
+    description: Container name inside the task definition.
+    env_override: RAG_ENG_ECS_CONTAINER_NAME
+  rag_eng_ecs.image_uri:
+    description: ECR image URI for the orchestrator container.
+    env_override: RAG_ENG_ECS_IMAGE_URI
+  rag_eng_ecs.target_group_arn:
+    description: ALB target group ARN for the service.
+    env_override: RAG_ENG_ECS_TARGET_GROUP_ARN
+  rag_eng_ecs.environment:
+    description: Non-secret runtime env vars baked into the ECS task definition.
+  rag_eng_ecs.secret_arn_map:
+    description: Secret env vars mapped to AWS Secrets Manager ARNs.

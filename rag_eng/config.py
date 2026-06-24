@@ -508,7 +508,7 @@ def get_settings() -> Settings:
             "sentence-transformers/multi-qa-mpnet-base-dot-v1",
         ),
         app_host=os.getenv("APP_HOST", "0.0.0.0"),
-        app_port=int(os.getenv("APP_PORT", "8000")),
+        app_port=int(os.getenv("APP_PORT", "8001")),
         gradio_port=int(os.getenv("GRADIO_PORT", "7860")),
         admin_token=os.getenv("ADMIN_TOKEN"),
         log_level=os.getenv("LOG_LEVEL", "INFO"),

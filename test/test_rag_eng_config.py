@@ -30,6 +30,19 @@ def test_get_settings_uses_environment(monkeypatch) -> None:
     assert settings.api_base_url == "http://127.0.0.1:9000"
 
 
+def test_get_settings_defaults_app_port_to_8001(monkeypatch) -> None:
+    monkeypatch.setenv("QDRANT_URL", "https://example.qdrant.io")
+    monkeypatch.setenv("QDRANT_API_KEY", "secret")
+    monkeypatch.setenv("QDRANT_COLLECTION_NAME", "capstone")
+    monkeypatch.setenv("COHERE_API_KEY", "cohere-secret")
+    monkeypatch.delenv("APP_PORT", raising=False)
+
+    settings = get_settings()
+
+    assert settings.app_port == 8001
+    assert settings.api_base_url == "http://127.0.0.1:8001"
+
+
 def test_get_settings_reads_sagemaker_poll_timeout(monkeypatch) -> None:
     monkeypatch.setenv("SAGEMAKER_POLL_TIMEOUT_SECONDS", "900")
 

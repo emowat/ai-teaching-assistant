@@ -1,6 +1,6 @@
 # deploy/
 
-Operational tooling for provisioning the **fine-tuned Qwen inference model** on **Amazon SageMaker AI**. This folder is **not** part of the runtime application (`rag_eng`); run these scripts once (or when you need to refresh the model or endpoint).
+Operational tooling for provisioning the **fine-tuned Qwen inference model** on **Amazon SageMaker AI** and the **`rag_eng` ECS/Fargate orchestrator service**. This folder is **not** part of the runtime application (`rag_eng`); run these scripts once (or when you need to refresh the model, endpoint, or online service wiring).
 
 ## Overview
 
@@ -21,7 +21,7 @@ Google Drive (fine-tuned Qwen)
 |---|---|---|
 | **Configuration** | `deploy/deployment.yaml` | Single source of truth for all deploy settings |
 | **Shell wrappers** (start here) | `deploy/scripts/*.sh` | Human-friendly entry points with `--help` |
-| **Python implementation** | `deploy/upload_model.py`, `deploy/deploy_sagemaker.py`, `deploy/deploy_ingestion_worker.py`, `deploy/sagemaker_io.py` | Download, S3 upload, SageMaker API calls, ECS task-definition helpers, async payload helpers |
+| **Python implementation** | `deploy/upload_model.py`, `deploy/deploy_sagemaker.py`, `deploy/deploy_ingestion_worker.py`, `deploy/deploy_rag_eng_ecs.py`, `deploy/sagemaker_io.py` | Download, S3 upload, SageMaker API calls, ECS task-definition helpers, async payload helpers |
 | **Application** | `rag_eng/inference.py` | Calls the live endpoint at request time |
 
 ---
@@ -378,8 +378,55 @@ The worker task definition itself should keep its own runtime env values for:
 - `EMBEDDING_MODEL`
 - `QDRANT_COLLECTION_MIT13`
 - `QDRANT_COLLECTION_MIT14`
-- `QDRANT_COLLECTION_CS50`
-- `QDRANT_COLLECTION_GUIDELINES`
+
+### `deploy-rag-eng-ecs.sh`
+
+**Purpose:** Describe, render, register, or deploy the ECS/Fargate service that runs the `rag_eng` orchestrator behind an ALB.
+
+This is the online application runtime for `/api/chat`, `/query`, `/me`, and the admin APIs. It is separate from the SageMaker model deployment scripts.
+
+| Action | What it does |
+|---|---|
+| `describe` | Print the resolved orchestrator service wiring and any missing values |
+| `render-task-definition` | Emit the ECS task-definition JSON payload |
+| `render-service-spec` | Emit the ECS service spec JSON payload |
+| `register-task-definition` | Register the task definition with ECS using boto3 |
+| `deploy` | Register the task definition and create/update the ECS service |
+| `status` | Print the current ECS service status |
+
+**Usage:**
+
+```bash
+./deploy/scripts/deploy-rag-eng-ecs.sh describe
+./deploy/scripts/deploy-rag-eng-ecs.sh render-task-definition
+./deploy/scripts/deploy-rag-eng-ecs.sh render-service-spec
+./deploy/scripts/deploy-rag-eng-ecs.sh register-task-definition
+./deploy/scripts/deploy-rag-eng-ecs.sh deploy
+./deploy/scripts/deploy-rag-eng-ecs.sh status
+```
+
+**Required service settings:**
+
+| Variable | Description |
+|---|---|
+| `RAG_ENG_ECS_IMAGE_URI` | ECR image URI for the orchestrator container |
+| `RAG_ENG_ECS_EXECUTION_ROLE_ARN` | ECS task execution role ARN |
+| `RAG_ENG_ECS_TASK_ROLE_ARN` | ECS task role ARN |
+| `RAG_ENG_ECS_CLUSTER` | ECS cluster name |
+| `RAG_ENG_ECS_SERVICE_NAME` | ECS service name |
+| `RAG_ENG_ECS_TASK_FAMILY` | Task family name |
+| `RAG_ENG_ECS_TASK_DEFINITION` | Task definition name or ARN used by the backend launcher |
+| `RAG_ENG_ECS_CONTAINER_NAME` | Container name inside the task definition |
+| `RAG_ENG_ECS_SUBNETS` | Comma-separated ECS subnets for the service |
+| `RAG_ENG_ECS_SECURITY_GROUPS` | Comma-separated ECS security groups for the service |
+| `RAG_ENG_ECS_TARGET_GROUP_ARN` | ALB target group ARN for the service |
+
+**Notes:**
+
+- `rag_eng_ecs.environment` in `deploy/deployment.yaml` stores the non-secret runtime env baked into the task definition.
+- `rag_eng_ecs.secret_arn_map` stores the Secrets Manager ARNs for secret env vars injected at task launch.
+- `APP_PORT` is set to `8001` in the task definition and matches the local `uvicorn` command.
+- The runtime behavior knobs that should stay editable without rebuilding the task definition live in [`rag_eng/runtime_config.yaml`](/home/user/MIDS/w210/capstone/rag_eng/runtime_config.yaml).
 
 ### 5. Smoke test the control plane
 

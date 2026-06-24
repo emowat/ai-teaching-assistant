@@ -139,6 +139,11 @@ will extract the archive into the local checkpoint directory automatically.
 uv run uvicorn rag_eng.main:app --host 0.0.0.0 --port 8001
 ```
 
+The local server port stays aligned with the ECS container port. Runtime
+behavior knobs remain in `rag_eng/runtime_config.yaml`; AWS service wiring
+for the online orchestrator is in `deploy/deployment.yaml` under
+`rag_eng_ecs`.
+
 10. If you want to export offline-eval turn logs from Aurora to S3, use:
 
 ```bash
@@ -318,6 +323,7 @@ Build the runner image before using docker mode:
 
 | Variable | Default | Description |
 |---|---|---|
+| `APP_PORT` | `8001` | local server port and ECS container port |
 | `RUNNER_MODE` | `docker` | `docker` or `subprocess` |
 | `RUNNER_IMAGE` | `codingrabbit-cpp-runner:0.1` | Docker image tag |
 | `CORS_ORIGINS` | `http://localhost:5173` | allowed browser origins |
@@ -347,3 +353,6 @@ Build the runner image before using docker mode:
 | `RESTART_COMMAND` | — | optional backend restart command |
 
 The editable non-secret route settings live in `rag_eng/runtime_config.yaml`.
+AWS deployment wiring for the online service lives in `deploy/deployment.yaml`
+under `rag_eng_ecs`, and the ECS service helper is
+[`deploy/scripts/deploy-rag-eng-ecs.sh`](/home/user/MIDS/w210/capstone/deploy/scripts/deploy-rag-eng-ecs.sh).

@@ -33,6 +33,32 @@ ENV_OVERRIDES: dict[str, str] = {
     "SAGEMAKER_EXECUTION_ROLE_ARN": "sagemaker.execution_role_arn",
     "MODEL_FAMILY": "rag_eng.model_family",
     "SAGEMAKER_INFERENCE_BACKEND": "rag_eng.inference_backend",
+    "RAG_ENG_ECS_CLUSTER": "rag_eng_ecs.cluster",
+    "RAG_ENG_ECS_SERVICE_NAME": "rag_eng_ecs.service_name",
+    "RAG_ENG_ECS_TASK_FAMILY": "rag_eng_ecs.task_family",
+    "RAG_ENG_ECS_TASK_DEFINITION": "rag_eng_ecs.task_definition",
+    "RAG_ENG_ECS_CONTAINER_NAME": "rag_eng_ecs.container_name",
+    "RAG_ENG_ECS_LAUNCH_TYPE": "rag_eng_ecs.launch_type",
+    "RAG_ENG_ECS_PLATFORM_VERSION": "rag_eng_ecs.platform_version",
+    "RAG_ENG_ECS_ASSIGN_PUBLIC_IP": "rag_eng_ecs.assign_public_ip",
+    "RAG_ENG_ECS_SUBNETS": "rag_eng_ecs.subnet_ids",
+    "RAG_ENG_ECS_SECURITY_GROUPS": "rag_eng_ecs.security_group_ids",
+    "RAG_ENG_ECS_IMAGE_URI": "rag_eng_ecs.image_uri",
+    "RAG_ENG_ECS_EXECUTION_ROLE_ARN": "rag_eng_ecs.execution_role_arn",
+    "RAG_ENG_ECS_TASK_ROLE_ARN": "rag_eng_ecs.task_role_arn",
+    "RAG_ENG_ECS_CPU": "rag_eng_ecs.cpu",
+    "RAG_ENG_ECS_MEMORY": "rag_eng_ecs.memory",
+    "RAG_ENG_ECS_CONTAINER_PORT": "rag_eng_ecs.container_port",
+    "RAG_ENG_ECS_DESIRED_COUNT": "rag_eng_ecs.desired_count",
+    "RAG_ENG_ECS_HEALTH_CHECK_PATH": "rag_eng_ecs.health_check_path",
+    "RAG_ENG_ECS_HEALTH_CHECK_GRACE_PERIOD_SECONDS": (
+        "rag_eng_ecs.health_check_grace_period_seconds"
+    ),
+    "RAG_ENG_ECS_LOG_GROUP": "rag_eng_ecs.log_group",
+    "RAG_ENG_ECS_LOG_STREAM_PREFIX": "rag_eng_ecs.log_stream_prefix",
+    "RAG_ENG_ECS_TARGET_GROUP_ARN": "rag_eng_ecs.target_group_arn",
+    "RAG_ENG_ECS_ENV_JSON": "rag_eng_ecs.environment",
+    "RAG_ENG_ECS_SECRET_ARNS_JSON": "rag_eng_ecs.secret_arn_map",
     "DEPLOY_CONFIG": "_config_path",  # special: path only, not merged into tree
 }
 
@@ -180,6 +206,34 @@ class RagEngConfig:
 
 
 @dataclass
+class RagEngEcsConfig:
+    cluster: str
+    service_name: str
+    task_family: str
+    task_definition: str
+    container_name: str
+    launch_type: str
+    platform_version: str
+    assign_public_ip: str
+    subnet_ids: tuple[str, ...]
+    security_group_ids: tuple[str, ...]
+    image_uri: str | None
+    execution_role_arn: str | None
+    task_role_arn: str | None
+    cpu: int
+    memory: int
+    container_port: int
+    desired_count: int
+    health_check_path: str
+    health_check_grace_period_seconds: int
+    log_group: str
+    log_stream_prefix: str
+    target_group_arn: str | None
+    environment: dict[str, str]
+    secret_arn_map: dict[str, str | None]
+
+
+@dataclass
 class DeployConfig:
     config_path: Path
     google_drive: GoogleDriveConfig
@@ -190,6 +244,7 @@ class DeployConfig:
     inference_smoke_test: InferenceSmokeTestConfig
     huggingface_packaging: HuggingFacePackagingConfig
     rag_eng: RagEngConfig
+    rag_eng_ecs: RagEngEcsConfig
     _raw: dict[str, Any] = field(repr=False, default_factory=dict)
 
     @property
@@ -277,6 +332,63 @@ def _as_tuple_str_required(value: Any) -> tuple[str, ...]:
     return ()
 
 
+def _as_tuple_str_or_csv(value: Any, default: tuple[str, ...]) -> tuple[str, ...]:
+    if isinstance(value, list):
+        return tuple(str(v).strip() for v in value if str(v).strip())
+    if isinstance(value, str):
+        return tuple(item.strip() for item in value.split(",") if item.strip())
+    return default
+
+
+def _as_str_mapping(value: Any) -> dict[str, str]:
+    if isinstance(value, dict):
+        return {
+            str(key).strip(): str(val).strip()
+            for key, val in value.items()
+            if str(key).strip() and val is not None and str(val).strip()
+        }
+    if isinstance(value, str) and value.strip():
+        parsed = json.loads(value)
+        if isinstance(parsed, dict):
+            return {
+                str(key).strip(): str(val).strip()
+                for key, val in parsed.items()
+                if str(key).strip() and val is not None and str(val).strip()
+            }
+        raise ValueError("Expected a JSON object for mapping overrides.")
+    return {}
+
+
+def _as_optional_str_mapping(value: Any) -> dict[str, str | None]:
+    if isinstance(value, dict):
+        return {
+            str(key).strip(): (
+                None if val is None or not str(val).strip() else str(val).strip()
+            )
+            for key, val in value.items()
+            if str(key).strip()
+        }
+    if isinstance(value, str) and value.strip():
+        parsed = json.loads(value)
+        if isinstance(parsed, dict):
+            return {
+                str(key).strip(): (
+                    None if val is None or not str(val).strip() else str(val).strip()
+                )
+                for key, val in parsed.items()
+                if str(key).strip()
+            }
+        raise ValueError("Expected a JSON object for mapping overrides.")
+    return {}
+
+
+def _str_or_default(value: Any, default: str) -> str:
+    if value is None:
+        return default
+    text = str(value).strip()
+    return text if text else default
+
+
 def _load_scale_from_zero_alarm(autoscale: dict) -> ScaleFromZeroAlarmConfig:
     alarm = autoscale.get("scale_from_zero_alarm", {})
     return ScaleFromZeroAlarmConfig(
@@ -305,6 +417,7 @@ def load_deploy_config(path: str | Path | None = None) -> DeployConfig:
     smoke = raw.get("inference_smoke_test", {})
     hf = raw.get("huggingface_packaging", {})
     rag = raw.get("rag_eng", {})
+    rag_ecs = raw.get("rag_eng_ecs", {})
 
     profile = aws.get("profile")
     if profile in ("", "null", "none"):
@@ -321,9 +434,28 @@ def load_deploy_config(path: str | Path | None = None) -> DeployConfig:
     extra_env_raw = container.get("extra_env") or {}
     extra_env = {str(k): str(v) for k, v in extra_env_raw.items()}
 
+    ecs_environment = _as_str_mapping(rag_ecs.get("environment", {}))
+    ecs_secret_arn_map = _as_optional_str_mapping(rag_ecs.get("secret_arn_map", {}))
+
     s3_uri = ma.get("s3_uri")
     if s3_uri in ("", "null", "none"):
         s3_uri = None
+
+    rag_ecs_execution_role = rag_ecs.get("execution_role_arn")
+    if rag_ecs_execution_role in ("", "null", "none"):
+        rag_ecs_execution_role = None
+
+    rag_ecs_task_role = rag_ecs.get("task_role_arn")
+    if rag_ecs_task_role in ("", "null", "none"):
+        rag_ecs_task_role = None
+
+    rag_ecs_image_uri = rag_ecs.get("image_uri")
+    if rag_ecs_image_uri in ("", "null", "none"):
+        rag_ecs_image_uri = None
+
+    rag_ecs_target_group_arn = rag_ecs.get("target_group_arn")
+    if rag_ecs_target_group_arn in ("", "null", "none"):
+        rag_ecs_target_group_arn = None
 
     return DeployConfig(
         config_path=config_path,
@@ -436,6 +568,43 @@ def load_deploy_config(path: str | Path | None = None) -> DeployConfig:
             use_sagemaker=bool(rag.get("use_sagemaker", False)),
             inference_backend=str(rag.get("inference_backend", "vllm")),
         ),
+        rag_eng_ecs=RagEngEcsConfig(
+            cluster=_str_or_default(rag_ecs.get("cluster"), ""),
+            service_name=_str_or_default(rag_ecs.get("service_name"), ""),
+            task_family=_str_or_default(rag_ecs.get("task_family"), ""),
+            task_definition=_str_or_default(rag_ecs.get("task_definition"), ""),
+            container_name=_str_or_default(rag_ecs.get("container_name"), "rag-eng"),
+            launch_type=_str_or_default(rag_ecs.get("launch_type"), "FARGATE"),
+            platform_version=_str_or_default(
+                rag_ecs.get("platform_version"),
+                "LATEST",
+            ),
+            assign_public_ip=_str_or_default(
+                rag_ecs.get("assign_public_ip"),
+                "ENABLED",
+            ),
+            subnet_ids=_as_tuple_str_or_csv(rag_ecs.get("subnet_ids"), ()),
+            security_group_ids=_as_tuple_str_or_csv(
+                rag_ecs.get("security_group_ids"),
+                (),
+            ),
+            image_uri=rag_ecs_image_uri,
+            execution_role_arn=rag_ecs_execution_role,
+            task_role_arn=rag_ecs_task_role,
+            cpu=int(rag_ecs.get("cpu", 1024)),
+            memory=int(rag_ecs.get("memory", 2048)),
+            container_port=int(rag_ecs.get("container_port", 8001)),
+            desired_count=int(rag_ecs.get("desired_count", 1)),
+            health_check_path=_str_or_default(rag_ecs.get("health_check_path"), "/health"),
+            health_check_grace_period_seconds=int(
+                rag_ecs.get("health_check_grace_period_seconds", 120)
+            ),
+            log_group=_str_or_default(rag_ecs.get("log_group"), "/ecs/codingrabbit-rag-eng"),
+            log_stream_prefix=_str_or_default(rag_ecs.get("log_stream_prefix"), "ecs"),
+            target_group_arn=rag_ecs_target_group_arn,
+            environment=ecs_environment,
+            secret_arn_map=ecs_secret_arn_map,
+        ),
         _raw=raw,
     )
 
@@ -454,6 +623,15 @@ def get_dotpath(cfg: DeployConfig, dot_path: str) -> Any:
         "sagemaker.endpoint_name": cfg.sagemaker.endpoint_name,
         "sagemaker.instance_type": cfg.sagemaker.instance_type,
         "rag_eng.model_family": cfg.rag_eng.model_family,
+        "rag_eng_ecs.cluster": cfg.rag_eng_ecs.cluster,
+        "rag_eng_ecs.service_name": cfg.rag_eng_ecs.service_name,
+        "rag_eng_ecs.task_family": cfg.rag_eng_ecs.task_family,
+        "rag_eng_ecs.task_definition": cfg.rag_eng_ecs.task_definition,
+        "rag_eng_ecs.container_name": cfg.rag_eng_ecs.container_name,
+        "rag_eng_ecs.image_uri": cfg.rag_eng_ecs.image_uri or "",
+        "rag_eng_ecs.execution_role_arn": cfg.rag_eng_ecs.execution_role_arn or "",
+        "rag_eng_ecs.task_role_arn": cfg.rag_eng_ecs.task_role_arn or "",
+        "rag_eng_ecs.target_group_arn": cfg.rag_eng_ecs.target_group_arn or "",
     }
     return mapping.get(dot_path, _get_nested(cfg._raw, dot_path))
 
@@ -473,6 +651,20 @@ def shell_export(cfg: DeployConfig | None = None) -> str:
         "DEPLOY_MODEL_FAMILY": cfg.rag_eng.model_family,
         "DEPLOY_DOWNLOAD_DIR": cfg.local_paths.download_dir,
         "DEPLOY_TARBALL_PATH": cfg.local_paths.tarball_path,
+        "DEPLOY_RAG_ENG_ECS_CLUSTER": cfg.rag_eng_ecs.cluster,
+        "DEPLOY_RAG_ENG_ECS_SERVICE_NAME": cfg.rag_eng_ecs.service_name,
+        "DEPLOY_RAG_ENG_ECS_TASK_FAMILY": cfg.rag_eng_ecs.task_family,
+        "DEPLOY_RAG_ENG_ECS_TASK_DEFINITION": cfg.rag_eng_ecs.task_definition,
+        "DEPLOY_RAG_ENG_ECS_CONTAINER_NAME": cfg.rag_eng_ecs.container_name,
+        "DEPLOY_RAG_ENG_ECS_TARGET_GROUP_ARN": cfg.rag_eng_ecs.target_group_arn or "",
+        "DEPLOY_RAG_ENG_ECS_CONTAINER_PORT": str(cfg.rag_eng_ecs.container_port),
+        "DEPLOY_RAG_ENG_ECS_LAUNCH_TYPE": cfg.rag_eng_ecs.launch_type,
+        "DEPLOY_RAG_ENG_ECS_PLATFORM_VERSION": cfg.rag_eng_ecs.platform_version,
+        "DEPLOY_RAG_ENG_ECS_ASSIGN_PUBLIC_IP": cfg.rag_eng_ecs.assign_public_ip,
+        "DEPLOY_RAG_ENG_ECS_SUBNETS": ",".join(cfg.rag_eng_ecs.subnet_ids),
+        "DEPLOY_RAG_ENG_ECS_SECURITY_GROUPS": ",".join(
+            cfg.rag_eng_ecs.security_group_ids
+        ),
     }
     lines = []
     for key, value in pairs.items():
@@ -519,6 +711,18 @@ def describe_config(path: str | Path | None = None) -> None:
                 "instance_type": cfg.sagemaker.instance_type,
             },
             "rag_eng": {"model_family": cfg.rag_eng.model_family},
+            "rag_eng_ecs": {
+                "cluster": cfg.rag_eng_ecs.cluster,
+                "service_name": cfg.rag_eng_ecs.service_name,
+                "task_family": cfg.rag_eng_ecs.task_family,
+                "task_definition": cfg.rag_eng_ecs.task_definition,
+                "container_name": cfg.rag_eng_ecs.container_name,
+                "container_port": cfg.rag_eng_ecs.container_port,
+                "desired_count": cfg.rag_eng_ecs.desired_count,
+                "target_group_arn": cfg.rag_eng_ecs.target_group_arn,
+                "environment_keys": sorted(cfg.rag_eng_ecs.environment),
+                "secret_keys": sorted(cfg.rag_eng_ecs.secret_arn_map),
+            },
         },
         indent=2,
     ))
@@ -548,6 +752,17 @@ def main() -> None:
                 "endpoint_name": cfg.sagemaker.endpoint_name,
                 "s3_bucket": cfg.aws.s3_bucket,
                 "region": cfg.aws.region,
+                "rag_eng_ecs": {
+                    "cluster": cfg.rag_eng_ecs.cluster,
+                    "service_name": cfg.rag_eng_ecs.service_name,
+                    "task_family": cfg.rag_eng_ecs.task_family,
+                    "task_definition": cfg.rag_eng_ecs.task_definition,
+                    "container_name": cfg.rag_eng_ecs.container_name,
+                    "container_port": cfg.rag_eng_ecs.container_port,
+                    "target_group_arn": cfg.rag_eng_ecs.target_group_arn,
+                    "environment_keys": sorted(cfg.rag_eng_ecs.environment),
+                    "secret_keys": sorted(cfg.rag_eng_ecs.secret_arn_map),
+                },
             },
             indent=2,
         ))
