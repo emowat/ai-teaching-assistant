@@ -5,7 +5,12 @@ from pathlib import Path
 import pytest
 
 from rag_eng.config import get_settings
-from rag_eng.config import load_runtime_config, save_runtime_config, update_env_file
+from rag_eng.config import (
+    load_runtime_config,
+    load_runtime_policy_config,
+    save_runtime_config,
+    update_env_file,
+)
 from rag_eng.schemas import ModelRouteConfig
 
 
@@ -40,12 +45,78 @@ def test_runtime_config_round_trip(tmp_path: Path) -> None:
             "rag": {"provider": "openai", "model": "gpt-5.4-mini"},
             "chat": {"provider": "ollama", "model": "qwen3.5:9b"},
             "openai": {"base_url": "https://api.openai.com/v1"},
+            "input_guardrail_orchestration": {
+                "enabled": True,
+                "warning_threshold": 1,
+                "end_chat_threshold": 2,
+                "session_termination_enabled": True,
+                "penalty": {"enabled": True, "amount": 5},
+            },
+            "aurora_retry": {
+                "interactive": {
+                    "connect_timeout_seconds": 3,
+                    "max_attempts": 5,
+                    "retry_sleep_seconds": 1.0,
+                },
+                "reliable": {
+                    "connect_timeout_seconds": 3,
+                    "max_attempts": 8,
+                    "retry_sleep_seconds": 1.0,
+                },
+            },
+            "chat_log_export": {"prefix": "eval/chat_logs/turn_logs"},
         }
     }
 
     save_runtime_config(payload, path)
 
     assert load_runtime_config(path) == payload
+
+
+def test_load_runtime_policy_config_reads_nested_sections(tmp_path: Path) -> None:
+    path = tmp_path / "runtime_config.yaml"
+    payload = {
+        "runtime": {
+            "input_guardrail_orchestration": {
+                "enabled": True,
+                "warning_threshold": 3,
+                "end_chat_threshold": 4,
+                "session_termination_enabled": False,
+                "penalty": {"enabled": False, "amount": 7},
+            },
+            "aurora_retry": {
+                "interactive": {
+                    "connect_timeout_seconds": 11,
+                    "max_attempts": 2,
+                    "retry_sleep_seconds": 0.5,
+                },
+                "reliable": {
+                    "connect_timeout_seconds": 13,
+                    "max_attempts": 4,
+                    "retry_sleep_seconds": 0.25,
+                },
+            },
+            "chat_log_export": {"prefix": "eval/custom"},
+        }
+    }
+
+    save_runtime_config(payload, path)
+
+    policy = load_runtime_policy_config(path)
+
+    assert policy.input_guardrail_orchestration.enabled is True
+    assert policy.input_guardrail_orchestration.warning_threshold == 3
+    assert policy.input_guardrail_orchestration.end_chat_threshold == 4
+    assert policy.input_guardrail_orchestration.session_termination_enabled is False
+    assert policy.input_guardrail_orchestration.penalty.enabled is False
+    assert policy.input_guardrail_orchestration.penalty.amount == 7
+    assert policy.aurora_retry.interactive.connect_timeout_seconds == 11
+    assert policy.aurora_retry.interactive.max_attempts == 2
+    assert policy.aurora_retry.interactive.retry_sleep_seconds == 0.5
+    assert policy.aurora_retry.reliable.connect_timeout_seconds == 13
+    assert policy.aurora_retry.reliable.max_attempts == 4
+    assert policy.aurora_retry.reliable.retry_sleep_seconds == 0.25
+    assert policy.chat_log_export.prefix == "eval/custom"
 
 
 def test_model_route_config_allows_sagemaker_without_model() -> None:

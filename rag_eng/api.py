@@ -36,6 +36,7 @@ from rag_eng.config import (
     Settings,
     get_inference_config,
     get_runtime_config_path,
+    load_runtime_config,
     get_settings,
     reload_inference_config,
     save_runtime_config,
@@ -397,19 +398,19 @@ def create_app() -> FastAPI:
     def admin_save_llm_config(payload: AdminLlmConfigUpdate) -> AdminLlmConfigResponse:
         runtime_path = get_runtime_config_path()
         runtime = get_inference_config()
-        updated = {
-            "runtime": {
-                "rag": payload.rag.model_dump(),
-                "chat": payload.chat.model_dump(),
-                "openai": {
-                    "base_url": (
-                        payload.openai_base_url
-                        if payload.openai_base_url is not None
-                        else runtime.openai_base_url
-                    ),
-                },
-            }
+        existing = load_runtime_config(runtime_path)
+        runtime_block = dict(existing.get("runtime", {}))
+        runtime_block["rag"] = payload.rag.model_dump()
+        runtime_block["chat"] = payload.chat.model_dump()
+        runtime_block["openai"] = {
+            "base_url": (
+                payload.openai_base_url
+                if payload.openai_base_url is not None
+                else runtime.openai_base_url
+            ),
         }
+        existing["runtime"] = runtime_block
+        updated = existing
         save_runtime_config(updated, runtime_path)
 
         env_updates: dict[str, str | None] = {}

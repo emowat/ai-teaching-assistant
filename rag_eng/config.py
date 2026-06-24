@@ -77,6 +77,46 @@ class ModelRouteConfig:
     model: str
 
 
+@dataclass(frozen=True)
+class RuntimeGuardrailPenaltyConfig:
+    enabled: bool
+    amount: int
+
+
+@dataclass(frozen=True)
+class InputGuardrailOrchestrationConfig:
+    enabled: bool
+    warning_threshold: int
+    end_chat_threshold: int
+    session_termination_enabled: bool
+    penalty: RuntimeGuardrailPenaltyConfig
+
+
+@dataclass(frozen=True)
+class AuroraRetryProfileConfig:
+    connect_timeout_seconds: int
+    max_attempts: int
+    retry_sleep_seconds: float
+
+
+@dataclass(frozen=True)
+class AuroraRetryConfig:
+    interactive: AuroraRetryProfileConfig
+    reliable: AuroraRetryProfileConfig
+
+
+@dataclass(frozen=True)
+class ChatLogExportConfig:
+    prefix: str
+
+
+@dataclass(frozen=True)
+class RuntimePolicyConfig:
+    input_guardrail_orchestration: InputGuardrailOrchestrationConfig
+    aurora_retry: AuroraRetryConfig
+    chat_log_export: ChatLogExportConfig
+
+
 _BEDROCK_RAG_DEFAULT_MODEL = "us.amazon.nova-2-lite-v1:0"
 _BEDROCK_CHAT_DEFAULT_MODEL = "us.amazon.nova-2-lite-v1:0"
 
@@ -215,6 +255,95 @@ def save_runtime_config(data: Mapping[str, object], path: Path | None = None) ->
     """Persist the editable runtime config file."""
     p = path or _RUNTIME_CONFIG_PATH
     p.write_text(yaml.safe_dump(dict(data), sort_keys=False))
+
+
+def _mapping_or_empty(value: object) -> dict[str, object]:
+    if isinstance(value, Mapping):
+        return dict(value)
+    return {}
+
+
+def _bool_or_default(value: object, default: bool) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(value)
+
+
+def load_runtime_policy_config(path: Path | None = None) -> RuntimePolicyConfig:
+    """Load runtime policy knobs used by orchestration and operational helpers."""
+    p = path or _RUNTIME_CONFIG_PATH
+    loaded: dict = yaml.safe_load(p.read_text()) if p.exists() else {}
+    loaded = loaded or {}
+
+    runtime_raw = _mapping_or_empty(loaded.get("runtime", loaded))
+
+    orchestration_raw = _mapping_or_empty(
+        runtime_raw.get("input_guardrail_orchestration", {})
+    )
+    penalty_raw = _mapping_or_empty(orchestration_raw.get("penalty", {}))
+    aurora_raw = _mapping_or_empty(runtime_raw.get("aurora_retry", {}))
+    interactive_raw = _mapping_or_empty(aurora_raw.get("interactive", {}))
+    reliable_raw = _mapping_or_empty(aurora_raw.get("reliable", {}))
+    export_raw = _mapping_or_empty(runtime_raw.get("chat_log_export", {}))
+
+    return RuntimePolicyConfig(
+        input_guardrail_orchestration=InputGuardrailOrchestrationConfig(
+            enabled=_bool_or_default(orchestration_raw.get("enabled"), True),
+            warning_threshold=int(orchestration_raw.get("warning_threshold", 1)),
+            end_chat_threshold=int(orchestration_raw.get("end_chat_threshold", 2)),
+            session_termination_enabled=_bool_or_default(
+                orchestration_raw.get("session_termination_enabled"),
+                True,
+            ),
+            penalty=RuntimeGuardrailPenaltyConfig(
+                enabled=_bool_or_default(penalty_raw.get("enabled"), True),
+                amount=int(penalty_raw.get("amount", 5)),
+            ),
+        ),
+        aurora_retry=AuroraRetryConfig(
+            interactive=AuroraRetryProfileConfig(
+                connect_timeout_seconds=int(
+                    interactive_raw.get("connect_timeout_seconds", 3)
+                ),
+                max_attempts=int(interactive_raw.get("max_attempts", 5)),
+                retry_sleep_seconds=float(
+                    interactive_raw.get("retry_sleep_seconds", 1.0)
+                ),
+            ),
+            reliable=AuroraRetryProfileConfig(
+                connect_timeout_seconds=int(
+                    reliable_raw.get("connect_timeout_seconds", 3)
+                ),
+                max_attempts=int(reliable_raw.get("max_attempts", 8)),
+                retry_sleep_seconds=float(reliable_raw.get("retry_sleep_seconds", 1.0)),
+            ),
+        ),
+        chat_log_export=ChatLogExportConfig(
+            prefix=str(export_raw.get("prefix", "eval/chat_logs/turn_logs")),
+        ),
+    )
+
+
+_runtime_policy_config: RuntimePolicyConfig | None = None
+
+
+def get_runtime_policy_config() -> RuntimePolicyConfig:
+    """Return cached runtime policy knobs (loaded once at first call)."""
+    global _runtime_policy_config
+    if _runtime_policy_config is None:
+        _runtime_policy_config = load_runtime_policy_config()
+    return _runtime_policy_config
+
+
+def reload_runtime_policy_config() -> RuntimePolicyConfig:
+    """Force a reload of the cached runtime policy configuration."""
+    global _runtime_policy_config
+    _runtime_policy_config = load_runtime_policy_config()
+    return _runtime_policy_config
 
 
 def _read_env_file(path: Path) -> dict[str, str]:

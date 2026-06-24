@@ -7,3 +7,22 @@ runtime:
     model: us.amazon.nova-2-lite-v1:0
   openai:
     base_url: https://api.openai.com/v1
+  input_guardrail_orchestration:
+    enabled: true
+    warning_threshold: 1
+    end_chat_threshold: 2
+    session_termination_enabled: true
+    penalty:
+      enabled: true
+      amount: 5
+  aurora_retry:
+    interactive:
+      connect_timeout_seconds: 3
+      max_attempts: 5
+      retry_sleep_seconds: 1.0
+    reliable:
+      connect_timeout_seconds: 3
+      max_attempts: 8
+      retry_sleep_seconds: 1.0
+  chat_log_export:
+    prefix: eval/chat_logs/turn_logs

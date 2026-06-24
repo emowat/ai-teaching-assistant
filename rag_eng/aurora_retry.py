@@ -6,6 +6,8 @@ import time
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from rag_eng.config import get_runtime_policy_config
+
 
 @dataclass(frozen=True)
 class AuroraRetryProfile:
@@ -31,7 +33,7 @@ RELIABLE_RETRY_PROFILE = AuroraRetryProfile(
     retry_sleep_seconds=1.0,
 )
 
-_RETRY_PROFILES = {
+_FALLBACK_RETRY_PROFILES = {
     INTERACTIVE_RETRY_PROFILE.name: INTERACTIVE_RETRY_PROFILE,
     RELIABLE_RETRY_PROFILE.name: RELIABLE_RETRY_PROFILE,
 }
@@ -48,7 +50,22 @@ def _load_psycopg_module() -> Any:
 def get_retry_profile(name: str) -> AuroraRetryProfile:
     """Return one of the predefined Aurora retry profiles."""
     try:
-        return _RETRY_PROFILES[name]
+        runtime_policy = get_runtime_policy_config()
+    except Exception:
+        runtime_policy = None
+
+    if runtime_policy is not None:
+        runtime_profile = getattr(runtime_policy.aurora_retry, name, None)
+        if runtime_profile is not None:
+            return AuroraRetryProfile(
+                name=name,
+                connect_timeout_seconds=runtime_profile.connect_timeout_seconds,
+                max_attempts=runtime_profile.max_attempts,
+                retry_sleep_seconds=runtime_profile.retry_sleep_seconds,
+            )
+
+    try:
+        return _FALLBACK_RETRY_PROFILES[name]
     except KeyError as exc:
         raise ValueError(f"Unknown Aurora retry profile: {name}") from exc
 

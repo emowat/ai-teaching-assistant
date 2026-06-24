@@ -13,11 +13,15 @@ from typing import Any
 from urllib.parse import urlparse
 
 import boto3
+from rag_eng.config import get_runtime_policy_config
 from rag_eng.aurora_retry import connect_postgres_with_retry
 
 
 logger = logging.getLogger(__name__)
-DEFAULT_EXPORT_PREFIX = "eval/chat_logs/turn_logs"
+try:
+    DEFAULT_EXPORT_PREFIX = get_runtime_policy_config().chat_log_export.prefix
+except Exception:
+    DEFAULT_EXPORT_PREFIX = "eval/chat_logs/turn_logs"
 
 
 def _connect_postgres(database_url: str, connect_timeout_seconds: int):

@@ -13,6 +13,8 @@ from rag_eng.config import (
     SageMakerContextConfig,
     SageMakerGenerationConfig,
     SageMakerInferenceConfig,
+    load_runtime_config,
+    save_runtime_config,
 )
 
 
@@ -211,6 +213,68 @@ def test_admin_save_llm_config_allows_sagemaker_without_model(monkeypatch, tmp_p
     assert response.status_code == 200
     assert response.json()["chat"]["provider"] == "sagemaker"
     assert response.json()["chat"]["model"] == ""
+
+
+def test_admin_save_llm_config_preserves_other_runtime_sections(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("ADMIN_TOKEN", "admin-token")
+    runtime_path = tmp_path / "runtime_config.yaml"
+    save_runtime_config(
+        {
+            "runtime": {
+                "rag": {"provider": "cohere", "model": "command-xlarge-nightly"},
+                "chat": {"provider": "ollama", "model": "qwen3.5:9b"},
+                "openai": {"base_url": "https://api.openai.com/v1"},
+                "input_guardrail_orchestration": {
+                    "enabled": True,
+                    "warning_threshold": 1,
+                    "end_chat_threshold": 2,
+                    "session_termination_enabled": True,
+                    "penalty": {"enabled": True, "amount": 5},
+                },
+                "aurora_retry": {
+                    "interactive": {
+                        "connect_timeout_seconds": 3,
+                        "max_attempts": 5,
+                        "retry_sleep_seconds": 1.0,
+                    },
+                    "reliable": {
+                        "connect_timeout_seconds": 3,
+                        "max_attempts": 8,
+                        "retry_sleep_seconds": 1.0,
+                    },
+                },
+                "chat_log_export": {"prefix": "eval/chat_logs/turn_logs"},
+            },
+            "unrelated_section": {"keep": True},
+        },
+        runtime_path,
+    )
+
+    monkeypatch.setattr("rag_eng.api.get_runtime_config_path", lambda: runtime_path)
+    monkeypatch.setattr("rag_eng.api.get_inference_config", _runtime_config)
+    monkeypatch.setattr("rag_eng.api.reload_inference_config", lambda: _runtime_config())
+
+    client = _client()
+    response = client.post(
+        "/admin/llm/config",
+        headers={"X-Admin-Token": "admin-token"},
+        json={
+            "rag": {"provider": "openai", "model": "gpt-5.4-mini"},
+            "chat": {"provider": "openai", "model": "gpt-5.4-mini"},
+            "openai_api_key": None,
+            "openai_base_url": None,
+        },
+    )
+
+    assert response.status_code == 200
+    merged = load_runtime_config(runtime_path)
+    assert merged["unrelated_section"] == {"keep": True}
+    assert merged["runtime"]["rag"]["provider"] == "openai"
+    assert merged["runtime"]["input_guardrail_orchestration"]["warning_threshold"] == 1
+    assert merged["runtime"]["aurora_retry"]["interactive"]["max_attempts"] == 5
 
 
 def test_admin_restart_uses_restart_command(monkeypatch) -> None:
