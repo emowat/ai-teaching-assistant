@@ -178,6 +178,35 @@ Each exported turn snapshot includes the `policy_snapshot` and the
 handled by the input guardrail, a session-level end-chat decision, or the main
 model path.
 
+## Validation
+
+Run the full repository test suite from the repo root:
+
+```bash
+uv run pytest -q
+```
+
+If you want to run the known stable test roots explicitly, use:
+
+```bash
+uv run pytest -q test input_guardrails/tests output_guardrails rag/experiments/test_labeling_chunks.py
+```
+
+For local service work, these focused checks are the most useful:
+
+```bash
+uv run pytest -q test/test_rag_eng_service.py test/test_rag_eng_api.py
+uv run pytest -q test/test_offline_eval_smoke.py
+uv run pytest -q test/test_offline_eval_live_smoke.py
+```
+
+Lint and formatting checks:
+
+```bash
+uv run ruff check rag_eng test
+git diff --check
+```
+
 ## Common runtime examples
 
 ### `GET /health`
@@ -257,6 +286,36 @@ This is the full pipeline path:
 
 If the input guardrail blocks the request, the backend skips retrieval and
 inference and returns the safe redirect response immediately.
+
+### Admin diagnostics
+
+The backend also exposes admin-only, non-persisting probes for stage-by-stage
+inspection. These call the same service logic as the public endpoints but do
+not write turn snapshots or session state.
+
+- `POST /admin/diagnostics/input-guardrail`
+- `POST /admin/diagnostics/rag`
+- `POST /admin/diagnostics/output-guardrail`
+- `POST /admin/diagnostics/pipeline`
+
+Example:
+
+```bash
+curl -s http://localhost:8001/admin/diagnostics/pipeline \
+  -H "X-Admin-Token: $ADMIN_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model": "codingrabbit-ta",
+    "course_id": "mit14",
+    "messages": [
+      {"role": "user", "content": "Explain why this pointer crash is undefined behavior."}
+    ],
+    "stream": false
+  }'
+```
+
+Use these diagnostics for black-box checks in tests and operations. Keep `/health`
+focused on readiness and dependency reachability.
 
 ## Admin workflows
 

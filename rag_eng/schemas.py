@@ -120,6 +120,12 @@ class QueryResponse(QueryResult):
     """Compatibility alias for callers that still import the old response name."""
 
 
+class ChatMessage(BaseModel):
+    """Minimal chat message payload returned by the pipeline endpoints."""
+
+    content: str
+
+
 class HealthResponse(BaseModel):
     """Operational readiness information for the service."""
 
@@ -198,6 +204,68 @@ class RestartResponse(BaseModel):
     success: bool
     scheduled: bool
     message: str
+
+
+class DiagnosticTrace(BaseModel):
+    """Trace identifiers returned by the admin diagnostics endpoints."""
+
+    session_id: str | None = None
+    request_id: str | None = None
+    turn_id: str | None = None
+    turn_index: int | None = None
+
+
+class InputGuardrailDiagnosticResponse(BaseModel):
+    """Response for the admin input-guardrail diagnostic endpoint."""
+
+    diagnostic_source: str = "admin_diagnostic"
+    trace: DiagnosticTrace
+    input_guardrail: dict[str, Any]
+    blocked: bool
+    final_answer: str
+    orchestrator_context: dict[str, Any] | None = None
+
+
+class RagDiagnosticResponse(BaseModel):
+    """Response for the admin RAG diagnostic endpoint."""
+
+    diagnostic_source: str = "admin_diagnostic"
+    trace: DiagnosticTrace
+    answer: str
+    retrieval_result: RetrievalResult
+    formatted_context: str
+    prompt_preview: str
+    input_guardrail: dict[str, Any] | None = None
+
+
+class OutputGuardrailReviewRequest(QueryPayload):
+    """Payload for the admin output-guardrail diagnostic endpoint."""
+
+    draft_answer: str
+    conversation_history: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class OutputGuardrailDiagnosticResponse(BaseModel):
+    """Response for the admin output-guardrail diagnostic endpoint."""
+
+    diagnostic_source: str = "admin_diagnostic"
+    trace: DiagnosticTrace
+    draft_answer: str
+    final_answer: str
+    guardrail: GuardrailResult
+
+
+class PipelineDiagnosticResponse(BaseModel):
+    """Response for the admin full-pipeline diagnostic endpoint."""
+
+    diagnostic_source: str = "admin_diagnostic"
+    message: ChatMessage
+    guardrail: GuardrailResult | None = None
+    input_guardrail: dict[str, Any] | None = None
+    session_id: str | None = None
+    request_id: str | None = None
+    turn_id: str | None = None
+    turn_index: int | None = None
 
 
 class AdminCourse(BaseModel):

@@ -17,7 +17,7 @@ from rag_eng.config import (
     SageMakerInferenceConfig,
 )
 from rag_eng.service import run_chat
-from rag_eng.telemetry import TraceContext
+from rag_eng.telemetry import SessionOrchestrationState, TraceContext
 
 
 @dataclass
@@ -55,6 +55,12 @@ class _FakeTelemetryStore:
 
     def record_event(self, trace, **kwargs):
         self.events.append({"trace": trace, **kwargs})
+        return True
+
+    def get_session_orchestration_state(self, session_id: str):
+        return SessionOrchestrationState()
+
+    def update_session_orchestration_state(self, session_id: str, state):
         return True
 
     def finish_turn(self, trace, **kwargs):

@@ -693,9 +693,12 @@ def _build_llm():
     raise ValueError(f"Unsupported RAG provider: {route.provider}")
 
 
-def run_query(query) -> QueryResponse:
+def run_query(
+    query,
+    telemetry_store: TelemetryStore | None = None,
+) -> QueryResponse:
     """Execute retrieval once, then generate the TA answer from that result."""
-    telemetry_store = get_telemetry_store()
+    telemetry_store = telemetry_store or get_telemetry_store()
     trace = telemetry_store.start_turn(query=query, source="query")
     runtime = get_inference_config()
     model_provider = runtime.rag.provider
@@ -865,6 +868,114 @@ def run_query(query) -> QueryResponse:
         raise
 
 
+def run_input_guardrail_diagnostic(query) -> dict[str, Any]:
+    """Inspect the input guardrail and the current orchestration response."""
+    telemetry_store = TelemetryStore(database_url=None)
+    trace = telemetry_store.start_turn(query=query, source="diagnostic_input_guardrail")
+    input_guardrail = _run_input_guardrail(
+        query=query,
+        trace=trace,
+        telemetry_store=telemetry_store,
+    )
+    orchestration_result = _maybe_handle_orchestrator_short_circuit(
+        trace=trace,
+        telemetry_store=telemetry_store,
+        input_guardrail_result=input_guardrail,
+    )
+
+    response: dict[str, Any] = {
+        "diagnostic_source": "admin_diagnostic",
+        "trace": _trace_payload(trace),
+        "input_guardrail": input_guardrail,
+        "blocked": bool(input_guardrail.get("blocked")),
+        "final_answer": input_guardrail.get("final_answer") or "",
+        "orchestrator_context": None,
+    }
+    if orchestration_result is not None:
+        response["final_answer"] = orchestration_result["answer"]
+        response["orchestrator_context"] = orchestration_result["orchestrator_context"]
+    return response
+
+
+def run_rag_diagnostic(query) -> dict[str, Any]:
+    """Run the RAG stage without persisting telemetry."""
+    telemetry_store = TelemetryStore(database_url=None)
+    result = run_query(query, telemetry_store=telemetry_store)
+    prompt_preview = build_prompt(query=query, result=result.retrieval_result)
+    return {
+        "diagnostic_source": "admin_diagnostic",
+        "trace": {
+            "session_id": result.session_id,
+            "request_id": result.request_id,
+            "turn_id": result.turn_id,
+            "turn_index": result.turn_index,
+        },
+        "answer": result.answer,
+        "retrieval_result": result.retrieval_result,
+        "formatted_context": result.formatted_context,
+        "prompt_preview": prompt_preview,
+        "input_guardrail": result.input_guardrail,
+    }
+
+
+def run_output_guardrail_diagnostic(
+    *,
+    query,
+    draft_answer: str,
+    conversation_history: list[dict],
+) -> dict[str, Any]:
+    """Inspect the output guardrail without persisting telemetry."""
+    telemetry_store = TelemetryStore(database_url=None)
+    trace = telemetry_store.start_turn(query=query, source="diagnostic_output_guardrail")
+    final_answer, guardrail = _apply_pipeline_guardrails(
+        trace=trace,
+        telemetry_store=telemetry_store,
+        answer=draft_answer,
+        user_query=query.student_message,
+        student_code=query.code_raw,
+        conversation_history=conversation_history,
+        retrieval_metadata={},
+    )
+    return {
+        "diagnostic_source": "admin_diagnostic",
+        "trace": _trace_payload(trace),
+        "draft_answer": draft_answer,
+        "final_answer": final_answer,
+        "guardrail": guardrail,
+    }
+
+
+async def run_pipeline_diagnostic(
+    messages: list[dict],
+    model_name: str,
+    settings: Settings,
+    stream: bool = False,
+    course_id: str | None = None,
+    session_id: str | None = None,
+    request_id: str | None = None,
+    turn_id: str | None = None,
+    section_id: str | None = None,
+    result_count: int | None = None,
+    rerank_strategy: str | None = None,
+) -> dict | AsyncIterator[bytes]:
+    """Run the full pipeline without persisting any telemetry rows."""
+    diagnostic_store = TelemetryStore(database_url=None)
+    return await run_chat(
+        messages=messages,
+        model_name=model_name,
+        settings=settings,
+        stream=stream,
+        course_id=course_id,
+        session_id=session_id,
+        request_id=request_id,
+        turn_id=turn_id,
+        section_id=section_id,
+        result_count=result_count,
+        rerank_strategy=rerank_strategy,
+        telemetry_store=diagnostic_store,
+    )
+
+
 def get_health() -> HealthResponse:
     """Check config and basic backend connectivity."""
     settings = get_settings()
@@ -1029,6 +1140,7 @@ async def run_chat(
     section_id: str | None = None,
     result_count: int | None = None,
     rerank_strategy: str | None = None,
+    telemetry_store: TelemetryStore | None = None,
 ) -> dict | AsyncIterator[bytes]:
     """Full chat pipeline: context extraction -> RAG -> prompt assembly -> inference."""
     ctx = _extract_chat_context(messages)
@@ -1052,7 +1164,7 @@ async def run_chat(
 
     query = QueryPayload(**query_kwargs)
 
-    telemetry_store = get_telemetry_store()
+    telemetry_store = telemetry_store or get_telemetry_store()
     trace = telemetry_store.start_turn(query=query, source="chat")
     runtime = get_inference_config()
     chat_route = runtime.chat

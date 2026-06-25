@@ -107,9 +107,9 @@ class AuroraRetryConfig:
 
 @dataclass(frozen=True)
 class ChatLogExportConfig:
-    prefix: str
-    bucket: str
-    connect_timeout_seconds: int
+    prefix: str = "eval/chat_logs/turn_logs"
+    bucket: str = "codingrabbit-data-dev"
+    connect_timeout_seconds: int = 3
 
 
 @dataclass(frozen=True)
@@ -417,42 +417,46 @@ class Settings:
     qdrant_api_key: str | None
     qdrant_collection_name: str
     qdrant_guidelines_collection_name: str
-    qdrant_harvard_collection_name: str
-    cohere_api_key: str | None
-    openai_api_key: str | None
-    openai_base_url: str
-    embedding_model: str
-    app_host: str
-    app_port: int
-    gradio_port: int
-    admin_token: str | None
-    log_level: str
-    raw_data_path: str
-    cognito_region: str | None
-    cognito_user_pool_id: str | None
-    cognito_app_client_id: str | None
-    cognito_issuer: str | None
-    cognito_jwks_url: str | None
-    runner_mode: str
-    runner_image: str
-    cors_origins: tuple[str, ...]
-    restart_command: str | None
-    input_guardrails_enabled: bool
-    input_guardrails_codebert_s3_uri: str
-    input_guardrails_codebert_checkpoint_dir: str
-    input_guardrails_codebert_pass_below: float
-    input_guardrails_codebert_block_above: float
+    qdrant_harvard_collection_name: str = "harvard_cs50"
+    cohere_api_key: str | None = None
+    openai_api_key: str | None = None
+    openai_base_url: str = "https://api.openai.com/v1"
+    embedding_model: str = "sentence-transformers/multi-qa-mpnet-base-dot-v1"
+    app_host: str = "0.0.0.0"
+    app_port: int = 8001
+    gradio_port: int = 7860
+    admin_token: str | None = None
+    log_level: str = "INFO"
+    raw_data_path: str = ""
+    cognito_region: str | None = None
+    cognito_user_pool_id: str | None = None
+    cognito_app_client_id: str | None = None
+    cognito_issuer: str | None = None
+    cognito_jwks_url: str | None = None
+    runner_mode: str = "docker"
+    runner_image: str = "codingrabbit-cpp-runner:0.1"
+    cors_origins: tuple[str, ...] = ("http://localhost:5173",)
+    restart_command: str | None = None
+    input_guardrails_enabled: bool = True
+    input_guardrails_codebert_s3_uri: str = (
+        "s3://codingrabbit-data-dev/models/input_codebert_v1/"
+    )
+    input_guardrails_codebert_checkpoint_dir: str = (
+        "input_guardrails/models/checkpoints/input_codebert_v1"
+    )
+    input_guardrails_codebert_pass_below: float = 0.30
+    input_guardrails_codebert_block_above: float = 0.70
 
     # --- Inference routing ---
-    use_sagemaker: bool
-    sagemaker_endpoint: str
-    sagemaker_inference_backend: str  # vllm | huggingface
-    sagemaker_poll_timeout_seconds: int
-    s3_data_bucket: str
-    model_family: str          # llama3 | qwen | generic
-    ollama_url: str
-    aws_region: str
-    aws_profile: str | None
+    use_sagemaker: bool = False
+    sagemaker_endpoint: str = "codingrabbit-sagemaker-async-endpoint"
+    sagemaker_inference_backend: str = "vllm"  # vllm | huggingface
+    sagemaker_poll_timeout_seconds: int = 600
+    s3_data_bucket: str = "codingrabbit-data-dev"
+    model_family: str = "llama3"  # llama3 | qwen | generic
+    ollama_url: str = "http://localhost:11434/api/chat"
+    aws_region: str = "us-east-1"
+    aws_profile: str | None = None
 
     @property
     def api_base_url(self) -> str:

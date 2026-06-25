@@ -54,13 +54,18 @@ from rag_eng.schemas import (
     AdminCourseDocumentUploadRequest,
     AdminCourseDocumentUploadResponse,
     AdminCourseUpdate,
+    InputGuardrailDiagnosticResponse,
     IngestionJobLaunchRequest,
     IngestionJobResponse,
     HealthResponse,
     IndexEnsureResponse,
     IndexRebuildResponse,
+    OutputGuardrailDiagnosticResponse,
+    OutputGuardrailReviewRequest,
     QueryPayload,
     QueryResult,
+    PipelineDiagnosticResponse,
+    RagDiagnosticResponse,
     RetrievalRerankStrategy,
     RestartResponse,
 )
@@ -75,7 +80,11 @@ from rag_eng.service import (
     ensure_index_service,
     get_health,
     rebuild_index_service,
+    run_input_guardrail_diagnostic,
     run_chat,
+    run_output_guardrail_diagnostic,
+    run_pipeline_diagnostic,
+    run_rag_diagnostic,
     run_query,
 )
 
@@ -195,6 +204,49 @@ def create_app() -> FastAPI:
     def query(payload: QueryPayload) -> QueryResult:
         try:
             return run_query(payload)
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    @app.post(
+        "/admin/diagnostics/input-guardrail",
+        response_model=InputGuardrailDiagnosticResponse,
+        dependencies=[Depends(_require_admin_access)],
+    )
+    def admin_diagnostic_input_guardrail(
+        payload: QueryPayload,
+    ) -> InputGuardrailDiagnosticResponse:
+        try:
+            return run_input_guardrail_diagnostic(payload)
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    @app.post(
+        "/admin/diagnostics/rag",
+        response_model=RagDiagnosticResponse,
+        dependencies=[Depends(_require_admin_access)],
+    )
+    def admin_diagnostic_rag(
+        payload: QueryPayload,
+    ) -> RagDiagnosticResponse:
+        try:
+            return run_rag_diagnostic(payload)
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    @app.post(
+        "/admin/diagnostics/output-guardrail",
+        response_model=OutputGuardrailDiagnosticResponse,
+        dependencies=[Depends(_require_admin_access)],
+    )
+    def admin_diagnostic_output_guardrail(
+        payload: OutputGuardrailReviewRequest,
+    ) -> OutputGuardrailDiagnosticResponse:
+        try:
+            return run_output_guardrail_diagnostic(
+                query=payload,
+                draft_answer=payload.draft_answer,
+                conversation_history=payload.conversation_history,
+            )
         except Exception as exc:
             raise HTTPException(status_code=500, detail=str(exc)) from exc
 
@@ -493,6 +545,35 @@ def create_app() -> FastAPI:
         """
         try:
             result = await run_chat(
+                messages=payload.messages,
+                model_name=payload.model,
+                settings=settings,
+                stream=payload.stream,
+                course_id=payload.course_id,
+                session_id=payload.session_id,
+                request_id=payload.request_id,
+                turn_id=payload.turn_id,
+                section_id=payload.section_id,
+                result_count=payload.result_count,
+                rerank_strategy=payload.rerank_strategy,
+            )
+            if payload.stream:
+                return StreamingResponse(result, media_type="application/x-ndjson")
+            return result
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=_error_detail(exc)) from exc
+
+    @app.post(
+        "/admin/diagnostics/pipeline",
+        response_model=PipelineDiagnosticResponse,
+        dependencies=[Depends(_require_admin_access)],
+    )
+    async def admin_diagnostic_pipeline(
+        payload: ChatRequest,
+        settings: Settings = Depends(get_settings),
+    ):
+        try:
+            result = await run_pipeline_diagnostic(
                 messages=payload.messages,
                 model_name=payload.model,
                 settings=settings,
