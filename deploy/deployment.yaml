@@ -273,6 +273,46 @@ rag_eng_ecs:
     QDRANT_API_KEY: "arn:aws:secretsmanager:us-east-1:976193240866:secret:codingrabbit/rag_eng/QDRANT_API_KEY-S8nEwS"
     COURSE_REGISTRY_DATABASE_URL: "arn:aws:secretsmanager:us-east-1:976193240866:secret:codingrabbit/rag_eng/COURSE_REGISTRY_DATABASE_URL-4fLsHS"
 
+# -----------------------------------------------------------------------------
+# Frontend web app (S3 + CloudFront static hosting)
+# -----------------------------------------------------------------------------
+frontend_web:
+  enabled: false
+  app_dir: "./frontend"
+  dist_dir: "./frontend/dist"
+  bucket_name: ""
+  bucket_prefix: ""
+  default_root_object: "index.html"
+  spa_fallback_path: "/index.html"
+  price_class: "PriceClass_100"
+
+  cloudfront:
+    aliases: []
+    certificate_arn: null
+    comment: "CodingRabbit frontend distribution"
+    create_oac: true
+    invalidation_paths:
+      - "/*"
+    api_path_patterns:
+      - "/api/*"
+      - "/admin/*"
+      - "/run/*"
+      - "/me"
+      - "/query"
+      - "/health"
+      - "/docs"
+      - "/openapi.json"
+      - "/gradio*"
+    cache_static_assets: true
+    cache_html_seconds: 60
+
+  build:
+    vite_api_base_url: "http://localhost:8001"
+    vite_cognito_domain: "https://us-east-1z5dab8wni.auth.us-east-1.amazoncognito.com"
+    vite_cognito_redirect_uri: "http://localhost:5173/auth/callback"
+    vite_cognito_logout_uri: "http://localhost:5173/logout"
+    extra_env: {}
+
 # =============================================================================
 # Field reference (documentation — ignored by loader, used by `describe` CLI)
 # =============================================================================
@@ -419,3 +459,66 @@ _reference:
     description: Non-secret runtime env vars baked into the ECS task definition.
   rag_eng_ecs.secret_arn_map:
     description: Secret env vars mapped to AWS Secrets Manager ARNs.
+  frontend_web.enabled:
+    description: Toggle the frontend static hosting and CloudFront deployment slice.
+    env_override: FRONTEND_ENABLED
+  frontend_web.app_dir:
+    description: Repository path containing the Vite frontend project.
+    env_override: FRONTEND_APP_DIR
+  frontend_web.dist_dir:
+    description: Build output directory produced by `vite build`.
+    env_override: FRONTEND_DIST_DIR
+  frontend_web.bucket_name:
+    description: S3 bucket that will host the built frontend assets.
+    env_override: FRONTEND_BUCKET_NAME
+  frontend_web.bucket_prefix:
+    description: Optional S3 prefix under the frontend hosting bucket.
+    env_override: FRONTEND_BUCKET_PREFIX
+  frontend_web.default_root_object:
+    description: CloudFront default object for the SPA entrypoint.
+    env_override: FRONTEND_DEFAULT_ROOT_OBJECT
+  frontend_web.spa_fallback_path:
+    description: Path used by the deploy flow for SPA fallback rewrites.
+    env_override: FRONTEND_SPA_FALLBACK_PATH
+  frontend_web.price_class:
+    description: CloudFront price class for the frontend distribution.
+    env_override: FRONTEND_PRICE_CLASS
+  frontend_web.cloudfront.aliases:
+    description: Alternate hostnames attached to the CloudFront distribution.
+    env_override: FRONTEND_CLOUDFRONT_ALIASES
+  frontend_web.cloudfront.certificate_arn:
+    description: ACM certificate ARN for CloudFront aliases, if any.
+    env_override: FRONTEND_CLOUDFRONT_CERTIFICATE_ARN
+  frontend_web.cloudfront.comment:
+    description: CloudFront distribution comment/description.
+    env_override: FRONTEND_CLOUDFRONT_COMMENT
+  frontend_web.cloudfront.create_oac:
+    description: Create an Origin Access Control for the S3 frontend origin.
+    env_override: FRONTEND_CLOUDFRONT_CREATE_OAC
+  frontend_web.cloudfront.invalidation_paths:
+    description: CloudFront invalidation paths issued after frontend deploys.
+    env_override: FRONTEND_CLOUDFRONT_INVALIDATION_PATHS
+  frontend_web.cloudfront.api_path_patterns:
+    description: Ordered CloudFront behaviors that route API traffic to the ALB.
+    env_override: FRONTEND_CLOUDFRONT_API_PATH_PATTERNS
+  frontend_web.cloudfront.cache_static_assets:
+    description: Cache policy toggle for versioned frontend static assets.
+    env_override: FRONTEND_CLOUDFRONT_CACHE_STATIC_ASSETS
+  frontend_web.cloudfront.cache_html_seconds:
+    description: Cache TTL for HTML entrypoints such as `index.html`.
+    env_override: FRONTEND_CLOUDFRONT_CACHE_HTML_SECONDS
+  frontend_web.build.vite_api_base_url:
+    description: Base URL injected into the frontend build for API calls.
+    env_override: VITE_API_BASE_URL
+  frontend_web.build.vite_cognito_domain:
+    description: Cognito Hosted UI domain injected into the frontend build.
+    env_override: VITE_COGNITO_DOMAIN
+  frontend_web.build.vite_cognito_redirect_uri:
+    description: Cognito callback URI injected into the frontend build.
+    env_override: VITE_COGNITO_REDIRECT_URI
+  frontend_web.build.vite_cognito_logout_uri:
+    description: Cognito logout URI injected into the frontend build.
+    env_override: VITE_COGNITO_LOGOUT_URI
+  frontend_web.build.extra_env:
+    description: Additional frontend build env vars as a JSON object.
+    env_override: FRONTEND_EXTRA_ENV_JSON

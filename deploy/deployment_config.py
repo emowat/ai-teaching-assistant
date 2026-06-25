@@ -60,6 +60,27 @@ ENV_OVERRIDES: dict[str, str] = {
     "RAG_ENG_ECS_TARGET_GROUP_ARN": "rag_eng_ecs.target_group_arn",
     "RAG_ENG_ECS_ENV_JSON": "rag_eng_ecs.environment",
     "RAG_ENG_ECS_SECRET_ARNS_JSON": "rag_eng_ecs.secret_arn_map",
+    "FRONTEND_ENABLED": "frontend_web.enabled",
+    "FRONTEND_APP_DIR": "frontend_web.app_dir",
+    "FRONTEND_DIST_DIR": "frontend_web.dist_dir",
+    "FRONTEND_BUCKET_NAME": "frontend_web.bucket_name",
+    "FRONTEND_BUCKET_PREFIX": "frontend_web.bucket_prefix",
+    "FRONTEND_DEFAULT_ROOT_OBJECT": "frontend_web.default_root_object",
+    "FRONTEND_SPA_FALLBACK_PATH": "frontend_web.spa_fallback_path",
+    "FRONTEND_PRICE_CLASS": "frontend_web.price_class",
+    "FRONTEND_CLOUDFRONT_ALIASES": "frontend_web.cloudfront.aliases",
+    "FRONTEND_CLOUDFRONT_CERTIFICATE_ARN": "frontend_web.cloudfront.certificate_arn",
+    "FRONTEND_CLOUDFRONT_COMMENT": "frontend_web.cloudfront.comment",
+    "FRONTEND_CLOUDFRONT_CREATE_OAC": "frontend_web.cloudfront.create_oac",
+    "FRONTEND_CLOUDFRONT_INVALIDATION_PATHS": "frontend_web.cloudfront.invalidation_paths",
+    "FRONTEND_CLOUDFRONT_API_PATH_PATTERNS": "frontend_web.cloudfront.api_path_patterns",
+    "FRONTEND_CLOUDFRONT_CACHE_STATIC_ASSETS": "frontend_web.cloudfront.cache_static_assets",
+    "FRONTEND_CLOUDFRONT_CACHE_HTML_SECONDS": "frontend_web.cloudfront.cache_html_seconds",
+    "VITE_API_BASE_URL": "frontend_web.build.vite_api_base_url",
+    "VITE_COGNITO_DOMAIN": "frontend_web.build.vite_cognito_domain",
+    "VITE_COGNITO_REDIRECT_URI": "frontend_web.build.vite_cognito_redirect_uri",
+    "VITE_COGNITO_LOGOUT_URI": "frontend_web.build.vite_cognito_logout_uri",
+    "FRONTEND_EXTRA_ENV_JSON": "frontend_web.build.extra_env",
     "DEPLOY_CONFIG": "_config_path",  # special: path only, not merged into tree
 }
 
@@ -236,6 +257,51 @@ class RagEngEcsConfig:
 
 
 @dataclass
+class FrontendCloudFrontConfig:
+    aliases: tuple[str, ...]
+    certificate_arn: str | None
+    comment: str
+    create_oac: bool
+    invalidation_paths: tuple[str, ...]
+    api_path_patterns: tuple[str, ...]
+    cache_static_assets: bool
+    cache_html_seconds: int
+
+
+@dataclass
+class FrontendBuildConfig:
+    vite_api_base_url: str
+    vite_cognito_domain: str
+    vite_cognito_redirect_uri: str
+    vite_cognito_logout_uri: str
+    extra_env: dict[str, str]
+
+    def as_env_dict(self) -> dict[str, str]:
+        env = {
+            "VITE_API_BASE_URL": self.vite_api_base_url,
+            "VITE_COGNITO_DOMAIN": self.vite_cognito_domain,
+            "VITE_COGNITO_REDIRECT_URI": self.vite_cognito_redirect_uri,
+            "VITE_COGNITO_LOGOUT_URI": self.vite_cognito_logout_uri,
+        }
+        env.update(self.extra_env)
+        return env
+
+
+@dataclass
+class FrontendWebConfig:
+    enabled: bool
+    app_dir: str
+    dist_dir: str
+    bucket_name: str
+    bucket_prefix: str
+    default_root_object: str
+    spa_fallback_path: str
+    price_class: str
+    cloudfront: FrontendCloudFrontConfig
+    build: FrontendBuildConfig
+
+
+@dataclass
 class DeployConfig:
     config_path: Path
     google_drive: GoogleDriveConfig
@@ -247,6 +313,7 @@ class DeployConfig:
     huggingface_packaging: HuggingFacePackagingConfig
     rag_eng: RagEngConfig
     rag_eng_ecs: RagEngEcsConfig
+    frontend_web: FrontendWebConfig
     _raw: dict[str, Any] = field(repr=False, default_factory=dict)
 
     @property
@@ -394,6 +461,21 @@ def _str_or_default(value: Any, default: str) -> str:
     return text if text else default
 
 
+def _as_bool(value: Any, default: bool) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    text = str(value).strip().lower()
+    if not text:
+        return default
+    if text in {"1", "true", "yes", "on"}:
+        return True
+    if text in {"0", "false", "no", "off"}:
+        return False
+    return default
+
+
 def _load_scale_from_zero_alarm(autoscale: dict) -> ScaleFromZeroAlarmConfig:
     alarm = autoscale.get("scale_from_zero_alarm", {})
     return ScaleFromZeroAlarmConfig(
@@ -423,6 +505,9 @@ def load_deploy_config(path: str | Path | None = None) -> DeployConfig:
     hf = raw.get("huggingface_packaging", {})
     rag = raw.get("rag_eng", {})
     rag_ecs = raw.get("rag_eng_ecs", {})
+    frontend = raw.get("frontend_web", {})
+    frontend_cloudfront = frontend.get("cloudfront", {})
+    frontend_build = frontend.get("build", {})
 
     profile = aws.get("profile")
     if profile in ("", "null", "none"):
@@ -465,6 +550,10 @@ def load_deploy_config(path: str | Path | None = None) -> DeployConfig:
     rag_ecs_target_group_arn = rag_ecs.get("target_group_arn")
     if rag_ecs_target_group_arn in ("", "null", "none"):
         rag_ecs_target_group_arn = None
+
+    frontend_certificate_arn = frontend_cloudfront.get("certificate_arn")
+    if frontend_certificate_arn in ("", "null", "none"):
+        frontend_certificate_arn = None
 
     return DeployConfig(
         config_path=config_path,
@@ -619,6 +708,75 @@ def load_deploy_config(path: str | Path | None = None) -> DeployConfig:
             environment=ecs_environment,
             secret_arn_map=ecs_secret_arn_map,
         ),
+        frontend_web=FrontendWebConfig(
+            enabled=_as_bool(frontend.get("enabled", False), False),
+            app_dir=str(frontend.get("app_dir", "./frontend")),
+            dist_dir=str(frontend.get("dist_dir", "./frontend/dist")),
+            bucket_name=str(frontend.get("bucket_name", "")),
+            bucket_prefix=str(frontend.get("bucket_prefix", "")),
+            default_root_object=str(frontend.get("default_root_object", "index.html")),
+            spa_fallback_path=str(frontend.get("spa_fallback_path", "/index.html")),
+            price_class=str(frontend.get("price_class", "PriceClass_100")),
+            cloudfront=FrontendCloudFrontConfig(
+                aliases=_as_tuple_str_or_csv(frontend_cloudfront.get("aliases"), ()),
+                certificate_arn=frontend_certificate_arn,
+                comment=_str_or_default(
+                    frontend_cloudfront.get("comment"),
+                    "CodingRabbit frontend distribution",
+                ),
+                create_oac=_as_bool(
+                    frontend_cloudfront.get("create_oac", True),
+                    True,
+                ),
+                invalidation_paths=_as_tuple_str_or_csv(
+                    frontend_cloudfront.get("invalidation_paths"),
+                    ("/*",),
+                ),
+                api_path_patterns=_as_tuple_str_or_csv(
+                    frontend_cloudfront.get("api_path_patterns"),
+                    (
+                        "/api/*",
+                        "/admin/*",
+                        "/run/*",
+                        "/me",
+                        "/query",
+                        "/health",
+                        "/docs",
+                        "/openapi.json",
+                        "/gradio*",
+                    ),
+                ),
+                cache_static_assets=_as_bool(
+                    frontend_cloudfront.get("cache_static_assets", True),
+                    True,
+                ),
+                cache_html_seconds=int(frontend_cloudfront.get("cache_html_seconds", 60)),
+            ),
+            build=FrontendBuildConfig(
+                vite_api_base_url=str(
+                    frontend_build.get("vite_api_base_url", "http://localhost:8001")
+                ),
+                vite_cognito_domain=str(
+                    frontend_build.get(
+                        "vite_cognito_domain",
+                        "https://us-east-1z5dab8wni.auth.us-east-1.amazoncognito.com",
+                    )
+                ),
+                vite_cognito_redirect_uri=str(
+                    frontend_build.get(
+                        "vite_cognito_redirect_uri",
+                        "http://localhost:5173/auth/callback",
+                    )
+                ),
+                vite_cognito_logout_uri=str(
+                    frontend_build.get(
+                        "vite_cognito_logout_uri",
+                        "http://localhost:5173/logout",
+                    )
+                ),
+                extra_env=_as_str_mapping(frontend_build.get("extra_env", {})),
+            ),
+        ),
         _raw=raw,
     )
 
@@ -661,6 +819,42 @@ def get_dotpath(cfg: DeployConfig, dot_path: str) -> Any:
         ),
         "rag_eng_ecs.log_group": cfg.rag_eng_ecs.log_group,
         "rag_eng_ecs.log_stream_prefix": cfg.rag_eng_ecs.log_stream_prefix,
+        "frontend_web.enabled": str(cfg.frontend_web.enabled),
+        "frontend_web.app_dir": cfg.frontend_web.app_dir,
+        "frontend_web.dist_dir": cfg.frontend_web.dist_dir,
+        "frontend_web.bucket_name": cfg.frontend_web.bucket_name,
+        "frontend_web.bucket_prefix": cfg.frontend_web.bucket_prefix,
+        "frontend_web.default_root_object": cfg.frontend_web.default_root_object,
+        "frontend_web.spa_fallback_path": cfg.frontend_web.spa_fallback_path,
+        "frontend_web.price_class": cfg.frontend_web.price_class,
+        "frontend_web.cloudfront.aliases": ",".join(cfg.frontend_web.cloudfront.aliases),
+        "frontend_web.cloudfront.certificate_arn": (
+            cfg.frontend_web.cloudfront.certificate_arn or ""
+        ),
+        "frontend_web.cloudfront.comment": cfg.frontend_web.cloudfront.comment,
+        "frontend_web.cloudfront.create_oac": str(
+            cfg.frontend_web.cloudfront.create_oac
+        ),
+        "frontend_web.cloudfront.invalidation_paths": ",".join(
+            cfg.frontend_web.cloudfront.invalidation_paths
+        ),
+        "frontend_web.cloudfront.api_path_patterns": ",".join(
+            cfg.frontend_web.cloudfront.api_path_patterns
+        ),
+        "frontend_web.cloudfront.cache_static_assets": str(
+            cfg.frontend_web.cloudfront.cache_static_assets
+        ),
+        "frontend_web.cloudfront.cache_html_seconds": str(
+            cfg.frontend_web.cloudfront.cache_html_seconds
+        ),
+        "frontend_web.build.vite_api_base_url": cfg.frontend_web.build.vite_api_base_url,
+        "frontend_web.build.vite_cognito_domain": cfg.frontend_web.build.vite_cognito_domain,
+        "frontend_web.build.vite_cognito_redirect_uri": (
+            cfg.frontend_web.build.vite_cognito_redirect_uri
+        ),
+        "frontend_web.build.vite_cognito_logout_uri": (
+            cfg.frontend_web.build.vite_cognito_logout_uri
+        ),
     }
     return mapping.get(dot_path, _get_nested(cfg._raw, dot_path))
 
@@ -696,6 +890,48 @@ def shell_export(cfg: DeployConfig | None = None) -> str:
         "DEPLOY_RAG_ENG_ECS_SUBNETS": ",".join(cfg.rag_eng_ecs.subnet_ids),
         "DEPLOY_RAG_ENG_ECS_SECURITY_GROUPS": ",".join(
             cfg.rag_eng_ecs.security_group_ids
+        ),
+        "DEPLOY_FRONTEND_ENABLED": str(cfg.frontend_web.enabled),
+        "DEPLOY_FRONTEND_APP_DIR": cfg.frontend_web.app_dir,
+        "DEPLOY_FRONTEND_DIST_DIR": cfg.frontend_web.dist_dir,
+        "DEPLOY_FRONTEND_BUCKET_NAME": cfg.frontend_web.bucket_name,
+        "DEPLOY_FRONTEND_BUCKET_PREFIX": cfg.frontend_web.bucket_prefix,
+        "DEPLOY_FRONTEND_DEFAULT_ROOT_OBJECT": cfg.frontend_web.default_root_object,
+        "DEPLOY_FRONTEND_SPA_FALLBACK_PATH": cfg.frontend_web.spa_fallback_path,
+        "DEPLOY_FRONTEND_PRICE_CLASS": cfg.frontend_web.price_class,
+        "DEPLOY_FRONTEND_CLOUDFRONT_ALIASES": ",".join(
+            cfg.frontend_web.cloudfront.aliases
+        ),
+        "DEPLOY_FRONTEND_CLOUDFRONT_CERTIFICATE_ARN": (
+            cfg.frontend_web.cloudfront.certificate_arn or ""
+        ),
+        "DEPLOY_FRONTEND_CLOUDFRONT_COMMENT": cfg.frontend_web.cloudfront.comment,
+        "DEPLOY_FRONTEND_CLOUDFRONT_CREATE_OAC": str(
+            cfg.frontend_web.cloudfront.create_oac
+        ),
+        "DEPLOY_FRONTEND_CLOUDFRONT_INVALIDATION_PATHS": ",".join(
+            cfg.frontend_web.cloudfront.invalidation_paths
+        ),
+        "DEPLOY_FRONTEND_CLOUDFRONT_API_PATH_PATTERNS": ",".join(
+            cfg.frontend_web.cloudfront.api_path_patterns
+        ),
+        "DEPLOY_FRONTEND_CLOUDFRONT_CACHE_STATIC_ASSETS": str(
+            cfg.frontend_web.cloudfront.cache_static_assets
+        ),
+        "DEPLOY_FRONTEND_CLOUDFRONT_CACHE_HTML_SECONDS": str(
+            cfg.frontend_web.cloudfront.cache_html_seconds
+        ),
+        "DEPLOY_FRONTEND_VITE_API_BASE_URL": cfg.frontend_web.build.vite_api_base_url,
+        "DEPLOY_FRONTEND_VITE_COGNITO_DOMAIN": cfg.frontend_web.build.vite_cognito_domain,
+        "DEPLOY_FRONTEND_VITE_COGNITO_REDIRECT_URI": (
+            cfg.frontend_web.build.vite_cognito_redirect_uri
+        ),
+        "DEPLOY_FRONTEND_VITE_COGNITO_LOGOUT_URI": (
+            cfg.frontend_web.build.vite_cognito_logout_uri
+        ),
+        "DEPLOY_FRONTEND_EXTRA_ENV_JSON": json.dumps(
+            cfg.frontend_web.build.extra_env,
+            sort_keys=True,
         ),
     }
     lines = []
@@ -767,6 +1003,29 @@ def describe_config(path: str | Path | None = None) -> None:
                     "log_stream_prefix": cfg.rag_eng_ecs.log_stream_prefix,
                     "environment_keys": sorted(cfg.rag_eng_ecs.environment),
                     "secret_keys": sorted(cfg.rag_eng_ecs.secret_arn_map),
+                },
+                "frontend_web": {
+                    "enabled": cfg.frontend_web.enabled,
+                    "bucket_name": cfg.frontend_web.bucket_name,
+                    "bucket_prefix": cfg.frontend_web.bucket_prefix,
+                    "app_dir": cfg.frontend_web.app_dir,
+                    "dist_dir": cfg.frontend_web.dist_dir,
+                    "default_root_object": cfg.frontend_web.default_root_object,
+                    "spa_fallback_path": cfg.frontend_web.spa_fallback_path,
+                    "price_class": cfg.frontend_web.price_class,
+                    "aliases": cfg.frontend_web.cloudfront.aliases,
+                    "certificate_arn": cfg.frontend_web.cloudfront.certificate_arn,
+                    "comment": cfg.frontend_web.cloudfront.comment,
+                    "create_oac": cfg.frontend_web.cloudfront.create_oac,
+                    "invalidation_paths": cfg.frontend_web.cloudfront.invalidation_paths,
+                    "api_path_patterns": cfg.frontend_web.cloudfront.api_path_patterns,
+                    "cache_static_assets": cfg.frontend_web.cloudfront.cache_static_assets,
+                    "cache_html_seconds": cfg.frontend_web.cloudfront.cache_html_seconds,
+                    "vite_api_base_url": cfg.frontend_web.build.vite_api_base_url,
+                    "vite_cognito_domain": cfg.frontend_web.build.vite_cognito_domain,
+                    "vite_cognito_redirect_uri": cfg.frontend_web.build.vite_cognito_redirect_uri,
+                    "vite_cognito_logout_uri": cfg.frontend_web.build.vite_cognito_logout_uri,
+                    "extra_env_keys": sorted(cfg.frontend_web.build.extra_env),
                 },
             },
             indent=2,

@@ -11,7 +11,7 @@ from deploy.deploy_rag_eng_ecs import (
 )
 from deploy.deploy_rag_eng_ecs import _register_task_definition
 from deploy.deploy_rag_eng_ecs import _upsert_service
-from deploy.deployment_config import load_deploy_config
+from deploy.deployment_config import load_deploy_config, shell_export
 
 
 def _write_config(tmp_path: Path) -> Path:
@@ -91,6 +91,35 @@ rag_eng_ecs:
     OPENAI_API_KEY: arn:aws:secretsmanager:us-east-1:123456789012:secret:openai
     QDRANT_API_KEY: arn:aws:secretsmanager:us-east-1:123456789012:secret:qdrant
     COURSE_REGISTRY_DATABASE_URL: arn:aws:secretsmanager:us-east-1:123456789012:secret:course-registry
+frontend_web:
+  enabled: true
+  app_dir: ./frontend
+  dist_dir: ./frontend/dist
+  bucket_name: codingrabbit-frontend-dev
+  bucket_prefix: web
+  default_root_object: index.html
+  spa_fallback_path: /index.html
+  price_class: PriceClass_100
+  cloudfront:
+    aliases:
+      - app.example.com
+    certificate_arn: arn:aws:acm:us-east-1:123456789012:certificate/example
+    comment: CodingRabbit frontend
+    create_oac: true
+    invalidation_paths:
+      - /*
+    api_path_patterns:
+      - /api/*
+      - /health
+    cache_static_assets: true
+    cache_html_seconds: 60
+  build:
+    vite_api_base_url: https://api.example.com
+    vite_cognito_domain: https://example.auth.us-east-1.amazoncognito.com
+    vite_cognito_redirect_uri: https://app.example.com/auth/callback
+    vite_cognito_logout_uri: https://app.example.com/logout
+    extra_env:
+      VITE_APP_VARIANT: production
 """,
         encoding="utf-8",
     )
@@ -110,6 +139,34 @@ def test_load_rag_eng_ecs_config_reads_env_overrides(tmp_path, monkeypatch) -> N
     assert config.rag_eng_ecs.secret_arn_map["OPENAI_API_KEY"].endswith(
         ":secret:openai"
     )
+
+
+def test_load_frontend_web_config_reads_values_and_shell_exports(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.delenv("VITE_API_BASE_URL", raising=False)
+    monkeypatch.delenv("VITE_COGNITO_DOMAIN", raising=False)
+    monkeypatch.delenv("VITE_COGNITO_REDIRECT_URI", raising=False)
+    monkeypatch.delenv("VITE_COGNITO_LOGOUT_URI", raising=False)
+
+    config = load_deploy_config(_write_config(tmp_path))
+
+    assert config.frontend_web.enabled is True
+    assert config.frontend_web.bucket_name == "codingrabbit-frontend-dev"
+    assert config.frontend_web.bucket_prefix == "web"
+    assert config.frontend_web.cloudfront.aliases == ("app.example.com",)
+    assert config.frontend_web.cloudfront.create_oac is True
+    assert config.frontend_web.cloudfront.cache_static_assets is True
+    assert config.frontend_web.cloudfront.cache_html_seconds == 60
+    assert config.frontend_web.build.vite_api_base_url == "https://api.example.com"
+    assert config.frontend_web.build.extra_env["VITE_APP_VARIANT"] == "production"
+
+    exports = shell_export(config)
+    assert 'export DEPLOY_FRONTEND_BUCKET_NAME="codingrabbit-frontend-dev"' in exports
+    assert 'export DEPLOY_FRONTEND_CLOUDFRONT_ALIASES="app.example.com"' in exports
+    assert 'export DEPLOY_FRONTEND_VITE_API_BASE_URL="https://api.example.com"' in exports
+    assert "DEPLOY_FRONTEND_EXTRA_ENV_JSON=" in exports
+    assert "VITE_APP_VARIANT" in exports
 
 
 def test_build_task_definition_includes_runtime_env_and_secrets(tmp_path) -> None:
