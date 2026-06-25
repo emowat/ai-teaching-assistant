@@ -3,8 +3,8 @@ runtime:
     provider: bedrock
     model: us.amazon.nova-2-lite-v1:0
   chat:
-    provider: sagemaker
-    model: ''
+    provider: openai
+    model: gpt-5.4-mini
   openai:
     base_url: https://api.openai.com/v1
   input_guardrail_orchestration:
