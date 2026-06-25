@@ -287,6 +287,7 @@ frontend_web:
   price_class: "PriceClass_100"
 
   cloudfront:
+    distribution_id: ""
     aliases: []
     certificate_arn: null
     comment: "CodingRabbit frontend distribution"
@@ -307,7 +308,8 @@ frontend_web:
     cache_html_seconds: 60
 
   build:
-    vite_api_base_url: "http://localhost:8001"
+    # Empty string means same-origin API calls when the frontend is served from CloudFront.
+    vite_api_base_url: ""
     vite_cognito_domain: "https://us-east-1z5dab8wni.auth.us-east-1.amazoncognito.com"
     vite_cognito_redirect_uri: "http://localhost:5173/auth/callback"
     vite_cognito_logout_uri: "http://localhost:5173/logout"
@@ -486,6 +488,9 @@ _reference:
   frontend_web.cloudfront.aliases:
     description: Alternate hostnames attached to the CloudFront distribution.
     env_override: FRONTEND_CLOUDFRONT_ALIASES
+  frontend_web.cloudfront.distribution_id:
+    description: CloudFront distribution ID used for frontend invalidations.
+    env_override: FRONTEND_CLOUDFRONT_DISTRIBUTION_ID
   frontend_web.cloudfront.certificate_arn:
     description: ACM certificate ARN for CloudFront aliases, if any.
     env_override: FRONTEND_CLOUDFRONT_CERTIFICATE_ARN

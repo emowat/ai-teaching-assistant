@@ -53,7 +53,7 @@ export DEPLOY_CONFIG=/path/to/my-deployment.yaml
 | `inference_smoke_test` | `default_prompt`, `chat_template`, generation params | `invoke` smoke test |
 | `huggingface_packaging` | `required_files` | Validation before packaging |
 | `rag_eng` | `model_family`, `use_sagemaker`, `inference_backend` | Values to copy into `.env` after deploy |
-| `frontend_web` | `enabled`, `app_dir`, `dist_dir`, `bucket_name`, `bucket_prefix`, `default_root_object`, `spa_fallback_path`, `price_class`, `cloudfront`, `build` | Vite SPA build settings and planned S3 + CloudFront hosting wiring |
+| `frontend_web` | `enabled`, `app_dir`, `dist_dir`, `bucket_name`, `bucket_prefix`, `default_root_object`, `spa_fallback_path`, `price_class`, `cloudfront`, `build` | Vite SPA build settings and S3 + CloudFront publishing wiring |
 
 The `_reference` block at the bottom of `deployment.yaml` documents each field (also printed by `describe`).
 
@@ -74,6 +74,7 @@ The `_reference` block at the bottom of `deployment.yaml` documents each field (
 | `FRONTEND_ENABLED` | `frontend_web.enabled` |
 | `FRONTEND_BUCKET_NAME` | `frontend_web.bucket_name` |
 | `FRONTEND_BUCKET_PREFIX` | `frontend_web.bucket_prefix` |
+| `FRONTEND_CLOUDFRONT_DISTRIBUTION_ID` | `frontend_web.cloudfront.distribution_id` |
 | `FRONTEND_CLOUDFRONT_ALIASES` | `frontend_web.cloudfront.aliases` |
 | `VITE_API_BASE_URL` | `frontend_web.build.vite_api_base_url` |
 | `VITE_COGNITO_DOMAIN` | `frontend_web.build.vite_cognito_domain` |
@@ -477,14 +478,26 @@ This is the online application runtime for `/api/chat`, `/query`, `/me`, and the
 
 ### Frontend static hosting
 
-The React/Vite frontend lives in [`frontend/`](/home/user/MIDS/w210/capstone/frontend) and reads the repo-root `.env` at build time. The deployment config now includes a `frontend_web` section for the upcoming S3 + CloudFront hosting slice.
+The React/Vite frontend lives in [`frontend/`](/home/user/MIDS/w210/capstone/frontend) and reads the repo-root `.env` at build time. The deployment config now includes a `frontend_web` section for the S3 + CloudFront publishing slice.
 
-Planned behavior for that slice:
+The current helper is [`deploy/scripts/publish-frontend.sh`](/home/user/MIDS/w210/capstone/deploy/scripts/publish-frontend.sh).
+
+What it does:
 
 - build `frontend/` into `frontend/dist/`
 - upload the static bundle to S3
-- serve `index.html` as the SPA entrypoint
-- route browser requests to the existing `rag_eng` ALB for API and admin paths
+- delete stale objects under the configured bucket prefix
+- invalidate the configured CloudFront distribution
+
+Required config for this flow:
+
+- `frontend_web.bucket_name`
+- `frontend_web.cloudfront.distribution_id`
+- `frontend_web.cloudfront.invalidation_paths`
+- `frontend_web.build.vite_api_base_url`
+- `frontend_web.build.vite_cognito_domain`
+- `frontend_web.build.vite_cognito_redirect_uri`
+- `frontend_web.build.vite_cognito_logout_uri`
 
 The relevant values live in:
 
@@ -492,14 +505,13 @@ The relevant values live in:
 - `frontend_web.dist_dir`
 - `frontend_web.bucket_name`
 - `frontend_web.bucket_prefix`
+- `frontend_web.cloudfront.distribution_id`
 - `frontend_web.cloudfront.aliases`
 - `frontend_web.cloudfront.api_path_patterns`
 - `frontend_web.build.vite_api_base_url`
 - `frontend_web.build.vite_cognito_domain`
 - `frontend_web.build.vite_cognito_redirect_uri`
 - `frontend_web.build.vite_cognito_logout_uri`
-
-This slice is configuration-only for now; the actual deploy helper will use these values in the next step.
 
 ### 5. Smoke test the control plane
 

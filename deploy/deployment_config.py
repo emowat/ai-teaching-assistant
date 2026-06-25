@@ -69,6 +69,7 @@ ENV_OVERRIDES: dict[str, str] = {
     "FRONTEND_SPA_FALLBACK_PATH": "frontend_web.spa_fallback_path",
     "FRONTEND_PRICE_CLASS": "frontend_web.price_class",
     "FRONTEND_CLOUDFRONT_ALIASES": "frontend_web.cloudfront.aliases",
+    "FRONTEND_CLOUDFRONT_DISTRIBUTION_ID": "frontend_web.cloudfront.distribution_id",
     "FRONTEND_CLOUDFRONT_CERTIFICATE_ARN": "frontend_web.cloudfront.certificate_arn",
     "FRONTEND_CLOUDFRONT_COMMENT": "frontend_web.cloudfront.comment",
     "FRONTEND_CLOUDFRONT_CREATE_OAC": "frontend_web.cloudfront.create_oac",
@@ -258,6 +259,7 @@ class RagEngEcsConfig:
 
 @dataclass
 class FrontendCloudFrontConfig:
+    distribution_id: str | None
     aliases: tuple[str, ...]
     certificate_arn: str | None
     comment: str
@@ -555,6 +557,10 @@ def load_deploy_config(path: str | Path | None = None) -> DeployConfig:
     if frontend_certificate_arn in ("", "null", "none"):
         frontend_certificate_arn = None
 
+    frontend_distribution_id = frontend_cloudfront.get("distribution_id")
+    if frontend_distribution_id in ("", "null", "none"):
+        frontend_distribution_id = None
+
     return DeployConfig(
         config_path=config_path,
         google_drive=GoogleDriveConfig(
@@ -718,6 +724,7 @@ def load_deploy_config(path: str | Path | None = None) -> DeployConfig:
             spa_fallback_path=str(frontend.get("spa_fallback_path", "/index.html")),
             price_class=str(frontend.get("price_class", "PriceClass_100")),
             cloudfront=FrontendCloudFrontConfig(
+                distribution_id=frontend_distribution_id,
                 aliases=_as_tuple_str_or_csv(frontend_cloudfront.get("aliases"), ()),
                 certificate_arn=frontend_certificate_arn,
                 comment=_str_or_default(
@@ -750,7 +757,9 @@ def load_deploy_config(path: str | Path | None = None) -> DeployConfig:
                     frontend_cloudfront.get("cache_static_assets", True),
                     True,
                 ),
-                cache_html_seconds=int(frontend_cloudfront.get("cache_html_seconds", 60)),
+                cache_html_seconds=int(
+                    frontend_cloudfront.get("cache_html_seconds", 60)
+                ),
             ),
             build=FrontendBuildConfig(
                 vite_api_base_url=str(
@@ -827,7 +836,12 @@ def get_dotpath(cfg: DeployConfig, dot_path: str) -> Any:
         "frontend_web.default_root_object": cfg.frontend_web.default_root_object,
         "frontend_web.spa_fallback_path": cfg.frontend_web.spa_fallback_path,
         "frontend_web.price_class": cfg.frontend_web.price_class,
-        "frontend_web.cloudfront.aliases": ",".join(cfg.frontend_web.cloudfront.aliases),
+        "frontend_web.cloudfront.aliases": ",".join(
+            cfg.frontend_web.cloudfront.aliases
+        ),
+        "frontend_web.cloudfront.distribution_id": (
+            cfg.frontend_web.cloudfront.distribution_id or ""
+        ),
         "frontend_web.cloudfront.certificate_arn": (
             cfg.frontend_web.cloudfront.certificate_arn or ""
         ),
@@ -901,6 +915,9 @@ def shell_export(cfg: DeployConfig | None = None) -> str:
         "DEPLOY_FRONTEND_PRICE_CLASS": cfg.frontend_web.price_class,
         "DEPLOY_FRONTEND_CLOUDFRONT_ALIASES": ",".join(
             cfg.frontend_web.cloudfront.aliases
+        ),
+        "DEPLOY_FRONTEND_CLOUDFRONT_DISTRIBUTION_ID": (
+            cfg.frontend_web.cloudfront.distribution_id or ""
         ),
         "DEPLOY_FRONTEND_CLOUDFRONT_CERTIFICATE_ARN": (
             cfg.frontend_web.cloudfront.certificate_arn or ""
@@ -1014,6 +1031,7 @@ def describe_config(path: str | Path | None = None) -> None:
                     "spa_fallback_path": cfg.frontend_web.spa_fallback_path,
                     "price_class": cfg.frontend_web.price_class,
                     "aliases": cfg.frontend_web.cloudfront.aliases,
+                    "distribution_id": cfg.frontend_web.cloudfront.distribution_id,
                     "certificate_arn": cfg.frontend_web.cloudfront.certificate_arn,
                     "comment": cfg.frontend_web.cloudfront.comment,
                     "create_oac": cfg.frontend_web.cloudfront.create_oac,

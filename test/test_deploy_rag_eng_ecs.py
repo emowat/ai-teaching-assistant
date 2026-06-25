@@ -101,6 +101,7 @@ frontend_web:
   spa_fallback_path: /index.html
   price_class: PriceClass_100
   cloudfront:
+    distribution_id: E1234567890
     aliases:
       - app.example.com
     certificate_arn: arn:aws:acm:us-east-1:123456789012:certificate/example
@@ -154,6 +155,7 @@ def test_load_frontend_web_config_reads_values_and_shell_exports(
     assert config.frontend_web.enabled is True
     assert config.frontend_web.bucket_name == "codingrabbit-frontend-dev"
     assert config.frontend_web.bucket_prefix == "web"
+    assert config.frontend_web.cloudfront.distribution_id == "E1234567890"
     assert config.frontend_web.cloudfront.aliases == ("app.example.com",)
     assert config.frontend_web.cloudfront.create_oac is True
     assert config.frontend_web.cloudfront.cache_static_assets is True
@@ -163,8 +165,11 @@ def test_load_frontend_web_config_reads_values_and_shell_exports(
 
     exports = shell_export(config)
     assert 'export DEPLOY_FRONTEND_BUCKET_NAME="codingrabbit-frontend-dev"' in exports
+    assert 'export DEPLOY_FRONTEND_CLOUDFRONT_DISTRIBUTION_ID="E1234567890"' in exports
     assert 'export DEPLOY_FRONTEND_CLOUDFRONT_ALIASES="app.example.com"' in exports
-    assert 'export DEPLOY_FRONTEND_VITE_API_BASE_URL="https://api.example.com"' in exports
+    assert (
+        'export DEPLOY_FRONTEND_VITE_API_BASE_URL="https://api.example.com"' in exports
+    )
     assert "DEPLOY_FRONTEND_EXTRA_ENV_JSON=" in exports
     assert "VITE_APP_VARIANT" in exports
 
