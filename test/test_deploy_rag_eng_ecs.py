@@ -40,6 +40,7 @@ rag_eng_ecs:
     - subnet-b
   security_group_ids:
     - sg-a
+  alb_security_group_id: sg-alb
   target_group_arn: arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/rag-eng/1234567890123456
   image_uri: 123456789012.dkr.ecr.us-east-1.amazonaws.com/codingrabbit-rag-eng:latest
   execution_role_arn: arn:aws:iam::123456789012:role/ecsTaskExecutionRole
@@ -84,12 +85,10 @@ rag_eng_ecs:
     S3_DATA_BUCKET: codingrabbit-data-dev
     MODEL_FAMILY: qwen
   secret_arn_map:
-    ADMIN_TOKEN: arn:aws:secretsmanager:us-east-1:123456789012:secret:admin
     COHERE_API_KEY: arn:aws:secretsmanager:us-east-1:123456789012:secret:cohere
     OPENAI_API_KEY: arn:aws:secretsmanager:us-east-1:123456789012:secret:openai
     QDRANT_API_KEY: arn:aws:secretsmanager:us-east-1:123456789012:secret:qdrant
     COURSE_REGISTRY_DATABASE_URL: arn:aws:secretsmanager:us-east-1:123456789012:secret:course-registry
-    INGESTION_JOBS_DATABASE_URL: arn:aws:secretsmanager:us-east-1:123456789012:secret:ingestion-jobs
 """,
         encoding="utf-8",
     )
@@ -105,7 +104,10 @@ def test_load_rag_eng_ecs_config_reads_env_overrides(tmp_path, monkeypatch) -> N
     assert config.rag_eng_ecs.cluster == "override-cluster"
     assert config.rag_eng_ecs.service_name == "codingrabbit-rag-eng"
     assert config.rag_eng_ecs.container_port == 8001
-    assert config.rag_eng_ecs.secret_arn_map["OPENAI_API_KEY"].endswith(":secret:openai")
+    assert config.rag_eng_ecs.alb_security_group_id == "sg-alb"
+    assert config.rag_eng_ecs.secret_arn_map["OPENAI_API_KEY"].endswith(
+        ":secret:openai"
+    )
 
 
 def test_build_task_definition_includes_runtime_env_and_secrets(tmp_path) -> None:
@@ -136,7 +138,9 @@ def test_build_task_definition_includes_runtime_env_and_secrets(tmp_path) -> Non
 
 def test_build_service_spec_includes_target_group_and_network_config(tmp_path) -> None:
     config = load_deploy_config(_write_config(tmp_path))
-    payload = build_service_spec(config, task_definition="arn:aws:ecs:task-definition/rag-eng:1")
+    payload = build_service_spec(
+        config, task_definition="arn:aws:ecs:task-definition/rag-eng:1"
+    )
 
     assert payload["cluster"] == "codingrabbit-rag-eng"
     assert payload["serviceName"] == "codingrabbit-rag-eng"
@@ -267,6 +271,6 @@ def test_upsert_service_updates_existing_service(tmp_path) -> None:
 def test_deploy_script_loads_the_rendered_deploy_config() -> None:
     script = Path("deploy/scripts/deploy-rag-eng-ecs.sh").read_text(encoding="utf-8")
 
-    assert "load_deploy_config \"${REPO_ROOT}\" \"${PYTHON}\"" in script
+    assert 'load_deploy_config "${REPO_ROOT}" "${PYTHON}"' in script
     assert 'echo "    Cluster:  ${DEPLOY_RAG_ENG_ECS_CLUSTER}"' in script
     assert 'echo "    Service:  ${DEPLOY_RAG_ENG_ECS_SERVICE_NAME}"' in script

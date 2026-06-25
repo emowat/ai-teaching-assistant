@@ -204,14 +204,18 @@ rag_eng_ecs:
   launch_type: "FARGATE"
   platform_version: "LATEST"
   assign_public_ip: "ENABLED"
-  subnet_ids: []
-  security_group_ids: []
-  target_group_arn: null
+  subnet_ids:
+    - subnet-01b26a7b1a7f1b746
+    - subnet-0711779df65a14e9d
+  security_group_ids:
+    - sg-0ce5f60034441172a
+  alb_security_group_id: "sg-04ffec4079dbda38a"
+  target_group_arn: "arn:aws:elasticloadbalancing:us-east-1:976193240866:targetgroup/codingrabbit-rag-eng/e6f66bbebacdceab"
 
   # Container image and task sizing.
-  image_uri: null
-  execution_role_arn: null
-  task_role_arn: null
+  image_uri: "976193240866.dkr.ecr.us-east-1.amazonaws.com/codingrabbit-rag-eng:latest"
+  execution_role_arn: "arn:aws:iam::976193240866:role/codingrabbit-rag-eng-execution-role"
+  task_role_arn: "arn:aws:iam::976193240866:role/codingrabbit-rag-eng-task"
   cpu: 1024
   memory: 2048
   container_port: 8001
@@ -258,12 +262,10 @@ rag_eng_ecs:
 
   # Secrets injected at task launch.
   secret_arn_map:
-    ADMIN_TOKEN: null
-    COHERE_API_KEY: null
-    OPENAI_API_KEY: null
-    QDRANT_API_KEY: null
-    COURSE_REGISTRY_DATABASE_URL: null
-    INGESTION_JOBS_DATABASE_URL: null
+    COHERE_API_KEY: "arn:aws:secretsmanager:us-east-1:976193240866:secret:codingrabbit/rag_eng/COHERE_API_KEY-GMdI8x"
+    OPENAI_API_KEY: "arn:aws:secretsmanager:us-east-1:976193240866:secret:codingrabbit/rag_eng/OPENAI_API_KEY-xH5rH5"
+    QDRANT_API_KEY: "arn:aws:secretsmanager:us-east-1:976193240866:secret:codingrabbit/rag_eng/QDRANT_API_KEY-S8nEwS"
+    COURSE_REGISTRY_DATABASE_URL: "arn:aws:secretsmanager:us-east-1:976193240866:secret:codingrabbit/rag_eng/COURSE_REGISTRY_DATABASE_URL-4fLsHS"
 
 # =============================================================================
 # Field reference (documentation — ignored by loader, used by `describe` CLI)
@@ -363,12 +365,50 @@ _reference:
   rag_eng_ecs.container_name:
     description: Container name inside the task definition.
     env_override: RAG_ENG_ECS_CONTAINER_NAME
+  rag_eng_ecs.subnet_ids:
+    description: Public subnets used for the rag_eng ECS service and ALB.
+    env_override: RAG_ENG_ECS_SUBNETS
+  rag_eng_ecs.security_group_ids:
+    description: Security groups attached to the rag_eng ECS tasks.
+    env_override: RAG_ENG_ECS_SECURITY_GROUPS
+  rag_eng_ecs.alb_security_group_id:
+    description: Security group attached to the application load balancer.
+    env_override: RAG_ENG_ECS_ALB_SECURITY_GROUP_ID
   rag_eng_ecs.image_uri:
     description: ECR image URI for the orchestrator container.
     env_override: RAG_ENG_ECS_IMAGE_URI
+  rag_eng_ecs.execution_role_arn:
+    description: ECS execution role ARN for pulling images and reading task secrets.
+    env_override: RAG_ENG_ECS_EXECUTION_ROLE_ARN
+  rag_eng_ecs.task_role_arn:
+    description: ECS task role ARN for runtime S3, SageMaker, and Bedrock access.
+    env_override: RAG_ENG_ECS_TASK_ROLE_ARN
+  rag_eng_ecs.container_port:
+    description: Container port exposed by the rag_eng app and ALB target group.
+    env_override: RAG_ENG_ECS_CONTAINER_PORT
+  rag_eng_ecs.desired_count:
+    description: Desired ECS service replica count.
+    env_override: RAG_ENG_ECS_DESIRED_COUNT
+  rag_eng_ecs.launch_type:
+    description: ECS launch type for the service.
+    env_override: RAG_ENG_ECS_LAUNCH_TYPE
+  rag_eng_ecs.platform_version:
+    description: ECS Fargate platform version.
+    env_override: RAG_ENG_ECS_PLATFORM_VERSION
+  rag_eng_ecs.assign_public_ip:
+    description: Whether ECS tasks receive public IPs.
+    env_override: RAG_ENG_ECS_ASSIGN_PUBLIC_IP
   rag_eng_ecs.target_group_arn:
     description: ALB target group ARN for the service.
     env_override: RAG_ENG_ECS_TARGET_GROUP_ARN
+  rag_eng_ecs.health_check_path:
+    description: ALB target-group health check path.
+  rag_eng_ecs.health_check_grace_period_seconds:
+    description: ECS service health-check grace period in seconds.
+  rag_eng_ecs.log_group:
+    description: CloudWatch log group for the rag_eng task definition.
+  rag_eng_ecs.log_stream_prefix:
+    description: CloudWatch log stream prefix for the rag_eng task definition.
   rag_eng_ecs.environment:
     description: Non-secret runtime env vars baked into the ECS task definition.
   rag_eng_ecs.secret_arn_map:

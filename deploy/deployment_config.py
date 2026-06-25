@@ -43,6 +43,7 @@ ENV_OVERRIDES: dict[str, str] = {
     "RAG_ENG_ECS_ASSIGN_PUBLIC_IP": "rag_eng_ecs.assign_public_ip",
     "RAG_ENG_ECS_SUBNETS": "rag_eng_ecs.subnet_ids",
     "RAG_ENG_ECS_SECURITY_GROUPS": "rag_eng_ecs.security_group_ids",
+    "RAG_ENG_ECS_ALB_SECURITY_GROUP_ID": "rag_eng_ecs.alb_security_group_id",
     "RAG_ENG_ECS_IMAGE_URI": "rag_eng_ecs.image_uri",
     "RAG_ENG_ECS_EXECUTION_ROLE_ARN": "rag_eng_ecs.execution_role_arn",
     "RAG_ENG_ECS_TASK_ROLE_ARN": "rag_eng_ecs.task_role_arn",
@@ -217,6 +218,7 @@ class RagEngEcsConfig:
     assign_public_ip: str
     subnet_ids: tuple[str, ...]
     security_group_ids: tuple[str, ...]
+    alb_security_group_id: str | None
     image_uri: str | None
     execution_role_arn: str | None
     task_role_arn: str | None
@@ -314,7 +316,10 @@ def _apply_env_overrides(data: dict[str, Any]) -> None:
             _set_nested(data, dot_path, None)
         elif dot_path.endswith("s3_uri") and raw.lower() in ("null", "none"):
             _set_nested(data, dot_path, None)
-        elif dot_path.endswith("execution_role_arn") and raw.lower() in ("null", "none"):
+        elif dot_path.endswith("execution_role_arn") and raw.lower() in (
+            "null",
+            "none",
+        ):
             _set_nested(data, dot_path, None)
         else:
             _set_nested(data, dot_path, raw)
@@ -453,6 +458,10 @@ def load_deploy_config(path: str | Path | None = None) -> DeployConfig:
     if rag_ecs_image_uri in ("", "null", "none"):
         rag_ecs_image_uri = None
 
+    rag_ecs_alb_security_group_id = rag_ecs.get("alb_security_group_id")
+    if rag_ecs_alb_security_group_id in ("", "null", "none"):
+        rag_ecs_alb_security_group_id = None
+
     rag_ecs_target_group_arn = rag_ecs.get("target_group_arn")
     if rag_ecs_target_group_arn in ("", "null", "none"):
         rag_ecs_target_group_arn = None
@@ -588,6 +597,7 @@ def load_deploy_config(path: str | Path | None = None) -> DeployConfig:
                 rag_ecs.get("security_group_ids"),
                 (),
             ),
+            alb_security_group_id=rag_ecs_alb_security_group_id,
             image_uri=rag_ecs_image_uri,
             execution_role_arn=rag_ecs_execution_role,
             task_role_arn=rag_ecs_task_role,
@@ -595,11 +605,15 @@ def load_deploy_config(path: str | Path | None = None) -> DeployConfig:
             memory=int(rag_ecs.get("memory", 2048)),
             container_port=int(rag_ecs.get("container_port", 8001)),
             desired_count=int(rag_ecs.get("desired_count", 1)),
-            health_check_path=_str_or_default(rag_ecs.get("health_check_path"), "/health"),
+            health_check_path=_str_or_default(
+                rag_ecs.get("health_check_path"), "/health"
+            ),
             health_check_grace_period_seconds=int(
                 rag_ecs.get("health_check_grace_period_seconds", 120)
             ),
-            log_group=_str_or_default(rag_ecs.get("log_group"), "/ecs/codingrabbit-rag-eng"),
+            log_group=_str_or_default(
+                rag_ecs.get("log_group"), "/ecs/codingrabbit-rag-eng"
+            ),
             log_stream_prefix=_str_or_default(rag_ecs.get("log_stream_prefix"), "ecs"),
             target_group_arn=rag_ecs_target_group_arn,
             environment=ecs_environment,
@@ -628,10 +642,25 @@ def get_dotpath(cfg: DeployConfig, dot_path: str) -> Any:
         "rag_eng_ecs.task_family": cfg.rag_eng_ecs.task_family,
         "rag_eng_ecs.task_definition": cfg.rag_eng_ecs.task_definition,
         "rag_eng_ecs.container_name": cfg.rag_eng_ecs.container_name,
+        "rag_eng_ecs.alb_security_group_id": cfg.rag_eng_ecs.alb_security_group_id
+        or "",
+        "rag_eng_ecs.subnet_ids": ",".join(cfg.rag_eng_ecs.subnet_ids),
+        "rag_eng_ecs.security_group_ids": ",".join(cfg.rag_eng_ecs.security_group_ids),
         "rag_eng_ecs.image_uri": cfg.rag_eng_ecs.image_uri or "",
         "rag_eng_ecs.execution_role_arn": cfg.rag_eng_ecs.execution_role_arn or "",
         "rag_eng_ecs.task_role_arn": cfg.rag_eng_ecs.task_role_arn or "",
+        "rag_eng_ecs.launch_type": cfg.rag_eng_ecs.launch_type,
+        "rag_eng_ecs.platform_version": cfg.rag_eng_ecs.platform_version,
+        "rag_eng_ecs.assign_public_ip": cfg.rag_eng_ecs.assign_public_ip,
+        "rag_eng_ecs.container_port": str(cfg.rag_eng_ecs.container_port),
+        "rag_eng_ecs.desired_count": str(cfg.rag_eng_ecs.desired_count),
         "rag_eng_ecs.target_group_arn": cfg.rag_eng_ecs.target_group_arn or "",
+        "rag_eng_ecs.health_check_path": cfg.rag_eng_ecs.health_check_path,
+        "rag_eng_ecs.health_check_grace_period_seconds": str(
+            cfg.rag_eng_ecs.health_check_grace_period_seconds
+        ),
+        "rag_eng_ecs.log_group": cfg.rag_eng_ecs.log_group,
+        "rag_eng_ecs.log_stream_prefix": cfg.rag_eng_ecs.log_stream_prefix,
     }
     return mapping.get(dot_path, _get_nested(cfg._raw, dot_path))
 
@@ -656,6 +685,9 @@ def shell_export(cfg: DeployConfig | None = None) -> str:
         "DEPLOY_RAG_ENG_ECS_TASK_FAMILY": cfg.rag_eng_ecs.task_family,
         "DEPLOY_RAG_ENG_ECS_TASK_DEFINITION": cfg.rag_eng_ecs.task_definition,
         "DEPLOY_RAG_ENG_ECS_CONTAINER_NAME": cfg.rag_eng_ecs.container_name,
+        "DEPLOY_RAG_ENG_ECS_ALB_SECURITY_GROUP_ID": (
+            cfg.rag_eng_ecs.alb_security_group_id or ""
+        ),
         "DEPLOY_RAG_ENG_ECS_TARGET_GROUP_ARN": cfg.rag_eng_ecs.target_group_arn or "",
         "DEPLOY_RAG_ENG_ECS_CONTAINER_PORT": str(cfg.rag_eng_ecs.container_port),
         "DEPLOY_RAG_ENG_ECS_LAUNCH_TYPE": cfg.rag_eng_ecs.launch_type,
@@ -695,37 +727,51 @@ def describe_config(path: str | Path | None = None) -> None:
         print()
     print("Resolved values (after env overrides):")
     cfg = load_deploy_config(config_path)
-    print(json.dumps(
-        {
-            "aws": {
-                "region": cfg.aws.region,
-                "profile": cfg.aws.profile,
-                "s3_bucket": cfg.aws.s3_bucket,
+    print(
+        json.dumps(
+            {
+                "aws": {
+                    "region": cfg.aws.region,
+                    "profile": cfg.aws.profile,
+                    "s3_bucket": cfg.aws.s3_bucket,
+                },
+                "model_artifact": {
+                    "s3_key": cfg.model_artifact.s3_key,
+                    "s3_uri": cfg.model_data_uri,
+                },
+                "sagemaker": {
+                    "endpoint_name": cfg.sagemaker.endpoint_name,
+                    "instance_type": cfg.sagemaker.instance_type,
+                },
+                "rag_eng": {"model_family": cfg.rag_eng.model_family},
+                "rag_eng_ecs": {
+                    "cluster": cfg.rag_eng_ecs.cluster,
+                    "service_name": cfg.rag_eng_ecs.service_name,
+                    "task_family": cfg.rag_eng_ecs.task_family,
+                    "task_definition": cfg.rag_eng_ecs.task_definition,
+                    "container_name": cfg.rag_eng_ecs.container_name,
+                    "alb_security_group_id": cfg.rag_eng_ecs.alb_security_group_id,
+                    "subnet_ids": cfg.rag_eng_ecs.subnet_ids,
+                    "security_group_ids": cfg.rag_eng_ecs.security_group_ids,
+                    "execution_role_arn": cfg.rag_eng_ecs.execution_role_arn,
+                    "task_role_arn": cfg.rag_eng_ecs.task_role_arn,
+                    "launch_type": cfg.rag_eng_ecs.launch_type,
+                    "platform_version": cfg.rag_eng_ecs.platform_version,
+                    "assign_public_ip": cfg.rag_eng_ecs.assign_public_ip,
+                    "container_port": cfg.rag_eng_ecs.container_port,
+                    "desired_count": cfg.rag_eng_ecs.desired_count,
+                    "target_group_arn": cfg.rag_eng_ecs.target_group_arn,
+                    "health_check_path": cfg.rag_eng_ecs.health_check_path,
+                    "health_check_grace_period_seconds": cfg.rag_eng_ecs.health_check_grace_period_seconds,
+                    "log_group": cfg.rag_eng_ecs.log_group,
+                    "log_stream_prefix": cfg.rag_eng_ecs.log_stream_prefix,
+                    "environment_keys": sorted(cfg.rag_eng_ecs.environment),
+                    "secret_keys": sorted(cfg.rag_eng_ecs.secret_arn_map),
+                },
             },
-            "model_artifact": {
-                "s3_key": cfg.model_artifact.s3_key,
-                "s3_uri": cfg.model_data_uri,
-            },
-            "sagemaker": {
-                "endpoint_name": cfg.sagemaker.endpoint_name,
-                "instance_type": cfg.sagemaker.instance_type,
-            },
-            "rag_eng": {"model_family": cfg.rag_eng.model_family},
-            "rag_eng_ecs": {
-                "cluster": cfg.rag_eng_ecs.cluster,
-                "service_name": cfg.rag_eng_ecs.service_name,
-                "task_family": cfg.rag_eng_ecs.task_family,
-                "task_definition": cfg.rag_eng_ecs.task_definition,
-                "container_name": cfg.rag_eng_ecs.container_name,
-                "container_port": cfg.rag_eng_ecs.container_port,
-                "desired_count": cfg.rag_eng_ecs.desired_count,
-                "target_group_arn": cfg.rag_eng_ecs.target_group_arn,
-                "environment_keys": sorted(cfg.rag_eng_ecs.environment),
-                "secret_keys": sorted(cfg.rag_eng_ecs.secret_arn_map),
-            },
-        },
-        indent=2,
-    ))
+            indent=2,
+        )
+    )
 
 
 def main() -> None:
@@ -745,27 +791,42 @@ def main() -> None:
         describe_config(args.config)
     elif args.command == "json":
         cfg = load_deploy_config(args.config)
-        print(json.dumps(
-            {
-                "config_path": str(cfg.config_path),
-                "model_data_uri": cfg.model_data_uri,
-                "endpoint_name": cfg.sagemaker.endpoint_name,
-                "s3_bucket": cfg.aws.s3_bucket,
-                "region": cfg.aws.region,
-                "rag_eng_ecs": {
-                    "cluster": cfg.rag_eng_ecs.cluster,
-                    "service_name": cfg.rag_eng_ecs.service_name,
-                    "task_family": cfg.rag_eng_ecs.task_family,
-                    "task_definition": cfg.rag_eng_ecs.task_definition,
-                    "container_name": cfg.rag_eng_ecs.container_name,
-                    "container_port": cfg.rag_eng_ecs.container_port,
-                    "target_group_arn": cfg.rag_eng_ecs.target_group_arn,
-                    "environment_keys": sorted(cfg.rag_eng_ecs.environment),
-                    "secret_keys": sorted(cfg.rag_eng_ecs.secret_arn_map),
+        print(
+            json.dumps(
+                {
+                    "config_path": str(cfg.config_path),
+                    "model_data_uri": cfg.model_data_uri,
+                    "endpoint_name": cfg.sagemaker.endpoint_name,
+                    "s3_bucket": cfg.aws.s3_bucket,
+                    "region": cfg.aws.region,
+                    "rag_eng_ecs": {
+                        "cluster": cfg.rag_eng_ecs.cluster,
+                        "service_name": cfg.rag_eng_ecs.service_name,
+                        "task_family": cfg.rag_eng_ecs.task_family,
+                        "task_definition": cfg.rag_eng_ecs.task_definition,
+                        "container_name": cfg.rag_eng_ecs.container_name,
+                        "alb_security_group_id": cfg.rag_eng_ecs.alb_security_group_id,
+                        "subnet_ids": cfg.rag_eng_ecs.subnet_ids,
+                        "security_group_ids": cfg.rag_eng_ecs.security_group_ids,
+                        "execution_role_arn": cfg.rag_eng_ecs.execution_role_arn,
+                        "task_role_arn": cfg.rag_eng_ecs.task_role_arn,
+                        "launch_type": cfg.rag_eng_ecs.launch_type,
+                        "platform_version": cfg.rag_eng_ecs.platform_version,
+                        "assign_public_ip": cfg.rag_eng_ecs.assign_public_ip,
+                        "container_port": cfg.rag_eng_ecs.container_port,
+                        "desired_count": cfg.rag_eng_ecs.desired_count,
+                        "target_group_arn": cfg.rag_eng_ecs.target_group_arn,
+                        "health_check_path": cfg.rag_eng_ecs.health_check_path,
+                        "health_check_grace_period_seconds": cfg.rag_eng_ecs.health_check_grace_period_seconds,
+                        "log_group": cfg.rag_eng_ecs.log_group,
+                        "log_stream_prefix": cfg.rag_eng_ecs.log_stream_prefix,
+                        "environment_keys": sorted(cfg.rag_eng_ecs.environment),
+                        "secret_keys": sorted(cfg.rag_eng_ecs.secret_arn_map),
+                    },
                 },
-            },
-            indent=2,
-        ))
+                indent=2,
+            )
+        )
     elif args.command == "get":
         if not args.path:
             print("ERROR: get requires a dot-path argument")

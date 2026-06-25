@@ -213,8 +213,7 @@ def missing_registration_values(config: DeployConfig) -> list[str]:
         if value is None or str(value).strip() == ""
     )
     missing.extend(
-        f"RAG_ENG_ECS_ENV[{key}]"
-        for key in _missing_required_env_values(ecs)
+        f"RAG_ENG_ECS_ENV[{key}]" for key in _missing_required_env_values(ecs)
     )
     return missing
 
@@ -280,7 +279,9 @@ def describe_config(config: DeployConfig) -> list[str]:
         + (", ".join(runtime_missing) if runtime_missing else "(none)"),
     )
     secret_keys = sorted(ecs.secret_arn_map)
-    lines.append("    Secret keys: " + (", ".join(secret_keys) if secret_keys else "(none)"))
+    lines.append(
+        "    Secret keys: " + (", ".join(secret_keys) if secret_keys else "(none)")
+    )
     return lines
 
 
@@ -295,7 +296,9 @@ def _register_task_definition(
     payload = build_task_definition(config)
     ecs_client = client or _ecs_client(config)
     response = ecs_client.register_task_definition(**payload)
-    task_definition = response.get("taskDefinition", {}) if isinstance(response, dict) else {}
+    task_definition = (
+        response.get("taskDefinition", {}) if isinstance(response, dict) else {}
+    )
     return {
         "taskDefinitionArn": task_definition.get("taskDefinitionArn"),
         "family": task_definition.get("family", config.rag_eng_ecs.task_family),

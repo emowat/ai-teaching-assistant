@@ -21,7 +21,7 @@ Google Drive (fine-tuned Qwen)
 |---|---|---|
 | **Configuration** | `deploy/deployment.yaml` | Single source of truth for all deploy settings |
 | **Shell wrappers** (start here) | `deploy/scripts/*.sh` | Human-friendly entry points with `--help` |
-| **Python implementation** | `deploy/upload_model.py`, `deploy/deploy_sagemaker.py`, `deploy/deploy_ingestion_worker.py`, `deploy/deploy_rag_eng_ecs.py`, `deploy/sagemaker_io.py` | Download, S3 upload, SageMaker API calls, ECS task-definition helpers, async payload helpers |
+| **Python implementation** | `deploy/upload_model.py`, `deploy/deploy_sagemaker.py`, `deploy/deploy_ingestion_worker.py`, `deploy/deploy_rag_eng_ecs.py`, `deploy/provision_rag_eng_stack.py`, `deploy/sagemaker_io.py` | Download, S3 upload, SageMaker API calls, ECS task-definition helpers, rag_eng AWS provisioning, async payload helpers |
 | **Application** | `rag_eng/inference.py` | Calls the live endpoint at request time |
 
 ---
@@ -427,6 +427,32 @@ This is the online application runtime for `/api/chat`, `/query`, `/me`, and the
 - `rag_eng_ecs.secret_arn_map` stores the Secrets Manager ARNs for secret env vars injected at task launch.
 - `APP_PORT` is set to `8001` in the task definition and matches the local `uvicorn` command.
 - The runtime behavior knobs that should stay editable without rebuilding the task definition live in [`rag_eng/runtime_config.yaml`](/home/user/MIDS/w210/capstone/rag_eng/runtime_config.yaml).
+
+### `provision-rag-eng-stack.sh`
+
+**Purpose:** Provision the AWS infrastructure for the `rag_eng` online orchestrator, then build/push the Docker image and deploy the ECS service.
+
+**What it creates or updates:**
+
+- ECR repository for the orchestrator image
+- ECS cluster for the online service
+- ECS execution role and task role
+- CloudWatch log group
+- Secrets Manager entries for the runtime secret env vars
+- ALB security group, application load balancer, target group, and listener
+- ECS task definition and ECS service
+
+**Usage:**
+
+```bash
+./deploy/scripts/provision-rag-eng-stack.sh describe
+./deploy/scripts/provision-rag-eng-stack.sh apply
+```
+
+**Notes:**
+
+- The script expects the `rag_eng_ecs` block in `deploy/deployment.yaml` to contain the shared network and runtime settings.
+- The resulting ARNs and DNS name are printed as JSON so they can be copied back into `deploy/deployment.yaml`.
 
 ### 5. Smoke test the control plane
 
