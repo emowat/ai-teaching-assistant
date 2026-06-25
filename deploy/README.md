@@ -1,6 +1,6 @@
 # deploy/
 
-Operational tooling for provisioning the **fine-tuned Qwen inference model** on **Amazon SageMaker AI** and the **`rag_eng` ECS/Fargate orchestrator service**. This folder is **not** part of the runtime application (`rag_eng`); run these scripts once (or when you need to refresh the model, endpoint, or online service wiring).
+Operational tooling for provisioning the **fine-tuned Qwen inference model** on **Amazon SageMaker AI**, the **`rag_eng` ECS/Fargate orchestrator service**, and the planned **frontend static hosting** stack. This folder is **not** part of the runtime application (`rag_eng`); run these scripts once (or when you need to refresh the model, endpoint, or online service wiring).
 
 ## Overview
 
@@ -53,6 +53,7 @@ export DEPLOY_CONFIG=/path/to/my-deployment.yaml
 | `inference_smoke_test` | `default_prompt`, `chat_template`, generation params | `invoke` smoke test |
 | `huggingface_packaging` | `required_files` | Validation before packaging |
 | `rag_eng` | `model_family`, `use_sagemaker`, `inference_backend` | Values to copy into `.env` after deploy |
+| `frontend_web` | `enabled`, `app_dir`, `dist_dir`, `bucket_name`, `bucket_prefix`, `default_root_object`, `spa_fallback_path`, `price_class`, `cloudfront`, `build` | Vite SPA build settings and planned S3 + CloudFront hosting wiring |
 
 The `_reference` block at the bottom of `deployment.yaml` documents each field (also printed by `describe`).
 
@@ -70,6 +71,14 @@ The `_reference` block at the bottom of `deployment.yaml` documents each field (
 | `SAGEMAKER_EXECUTION_ROLE_ARN` | `sagemaker.execution_role_arn` |
 | `SAGEMAKER_INFERENCE_BACKEND` | `sagemaker.container.inference_backend` / `rag_eng.inference_backend` |
 | `MODEL_FAMILY` | `rag_eng.model_family` |
+| `FRONTEND_ENABLED` | `frontend_web.enabled` |
+| `FRONTEND_BUCKET_NAME` | `frontend_web.bucket_name` |
+| `FRONTEND_BUCKET_PREFIX` | `frontend_web.bucket_prefix` |
+| `FRONTEND_CLOUDFRONT_ALIASES` | `frontend_web.cloudfront.aliases` |
+| `VITE_API_BASE_URL` | `frontend_web.build.vite_api_base_url` |
+| `VITE_COGNITO_DOMAIN` | `frontend_web.build.vite_cognito_domain` |
+| `VITE_COGNITO_REDIRECT_URI` | `frontend_web.build.vite_cognito_redirect_uri` |
+| `VITE_COGNITO_LOGOUT_URI` | `frontend_web.build.vite_cognito_logout_uri` |
 
 **SageMaker execution role:** must be a dedicated IAM role that trusts `sagemaker.amazonaws.com` and can read `aws.s3_bucket`. Your SSO login role (`AWSReservedSSO_*`) is **not** valid — set `sagemaker.execution_role_arn` in `deployment.yaml`.
 
@@ -465,6 +474,32 @@ This is the online application runtime for `/api/chat`, `/query`, `/me`, and the
 
 - The script expects the `rag_eng_ecs` block in `deploy/deployment.yaml` to contain the shared network and runtime settings.
 - The resulting ARNs and DNS name are printed as JSON so they can be copied back into `deploy/deployment.yaml`.
+
+### Frontend static hosting
+
+The React/Vite frontend lives in [`frontend/`](/home/user/MIDS/w210/capstone/frontend) and reads the repo-root `.env` at build time. The deployment config now includes a `frontend_web` section for the upcoming S3 + CloudFront hosting slice.
+
+Planned behavior for that slice:
+
+- build `frontend/` into `frontend/dist/`
+- upload the static bundle to S3
+- serve `index.html` as the SPA entrypoint
+- route browser requests to the existing `rag_eng` ALB for API and admin paths
+
+The relevant values live in:
+
+- `frontend_web.app_dir`
+- `frontend_web.dist_dir`
+- `frontend_web.bucket_name`
+- `frontend_web.bucket_prefix`
+- `frontend_web.cloudfront.aliases`
+- `frontend_web.cloudfront.api_path_patterns`
+- `frontend_web.build.vite_api_base_url`
+- `frontend_web.build.vite_cognito_domain`
+- `frontend_web.build.vite_cognito_redirect_uri`
+- `frontend_web.build.vite_cognito_logout_uri`
+
+This slice is configuration-only for now; the actual deploy helper will use these values in the next step.
 
 ### 5. Smoke test the control plane
 
