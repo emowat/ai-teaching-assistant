@@ -133,6 +133,11 @@ into `input_guardrails/models/checkpoints/input_codebert_v1`.
 If that S3 location is a prefix containing `model.tar.gz`, the restore helper
 will extract the archive into the local checkpoint directory automatically.
 
+For the ECS deployment, both the input and output guardrail checkpoints are
+restored automatically at container startup by `deploy/scripts/rag-eng-startup.sh`.
+The container image stays small because the checkpoints are loaded from S3 at
+runtime instead of being baked into the image.
+
 9. Start the service:
 
 ```bash

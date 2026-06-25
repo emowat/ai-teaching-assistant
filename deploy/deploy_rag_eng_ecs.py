@@ -59,12 +59,19 @@ REQUIRED_ENV_KEYS: tuple[str, ...] = (
     "INPUT_GUARDRAILS_CODEBERT_CHECKPOINT_DIR",
     "INPUT_GUARDRAILS_CODEBERT_PASS_BELOW",
     "INPUT_GUARDRAILS_CODEBERT_BLOCK_ABOVE",
+    "GUARDRAILS_CODEBERT_S3_URI",
+    "GUARDRAILS_CODEBERT_CHECKPOINT_DIR",
     "USE_SAGEMAKER",
     "SAGEMAKER_ENDPOINT",
     "SAGEMAKER_INFERENCE_BACKEND",
     "SAGEMAKER_POLL_TIMEOUT_SECONDS",
     "S3_DATA_BUCKET",
     "MODEL_FAMILY",
+)
+
+STARTUP_COMMAND: tuple[str, ...] = (
+    "/bin/sh",
+    "/app/deploy/scripts/rag-eng-startup.sh",
 )
 
 
@@ -125,6 +132,7 @@ def build_task_definition(config: DeployConfig) -> dict[str, Any]:
         "name": ecs.container_name,
         "image": ecs.image_uri,
         "essential": True,
+        "command": list(STARTUP_COMMAND),
         "portMappings": [
             {"containerPort": ecs.container_port, "protocol": "tcp"},
         ],
@@ -331,17 +339,18 @@ def _upsert_service(
         service = response.get("service", {}) if isinstance(response, dict) else {}
         action = "created"
     else:
+        update_payload = dict(payload)
+        update_payload.pop("launchType", None)
         response = ecs_client.update_service(
             cluster=cluster,
             service=service_name,
             taskDefinition=task_definition,
             desiredCount=ecs.desired_count,
             platformVersion=ecs.platform_version,
-            launchType=ecs.launch_type,
-            loadBalancers=payload.get("loadBalancers", []),
-            networkConfiguration=payload["networkConfiguration"],
+            loadBalancers=update_payload.get("loadBalancers", []),
+            networkConfiguration=update_payload["networkConfiguration"],
             healthCheckGracePeriodSeconds=ecs.health_check_grace_period_seconds,
-            deploymentConfiguration=payload["deploymentConfiguration"],
+            deploymentConfiguration=update_payload["deploymentConfiguration"],
             forceNewDeployment=True,
         )
         service = response.get("service", {}) if isinstance(response, dict) else {}

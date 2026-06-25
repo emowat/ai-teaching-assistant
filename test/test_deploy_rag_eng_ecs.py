@@ -50,7 +50,7 @@ rag_eng_ecs:
   container_port: 8001
   desired_count: 1
   health_check_path: /health
-  health_check_grace_period_seconds: 120
+  health_check_grace_period_seconds: 600
   log_group: /ecs/codingrabbit-rag-eng
   log_stream_prefix: ecs
   environment:
@@ -74,10 +74,12 @@ rag_eng_ecs:
     QDRANT_COLLECTION_GUIDELINES: cpp_guidelines
     EMBEDDING_MODEL: sentence-transformers/multi-qa-mpnet-base-dot-v1
     INPUT_GUARDRAILS_ENABLED: "true"
-    INPUT_GUARDRAILS_CODEBERT_S3_URI: s3://codingrabbit-data-dev/models/guardrails/input_codebert_v1/
+    INPUT_GUARDRAILS_CODEBERT_S3_URI: s3://codingrabbit-data-dev/models/guardrails/input_codebert_v1/model.tar.gz
     INPUT_GUARDRAILS_CODEBERT_CHECKPOINT_DIR: input_guardrails/models/checkpoints/input_codebert_v1
     INPUT_GUARDRAILS_CODEBERT_PASS_BELOW: "0.30"
     INPUT_GUARDRAILS_CODEBERT_BLOCK_ABOVE: "0.70"
+    GUARDRAILS_CODEBERT_S3_URI: s3://codingrabbit-data-dev/models/guardrails/codebert_v2_1/model.tar.gz
+    GUARDRAILS_CODEBERT_CHECKPOINT_DIR: output_guardrails/models/checkpoints/codebert_v2_1
     USE_SAGEMAKER: "true"
     SAGEMAKER_ENDPOINT: codingrabbit-qwen-async
     SAGEMAKER_INFERENCE_BACKEND: vllm
@@ -122,6 +124,10 @@ def test_build_task_definition_includes_runtime_env_and_secrets(tmp_path) -> Non
     container = payload["containerDefinitions"][0]
     assert container["name"] == "rag-eng"
     assert container["image"].endswith("/codingrabbit-rag-eng:latest")
+    assert container["command"] == [
+        "/bin/sh",
+        "/app/deploy/scripts/rag-eng-startup.sh",
+    ]
     assert container["portMappings"] == [{"containerPort": 8001, "protocol": "tcp"}]
 
     env_map = {item["name"]: item["value"] for item in container["environment"]}
@@ -130,6 +136,10 @@ def test_build_task_definition_includes_runtime_env_and_secrets(tmp_path) -> Non
     assert env_map["QDRANT_URL"] == "https://qdrant.example"
     assert env_map["SAGEMAKER_ENDPOINT"] == "codingrabbit-qwen-async"
     assert env_map["MODEL_FAMILY"] == "qwen"
+    assert (
+        env_map["GUARDRAILS_CODEBERT_S3_URI"]
+        == "s3://codingrabbit-data-dev/models/guardrails/codebert_v2_1/model.tar.gz"
+    )
 
     secrets = {item["name"]: item["valueFrom"] for item in container["secrets"]}
     assert secrets["OPENAI_API_KEY"].endswith(":secret:openai")
@@ -146,6 +156,7 @@ def test_build_service_spec_includes_target_group_and_network_config(tmp_path) -
     assert payload["serviceName"] == "codingrabbit-rag-eng"
     assert payload["taskDefinition"].endswith(":1")
     assert payload["desiredCount"] == 1
+    assert payload["healthCheckGracePeriodSeconds"] == 600
     assert payload["networkConfiguration"]["awsvpcConfiguration"]["subnets"] == [
         "subnet-a",
         "subnet-b",
@@ -264,6 +275,7 @@ def test_upsert_service_updates_existing_service(tmp_path) -> None:
 
     assert client.create_kwargs is None
     assert client.update_kwargs is not None
+    assert "launchType" not in client.update_kwargs
     assert response["action"] == "updated"
     assert response["taskDefinition"].endswith(":4")
 

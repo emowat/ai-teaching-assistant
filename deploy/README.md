@@ -229,6 +229,18 @@ These are the **recommended** way to run deployment. Each script:
 
 **Success output:** the local checkpoint directory contains `config.json`, tokenizer files, and model weights, ready for `output_guardrails.semantic_guardrail.predict_safety()`.
 
+### `rag-eng-startup.sh`
+
+**Purpose:** ECS entrypoint for the online orchestrator. It restores both guardrail checkpoints from S3, then starts `uvicorn`.
+
+**Behavior:**
+
+- restores the input guardrail checkpoint with `deploy/restore_input_guardrail_checkpoint.py`
+- restores the output guardrail checkpoint with `deploy/restore_guardrail_checkpoint.py`
+- then runs `uvicorn rag_eng.main:app --host 0.0.0.0 --port 8001`
+
+This keeps the Docker image small while ensuring the checkpoints are present in the task filesystem before the service starts.
+
 ---
 
 ### `deploy-ingestion-worker.sh`

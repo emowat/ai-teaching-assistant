@@ -221,7 +221,9 @@ rag_eng_ecs:
   container_port: 8001
   desired_count: 1
   health_check_path: "/health"
-  health_check_grace_period_seconds: 120
+  # The ECS entrypoint restores both guardrail checkpoints from S3 before
+  # uvicorn starts, so give the task time to warm up before ALB checks.
+  health_check_grace_period_seconds: 600
 
   # CloudWatch Logs for the service task definition.
   log_group: "/ecs/codingrabbit-rag-eng"
@@ -248,11 +250,15 @@ rag_eng_ecs:
     QDRANT_COLLECTION_CS50: "cs50_course"
     QDRANT_COLLECTION_GUIDELINES: "cpp_guidelines"
     EMBEDDING_MODEL: "sentence-transformers/multi-qa-mpnet-base-dot-v1"
+    # Guardrail checkpoints are restored from S3 at startup; only the small
+    # app image is baked into the ECS container.
     INPUT_GUARDRAILS_ENABLED: "true"
-    INPUT_GUARDRAILS_CODEBERT_S3_URI: "s3://codingrabbit-data-dev/models/guardrails/input_codebert_v1/"
+    INPUT_GUARDRAILS_CODEBERT_S3_URI: "s3://codingrabbit-data-dev/models/guardrails/input_codebert_v1/model.tar.gz"
     INPUT_GUARDRAILS_CODEBERT_CHECKPOINT_DIR: "input_guardrails/models/checkpoints/input_codebert_v1"
     INPUT_GUARDRAILS_CODEBERT_PASS_BELOW: "0.30"
     INPUT_GUARDRAILS_CODEBERT_BLOCK_ABOVE: "0.70"
+    GUARDRAILS_CODEBERT_S3_URI: "s3://codingrabbit-data-dev/models/guardrails/codebert_v2_1/model.tar.gz"
+    GUARDRAILS_CODEBERT_CHECKPOINT_DIR: "output_guardrails/models/checkpoints/codebert_v2_1"
     USE_SAGEMAKER: "true"
     SAGEMAKER_ENDPOINT: "codingrabbit-qwen-async"
     SAGEMAKER_INFERENCE_BACKEND: "vllm"
