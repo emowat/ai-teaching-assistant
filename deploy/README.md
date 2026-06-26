@@ -53,7 +53,7 @@ export DEPLOY_CONFIG=/path/to/my-deployment.yaml
 | `inference_smoke_test` | `default_prompt`, `chat_template`, generation params | `invoke` smoke test |
 | `huggingface_packaging` | `required_files` | Validation before packaging |
 | `rag_eng` | `model_family`, `use_sagemaker`, `inference_backend` | Values to copy into `.env` after deploy |
-| `frontend_web` | `enabled`, `app_dir`, `dist_dir`, `bucket_name`, `bucket_prefix`, `default_root_object`, `spa_fallback_path`, `price_class`, `cloudfront`, `build` | Vite SPA build settings and S3 + CloudFront publishing wiring |
+| `frontend_web` | `enabled`, `app_dir`, `dist_dir`, `bucket_name`, `bucket_prefix`, `default_root_object`, `spa_fallback_path`, `price_class`, `cloudfront`, `build` | Vite SPA build settings and S3 + CloudFront provisioning/publishing wiring |
 
 The `_reference` block at the bottom of `deployment.yaml` documents each field (also printed by `describe`).
 
@@ -480,6 +480,8 @@ This is the online application runtime for `/api/chat`, `/query`, `/me`, and the
 
 The React/Vite frontend lives in [`frontend/`](/home/user/MIDS/w210/capstone/frontend) and reads the repo-root `.env` at build time. The deployment config now includes a `frontend_web` section for the S3 + CloudFront publishing slice.
 
+The infrastructure helper is [`deploy/scripts/provision-frontend-stack.sh`](/home/user/MIDS/w210/capstone/deploy/scripts/provision-frontend-stack.sh).
+
 The current helper is [`deploy/scripts/publish-frontend.sh`](/home/user/MIDS/w210/capstone/deploy/scripts/publish-frontend.sh).
 
 What it does:
@@ -512,6 +514,8 @@ The relevant values live in:
 - `frontend_web.build.vite_cognito_domain`
 - `frontend_web.build.vite_cognito_redirect_uri`
 - `frontend_web.build.vite_cognito_logout_uri`
+
+The provision helper creates the missing S3 bucket and CloudFront distribution ID, then prints the resolved values so they can be copied into `deploy/deployment.yaml`.
 
 ### 5. Smoke test the control plane
 

@@ -277,17 +277,17 @@ rag_eng_ecs:
 # Frontend web app (S3 + CloudFront static hosting)
 # -----------------------------------------------------------------------------
 frontend_web:
-  enabled: false
+  enabled: true
   app_dir: "./frontend"
   dist_dir: "./frontend/dist"
-  bucket_name: ""
+  bucket_name: "codingrabbit-frontend-976193240866-us-east-1"
   bucket_prefix: ""
   default_root_object: "index.html"
   spa_fallback_path: "/index.html"
   price_class: "PriceClass_100"
 
   cloudfront:
-    distribution_id: ""
+    distribution_id: "E1JMKN6NBFY206"
     aliases: []
     certificate_arn: null
     comment: "CodingRabbit frontend distribution"
