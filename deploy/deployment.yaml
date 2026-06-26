@@ -240,6 +240,8 @@ rag_eng_ecs:
     COGNITO_ISSUER: "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_Z5DAb8wni"
     COGNITO_JWKS_URL: "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_Z5DAb8wni/.well-known/jwks.json"
     LOG_LEVEL: "INFO"
+    GRADIO_ROOT_PATH: "/gradio"
+    GRADIO_PUBLIC_ORIGIN: "https://d26myplnp1msqn.cloudfront.net"
     OPENAI_BASE_URL: "https://api.openai.com/v1"
     QDRANT_URL: "https://ccc1cf4f-26c6-441c-ab70-a2a8f2da9464.us-east-1-1.aws.cloud.qdrant.io:6333"
     QDRANT_COLLECTION_NAME: "codingrabbit_rag_vectordb"

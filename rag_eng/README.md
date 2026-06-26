@@ -134,7 +134,11 @@ If that S3 location is a prefix containing `model.tar.gz`, the restore helper
 will extract the archive into the local checkpoint directory automatically.
 
 For the ECS deployment, both the input and output guardrail checkpoints are
-restored automatically at container startup by `deploy/scripts/rag-eng-startup.sh`.
+restored automatically at container startup by `deploy/scripts/rag-eng-startup.sh`,
+which also starts `uvicorn` with proxy headers enabled. The ECS task definition
+sets `GRADIO_ROOT_PATH=/gradio` and `GRADIO_PUBLIC_ORIGIN` to the public
+CloudFront origin so Gradio emits HTTPS-safe asset and API links without
+breaking the mounted route.
 The container image stays small because the checkpoints are loaded from S3 at
 runtime instead of being baked into the image.
 

@@ -533,9 +533,15 @@ def build_gradio_app(settings: Settings | None = None) -> gr.Blocks:
     return demo
 
 
-def mount_gradio_consoles(app: Any) -> Any:
+def mount_gradio_consoles(app: Any, settings: Settings | None = None) -> Any:
     """Mount the single tabbed admin console at /gradio."""
-    return gr.mount_gradio_app(app, build_gradio_app(), path="/gradio")
+    runtime = settings or get_settings()
+    return gr.mount_gradio_app(
+        app,
+        build_gradio_app(runtime),
+        path="/gradio",
+        root_path=runtime.gradio_root_path,
+    )
 
 
 # Keep these for any code that imports them directly (tests, etc.)

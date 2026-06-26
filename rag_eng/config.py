@@ -425,6 +425,8 @@ class Settings:
     app_host: str = "0.0.0.0"
     app_port: int = 8001
     gradio_port: int = 7860
+    gradio_root_path: str | None = None
+    gradio_public_origin: str | None = None
     admin_token: str | None = None
     log_level: str = "INFO"
     raw_data_path: str = ""
@@ -514,6 +516,8 @@ def get_settings() -> Settings:
         app_host=os.getenv("APP_HOST", "0.0.0.0"),
         app_port=int(os.getenv("APP_PORT", "8001")),
         gradio_port=int(os.getenv("GRADIO_PORT", "7860")),
+        gradio_root_path=os.getenv("GRADIO_ROOT_PATH") or None,
+        gradio_public_origin=os.getenv("GRADIO_PUBLIC_ORIGIN") or None,
         admin_token=os.getenv("ADMIN_TOKEN"),
         log_level=os.getenv("LOG_LEVEL", "INFO"),
         raw_data_path=os.getenv("RAW_DATA_PATH", str(repo_root / "raw_data")),

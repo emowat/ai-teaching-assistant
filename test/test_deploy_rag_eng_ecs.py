@@ -66,6 +66,8 @@ rag_eng_ecs:
     COGNITO_ISSUER: https://cognito-idp.us-east-1.amazonaws.com/us-east-1_Z5DAb8wni
     COGNITO_JWKS_URL: https://cognito-idp.us-east-1.amazonaws.com/us-east-1_Z5DAb8wni/.well-known/jwks.json
     LOG_LEVEL: INFO
+    GRADIO_ROOT_PATH: /gradio
+    GRADIO_PUBLIC_ORIGIN: "https://d26myplnp1msqn.cloudfront.net"
     OPENAI_BASE_URL: https://api.openai.com/v1
     QDRANT_URL: https://qdrant.example
     QDRANT_COLLECTION_NAME: codingrabbit_rag_vectordb
@@ -207,6 +209,8 @@ def test_build_task_definition_includes_runtime_env_and_secrets(tmp_path) -> Non
     assert env_map["QDRANT_URL"] == "https://qdrant.example"
     assert env_map["SAGEMAKER_ENDPOINT"] == "codingrabbit-qwen-async"
     assert env_map["MODEL_FAMILY"] == "qwen"
+    assert env_map["GRADIO_ROOT_PATH"] == "/gradio"
+    assert env_map["GRADIO_PUBLIC_ORIGIN"] == "https://d26myplnp1msqn.cloudfront.net"
     assert (
         env_map["GUARDRAILS_CODEBERT_S3_URI"]
         == "s3://codingrabbit-data-dev/models/guardrails/codebert_v2_1/model.tar.gz"

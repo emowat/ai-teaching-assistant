@@ -16,6 +16,7 @@ from rag_eng.ui import (
     build_pipeline_console_app,
     build_rag_query_app,
     build_sagemaker_console_app,
+    mount_gradio_consoles,
 )
 
 
@@ -80,6 +81,37 @@ def test_refresh_pipeline_route_uses_runtime_route(monkeypatch) -> None:
     text = _refresh_pipeline_route()
     assert "Current runtime route" in text
     assert "Bedrock (us.amazon.nova-2-lite-v1:0)" in text
+
+
+def test_mount_gradio_consoles_uses_configured_root_path(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr("rag_eng.ui.build_gradio_app", lambda settings=None: "demo-app")
+    monkeypatch.setattr(
+        "rag_eng.ui.gr.mount_gradio_app",
+        lambda app, blocks, path, root_path=None: captured.update(
+            {
+                "app": app,
+                "blocks": blocks,
+                "path": path,
+                "root_path": root_path,
+            }
+        )
+        or "mounted-app",
+    )
+
+    result = mount_gradio_consoles(
+        "fastapi-app",
+        SimpleNamespace(gradio_root_path="/gradio"),
+    )
+
+    assert result == "mounted-app"
+    assert captured == {
+        "app": "fastapi-app",
+        "blocks": "demo-app",
+        "path": "/gradio",
+        "root_path": "/gradio",
+    }
 
 
 def test_resolve_retrieval_preset_uses_saved_values() -> None:

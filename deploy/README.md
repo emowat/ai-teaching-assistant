@@ -248,7 +248,10 @@ These are the **recommended** way to run deployment. Each script:
 
 - restores the input guardrail checkpoint with `deploy/restore_input_guardrail_checkpoint.py`
 - restores the output guardrail checkpoint with `deploy/restore_guardrail_checkpoint.py`
-- then runs `uvicorn rag_eng.main:app --host 0.0.0.0 --port 8001`
+- then runs `uvicorn rag_eng.main:app --host 0.0.0.0 --port 8001 --proxy-headers --forwarded-allow-ips '*'`
+- sets `GRADIO_ROOT_PATH=/gradio` and `GRADIO_PUBLIC_ORIGIN` to the public
+  CloudFront origin so the embedded console generates HTTPS-safe asset and API
+  links without breaking the mounted route
 
 This keeps the Docker image small while ensuring the checkpoints are present in the task filesystem before the service starts.
 

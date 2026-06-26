@@ -96,7 +96,7 @@ The Monaco/file-explorer/console components still exist in the codebase as legac
 
 ## Admin Gradio tab
 
-The "RAG Query Console" tab in `AdminDashboard` probes `VITE_API_BASE_URL/gradio` every 30 seconds:
+The "RAG Query Console" tab in `AdminDashboard` probes `VITE_API_BASE_URL/gradio/` every 30 seconds:
 - Enabled → embeds Gradio in an `<iframe>`.
 - Disabled or unreachable → tab is greyed out with a tooltip.
 

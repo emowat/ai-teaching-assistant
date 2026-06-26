@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -138,6 +140,32 @@ def test_openapi_exposes_query_schema_examples(client: TestClient) -> None:
     assert "rerank_strategy" in schemas["QueryPayload"]["properties"]
     assert "guardrail" in schemas["QueryResult"]["properties"]
     assert "input_guardrail" in schemas["QueryResult"]["properties"]
+
+
+def test_gradio_page_uses_public_origin_for_asset_urls(monkeypatch) -> None:
+    monkeypatch.setenv("GRADIO_ROOT_PATH", "/gradio")
+    monkeypatch.setenv("GRADIO_PUBLIC_ORIGIN", "https://example.com")
+    monkeypatch.setattr("rag_eng.ui.fetch_input_guardrail_status", lambda: object())
+    monkeypatch.setattr(
+        "rag_eng.ui.format_input_guardrail_status_html",
+        lambda _status: "<div>input</div>",
+    )
+    monkeypatch.setattr(
+        "rag_eng.ui.fetch_sagemaker_status",
+        lambda: SimpleNamespace(summary="ok"),
+    )
+    monkeypatch.setattr(
+        "rag_eng.ui.format_traffic_lights_html",
+        lambda _status: "<div>sagemaker</div>",
+    )
+    monkeypatch.setattr("rag_eng.ui.describe_chat_route", lambda: "RAG -> Cohere")
+
+    local_client = TestClient(create_app())
+    response = local_client.get("/gradio/")
+
+    assert response.status_code == 200
+    assert "https://example.com/gradio" in response.text
+    assert "http://testserver/gradio" not in response.text
 
 
 def test_chat_endpoint_forwards_course_id(monkeypatch, client: TestClient) -> None:

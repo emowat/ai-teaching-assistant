@@ -40,4 +40,8 @@ fi
 
 APP_PORT="${APP_PORT:-8001}"
 echo "==> starting rag_eng on port ${APP_PORT}"
-exec "${PYTHON}" -m uvicorn rag_eng.main:app --host 0.0.0.0 --port "${APP_PORT}"
+exec "${PYTHON}" -m uvicorn rag_eng.main:app \
+  --host 0.0.0.0 \
+  --port "${APP_PORT}" \
+  --proxy-headers \
+  --forwarded-allow-ips '*'
