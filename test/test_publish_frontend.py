@@ -109,6 +109,10 @@ def test_publish_frontend_syncs_dist_and_invalidates_cloudfront(
     monkeypatch.delenv("VITE_COGNITO_DOMAIN", raising=False)
     monkeypatch.delenv("VITE_COGNITO_REDIRECT_URI", raising=False)
     monkeypatch.delenv("VITE_COGNITO_LOGOUT_URI", raising=False)
+    monkeypatch.setattr(
+        "deploy.publish_frontend._local_frontend_build_supported",
+        lambda: True,
+    )
 
     config = load_deploy_config(_write_config(tmp_path))
     fake_s3 = _FakeS3Client()
@@ -127,10 +131,13 @@ def test_publish_frontend_syncs_dist_and_invalidates_cloudfront(
         cloudfront_client=fake_cloudfront,
     )
 
-    assert run_calls[0][0] == ["npm", "ci"]
+    assert run_calls[0][0] == ["npm", "ci", "--include=dev"]
     assert run_calls[1][0] == ["npm", "run", "build"]
     assert run_calls[0][1]["VITE_API_BASE_URL"] == ""
     assert run_calls[0][1]["VITE_APP_VARIANT"] == "production"
+    assert run_calls[0][1]["npm_config_production"] == "false"
+    assert "NODE_ENV" not in run_calls[0][1]
+    assert run_calls[1][1]["NODE_ENV"] == "production"
 
     uploaded_keys = [call["Key"] for call in fake_s3.put_calls]
     assert uploaded_keys == [
@@ -157,3 +164,26 @@ def test_publish_frontend_syncs_dist_and_invalidates_cloudfront(
     ] == ["/*"]
     assert summary["distribution_id"] == "E1234567890"
     assert summary["sync"]["deleted_count"] == 1
+
+
+def test_build_frontend_falls_back_to_docker_when_node_is_old(
+    tmp_path, monkeypatch
+) -> None:
+    config = load_deploy_config(_write_config(tmp_path))
+    run_calls: list[tuple[list[str], dict[str, str]]] = []
+    from deploy.publish_frontend import _build_frontend
+
+    def _fake_run_command(cmd: list[str], *, cwd: Path, env: dict[str, str]) -> None:
+        run_calls.append((cmd, env))
+        assert cwd == Path(config.frontend_web.app_dir)
+
+    monkeypatch.setattr(
+        "deploy.publish_frontend._local_frontend_build_supported",
+        lambda: False,
+    )
+    monkeypatch.setattr("deploy.publish_frontend._run_command", _fake_run_command)
+
+    _build_frontend(config)
+
+    assert run_calls[0][0][0] == "docker"
+    assert "node:22-bookworm" in run_calls[0][0]

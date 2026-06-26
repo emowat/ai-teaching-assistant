@@ -38,6 +38,10 @@ if str(DEPLOY_DIR) not in sys.path:
 from deployment_config import DeployConfig, load_deploy_config  # noqa: E402
 
 
+MIN_FRONTEND_NODE_VERSION = (20, 19, 0)
+FRONTEND_BUILD_DOCKER_IMAGE = "node:22-bookworm"
+
+
 def _session(config: DeployConfig) -> boto3.Session:
     return boto3.Session(
         profile_name=config.aws.profile,
@@ -52,15 +56,80 @@ def _repo_path(path: str) -> Path:
     return (REPO_ROOT / candidate).resolve()
 
 
-def _frontend_env(config: DeployConfig) -> dict[str, str]:
+def _frontend_env(config: DeployConfig, *, production: bool) -> dict[str, str]:
     env = os.environ.copy()
     env.update(config.frontend_web.build.as_env_dict())
-    env["NODE_ENV"] = "production"
+    if production:
+        env["NODE_ENV"] = "production"
+    else:
+        env.pop("NODE_ENV", None)
+        env["npm_config_production"] = "false"
     return env
+
+
+def _parse_semver(version: str) -> tuple[int, int, int] | None:
+    cleaned = version.strip().lstrip("v")
+    parts = cleaned.split(".")
+    if len(parts) < 3:
+        return None
+    try:
+        return (int(parts[0]), int(parts[1]), int(parts[2]))
+    except ValueError:
+        return None
+
+
+def _local_frontend_build_supported() -> bool:
+    try:
+        completed = subprocess.run(
+            ["node", "-v"],
+            capture_output=True,
+            check=True,
+            text=True,
+        )
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        return False
+
+    parsed = _parse_semver(completed.stdout)
+    if parsed is None:
+        return False
+    return parsed >= MIN_FRONTEND_NODE_VERSION
 
 
 def _run_command(cmd: list[str], *, cwd: Path, env: dict[str, str]) -> None:
     subprocess.run(cmd, cwd=str(cwd), env=env, check=True)
+
+
+def _docker_build_command(
+    *,
+    app_dir: Path,
+    env: dict[str, str],
+) -> list[str]:
+    docker_env_flags: list[str] = []
+    for key in sorted(env):
+        if not key.startswith("VITE_"):
+            continue
+        docker_env_flags.extend(["-e", f"{key}={env[key]}"])
+
+    return [
+        "docker",
+        "run",
+        "--rm",
+        "-u",
+        f"{os.getuid()}:{os.getgid()}",
+        "-v",
+        f"{app_dir}:/workspace",
+        "-w",
+        "/workspace",
+        "-e",
+        "HOME=/tmp",
+        "-e",
+        "npm_config_cache=/tmp/.npm",
+        *docker_env_flags,
+        FRONTEND_BUILD_DOCKER_IMAGE,
+        "bash",
+        "-lc",
+        "npm ci --include=dev && NODE_ENV=production npm run build",
+    ]
 
 
 def _build_frontend(config: DeployConfig) -> None:
@@ -70,14 +139,28 @@ def _build_frontend(config: DeployConfig) -> None:
         raise RuntimeError(f"Missing frontend package.json: {package_json}")
 
     print(f"[1/3] Building frontend in {app_dir}")
-    env = _frontend_env(config)
-    install_cmd = (
-        ["npm", "ci"]
-        if (app_dir / "package-lock.json").is_file()
-        else ["npm", "install"]
+    if _local_frontend_build_supported():
+        install_env = _frontend_env(config, production=False)
+        build_env = _frontend_env(config, production=True)
+        install_cmd = (
+            ["npm", "ci", "--include=dev"]
+            if (app_dir / "package-lock.json").is_file()
+            else ["npm", "install", "--include=dev"]
+        )
+        _run_command(install_cmd, cwd=app_dir, env=install_env)
+        _run_command(["npm", "run", "build"], cwd=app_dir, env=build_env)
+        return
+
+    print(
+        "    Local Node.js is too old for the current frontend toolchain; "
+        f"using Docker build image {FRONTEND_BUILD_DOCKER_IMAGE}"
     )
-    _run_command(install_cmd, cwd=app_dir, env=env)
-    _run_command(["npm", "run", "build"], cwd=app_dir, env=env)
+    docker_env = _frontend_env(config, production=True)
+    _run_command(
+        _docker_build_command(app_dir=app_dir, env=docker_env),
+        cwd=app_dir,
+        env=os.environ.copy(),
+    )
 
 
 def _normalized_prefix(prefix: str) -> str:

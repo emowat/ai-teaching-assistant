@@ -491,6 +491,11 @@ What it does:
 - delete stale objects under the configured bucket prefix
 - invalidate the configured CloudFront distribution
 
+Build behavior:
+
+- If the local Node.js runtime is new enough for the current Vite toolchain, the helper builds directly on the host.
+- If the local Node.js runtime is too old, the helper automatically falls back to a Dockerized Node 22 build so the publish flow still works on older workstations.
+
 Required config for this flow:
 
 - `frontend_web.bucket_name`
