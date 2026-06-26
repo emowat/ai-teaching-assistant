@@ -40,6 +40,13 @@ from deployment_config import DeployConfig, load_deploy_config  # noqa: E402
 
 MIN_FRONTEND_NODE_VERSION = (20, 19, 0)
 FRONTEND_BUILD_DOCKER_IMAGE = "node:22-bookworm"
+FRONTEND_BUILD_ENV_KEYS = (
+    "VITE_API_BASE_URL",
+    "VITE_COGNITO_DOMAIN",
+    "VITE_COGNITO_REDIRECT_URI",
+    "VITE_COGNITO_LOGOUT_URI",
+    "FRONTEND_EXTRA_ENV_JSON",
+)
 
 
 def _session(config: DeployConfig) -> boto3.Session:
@@ -99,6 +106,26 @@ def _run_command(cmd: list[str], *, cwd: Path, env: dict[str, str]) -> None:
     subprocess.run(cmd, cwd=str(cwd), env=env, check=True)
 
 
+def _load_publish_config() -> DeployConfig:
+    """Load deployment config while ignoring local frontend build env overrides.
+
+    The repo-root `.env` is still useful for local dev and AWS auth, but the
+    production frontend build settings must come from `deploy/deployment.yaml`.
+    """
+
+    saved_env = {key: os.environ.get(key) for key in FRONTEND_BUILD_ENV_KEYS}
+    try:
+        for key in FRONTEND_BUILD_ENV_KEYS:
+            os.environ.pop(key, None)
+        return load_deploy_config()
+    finally:
+        for key, value in saved_env.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+
 def _docker_build_command(
     *,
     app_dir: Path,
@@ -110,6 +137,8 @@ def _docker_build_command(
             continue
         docker_env_flags.extend(["-e", f"{key}={env[key]}"])
 
+    workspace_root = app_dir.parent
+    relative_app_dir = app_dir.relative_to(workspace_root).as_posix()
     return [
         "docker",
         "run",
@@ -117,9 +146,9 @@ def _docker_build_command(
         "-u",
         f"{os.getuid()}:{os.getgid()}",
         "-v",
-        f"{app_dir}:/workspace",
+        f"{workspace_root}:/workspace",
         "-w",
-        "/workspace",
+        f"/workspace/{relative_app_dir}",
         "-e",
         "HOME=/tmp",
         "-e",
@@ -134,6 +163,7 @@ def _docker_build_command(
 
 def _build_frontend(config: DeployConfig) -> None:
     app_dir = _repo_path(config.frontend_web.app_dir)
+    workspace_root = app_dir.parent
     package_json = app_dir / "package.json"
     if not package_json.is_file():
         raise RuntimeError(f"Missing frontend package.json: {package_json}")
@@ -158,7 +188,7 @@ def _build_frontend(config: DeployConfig) -> None:
     docker_env = _frontend_env(config, production=True)
     _run_command(
         _docker_build_command(app_dir=app_dir, env=docker_env),
-        cwd=app_dir,
+        cwd=workspace_root,
         env=os.environ.copy(),
     )
 
@@ -413,7 +443,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    config = load_deploy_config()
+    config = _load_publish_config()
 
     if args.command == "describe":
         for line in describe_config(config):

@@ -14,6 +14,7 @@ of `deploy/publish_frontend.py`.
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import sys
 import time
@@ -355,7 +356,7 @@ def _build_distribution_config(
             "CustomOriginConfig": {
                 "HTTPPort": 80,
                 "HTTPSPort": 443,
-                "OriginProtocolPolicy": "https-only",
+                "OriginProtocolPolicy": frontend.cloudfront.origin_protocol_policy,
                 "OriginSslProtocols": {
                     "Quantity": 1,
                     "Items": ["TLSv1.2"],
@@ -421,6 +422,10 @@ def _build_distribution_config(
         "HttpVersion": "http2and3",
         "IsIPV6Enabled": True,
         "Origins": {"Quantity": len(origins), "Items": origins},
+        "Aliases": {
+            "Quantity": len(frontend.cloudfront.aliases),
+            "Items": list(frontend.cloudfront.aliases),
+        },
         "DefaultCacheBehavior": {
             "TargetOriginId": "frontend-s3",
             "ViewerProtocolPolicy": "redirect-to-https",
@@ -457,10 +462,6 @@ def _build_distribution_config(
             raise RuntimeError(
                 "frontend_web.cloudfront.certificate_arn is required when aliases are configured."
             )
-        distribution_config["Aliases"] = {
-            "Quantity": len(frontend.cloudfront.aliases),
-            "Items": list(frontend.cloudfront.aliases),
-        }
         distribution_config["ViewerCertificate"] = {
             "ACMCertificateArn": frontend.cloudfront.certificate_arn,
             "SSLSupportMethod": "sni-only",
@@ -553,6 +554,46 @@ def _create_distribution(
     }
 
 
+def _update_distribution(
+    cloudfront,
+    *,
+    config: DeployConfig,
+    distribution_id: str,
+    bucket_name: str,
+    account_id: str,
+    alb_dns_name: str,
+    oac_id: str,
+    spa_function_arn: str,
+) -> dict[str, str]:
+    current = cloudfront.get_distribution_config(Id=distribution_id)
+    etag = current["ETag"]
+    distribution_config = copy.deepcopy(current["DistributionConfig"])
+
+    for origin in distribution_config.get("Origins", {}).get("Items", []):
+        if origin.get("Id") == "rag-eng-alb":
+            origin.setdefault("CustomOriginConfig", {})[
+                "OriginProtocolPolicy"
+            ] = config.frontend_web.cloudfront.origin_protocol_policy
+            break
+    else:
+        raise RuntimeError("Unable to find rag-eng-alb origin in CloudFront config.")
+    distribution_config["CallerReference"] = current["DistributionConfig"][
+        "CallerReference"
+    ]
+
+    response = cloudfront.update_distribution(
+        Id=distribution_id,
+        IfMatch=etag,
+        DistributionConfig=distribution_config,
+    )
+    distribution = response["Distribution"]
+    return {
+        "id": distribution["Id"],
+        "domain_name": distribution["DomainName"],
+        "status": distribution["Status"],
+    }
+
+
 def _ensure_distribution(
     cloudfront,
     *,
@@ -565,12 +606,16 @@ def _ensure_distribution(
 ) -> dict[str, str]:
     if config.frontend_web.cloudfront.distribution_id:
         distribution_id = config.frontend_web.cloudfront.distribution_id
-        current = cloudfront.get_distribution(Id=distribution_id)["Distribution"]
-        return {
-            "id": current["Id"],
-            "domain_name": current["DomainName"],
-            "status": current["Status"],
-        }
+        return _update_distribution(
+            cloudfront,
+            config=config,
+            distribution_id=distribution_id,
+            bucket_name=bucket_name,
+            account_id=account_id,
+            alb_dns_name=alb_dns_name,
+            oac_id=oac_id,
+            spa_function_arn=spa_function_arn,
+        )
     return _create_distribution(
         cloudfront,
         config=config,

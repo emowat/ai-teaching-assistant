@@ -76,6 +76,7 @@ The `_reference` block at the bottom of `deployment.yaml` documents each field (
 | `FRONTEND_BUCKET_PREFIX` | `frontend_web.bucket_prefix` |
 | `FRONTEND_CLOUDFRONT_DISTRIBUTION_ID` | `frontend_web.cloudfront.distribution_id` |
 | `FRONTEND_CLOUDFRONT_ALIASES` | `frontend_web.cloudfront.aliases` |
+| `FRONTEND_CLOUDFRONT_ORIGIN_PROTOCOL_POLICY` | `frontend_web.cloudfront.origin_protocol_policy` |
 | `VITE_API_BASE_URL` | `frontend_web.build.vite_api_base_url` |
 | `VITE_COGNITO_DOMAIN` | `frontend_web.build.vite_cognito_domain` |
 | `VITE_COGNITO_REDIRECT_URI` | `frontend_web.build.vite_cognito_redirect_uri` |
@@ -506,6 +507,15 @@ Required config for this flow:
 - `frontend_web.build.vite_cognito_redirect_uri`
 - `frontend_web.build.vite_cognito_logout_uri`
 
+For production publishing, the Cognito callback/logout URLs must match the
+actual CloudFront origin used by the static site, not the local dev server.
+The localhost values remain appropriate for `npm run dev`; the CloudFront
+values belong in `deploy/deployment.yaml` so the published bundle is built with
+the correct origin baked in.
+The frontend publish helper intentionally ignores repo-root `.env` overrides
+for the build-time `VITE_*` frontend URLs so the deployment file stays the
+source of truth for production bundle settings.
+
 The relevant values live in:
 
 - `frontend_web.app_dir`
@@ -515,6 +525,7 @@ The relevant values live in:
 - `frontend_web.cloudfront.distribution_id`
 - `frontend_web.cloudfront.aliases`
 - `frontend_web.cloudfront.api_path_patterns`
+- `frontend_web.cloudfront.origin_protocol_policy`
 - `frontend_web.build.vite_api_base_url`
 - `frontend_web.build.vite_cognito_domain`
 - `frontend_web.build.vite_cognito_redirect_uri`

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 
 from deploy.deploy_rag_eng_ecs import (
@@ -8,6 +9,8 @@ from deploy.deploy_rag_eng_ecs import (
     describe_config,
     missing_registration_values,
     missing_service_values,
+    _render_json,
+    _service_status,
 )
 from deploy.deploy_rag_eng_ecs import _register_task_definition
 from deploy.deploy_rag_eng_ecs import _upsert_service
@@ -101,19 +104,20 @@ frontend_web:
   spa_fallback_path: /index.html
   price_class: PriceClass_100
   cloudfront:
-    distribution_id: E1234567890
-    aliases:
-      - app.example.com
-    certificate_arn: arn:aws:acm:us-east-1:123456789012:certificate/example
-    comment: CodingRabbit frontend
-    create_oac: true
-    invalidation_paths:
-      - /*
-    api_path_patterns:
-      - /api/*
-      - /health
-    cache_static_assets: true
-    cache_html_seconds: 60
+      distribution_id: E1234567890
+      aliases:
+        - app.example.com
+      certificate_arn: arn:aws:acm:us-east-1:123456789012:certificate/example
+      comment: CodingRabbit frontend
+      create_oac: true
+      invalidation_paths:
+        - /*
+      api_path_patterns:
+        - /api/*
+        - /health
+      origin_protocol_policy: http-only
+      cache_static_assets: true
+      cache_html_seconds: 60
   build:
     vite_api_base_url: https://api.example.com
     vite_cognito_domain: https://example.auth.us-east-1.amazoncognito.com
@@ -160,6 +164,7 @@ def test_load_frontend_web_config_reads_values_and_shell_exports(
     assert config.frontend_web.cloudfront.create_oac is True
     assert config.frontend_web.cloudfront.cache_static_assets is True
     assert config.frontend_web.cloudfront.cache_html_seconds == 60
+    assert config.frontend_web.cloudfront.origin_protocol_policy == "http-only"
     assert config.frontend_web.build.vite_api_base_url == "https://api.example.com"
     assert config.frontend_web.build.extra_env["VITE_APP_VARIANT"] == "production"
 
@@ -167,6 +172,10 @@ def test_load_frontend_web_config_reads_values_and_shell_exports(
     assert 'export DEPLOY_FRONTEND_BUCKET_NAME="codingrabbit-frontend-dev"' in exports
     assert 'export DEPLOY_FRONTEND_CLOUDFRONT_DISTRIBUTION_ID="E1234567890"' in exports
     assert 'export DEPLOY_FRONTEND_CLOUDFRONT_ALIASES="app.example.com"' in exports
+    assert (
+        'export DEPLOY_FRONTEND_CLOUDFRONT_ORIGIN_PROTOCOL_POLICY="http-only"'
+        in exports
+    )
     assert (
         'export DEPLOY_FRONTEND_VITE_API_BASE_URL="https://api.example.com"' in exports
     )
@@ -240,8 +249,9 @@ def test_describe_config_reports_no_missing_values(tmp_path) -> None:
 
 
 class _FakeEcsClient:
-    def __init__(self, *, has_service: bool = False) -> None:
+    def __init__(self, *, has_service: bool = False, include_temporal_metadata: bool = False) -> None:
         self.has_service = has_service
+        self.include_temporal_metadata = include_temporal_metadata
         self.register_kwargs = None
         self.create_kwargs = None
         self.update_kwargs = None
@@ -259,7 +269,7 @@ class _FakeEcsClient:
     def describe_services(self, **kwargs):
         if not self.has_service:
             return {"services": []}
-        return {
+        service = {
             "services": [
                 {
                     "status": "ACTIVE",
@@ -270,6 +280,21 @@ class _FakeEcsClient:
                 }
             ]
         }
+        if self.include_temporal_metadata:
+            service["services"][0]["events"] = [
+                {
+                    "createdAt": datetime(2026, 6, 26, 12, 34, 56, tzinfo=timezone.utc),
+                    "message": "service started",
+                }
+            ]
+            service["services"][0]["deployments"] = [
+                {
+                    "createdAt": datetime(2026, 6, 26, 12, 35, 0, tzinfo=timezone.utc),
+                    "updatedAt": datetime(2026, 6, 26, 12, 36, 0, tzinfo=timezone.utc),
+                    "status": "PRIMARY",
+                }
+            ]
+        return service
 
     def create_service(self, **kwargs):
         self.create_kwargs = kwargs
@@ -340,6 +365,18 @@ def test_upsert_service_updates_existing_service(tmp_path) -> None:
     assert "launchType" not in client.update_kwargs
     assert response["action"] == "updated"
     assert response["taskDefinition"].endswith(":4")
+
+
+def test_service_status_rendering_handles_datetime_fields(tmp_path) -> None:
+    config = load_deploy_config(_write_config(tmp_path))
+    client = _FakeEcsClient(has_service=True, include_temporal_metadata=True)
+
+    status = _service_status(config, client=client)
+    rendered = _render_json(status)
+
+    assert "2026-06-26T12:34:56+00:00" in rendered
+    assert "2026-06-26T12:35:00+00:00" in rendered
+    assert "2026-06-26T12:36:00+00:00" in rendered
 
 
 def test_deploy_script_loads_the_rendered_deploy_config() -> None:

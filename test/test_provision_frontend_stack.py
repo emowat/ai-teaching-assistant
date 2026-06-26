@@ -11,6 +11,7 @@ from deploy.provision_frontend_stack import (
     _build_distribution_config,
     _find_managed_policy_id,
     _ensure_oac,
+    _update_distribution,
     _spa_function_code,
     describe_config,
 )
@@ -48,6 +49,7 @@ frontend_web:
       - /api/*
       - /admin/*
       - /health
+    origin_protocol_policy: http-only
     cache_static_assets: true
     cache_html_seconds: 60
   build:
@@ -84,12 +86,16 @@ def test_build_distribution_config_contains_s3_and_alb_origins(tmp_path) -> None
     )
 
     origins = {origin["Id"]: origin for origin in payload["Origins"]["Items"]}
+    assert payload["Aliases"]["Quantity"] == 0
     assert origins["frontend-s3"]["DomainName"].startswith(
         "codingrabbit-frontend-123456789012-us-east-1.s3."
     )
     assert origins["frontend-s3"]["OriginAccessControlId"] == "oac-123"
     assert origins["rag-eng-alb"]["DomainName"] == (
         "internal-rag-eng-alb-123.us-east-1.elb.amazonaws.com"
+    )
+    assert origins["rag-eng-alb"]["CustomOriginConfig"]["OriginProtocolPolicy"] == (
+        "http-only"
     )
     assert payload["DefaultCacheBehavior"]["CachePolicyId"] == "cache-disabled"
     assert payload["DefaultCacheBehavior"]["FunctionAssociations"]["Items"][0][
@@ -100,6 +106,84 @@ def test_build_distribution_config_contains_s3_and_alb_origins(tmp_path) -> None
     assert payload["CacheBehaviors"]["Items"][1]["OriginRequestPolicyId"] == (
         "origin-request-policy"
     )
+
+
+def test_update_distribution_uses_http_only_origin_policy(tmp_path) -> None:
+    config = load_deploy_config(_write_config(tmp_path))
+
+    class DummyCloudFront:
+        def __init__(self) -> None:
+            self.update_kwargs = None
+
+        def get_distribution_config(self, **kwargs):
+            assert kwargs["Id"] == "DIST123"
+            return {
+                "ETag": "etag-123",
+                "DistributionConfig": {
+                    "CallerReference": "caller-ref-123",
+                    "Origins": {
+                        "Quantity": 2,
+                        "Items": [
+                            {
+                                "Id": "frontend-s3",
+                                "DomainName": "bucket.s3.us-east-1.amazonaws.com",
+                                "S3OriginConfig": {
+                                    "OriginAccessIdentity": "",
+                                },
+                            },
+                            {
+                                "Id": "rag-eng-alb",
+                                "DomainName": "alb.example.com",
+                                "CustomOriginConfig": {
+                                    "HTTPPort": 80,
+                                    "HTTPSPort": 443,
+                                    "OriginProtocolPolicy": "https-only",
+                                    "OriginSslProtocols": {
+                                        "Quantity": 1,
+                                        "Items": ["TLSv1.2"],
+                                    },
+                                },
+                            },
+                        ],
+                    },
+                },
+            }
+
+        def update_distribution(self, **kwargs):
+            self.update_kwargs = kwargs
+            return {
+                "Distribution": {
+                    "Id": kwargs["Id"],
+                    "DomainName": "d.example",
+                    "Status": "InProgress",
+                }
+            }
+
+    cloudfront = DummyCloudFront()
+    result = _update_distribution(
+        cloudfront,
+        config=config,
+        distribution_id="DIST123",
+        bucket_name="codingrabbit-frontend-123456789012-us-east-1",
+        account_id="123456789012",
+        alb_dns_name="internal-rag-eng-alb-123.us-east-1.elb.amazonaws.com",
+        oac_id="oac-123",
+        spa_function_arn="arn:aws:cloudfront::123456789012:function/codingrabbit-frontend-spa-rewrite",
+    )
+
+    assert cloudfront.update_kwargs is not None
+    assert cloudfront.update_kwargs["IfMatch"] == "etag-123"
+    assert cloudfront.update_kwargs["DistributionConfig"]["CallerReference"] == (
+        "caller-ref-123"
+    )
+    assert (
+        cloudfront.update_kwargs["DistributionConfig"]["Origins"]["Items"][1][
+            "CustomOriginConfig"
+        ]["OriginProtocolPolicy"]
+        == "http-only"
+    )
+    assert result["id"] == "DIST123"
+    assert result["status"] == "InProgress"
 
 
 def test_bucket_policy_scopes_read_access_to_distribution() -> None:

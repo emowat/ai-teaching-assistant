@@ -18,6 +18,7 @@ import argparse
 import json
 import os
 import sys
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -73,6 +74,16 @@ STARTUP_COMMAND: tuple[str, ...] = (
     "/bin/sh",
     "/app/deploy/scripts/rag-eng-startup.sh",
 )
+
+
+def _json_default(value: Any) -> Any:
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    raise TypeError(f"Object of type {value.__class__.__name__} is not JSON serializable")
+
+
+def _render_json(payload: Any) -> str:
+    return json.dumps(payload, indent=2, sort_keys=True, default=_json_default)
 
 
 def _ecs_client(config: DeployConfig):
@@ -452,17 +463,17 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.action == "render-task-definition":
         payload = build_task_definition(config)
-        _write_output(json.dumps(payload, indent=2, sort_keys=True), args.output)
+        _write_output(_render_json(payload), args.output)
         return 0
 
     if args.action == "render-service-spec":
         payload = build_service_spec(config)
-        _write_output(json.dumps(payload, indent=2, sort_keys=True), args.output)
+        _write_output(_render_json(payload), args.output)
         return 0
 
     if args.action == "register-task-definition":
         response = _register_task_definition(config)
-        _write_output(json.dumps(response, indent=2, sort_keys=True), args.output)
+        _write_output(_render_json(response), args.output)
         return 0
 
     if args.action == "deploy":
@@ -475,12 +486,12 @@ def main(argv: list[str] | None = None) -> int:
             "task_definition": registered,
             "service": deployed,
         }
-        _write_output(json.dumps(output, indent=2, sort_keys=True), args.output)
+        _write_output(_render_json(output), args.output)
         return 0
 
     if args.action == "status":
         status = _service_status(config)
-        _write_output(json.dumps(status, indent=2, sort_keys=True), args.output)
+        _write_output(_render_json(status), args.output)
         return 0
 
     parser.error(f"Unknown action: {args.action}")

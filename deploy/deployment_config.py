@@ -75,6 +75,7 @@ ENV_OVERRIDES: dict[str, str] = {
     "FRONTEND_CLOUDFRONT_CREATE_OAC": "frontend_web.cloudfront.create_oac",
     "FRONTEND_CLOUDFRONT_INVALIDATION_PATHS": "frontend_web.cloudfront.invalidation_paths",
     "FRONTEND_CLOUDFRONT_API_PATH_PATTERNS": "frontend_web.cloudfront.api_path_patterns",
+    "FRONTEND_CLOUDFRONT_ORIGIN_PROTOCOL_POLICY": "frontend_web.cloudfront.origin_protocol_policy",
     "FRONTEND_CLOUDFRONT_CACHE_STATIC_ASSETS": "frontend_web.cloudfront.cache_static_assets",
     "FRONTEND_CLOUDFRONT_CACHE_HTML_SECONDS": "frontend_web.cloudfront.cache_html_seconds",
     "VITE_API_BASE_URL": "frontend_web.build.vite_api_base_url",
@@ -266,6 +267,7 @@ class FrontendCloudFrontConfig:
     create_oac: bool
     invalidation_paths: tuple[str, ...]
     api_path_patterns: tuple[str, ...]
+    origin_protocol_policy: str
     cache_static_assets: bool
     cache_html_seconds: int
 
@@ -753,6 +755,9 @@ def load_deploy_config(path: str | Path | None = None) -> DeployConfig:
                         "/gradio*",
                     ),
                 ),
+                origin_protocol_policy=str(
+                    frontend_cloudfront.get("origin_protocol_policy", "http-only")
+                ),
                 cache_static_assets=_as_bool(
                     frontend_cloudfront.get("cache_static_assets", True),
                     True,
@@ -855,6 +860,9 @@ def get_dotpath(cfg: DeployConfig, dot_path: str) -> Any:
         "frontend_web.cloudfront.api_path_patterns": ",".join(
             cfg.frontend_web.cloudfront.api_path_patterns
         ),
+        "frontend_web.cloudfront.origin_protocol_policy": (
+            cfg.frontend_web.cloudfront.origin_protocol_policy
+        ),
         "frontend_web.cloudfront.cache_static_assets": str(
             cfg.frontend_web.cloudfront.cache_static_assets
         ),
@@ -931,6 +939,9 @@ def shell_export(cfg: DeployConfig | None = None) -> str:
         ),
         "DEPLOY_FRONTEND_CLOUDFRONT_API_PATH_PATTERNS": ",".join(
             cfg.frontend_web.cloudfront.api_path_patterns
+        ),
+        "DEPLOY_FRONTEND_CLOUDFRONT_ORIGIN_PROTOCOL_POLICY": (
+            cfg.frontend_web.cloudfront.origin_protocol_policy
         ),
         "DEPLOY_FRONTEND_CLOUDFRONT_CACHE_STATIC_ASSETS": str(
             cfg.frontend_web.cloudfront.cache_static_assets
@@ -1037,6 +1048,7 @@ def describe_config(path: str | Path | None = None) -> None:
                     "create_oac": cfg.frontend_web.cloudfront.create_oac,
                     "invalidation_paths": cfg.frontend_web.cloudfront.invalidation_paths,
                     "api_path_patterns": cfg.frontend_web.cloudfront.api_path_patterns,
+                    "origin_protocol_policy": cfg.frontend_web.cloudfront.origin_protocol_policy,
                     "cache_static_assets": cfg.frontend_web.cloudfront.cache_static_assets,
                     "cache_html_seconds": cfg.frontend_web.cloudfront.cache_html_seconds,
                     "vite_api_base_url": cfg.frontend_web.build.vite_api_base_url,

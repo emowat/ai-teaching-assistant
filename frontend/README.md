@@ -58,6 +58,9 @@ npm run lint
 
 Requires a `.env` at the repo root with Cognito and API variables. See `.env.example`.
 Vite is configured with `envDir: ..` in `frontend/vite.config.ts`, so the frontend reads the repo root `.env` rather than `frontend/.env`.
+For production publishing, `deploy/deployment.yaml` supplies the CloudFront
+callback and logout URLs that get baked into the static bundle. Keep the repo
+root `.env` pointed at localhost for `npm run dev`.
 
 ## Authentication flow
 
