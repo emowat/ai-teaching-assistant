@@ -215,7 +215,7 @@ def _health_settings():
         qdrant_api_key="qdrant-key",
         qdrant_collection_name="mit13_course",
         qdrant_guidelines_collection_name="cpp_guidelines",
-        qdrant_harvard_collection_name="cs50_course",
+        qdrant_harvard_collection_name="harvard_cs50",
         cohere_api_key="cohere",
         openai_api_key="sk-test",
         openai_base_url="https://api.openai.com/v1",

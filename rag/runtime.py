@@ -64,7 +64,7 @@ def get_runtime_config() -> RagRuntimeConfig:
         qdrant_path=os.getenv("QDRANT_PATH", str(default_qdrant_path)),
         collection_mit13=os.getenv("QDRANT_COLLECTION_MIT13", "mit13_course"),
         collection_mit14=os.getenv("QDRANT_COLLECTION_MIT14", "mit14_course"),
-        collection_cs50=os.getenv("QDRANT_COLLECTION_CS50", "cs50_course"),
+        collection_cs50=os.getenv("QDRANT_COLLECTION_CS50", "harvard_cs50"),
         collection_guidelines=os.getenv("QDRANT_COLLECTION_GUIDELINES", "cpp_guidelines"),
         embedding_model=os.getenv(
             "EMBEDDING_MODEL",

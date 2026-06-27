@@ -75,7 +75,7 @@ rag_eng_ecs:
     QDRANT_HARVARD_COLLECTION_NAME: harvard_cs50
     QDRANT_COLLECTION_MIT13: mit13_course
     QDRANT_COLLECTION_MIT14: mit14_course
-    QDRANT_COLLECTION_CS50: cs50_course
+    QDRANT_COLLECTION_CS50: harvard_cs50
     QDRANT_COLLECTION_GUIDELINES: cpp_guidelines
     EMBEDDING_MODEL: sentence-transformers/multi-qa-mpnet-base-dot-v1
     INPUT_GUARDRAILS_ENABLED: "true"
