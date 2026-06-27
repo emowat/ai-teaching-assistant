@@ -109,7 +109,8 @@ tabs expose the runtime diagnostics used for model and RAG tuning:
 
 The AI Models panel in the admin dashboard can route RAG and chat through
 Cohere, OpenAI, Bedrock, Ollama, or SageMaker. Under Bedrock, the available
-model options include Amazon Nova 2 Lite and Anthropic Claude 3.5 Haiku.
+model options include Amazon Nova 2 Lite, Anthropic Claude Sonnet 4.6, and
+Anthropic Claude 3.5 Haiku.
 
 The Pipeline tab exposes the retrieval presets used for RAG tuning:
 - experiment baseline at `K=8` with `similarity` reranking

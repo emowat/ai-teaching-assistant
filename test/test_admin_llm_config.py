@@ -160,7 +160,7 @@ def test_admin_save_llm_config_allows_bedrock(monkeypatch, tmp_path: Path) -> No
         headers={"X-Admin-Token": "admin-token"},
         json={
             "rag": {"provider": "bedrock", "model": "us.amazon.nova-2-lite-v1:0"},
-            "chat": {"provider": "bedrock", "model": "us.anthropic.claude-3-5-haiku-20241022-v1:0"},
+            "chat": {"provider": "bedrock", "model": "anthropic.claude-sonnet-4-6"},
             "openai_api_key": None,
             "openai_base_url": "https://api.openai.com/v1",
         },
@@ -169,7 +169,7 @@ def test_admin_save_llm_config_allows_bedrock(monkeypatch, tmp_path: Path) -> No
     assert response.status_code == 200
     assert response.json()["rag"]["provider"] == "bedrock"
     assert response.json()["chat"]["provider"] == "bedrock"
-    assert response.json()["chat"]["model"] == "us.anthropic.claude-3-5-haiku-20241022-v1:0"
+    assert response.json()["chat"]["model"] == "anthropic.claude-sonnet-4-6"
 
 
 def test_admin_save_llm_config_allows_sagemaker_without_model(monkeypatch, tmp_path: Path) -> None:

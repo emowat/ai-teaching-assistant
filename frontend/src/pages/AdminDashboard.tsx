@@ -70,6 +70,10 @@ const COHERE_MODEL_OPTIONS: ModelOption[] = [
 const BEDROCK_MODEL_OPTIONS: ModelOption[] = [
   { label: "Amazon Nova 2 Lite", value: "us.amazon.nova-2-lite-v1:0" },
   {
+    label: "Anthropic Claude Sonnet 4.6",
+    value: "anthropic.claude-sonnet-4-6",
+  },
+  {
     label: "Anthropic Claude 3.5 Haiku",
     value: "us.anthropic.claude-3-5-haiku-20241022-v1:0",
   },
