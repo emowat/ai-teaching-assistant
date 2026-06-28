@@ -6,6 +6,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from rag_eng.config import bedrock_inference_profile_id
+from rag_eng.config import is_deprecated_bedrock_model_id
 from rag.schemas import CourseSource as RagCourseSource, QueryInput, RetrievalResult
 
 RetrievalRerankStrategy = Literal["similarity", "mmr_0.5", "mmr_0.7", "mmr_0.9"]
@@ -176,6 +178,13 @@ class ModelRouteConfig(BaseModel):
             return self
         if not self.model.strip():
             raise ValueError(f"model is required for provider '{self.provider}'")
+        if self.provider == "bedrock" and is_deprecated_bedrock_model_id(self.model):
+            profile_id = bedrock_inference_profile_id(self.model)
+            raise ValueError(
+                "Bedrock Claude Sonnet 4.6 must use an inference profile ID "
+                f"such as '{profile_id}' or 'global.anthropic.claude-sonnet-4-6'; "
+                "the foundation-model ID 'anthropic.claude-sonnet-4-6' is not supported."
+            )
         return self
 
 

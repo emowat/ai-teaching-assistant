@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+from botocore.exceptions import ClientError
+
 from rag_eng.gradio_tools import (
     fetch_input_guardrail_status,
     TrafficLight,
@@ -65,6 +67,57 @@ def test_fetch_sagemaker_status_without_aws(monkeypatch) -> None:
     status = fetch_sagemaker_status()
     assert status.endpoint_name
     assert any(light.label == "rag_eng routing" for light in status.lights)
+
+
+def test_fetch_sagemaker_status_reports_access_denied(monkeypatch) -> None:
+    class _FakeSageMakerClient:
+        def describe_endpoint(self, *, EndpointName: str):
+            raise ClientError(
+                {
+                    "Error": {
+                        "Code": "AccessDeniedException",
+                        "Message": "not authorized",
+                    }
+                },
+                "DescribeEndpoint",
+            )
+
+    monkeypatch.setattr(
+        "rag_eng.gradio_tools._boto_session",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            client=lambda _service: _FakeSageMakerClient()
+        ),
+    )
+    monkeypatch.setattr(
+        "rag_eng.gradio_tools._load_deploy_config",
+        lambda: SimpleNamespace(
+            config_path="/tmp/deployment.yaml",
+            sagemaker=SimpleNamespace(
+                container=SimpleNamespace(extra_env={"SM_VLLM_MAX_MODEL_LEN": "10240"})
+            ),
+        ),
+    )
+
+    status = fetch_sagemaker_status(
+        SimpleNamespace(
+            sagemaker_endpoint="codingrabbit-qwen-async",
+            aws_profile=None,
+            aws_region="us-east-1",
+            use_sagemaker=True,
+            sagemaker_inference_backend="vllm",
+        )
+    )
+
+    assert status.endpoint_status == "AccessDenied"
+    assert "lacks SageMaker describe permissions" in status.summary
+    assert any(
+        light.label == "AWS describe_endpoint" and light.state == "error"
+        for light in status.lights
+    )
+    assert any(
+        light.label == "Endpoint" and light.state == "error"
+        for light in status.lights
+    )
 
 
 def test_invoke_pipeline_chat_forwards_trace_fields(monkeypatch) -> None:

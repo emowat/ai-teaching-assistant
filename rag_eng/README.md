@@ -430,6 +430,9 @@ Build the runner image before using docker mode:
 The editable non-secret route settings live in `rag_eng/runtime_config.yaml`.
 When `RUNTIME_CONFIG_S3_URI` is set, that file is restored from S3 on startup
 and saved back to S3 whenever the admin LLM config is updated.
+For Bedrock Anthropic Claude Sonnet 4.6, use the inference profile ID
+`us.anthropic.claude-sonnet-4-6` (or the global profile ID) instead of the
+foundation-model ID `anthropic.claude-sonnet-4-6`.
 AWS deployment wiring for the online service lives in `deploy/deployment.yaml`
 under `rag_eng_ecs`, and the ECS service helper is
 [`deploy/scripts/deploy-rag-eng-ecs.sh`](/home/user/MIDS/w210/capstone/deploy/scripts/deploy-rag-eng-ecs.sh).

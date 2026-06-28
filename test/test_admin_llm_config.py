@@ -160,7 +160,7 @@ def test_admin_save_llm_config_allows_bedrock(monkeypatch, tmp_path: Path) -> No
         headers={"X-Admin-Token": "admin-token"},
         json={
             "rag": {"provider": "bedrock", "model": "us.amazon.nova-2-lite-v1:0"},
-            "chat": {"provider": "bedrock", "model": "anthropic.claude-sonnet-4-6"},
+            "chat": {"provider": "bedrock", "model": "us.anthropic.claude-sonnet-4-6"},
             "openai_api_key": None,
             "openai_base_url": "https://api.openai.com/v1",
         },
@@ -169,7 +169,28 @@ def test_admin_save_llm_config_allows_bedrock(monkeypatch, tmp_path: Path) -> No
     assert response.status_code == 200
     assert response.json()["rag"]["provider"] == "bedrock"
     assert response.json()["chat"]["provider"] == "bedrock"
-    assert response.json()["chat"]["model"] == "anthropic.claude-sonnet-4-6"
+    assert response.json()["chat"]["model"] == "us.anthropic.claude-sonnet-4-6"
+
+
+def test_admin_save_llm_config_rejects_raw_bedrock_sonnet_model(monkeypatch) -> None:
+    monkeypatch.setenv("ADMIN_TOKEN", "admin-token")
+    monkeypatch.setenv("OPENAI_API_KEY", "old-secret")
+    monkeypatch.setattr("rag_eng.api.get_inference_config", _runtime_config)
+
+    client = _client()
+    response = client.post(
+        "/admin/llm/config",
+        headers={"X-Admin-Token": "admin-token"},
+        json={
+            "rag": {"provider": "bedrock", "model": "us.amazon.nova-2-lite-v1:0"},
+            "chat": {"provider": "bedrock", "model": "anthropic.claude-sonnet-4-6"},
+            "openai_api_key": None,
+            "openai_base_url": "https://api.openai.com/v1",
+        },
+    )
+
+    assert response.status_code == 422
+    assert "inference profile ID" in response.text
 
 
 def test_admin_save_llm_config_allows_sagemaker_without_model(monkeypatch, tmp_path: Path) -> None:

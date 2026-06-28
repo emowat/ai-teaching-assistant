@@ -99,9 +99,10 @@ def test_ensure_task_role_writes_runtime_permissions() -> None:
         "arn:aws:s3:::codingrabbit-data-dev",
         "arn:aws:s3:::codingrabbit-data-dev/*",
     ]
-    assert statements["InvokeSageMakerAsync"]["Action"] == [
+    assert set(statements["InvokeSageMakerAsync"]["Action"]) == {
         "sagemaker:InvokeEndpointAsync",
-    ]
+        "sagemaker:DescribeEndpoint",
+    }
     assert statements["UseBedrockConverse"]["Action"] == [
         "bedrock:Converse",
         "bedrock:ConverseStream",

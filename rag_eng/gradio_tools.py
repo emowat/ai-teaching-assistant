@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from botocore.exceptions import ClientError
 from output_guardrails.combined import apply_all_guardrails
 
 from rag_eng.config import Settings, get_inference_config, get_settings
@@ -61,7 +62,14 @@ def _light_state(status: str) -> str:
         return "ok"
     if normalized in {"creating", "updating", "rollingback", "warn", "false", "scaled_to_zero"}:
         return "warn"
-    if normalized in {"failed", "notfound", "error", "missing"}:
+    if normalized in {
+        "failed",
+        "notfound",
+        "accessdenied",
+        "accessdeniedexception",
+        "error",
+        "missing",
+    }:
         return "error"
     return "unknown"
 
@@ -136,10 +144,33 @@ def fetch_sagemaker_status(settings: Settings | None = None) -> SageMakerStatus:
         variant = (desc.get("ProductionVariants") or [{}])[0]
         instance_count = variant.get("CurrentInstanceCount")
         desired_count = variant.get("DesiredInstanceCount")
+    except ClientError as exc:
+        err = str(exc)
+        error_code = str(exc.response.get("Error", {}).get("Code", ""))
+        if error_code in {
+            "AccessDenied",
+            "AccessDeniedException",
+            "UnauthorizedOperation",
+        }:
+            endpoint_status = "AccessDenied"
+        elif error_code in {
+            "ValidationException",
+            "ResourceNotFound",
+            "ResourceNotFoundException",
+            "NotFound",
+        } or "Could not find" in err:
+            endpoint_status = "NotFound"
+        else:
+            endpoint_status = "Error"
+        lights.append(TrafficLight("AWS describe_endpoint", "error", err))
     except Exception as exc:
         err = str(exc)
-        if "Could not find" in err or "ValidationException" in err:
+        if "AccessDenied" in err or "UnauthorizedOperation" in err:
+            endpoint_status = "AccessDenied"
+        elif "Could not find" in err or "ValidationException" in err:
             endpoint_status = "NotFound"
+        else:
+            endpoint_status = "Error"
         lights.append(TrafficLight("AWS describe_endpoint", "error", err))
 
     lights.extend(
@@ -186,11 +217,15 @@ def fetch_sagemaker_status(settings: Settings | None = None) -> SageMakerStatus:
             )
         )
 
-    summary = (
-        f"Endpoint {endpoint_name} is {endpoint_status}."
-        if endpoint_status != "NotFound"
-        else f"Endpoint {endpoint_name} was not found in {settings.aws_region}."
-    )
+    if endpoint_status == "AccessDenied":
+        summary = (
+            f"Endpoint {endpoint_name} could not be inspected because the task role "
+            f"lacks SageMaker describe permissions."
+        )
+    elif endpoint_status == "NotFound":
+        summary = f"Endpoint {endpoint_name} was not found in {settings.aws_region}."
+    else:
+        summary = f"Endpoint {endpoint_name} is {endpoint_status}."
     return SageMakerStatus(
         endpoint_name=endpoint_name,
         endpoint_status=endpoint_status,

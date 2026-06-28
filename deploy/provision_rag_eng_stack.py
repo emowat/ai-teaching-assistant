@@ -453,6 +453,7 @@ def _ensure_task_role(
                         "Effect": "Allow",
                         "Action": [
                             "sagemaker:InvokeEndpointAsync",
+                            "sagemaker:DescribeEndpoint",
                         ],
                         "Resource": [endpoint_arn],
                     },

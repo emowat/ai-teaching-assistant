@@ -20,6 +20,9 @@ logger = logging.getLogger(__name__)
 
 _INFERENCE_CONFIG_PATH = Path(__file__).parent / "inference_config.yaml"
 _RUNTIME_CONFIG_PATH = Path(__file__).parent / "runtime_config.yaml"
+_BEDROCK_PROFILE_ONLY_MODEL_IDS: dict[str, str] = {
+    "anthropic.claude-sonnet-4-6": "us.anthropic.claude-sonnet-4-6",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -203,8 +206,10 @@ def load_inference_config(path: Path | None = None) -> InferenceConfig:
         else model
     )
 
-    def _route_model(raw_value: object, default: str) -> str:
+    def _route_model(raw_value: object, default: str, provider: str) -> str:
         value = "" if raw_value is None else str(raw_value).strip()
+        if provider == "bedrock" and value in _BEDROCK_PROFILE_ONLY_MODEL_IDS:
+            value = normalize_bedrock_model_id(value)
         return value if value else default
 
     return InferenceConfig(
@@ -212,14 +217,38 @@ def load_inference_config(path: Path | None = None) -> InferenceConfig:
         sagemaker=sagemaker,
         rag=ModelRouteConfig(
             provider=rag_provider,
-            model=_route_model(rag_raw.get("model"), rag_default_model),
+            model=_route_model(rag_raw.get("model"), rag_default_model, rag_provider),
         ),
         chat=ModelRouteConfig(
             provider=chat_provider,
-            model=_route_model(chat_raw.get("model"), chat_default_model),
+            model=_route_model(chat_raw.get("model"), chat_default_model, chat_provider),
         ),
         openai_base_url=str(openai_raw.get("base_url", "https://api.openai.com/v1")),
     )
+
+
+def bedrock_inference_profile_id(model_id: str) -> str:
+    """Return the Bedrock inference profile ID for a model alias, if needed."""
+    value = model_id.strip()
+    return _BEDROCK_PROFILE_ONLY_MODEL_IDS.get(value, value)
+
+
+def is_deprecated_bedrock_model_id(model_id: str) -> bool:
+    """Return whether a Bedrock model ID is a deprecated foundation-model alias."""
+    return model_id.strip() in _BEDROCK_PROFILE_ONLY_MODEL_IDS
+
+
+def normalize_bedrock_model_id(model_id: str) -> str:
+    """Normalize legacy Bedrock model IDs to the supported inference profile ID."""
+    value = model_id.strip()
+    normalized = bedrock_inference_profile_id(value)
+    if normalized != value:
+        logger.warning(
+            "Normalized deprecated Bedrock model ID %s to inference profile ID %s",
+            value,
+            normalized,
+        )
+    return normalized
 
 
 def _env_bool(name: str, default: bool = False) -> bool:

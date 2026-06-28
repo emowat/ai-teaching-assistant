@@ -231,9 +231,40 @@ def test_model_route_config_allows_bedrock() -> None:
     assert route.model == "us.amazon.nova-2-lite-v1:0"
 
 
+def test_model_route_config_rejects_raw_bedrock_sonnet_model() -> None:
+    with pytest.raises(ValueError, match="inference profile ID"):
+        ModelRouteConfig(
+            provider="bedrock",
+            model="anthropic.claude-sonnet-4-6",
+        )
+
+
 def test_model_route_config_requires_model_for_non_sagemaker() -> None:
     with pytest.raises(ValueError, match="model is required"):
         ModelRouteConfig(provider="openai", model="")
+
+
+def test_load_inference_config_normalizes_legacy_bedrock_sonnet_model(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "runtime_config.yaml"
+    path.write_text(
+        "runtime:\n"
+        "  rag:\n"
+        "    provider: openai\n"
+        "    model: gpt-5.4-mini\n"
+        "  chat:\n"
+        "    provider: bedrock\n"
+        "    model: anthropic.claude-sonnet-4-6\n"
+        "  openai:\n"
+        "    base_url: https://api.openai.com/v1\n",
+        encoding="utf-8",
+    )
+
+    config = rag_config.load_inference_config(path)
+
+    assert config.chat.provider == "bedrock"
+    assert config.chat.model == "us.anthropic.claude-sonnet-4-6"
 
 
 def test_update_env_file_preserves_comments_and_updates_values(
