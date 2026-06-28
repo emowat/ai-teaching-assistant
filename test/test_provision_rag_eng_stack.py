@@ -109,6 +109,11 @@ def test_ensure_task_role_writes_runtime_permissions() -> None:
         "bedrock:InvokeModel",
         "bedrock:InvokeModelWithResponseStream",
     ]
+    assert statements["BedrockMarketplaceAccess"]["Action"] == [
+        "aws-marketplace:Subscribe",
+        "aws-marketplace:Unsubscribe",
+        "aws-marketplace:ViewSubscriptions",
+    ]
 
 
 def test_ensure_execution_role_grants_secret_access() -> None:

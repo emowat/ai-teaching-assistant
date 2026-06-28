@@ -74,13 +74,14 @@ def test_clear_sagemaker_request_returns_retry_hint() -> None:
 
 def test_refresh_pipeline_route_uses_runtime_route(monkeypatch) -> None:
     monkeypatch.setattr(
-        "rag_eng.ui.describe_chat_route",
-        lambda: "Bedrock (us.amazon.nova-2-lite-v1:0)",
+        "rag_eng.ui.describe_runtime_routes",
+        lambda: "RAG Bedrock (us.amazon.nova-2-lite-v1:0) · Chat OpenAI (gpt-5.4-mini)",
     )
 
     text = _refresh_pipeline_route()
-    assert "Current runtime route" in text
-    assert "Bedrock (us.amazon.nova-2-lite-v1:0)" in text
+    assert "Current runtime routes" in text
+    assert "RAG Bedrock (us.amazon.nova-2-lite-v1:0)" in text
+    assert "Chat OpenAI (gpt-5.4-mini)" in text
 
 
 def test_mount_gradio_consoles_uses_configured_root_path(monkeypatch) -> None:

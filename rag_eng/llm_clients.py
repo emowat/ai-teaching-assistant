@@ -10,6 +10,12 @@ from typing import AsyncIterator
 import httpx
 
 
+_BEDROCK_TEMPERATURE_ONLY_MODEL_MARKERS = (
+    "anthropic.claude-sonnet-4-6",
+    "anthropic.claude-haiku-4-5",
+)
+
+
 @dataclass(frozen=True)
 class OpenAIChatConfig:
     api_key: str
@@ -76,6 +82,19 @@ def _normalize_bedrock_messages(messages: list[dict]) -> tuple[list[dict], list[
     return system_blocks, normalized_messages
 
 
+def _bedrock_inference_config(config: BedrockChatConfig) -> dict[str, object]:
+    """Build a Converse inference config that matches model-specific constraints."""
+    inference_config: dict[str, object] = {
+        "maxTokens": config.max_tokens,
+        "temperature": config.temperature,
+    }
+
+    if not any(marker in config.model_id for marker in _BEDROCK_TEMPERATURE_ONLY_MODEL_MARKERS):
+        inference_config["topP"] = config.top_p
+
+    return inference_config
+
+
 def _extract_bedrock_content(payload: dict) -> str:
     """Extract assistant text from a Bedrock Converse response."""
     output = payload.get("output") or {}
@@ -138,11 +157,7 @@ def invoke_bedrock_chat_completion(
     payload: dict[str, object] = {
         "modelId": config.model_id,
         "messages": normalized_messages,
-        "inferenceConfig": {
-            "maxTokens": config.max_tokens,
-            "temperature": config.temperature,
-            "topP": config.top_p,
-        },
+        "inferenceConfig": _bedrock_inference_config(config),
     }
     if system_blocks:
         payload["system"] = system_blocks

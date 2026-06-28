@@ -267,6 +267,29 @@ def test_load_inference_config_normalizes_legacy_bedrock_sonnet_model(
     assert config.chat.model == "us.anthropic.claude-sonnet-4-6"
 
 
+def test_load_inference_config_normalizes_legacy_bedrock_haiku_model(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "runtime_config.yaml"
+    path.write_text(
+        "runtime:\n"
+        "  rag:\n"
+        "    provider: openai\n"
+        "    model: gpt-5.4-mini\n"
+        "  chat:\n"
+        "    provider: bedrock\n"
+        "    model: us.anthropic.claude-haiku-4-5\n"
+        "  openai:\n"
+        "    base_url: https://api.openai.com/v1\n",
+        encoding="utf-8",
+    )
+
+    config = rag_config.load_inference_config(path)
+
+    assert config.chat.provider == "bedrock"
+    assert config.chat.model == "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+
+
 def test_update_env_file_preserves_comments_and_updates_values(
     tmp_path: Path,
 ) -> None:

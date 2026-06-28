@@ -91,14 +91,9 @@ def _boto_session(settings: Settings):
     )
 
 
-def describe_chat_route(settings: Settings | None = None) -> str:
-    """Return a human-readable summary of the active chat inference route."""
-    runtime = get_inference_config()
-    route = runtime.chat
-    resolved_settings = settings or get_settings()
-
+def _describe_route(route, settings: Settings) -> str:
     if route.provider == "sagemaker":
-        return f"SageMaker endpoint ({resolved_settings.sagemaker_endpoint})"
+        return f"SageMaker endpoint ({settings.sagemaker_endpoint})"
     if route.provider == "bedrock":
         return f"Bedrock ({route.model})"
     if route.provider == "openai":
@@ -110,6 +105,22 @@ def describe_chat_route(settings: Settings | None = None) -> str:
     if route.model:
         return f"{route.provider} ({route.model})"
     return route.provider
+
+
+def describe_chat_route(settings: Settings | None = None) -> str:
+    """Return a human-readable summary of the active chat inference route."""
+    runtime = get_inference_config()
+    resolved_settings = settings or get_settings()
+    return _describe_route(runtime.chat, resolved_settings)
+
+
+def describe_runtime_routes(settings: Settings | None = None) -> str:
+    """Return a human-readable summary of the active RAG and chat routes."""
+    runtime = get_inference_config()
+    resolved_settings = settings or get_settings()
+    rag_route = _describe_route(runtime.rag, resolved_settings)
+    chat_route = _describe_route(runtime.chat, resolved_settings)
+    return f"RAG {rag_route} · Chat {chat_route}"
 
 
 def fetch_sagemaker_status(settings: Settings | None = None) -> SageMakerStatus:
@@ -535,7 +546,7 @@ def invoke_pipeline_chat(
     if not (student_message or "").strip():
         return "", "", "Enter a student question."
 
-    route = describe_chat_route(settings)
+    route = describe_runtime_routes(settings)
     started = time.time()
     try:
         result = asyncio.run(

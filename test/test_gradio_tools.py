@@ -125,6 +125,7 @@ def test_invoke_pipeline_chat_forwards_trace_fields(monkeypatch) -> None:
     monkeypatch.setattr(
         "rag_eng.gradio_tools.get_inference_config",
         lambda: SimpleNamespace(
+            rag=SimpleNamespace(provider="cohere", model="command-xlarge-nightly"),
             chat=SimpleNamespace(provider="sagemaker", model=""),
         ),
     )
@@ -190,7 +191,10 @@ def test_invoke_pipeline_chat_forwards_trace_fields(monkeypatch) -> None:
     assert captured["section_id"] == "section-2"
     assert captured["result_count"] == 8
     assert captured["rerank_strategy"] == "mmr_0.9"
-    assert "route: SageMaker endpoint (endpoint-name)" in status
+    assert (
+        "route: RAG Cohere (command-xlarge-nightly) · Chat SageMaker endpoint (endpoint-name)"
+        in status
+    )
     assert "session=session-123" in status
     assert "request=request-456" in status
     assert "k=8" in status
@@ -202,6 +206,7 @@ def test_invoke_pipeline_chat_includes_guardrail_summary(monkeypatch) -> None:
     monkeypatch.setattr(
         "rag_eng.gradio_tools.get_inference_config",
         lambda: SimpleNamespace(
+            rag=SimpleNamespace(provider="cohere", model="command-xlarge-nightly"),
             chat=SimpleNamespace(provider="sagemaker", model=""),
         ),
     )
@@ -272,6 +277,7 @@ def test_invoke_pipeline_chat_reports_blocked_input_guardrail(monkeypatch) -> No
     monkeypatch.setattr(
         "rag_eng.gradio_tools.get_inference_config",
         lambda: SimpleNamespace(
+            rag=SimpleNamespace(provider="cohere", model="command-xlarge-nightly"),
             chat=SimpleNamespace(provider="bedrock", model="us.amazon.nova-2-lite-v1:0"),
         ),
     )
@@ -321,7 +327,10 @@ def test_invoke_pipeline_chat_reports_blocked_input_guardrail(monkeypatch) -> No
 
     assert response == "Let's keep this focused on your course work."
     assert '"blocked": true' in raw
-    assert "route: Bedrock (us.amazon.nova-2-lite-v1:0)" in status
+    assert (
+        "route: RAG Cohere (command-xlarge-nightly) · Chat Bedrock (us.amazon.nova-2-lite-v1:0)"
+        in status
+    )
     assert "input_guardrail=block" in status
     assert "input_violation=ERR_PROMPT_INJECTION" in status
 

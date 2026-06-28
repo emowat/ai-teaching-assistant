@@ -433,6 +433,12 @@ and saved back to S3 whenever the admin LLM config is updated.
 For Bedrock Anthropic Claude Sonnet 4.6, use the inference profile ID
 `us.anthropic.claude-sonnet-4-6` (or the global profile ID) instead of the
 foundation-model ID `anthropic.claude-sonnet-4-6`.
+For Bedrock Anthropic Claude Haiku 4.5, use the inference profile ID
+`us.anthropic.claude-haiku-4-5-20251001-v1:0` (or the global profile ID)
+instead of the shorter `us.anthropic.claude-haiku-4-5` alias.
+Those Sonnet 4.6 and Haiku 4.5 models reject `temperature` and `top_p`
+together in Converse, so the service sends `temperature` only for that model
+family.
 AWS deployment wiring for the online service lives in `deploy/deployment.yaml`
 under `rag_eng_ecs`, and the ECS service helper is
 [`deploy/scripts/deploy-rag-eng-ecs.sh`](/home/user/MIDS/w210/capstone/deploy/scripts/deploy-rag-eng-ecs.sh).

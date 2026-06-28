@@ -158,7 +158,10 @@ def test_gradio_page_uses_public_origin_for_asset_urls(monkeypatch) -> None:
         "rag_eng.ui.format_traffic_lights_html",
         lambda _status: "<div>sagemaker</div>",
     )
-    monkeypatch.setattr("rag_eng.ui.describe_chat_route", lambda: "RAG -> Cohere")
+    monkeypatch.setattr(
+        "rag_eng.ui.describe_runtime_routes",
+        lambda: "RAG Cohere (command-xlarge-nightly) · Chat OpenAI (gpt-5.4-mini)",
+    )
 
     local_client = TestClient(create_app())
     response = local_client.get("/gradio/")

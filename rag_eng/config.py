@@ -22,6 +22,8 @@ _INFERENCE_CONFIG_PATH = Path(__file__).parent / "inference_config.yaml"
 _RUNTIME_CONFIG_PATH = Path(__file__).parent / "runtime_config.yaml"
 _BEDROCK_PROFILE_ONLY_MODEL_IDS: dict[str, str] = {
     "anthropic.claude-sonnet-4-6": "us.anthropic.claude-sonnet-4-6",
+    "anthropic.claude-haiku-4-5": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+    "us.anthropic.claude-haiku-4-5": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
 }
 
 

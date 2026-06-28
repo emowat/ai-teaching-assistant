@@ -468,6 +468,18 @@ def _ensure_task_role(
                         ],
                         "Resource": ["*"],
                     },
+                    {
+                        "Sid": "BedrockMarketplaceAccess",
+                        "Effect": "Allow",
+                        # Anthropic Bedrock models can require Marketplace subscription
+                        # authorization during first use.
+                        "Action": [
+                            "aws-marketplace:Subscribe",
+                            "aws-marketplace:Unsubscribe",
+                            "aws-marketplace:ViewSubscriptions",
+                        ],
+                        "Resource": ["*"],
+                    },
                 ],
             }
         ),

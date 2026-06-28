@@ -12,7 +12,7 @@ from rag.schemas import AssistMode
 
 from rag_eng.config import Settings, get_settings
 from rag_eng.gradio_tools import (
-    describe_chat_route,
+    describe_runtime_routes,
     fetch_input_guardrail_status,
     format_input_guardrail_status_html,
     fetch_sagemaker_status,
@@ -159,10 +159,10 @@ def _refresh_input_guardrail_status() -> str:
 
 def _refresh_pipeline_route() -> str:
     try:
-        route = describe_chat_route()
-        return f"Current runtime route: **{route}**"
+        route = describe_runtime_routes()
+        return f"Current runtime routes: **{route}**"
     except Exception as exc:
-        return f"Current runtime route: **unavailable** ({exc})"
+        return f"Current runtime routes: **unavailable** ({exc})"
 
 
 def _pipeline_invoke(
