@@ -141,6 +141,10 @@ CloudFront origin so Gradio emits HTTPS-safe asset and API links without
 breaking the mounted route.
 The container image stays small because the checkpoints are loaded from S3 at
 runtime instead of being baked into the image.
+If `RUNTIME_CONFIG_S3_URI` is set, the same startup path restores
+[`runtime_config.yaml`](./runtime_config.yaml) from S3 before the app starts,
+and `POST /admin/llm/config` syncs saved routing changes back to that object
+so the admin model selection survives ECS task replacement.
 
 9. Start the service:
 
@@ -216,6 +220,8 @@ git diff --check
 ### `GET /health`
 
 Use this to confirm the backend, Qdrant, Aurora, and model provider wiring.
+The admin dashboard polls this endpoint periodically and uses the configured
+and reachable flags to populate the health badge tooltip.
 
 ```bash
 curl -s http://localhost:8001/health
@@ -403,6 +409,7 @@ Build the runner image before using docker mode:
 | `AWS_PROFILE` | — | optional AWS profile |
 | `COURSE_REGISTRY_DATABASE_URL` | — | Aurora/PostgreSQL URL for course routing |
 | `DATABASE_URL` | — | fallback Aurora/PostgreSQL URL |
+| `RUNTIME_CONFIG_S3_URI` | — | optional `s3://bucket/key` object used to restore and persist `runtime_config.yaml` |
 | `INGESTION_ECS_CLUSTER` | — | ECS cluster for on-demand ingestion |
 | `INGESTION_ECS_TASK_DEFINITION` | — | ECS task definition |
 | `INGESTION_ECS_CONTAINER_NAME` | `ingestion-worker` | container name inside the task definition |
@@ -421,6 +428,8 @@ Build the runner image before using docker mode:
 | `RESTART_COMMAND` | — | optional backend restart command |
 
 The editable non-secret route settings live in `rag_eng/runtime_config.yaml`.
+When `RUNTIME_CONFIG_S3_URI` is set, that file is restored from S3 on startup
+and saved back to S3 whenever the admin LLM config is updated.
 AWS deployment wiring for the online service lives in `deploy/deployment.yaml`
 under `rag_eng_ecs`, and the ECS service helper is
 [`deploy/scripts/deploy-rag-eng-ecs.sh`](/home/user/MIDS/w210/capstone/deploy/scripts/deploy-rag-eng-ecs.sh).

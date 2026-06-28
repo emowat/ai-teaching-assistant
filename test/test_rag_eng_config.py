@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+import rag_eng.config as rag_config
 from rag_eng.config import get_settings
 from rag_eng.config import (
     load_runtime_config,
@@ -87,6 +88,78 @@ def test_runtime_config_round_trip(tmp_path: Path) -> None:
 
     save_runtime_config(payload, path)
 
+    assert load_runtime_config(path) == payload
+
+
+def test_save_runtime_config_syncs_to_s3_when_configured(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "runtime_config.yaml"
+    payload = {
+        "runtime": {
+            "rag": {"provider": "openai", "model": "gpt-5.4-mini"},
+            "chat": {"provider": "ollama", "model": "qwen3.5:9b"},
+        }
+    }
+
+    class FakeS3Client:
+        def __init__(self) -> None:
+            self.put_calls: list[dict[str, object]] = []
+
+        def put_object(self, **kwargs) -> None:
+            self.put_calls.append(kwargs)
+
+    fake_client = FakeS3Client()
+    monkeypatch.setenv("RUNTIME_CONFIG_S3_URI", "s3://demo-bucket/config/runtime_config.yaml")
+    monkeypatch.setattr(rag_config, "_build_s3_client", lambda: fake_client)
+
+    save_runtime_config(payload, path)
+
+    assert load_runtime_config(path) == payload
+    assert fake_client.put_calls == [
+        {
+            "Bucket": "demo-bucket",
+            "Key": "config/runtime_config.yaml",
+            "Body": path.read_text(encoding="utf-8"),
+            "ContentType": "text/yaml",
+        }
+    ]
+
+
+def test_restore_runtime_config_from_s3_downloads_file(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "runtime_config.yaml"
+    payload = {
+        "runtime": {
+            "rag": {"provider": "bedrock", "model": "us.amazon.nova-2-lite-v1:0"},
+            "chat": {"provider": "openai", "model": "gpt-5.4-mini"},
+        }
+    }
+
+    class FakeS3Client:
+        def __init__(self) -> None:
+            self.download_calls: list[tuple[str, str, str]] = []
+
+        def download_file(self, bucket: str, key: str, destination: str) -> None:
+            self.download_calls.append((bucket, key, destination))
+            Path(destination).write_text(
+                "runtime:\n  rag:\n    provider: bedrock\n    model: us.amazon.nova-2-lite-v1:0\n  chat:\n    provider: openai\n    model: gpt-5.4-mini\n",
+                encoding="utf-8",
+            )
+
+    fake_client = FakeS3Client()
+    monkeypatch.setenv("RUNTIME_CONFIG_S3_URI", "s3://demo-bucket/config/runtime_config.yaml")
+    monkeypatch.setattr(rag_config, "_build_s3_client", lambda: fake_client)
+
+    restored = rag_config.restore_runtime_config_from_s3(path)
+
+    assert restored is True
+    assert fake_client.download_calls == [
+        ("demo-bucket", "config/runtime_config.yaml", str(path))
+    ]
     assert load_runtime_config(path) == payload
 
 

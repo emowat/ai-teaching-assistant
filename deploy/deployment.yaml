@@ -261,6 +261,7 @@ rag_eng_ecs:
     INPUT_GUARDRAILS_CODEBERT_BLOCK_ABOVE: "0.70"
     GUARDRAILS_CODEBERT_S3_URI: "s3://codingrabbit-data-dev/models/guardrails/codebert_v2_1/model.tar.gz"
     GUARDRAILS_CODEBERT_CHECKPOINT_DIR: "output_guardrails/models/checkpoints/codebert_v2_1"
+    RUNTIME_CONFIG_S3_URI: "s3://codingrabbit-data-dev/config/rag_eng/runtime_config.yaml"
     USE_SAGEMAKER: "true"
     SAGEMAKER_ENDPOINT: "codingrabbit-qwen-async"
     SAGEMAKER_INFERENCE_BACKEND: "vllm"
@@ -319,7 +320,8 @@ frontend_web:
     # Production frontend origin served through CloudFront.
     vite_cognito_redirect_uri: "https://d26myplnp1msqn.cloudfront.net/auth/callback"
     vite_cognito_logout_uri: "https://d26myplnp1msqn.cloudfront.net/logout"
-    extra_env: {}
+    extra_env:
+      VITE_HEALTH_POLL_INTERVAL_SECONDS: "15"
 
 # =============================================================================
 # Field reference (documentation — ignored by loader, used by `describe` CLI)

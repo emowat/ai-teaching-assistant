@@ -38,6 +38,9 @@ if [ "${INPUT_RESTORE_STATUS}" -ne 0 ] || [ "${OUTPUT_RESTORE_STATUS}" -ne 0 ]; 
   exit 1
 fi
 
+echo "==> restoring runtime config"
+"${PYTHON}" "${REPO_ROOT}/deploy/restore_runtime_config.py"
+
 APP_PORT="${APP_PORT:-8001}"
 echo "==> starting rag_eng on port ${APP_PORT}"
 exec "${PYTHON}" -m uvicorn rag_eng.main:app \

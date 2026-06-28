@@ -2,16 +2,21 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlparse
 
 import yaml
 from dotenv import load_dotenv
 
 
 load_dotenv()
+
+
+logger = logging.getLogger(__name__)
 
 _INFERENCE_CONFIG_PATH = Path(__file__).parent / "inference_config.yaml"
 _RUNTIME_CONFIG_PATH = Path(__file__).parent / "runtime_config.yaml"
@@ -249,6 +254,11 @@ def get_runtime_config_path() -> Path:
 def load_runtime_config(path: Path | None = None) -> dict:
     """Load the editable runtime config file as plain YAML data."""
     p = path or _RUNTIME_CONFIG_PATH
+    if not p.exists():
+        try:
+            restore_runtime_config_from_s3(p)
+        except Exception as exc:  # pragma: no cover - startup best effort
+            logger.warning("Unable to restore runtime config from S3: %s", exc)
     loaded = yaml.safe_load(p.read_text()) if p.exists() else {}
     return loaded or {}
 
@@ -257,6 +267,7 @@ def save_runtime_config(data: Mapping[str, object], path: Path | None = None) ->
     """Persist the editable runtime config file."""
     p = path or _RUNTIME_CONFIG_PATH
     p.write_text(yaml.safe_dump(dict(data), sort_keys=False))
+    _sync_runtime_config_to_s3(p)
 
 
 def _mapping_or_empty(value: object) -> dict[str, object]:
@@ -407,6 +418,76 @@ def update_env_file(path: Path, updates: Mapping[str, str | None]) -> None:
             new_lines.append(formatted)
 
     path.write_text("\n".join(new_lines) + ("\n" if new_lines else ""))
+
+
+def _runtime_config_s3_uri() -> str | None:
+    uri = os.getenv("RUNTIME_CONFIG_S3_URI", "").strip()
+    return uri or None
+
+
+def _parse_s3_uri(uri: str) -> tuple[str, str]:
+    parsed = urlparse(uri)
+    if parsed.scheme != "s3" or not parsed.netloc or not parsed.path.strip("/"):
+        raise ValueError("RUNTIME_CONFIG_S3_URI must be a valid s3://bucket/key URI.")
+    return parsed.netloc, parsed.path.lstrip("/")
+
+
+def _build_s3_client():
+    import boto3
+
+    session_kwargs: dict[str, str] = {}
+    profile = os.getenv("AWS_PROFILE", "").strip()
+    region = os.getenv("AWS_REGION", "").strip() or os.getenv(
+        "AWS_DEFAULT_REGION", ""
+    ).strip()
+    if profile:
+        session_kwargs["profile_name"] = profile
+    if region:
+        session_kwargs["region_name"] = region
+    session = boto3.Session(**session_kwargs)
+    return session.client("s3")
+
+
+def restore_runtime_config_from_s3(path: Path | None = None) -> bool:
+    """Restore the runtime config from S3 when a durable copy is configured."""
+    uri = _runtime_config_s3_uri()
+    if not uri:
+        return False
+
+    bucket, key = _parse_s3_uri(uri)
+    destination = path or _RUNTIME_CONFIG_PATH
+    destination.parent.mkdir(parents=True, exist_ok=True)
+
+    client = _build_s3_client()
+    try:
+        client.download_file(bucket, key, str(destination))
+    except Exception as exc:
+        logger.warning("Runtime config restore from s3://%s/%s failed: %s", bucket, key, exc)
+        raise
+
+    logger.info("Restored runtime config from s3://%s/%s to %s", bucket, key, destination)
+    return True
+
+
+def _sync_runtime_config_to_s3(path: Path) -> None:
+    uri = _runtime_config_s3_uri()
+    if not uri:
+        return
+
+    bucket, key = _parse_s3_uri(uri)
+    client = _build_s3_client()
+    try:
+        client.put_object(
+            Bucket=bucket,
+            Key=key,
+            Body=path.read_text(encoding="utf-8"),
+            ContentType="text/yaml",
+        )
+    except Exception as exc:
+        logger.warning("Runtime config sync to s3://%s/%s failed: %s", bucket, key, exc)
+        raise
+
+    logger.info("Synced runtime config to s3://%s/%s", bucket, key)
 
 
 @dataclass(frozen=True)
