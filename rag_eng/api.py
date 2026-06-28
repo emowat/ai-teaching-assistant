@@ -6,8 +6,10 @@ import os
 import subprocess
 import uuid
 from pathlib import Path
+from urllib.parse import urlparse
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
+from fastapi import Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -36,6 +38,7 @@ from rag_eng.config import (
     Settings,
     get_inference_config,
     get_runtime_config_path,
+    load_runtime_config,
     get_settings,
     reload_inference_config,
     save_runtime_config,
@@ -53,13 +56,18 @@ from rag_eng.schemas import (
     AdminCourseDocumentUploadRequest,
     AdminCourseDocumentUploadResponse,
     AdminCourseUpdate,
+    InputGuardrailDiagnosticResponse,
     IngestionJobLaunchRequest,
     IngestionJobResponse,
     HealthResponse,
     IndexEnsureResponse,
     IndexRebuildResponse,
+    OutputGuardrailDiagnosticResponse,
+    OutputGuardrailReviewRequest,
     QueryPayload,
     QueryResult,
+    PipelineDiagnosticResponse,
+    RagDiagnosticResponse,
     RetrievalRerankStrategy,
     RestartResponse,
 )
@@ -74,7 +82,11 @@ from rag_eng.service import (
     ensure_index_service,
     get_health,
     rebuild_index_service,
+    run_input_guardrail_diagnostic,
     run_chat,
+    run_output_guardrail_diagnostic,
+    run_pipeline_diagnostic,
+    run_rag_diagnostic,
     run_query,
 )
 
@@ -107,6 +119,30 @@ def _error_detail(exc: Exception) -> str:
     if detail:
         return detail
     return type(exc).__name__
+
+
+def _replace_request_header(
+    headers: list[tuple[bytes, bytes]],
+    header_name: bytes,
+    value: bytes,
+) -> list[tuple[bytes, bytes]]:
+    """Replace a single ASGI header in-place-safe form."""
+    normalized_name = header_name.lower()
+    updated: list[tuple[bytes, bytes]] = []
+    replaced = False
+
+    for key, existing_value in headers:
+        if key.lower() == normalized_name:
+            if not replaced:
+                updated.append((header_name, value))
+                replaced = True
+            continue
+        updated.append((key, existing_value))
+
+    if not replaced:
+        updated.append((header_name, value))
+
+    return updated
 
 
 def _require_admin(
@@ -167,6 +203,13 @@ def _course_admin_http_error(exc: Exception) -> HTTPException:
 def create_app() -> FastAPI:
     """Create the FastAPI app for the RAG service."""
     settings = get_settings()
+    public_origin = settings.gradio_public_origin
+    public_origin_parts = None
+    if public_origin:
+        parsed_origin = urlparse(public_origin.strip())
+        if parsed_origin.scheme and parsed_origin.netloc:
+            public_origin_parts = (parsed_origin.scheme, parsed_origin.netloc)
+
     app = FastAPI(
         title="rag_eng",
         description="AWS-ready FastAPI layer for the capstone RAG pipeline.",
@@ -182,6 +225,27 @@ def create_app() -> FastAPI:
             allow_headers=["*"],
         )
 
+    @app.middleware("http")
+    async def forward_public_origin_for_gradio(
+        request: Request,
+        call_next,
+    ):
+        if public_origin_parts and request.url.path.startswith("/gradio"):
+            scheme, netloc = public_origin_parts
+            headers = list(request.scope.get("headers", []))
+            headers = _replace_request_header(
+                headers,
+                b"x-forwarded-host",
+                netloc.encode("latin-1"),
+            )
+            headers = _replace_request_header(
+                headers,
+                b"x-forwarded-proto",
+                scheme.encode("latin-1"),
+            )
+            request.scope["headers"] = headers
+        return await call_next(request)
+
     @app.get("/health", response_model=HealthResponse)
     def health() -> HealthResponse:
         return get_health()
@@ -194,6 +258,49 @@ def create_app() -> FastAPI:
     def query(payload: QueryPayload) -> QueryResult:
         try:
             return run_query(payload)
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    @app.post(
+        "/admin/diagnostics/input-guardrail",
+        response_model=InputGuardrailDiagnosticResponse,
+        dependencies=[Depends(_require_admin_access)],
+    )
+    def admin_diagnostic_input_guardrail(
+        payload: QueryPayload,
+    ) -> InputGuardrailDiagnosticResponse:
+        try:
+            return run_input_guardrail_diagnostic(payload)
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    @app.post(
+        "/admin/diagnostics/rag",
+        response_model=RagDiagnosticResponse,
+        dependencies=[Depends(_require_admin_access)],
+    )
+    def admin_diagnostic_rag(
+        payload: QueryPayload,
+    ) -> RagDiagnosticResponse:
+        try:
+            return run_rag_diagnostic(payload)
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    @app.post(
+        "/admin/diagnostics/output-guardrail",
+        response_model=OutputGuardrailDiagnosticResponse,
+        dependencies=[Depends(_require_admin_access)],
+    )
+    def admin_diagnostic_output_guardrail(
+        payload: OutputGuardrailReviewRequest,
+    ) -> OutputGuardrailDiagnosticResponse:
+        try:
+            return run_output_guardrail_diagnostic(
+                query=payload,
+                draft_answer=payload.draft_answer,
+                conversation_history=payload.conversation_history,
+            )
         except Exception as exc:
             raise HTTPException(status_code=500, detail=str(exc)) from exc
 
@@ -397,19 +504,19 @@ def create_app() -> FastAPI:
     def admin_save_llm_config(payload: AdminLlmConfigUpdate) -> AdminLlmConfigResponse:
         runtime_path = get_runtime_config_path()
         runtime = get_inference_config()
-        updated = {
-            "runtime": {
-                "rag": payload.rag.model_dump(),
-                "chat": payload.chat.model_dump(),
-                "openai": {
-                    "base_url": (
-                        payload.openai_base_url
-                        if payload.openai_base_url is not None
-                        else runtime.openai_base_url
-                    ),
-                },
-            }
+        existing = load_runtime_config(runtime_path)
+        runtime_block = dict(existing.get("runtime", {}))
+        runtime_block["rag"] = payload.rag.model_dump()
+        runtime_block["chat"] = payload.chat.model_dump()
+        runtime_block["openai"] = {
+            "base_url": (
+                payload.openai_base_url
+                if payload.openai_base_url is not None
+                else runtime.openai_base_url
+            ),
         }
+        existing["runtime"] = runtime_block
+        updated = existing
         save_runtime_config(updated, runtime_path)
 
         env_updates: dict[str, str | None] = {}
@@ -492,6 +599,35 @@ def create_app() -> FastAPI:
         """
         try:
             result = await run_chat(
+                messages=payload.messages,
+                model_name=payload.model,
+                settings=settings,
+                stream=payload.stream,
+                course_id=payload.course_id,
+                session_id=payload.session_id,
+                request_id=payload.request_id,
+                turn_id=payload.turn_id,
+                section_id=payload.section_id,
+                result_count=payload.result_count,
+                rerank_strategy=payload.rerank_strategy,
+            )
+            if payload.stream:
+                return StreamingResponse(result, media_type="application/x-ndjson")
+            return result
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=_error_detail(exc)) from exc
+
+    @app.post(
+        "/admin/diagnostics/pipeline",
+        response_model=PipelineDiagnosticResponse,
+        dependencies=[Depends(_require_admin_access)],
+    )
+    async def admin_diagnostic_pipeline(
+        payload: ChatRequest,
+        settings: Settings = Depends(get_settings),
+    ):
+        try:
+            result = await run_pipeline_diagnostic(
                 messages=payload.messages,
                 model_name=payload.model,
                 settings=settings,

@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlparse
 
 import yaml
 from dotenv import load_dotenv
@@ -13,8 +15,16 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+
+logger = logging.getLogger(__name__)
+
 _INFERENCE_CONFIG_PATH = Path(__file__).parent / "inference_config.yaml"
 _RUNTIME_CONFIG_PATH = Path(__file__).parent / "runtime_config.yaml"
+_BEDROCK_PROFILE_ONLY_MODEL_IDS: dict[str, str] = {
+    "anthropic.claude-sonnet-4-6": "us.anthropic.claude-sonnet-4-6",
+    "anthropic.claude-haiku-4-5": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+    "us.anthropic.claude-haiku-4-5": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -75,6 +85,48 @@ class InferenceConfig:
 class ModelRouteConfig:
     provider: str
     model: str
+
+
+@dataclass(frozen=True)
+class RuntimeGuardrailPenaltyConfig:
+    enabled: bool
+    amount: int
+
+
+@dataclass(frozen=True)
+class InputGuardrailOrchestrationConfig:
+    enabled: bool
+    warning_threshold: int
+    end_chat_threshold: int
+    session_termination_enabled: bool
+    penalty: RuntimeGuardrailPenaltyConfig
+
+
+@dataclass(frozen=True)
+class AuroraRetryProfileConfig:
+    connect_timeout_seconds: int
+    max_attempts: int
+    retry_sleep_seconds: float
+
+
+@dataclass(frozen=True)
+class AuroraRetryConfig:
+    interactive: AuroraRetryProfileConfig
+    reliable: AuroraRetryProfileConfig
+
+
+@dataclass(frozen=True)
+class ChatLogExportConfig:
+    prefix: str = "eval/chat_logs/turn_logs"
+    bucket: str = "codingrabbit-data-dev"
+    connect_timeout_seconds: int = 3
+
+
+@dataclass(frozen=True)
+class RuntimePolicyConfig:
+    input_guardrail_orchestration: InputGuardrailOrchestrationConfig
+    aurora_retry: AuroraRetryConfig
+    chat_log_export: ChatLogExportConfig
 
 
 _BEDROCK_RAG_DEFAULT_MODEL = "us.amazon.nova-2-lite-v1:0"
@@ -156,8 +208,10 @@ def load_inference_config(path: Path | None = None) -> InferenceConfig:
         else model
     )
 
-    def _route_model(raw_value: object, default: str) -> str:
+    def _route_model(raw_value: object, default: str, provider: str) -> str:
         value = "" if raw_value is None else str(raw_value).strip()
+        if provider == "bedrock" and value in _BEDROCK_PROFILE_ONLY_MODEL_IDS:
+            value = normalize_bedrock_model_id(value)
         return value if value else default
 
     return InferenceConfig(
@@ -165,14 +219,45 @@ def load_inference_config(path: Path | None = None) -> InferenceConfig:
         sagemaker=sagemaker,
         rag=ModelRouteConfig(
             provider=rag_provider,
-            model=_route_model(rag_raw.get("model"), rag_default_model),
+            model=_route_model(rag_raw.get("model"), rag_default_model, rag_provider),
         ),
         chat=ModelRouteConfig(
             provider=chat_provider,
-            model=_route_model(chat_raw.get("model"), chat_default_model),
+            model=_route_model(chat_raw.get("model"), chat_default_model, chat_provider),
         ),
         openai_base_url=str(openai_raw.get("base_url", "https://api.openai.com/v1")),
     )
+
+
+def bedrock_inference_profile_id(model_id: str) -> str:
+    """Return the Bedrock inference profile ID for a model alias, if needed."""
+    value = model_id.strip()
+    return _BEDROCK_PROFILE_ONLY_MODEL_IDS.get(value, value)
+
+
+def is_deprecated_bedrock_model_id(model_id: str) -> bool:
+    """Return whether a Bedrock model ID is a deprecated foundation-model alias."""
+    return model_id.strip() in _BEDROCK_PROFILE_ONLY_MODEL_IDS
+
+
+def normalize_bedrock_model_id(model_id: str) -> str:
+    """Normalize legacy Bedrock model IDs to the supported inference profile ID."""
+    value = model_id.strip()
+    normalized = bedrock_inference_profile_id(value)
+    if normalized != value:
+        logger.warning(
+            "Normalized deprecated Bedrock model ID %s to inference profile ID %s",
+            value,
+            normalized,
+        )
+    return normalized
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
 _inference_config: InferenceConfig | None = None
@@ -200,6 +285,11 @@ def get_runtime_config_path() -> Path:
 def load_runtime_config(path: Path | None = None) -> dict:
     """Load the editable runtime config file as plain YAML data."""
     p = path or _RUNTIME_CONFIG_PATH
+    if not p.exists():
+        try:
+            restore_runtime_config_from_s3(p)
+        except Exception as exc:  # pragma: no cover - startup best effort
+            logger.warning("Unable to restore runtime config from S3: %s", exc)
     loaded = yaml.safe_load(p.read_text()) if p.exists() else {}
     return loaded or {}
 
@@ -208,6 +298,110 @@ def save_runtime_config(data: Mapping[str, object], path: Path | None = None) ->
     """Persist the editable runtime config file."""
     p = path or _RUNTIME_CONFIG_PATH
     p.write_text(yaml.safe_dump(dict(data), sort_keys=False))
+    _sync_runtime_config_to_s3(p)
+
+
+def _mapping_or_empty(value: object) -> dict[str, object]:
+    if isinstance(value, Mapping):
+        return dict(value)
+    return {}
+
+
+def _bool_or_default(value: object, default: bool) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(value)
+
+
+def _str_or_default(value: object, default: str) -> str:
+    if value is None:
+        return default
+    text = str(value).strip()
+    return text if text else default
+
+
+def load_runtime_policy_config(path: Path | None = None) -> RuntimePolicyConfig:
+    """Load runtime policy knobs used by orchestration and operational helpers."""
+    p = path or _RUNTIME_CONFIG_PATH
+    loaded: dict = yaml.safe_load(p.read_text()) if p.exists() else {}
+    loaded = loaded or {}
+
+    runtime_raw = _mapping_or_empty(loaded.get("runtime", loaded))
+
+    orchestration_raw = _mapping_or_empty(
+        runtime_raw.get("input_guardrail_orchestration", {})
+    )
+    penalty_raw = _mapping_or_empty(orchestration_raw.get("penalty", {}))
+    aurora_raw = _mapping_or_empty(runtime_raw.get("aurora_retry", {}))
+    interactive_raw = _mapping_or_empty(aurora_raw.get("interactive", {}))
+    reliable_raw = _mapping_or_empty(aurora_raw.get("reliable", {}))
+    export_raw = _mapping_or_empty(runtime_raw.get("chat_log_export", {}))
+
+    return RuntimePolicyConfig(
+        input_guardrail_orchestration=InputGuardrailOrchestrationConfig(
+            enabled=_bool_or_default(orchestration_raw.get("enabled"), True),
+            warning_threshold=int(orchestration_raw.get("warning_threshold", 1)),
+            end_chat_threshold=int(orchestration_raw.get("end_chat_threshold", 2)),
+            session_termination_enabled=_bool_or_default(
+                orchestration_raw.get("session_termination_enabled"),
+                True,
+            ),
+            penalty=RuntimeGuardrailPenaltyConfig(
+                enabled=_bool_or_default(penalty_raw.get("enabled"), True),
+                amount=int(penalty_raw.get("amount", 5)),
+            ),
+        ),
+        aurora_retry=AuroraRetryConfig(
+            interactive=AuroraRetryProfileConfig(
+                connect_timeout_seconds=int(
+                    interactive_raw.get("connect_timeout_seconds", 3)
+                ),
+                max_attempts=int(interactive_raw.get("max_attempts", 5)),
+                retry_sleep_seconds=float(
+                    interactive_raw.get("retry_sleep_seconds", 1.0)
+                ),
+            ),
+            reliable=AuroraRetryProfileConfig(
+                connect_timeout_seconds=int(
+                    reliable_raw.get("connect_timeout_seconds", 3)
+                ),
+                max_attempts=int(reliable_raw.get("max_attempts", 8)),
+                retry_sleep_seconds=float(reliable_raw.get("retry_sleep_seconds", 1.0)),
+            ),
+        ),
+        chat_log_export=ChatLogExportConfig(
+            prefix=_str_or_default(export_raw.get("prefix"), "eval/chat_logs/turn_logs"),
+            bucket=_str_or_default(
+                export_raw.get("bucket"),
+                os.getenv("S3_DATA_BUCKET", "codingrabbit-data-dev"),
+            ),
+            connect_timeout_seconds=int(
+                export_raw.get("connect_timeout_seconds", 3)
+            ),
+        ),
+    )
+
+
+_runtime_policy_config: RuntimePolicyConfig | None = None
+
+
+def get_runtime_policy_config() -> RuntimePolicyConfig:
+    """Return cached runtime policy knobs (loaded once at first call)."""
+    global _runtime_policy_config
+    if _runtime_policy_config is None:
+        _runtime_policy_config = load_runtime_policy_config()
+    return _runtime_policy_config
+
+
+def reload_runtime_policy_config() -> RuntimePolicyConfig:
+    """Force a reload of the cached runtime policy configuration."""
+    global _runtime_policy_config
+    _runtime_policy_config = load_runtime_policy_config()
+    return _runtime_policy_config
 
 
 def _read_env_file(path: Path) -> dict[str, str]:
@@ -257,6 +451,76 @@ def update_env_file(path: Path, updates: Mapping[str, str | None]) -> None:
     path.write_text("\n".join(new_lines) + ("\n" if new_lines else ""))
 
 
+def _runtime_config_s3_uri() -> str | None:
+    uri = os.getenv("RUNTIME_CONFIG_S3_URI", "").strip()
+    return uri or None
+
+
+def _parse_s3_uri(uri: str) -> tuple[str, str]:
+    parsed = urlparse(uri)
+    if parsed.scheme != "s3" or not parsed.netloc or not parsed.path.strip("/"):
+        raise ValueError("RUNTIME_CONFIG_S3_URI must be a valid s3://bucket/key URI.")
+    return parsed.netloc, parsed.path.lstrip("/")
+
+
+def _build_s3_client():
+    import boto3
+
+    session_kwargs: dict[str, str] = {}
+    profile = os.getenv("AWS_PROFILE", "").strip()
+    region = os.getenv("AWS_REGION", "").strip() or os.getenv(
+        "AWS_DEFAULT_REGION", ""
+    ).strip()
+    if profile:
+        session_kwargs["profile_name"] = profile
+    if region:
+        session_kwargs["region_name"] = region
+    session = boto3.Session(**session_kwargs)
+    return session.client("s3")
+
+
+def restore_runtime_config_from_s3(path: Path | None = None) -> bool:
+    """Restore the runtime config from S3 when a durable copy is configured."""
+    uri = _runtime_config_s3_uri()
+    if not uri:
+        return False
+
+    bucket, key = _parse_s3_uri(uri)
+    destination = path or _RUNTIME_CONFIG_PATH
+    destination.parent.mkdir(parents=True, exist_ok=True)
+
+    client = _build_s3_client()
+    try:
+        client.download_file(bucket, key, str(destination))
+    except Exception as exc:
+        logger.warning("Runtime config restore from s3://%s/%s failed: %s", bucket, key, exc)
+        raise
+
+    logger.info("Restored runtime config from s3://%s/%s to %s", bucket, key, destination)
+    return True
+
+
+def _sync_runtime_config_to_s3(path: Path) -> None:
+    uri = _runtime_config_s3_uri()
+    if not uri:
+        return
+
+    bucket, key = _parse_s3_uri(uri)
+    client = _build_s3_client()
+    try:
+        client.put_object(
+            Bucket=bucket,
+            Key=key,
+            Body=path.read_text(encoding="utf-8"),
+            ContentType="text/yaml",
+        )
+    except Exception as exc:
+        logger.warning("Runtime config sync to s3://%s/%s failed: %s", bucket, key, exc)
+        raise
+
+    logger.info("Synced runtime config to s3://%s/%s", bucket, key)
+
+
 @dataclass(frozen=True)
 class Settings:
     """Application settings loaded from environment variables."""
@@ -265,37 +529,48 @@ class Settings:
     qdrant_api_key: str | None
     qdrant_collection_name: str
     qdrant_guidelines_collection_name: str
-    qdrant_harvard_collection_name: str
-    cohere_api_key: str | None
-    openai_api_key: str | None
-    openai_base_url: str
-    embedding_model: str
-    app_host: str
-    app_port: int
-    gradio_port: int
-    admin_token: str | None
-    log_level: str
-    raw_data_path: str
-    cognito_region: str | None
-    cognito_user_pool_id: str | None
-    cognito_app_client_id: str | None
-    cognito_issuer: str | None
-    cognito_jwks_url: str | None
-    runner_mode: str
-    runner_image: str
-    cors_origins: tuple[str, ...]
-    restart_command: str | None
+    qdrant_harvard_collection_name: str = "harvard_cs50"
+    cohere_api_key: str | None = None
+    openai_api_key: str | None = None
+    openai_base_url: str = "https://api.openai.com/v1"
+    embedding_model: str = "sentence-transformers/multi-qa-mpnet-base-dot-v1"
+    app_host: str = "0.0.0.0"
+    app_port: int = 8001
+    gradio_port: int = 7860
+    gradio_root_path: str | None = None
+    gradio_public_origin: str | None = None
+    admin_token: str | None = None
+    log_level: str = "INFO"
+    raw_data_path: str = ""
+    cognito_region: str | None = None
+    cognito_user_pool_id: str | None = None
+    cognito_app_client_id: str | None = None
+    cognito_issuer: str | None = None
+    cognito_jwks_url: str | None = None
+    runner_mode: str = "docker"
+    runner_image: str = "codingrabbit-cpp-runner:0.1"
+    cors_origins: tuple[str, ...] = ("http://localhost:5173",)
+    restart_command: str | None = None
+    input_guardrails_enabled: bool = True
+    input_guardrails_codebert_s3_uri: str = (
+        "s3://codingrabbit-data-dev/models/input_codebert_v1/"
+    )
+    input_guardrails_codebert_checkpoint_dir: str = (
+        "input_guardrails/models/checkpoints/input_codebert_v1"
+    )
+    input_guardrails_codebert_pass_below: float = 0.30
+    input_guardrails_codebert_block_above: float = 0.70
 
     # --- Inference routing ---
-    use_sagemaker: bool
-    sagemaker_endpoint: str
-    sagemaker_inference_backend: str  # vllm | huggingface
-    sagemaker_poll_timeout_seconds: int
-    s3_data_bucket: str
-    model_family: str          # llama3 | qwen | generic
-    ollama_url: str
-    aws_region: str
-    aws_profile: str | None
+    use_sagemaker: bool = False
+    sagemaker_endpoint: str = "codingrabbit-sagemaker-async-endpoint"
+    sagemaker_inference_backend: str = "vllm"  # vllm | huggingface
+    sagemaker_poll_timeout_seconds: int = 600
+    s3_data_bucket: str = "codingrabbit-data-dev"
+    model_family: str = "llama3"  # llama3 | qwen | generic
+    ollama_url: str = "http://localhost:11434/api/chat"
+    aws_region: str = "us-east-1"
+    aws_profile: str | None = None
 
     @property
     def api_base_url(self) -> str:
@@ -351,8 +626,10 @@ def get_settings() -> Settings:
             "sentence-transformers/multi-qa-mpnet-base-dot-v1",
         ),
         app_host=os.getenv("APP_HOST", "0.0.0.0"),
-        app_port=int(os.getenv("APP_PORT", "8000")),
+        app_port=int(os.getenv("APP_PORT", "8001")),
         gradio_port=int(os.getenv("GRADIO_PORT", "7860")),
+        gradio_root_path=os.getenv("GRADIO_ROOT_PATH") or None,
+        gradio_public_origin=os.getenv("GRADIO_PUBLIC_ORIGIN") or None,
         admin_token=os.getenv("ADMIN_TOKEN"),
         log_level=os.getenv("LOG_LEVEL", "INFO"),
         raw_data_path=os.getenv("RAW_DATA_PATH", str(repo_root / "raw_data")),
@@ -372,6 +649,21 @@ def get_settings() -> Settings:
             if origin.strip()
         ),
         restart_command=os.getenv("RESTART_COMMAND") or None,
+        input_guardrails_enabled=_env_bool("INPUT_GUARDRAILS_ENABLED", True),
+        input_guardrails_codebert_s3_uri=os.getenv(
+            "INPUT_GUARDRAILS_CODEBERT_S3_URI",
+            "s3://codingrabbit-data-dev/models/input_codebert_v1/",
+        ),
+        input_guardrails_codebert_checkpoint_dir=os.getenv(
+            "INPUT_GUARDRAILS_CODEBERT_CHECKPOINT_DIR",
+            str(repo_root / "input_guardrails" / "models" / "checkpoints" / "input_codebert_v1"),
+        ),
+        input_guardrails_codebert_pass_below=float(
+            os.getenv("INPUT_GUARDRAILS_CODEBERT_PASS_BELOW", "0.30")
+        ),
+        input_guardrails_codebert_block_above=float(
+            os.getenv("INPUT_GUARDRAILS_CODEBERT_BLOCK_ABOVE", "0.70")
+        ),
         use_sagemaker=os.getenv("USE_SAGEMAKER", "false").lower() == "true",
         sagemaker_endpoint=os.getenv(
             "SAGEMAKER_ENDPOINT", "codingrabbit-sagemaker-async-endpoint"

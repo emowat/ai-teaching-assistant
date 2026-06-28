@@ -58,6 +58,9 @@ npm run lint
 
 Requires a `.env` at the repo root with Cognito and API variables. See `.env.example`.
 Vite is configured with `envDir: ..` in `frontend/vite.config.ts`, so the frontend reads the repo root `.env` rather than `frontend/.env`.
+For production publishing, `deploy/deployment.yaml` supplies the CloudFront
+callback and logout URLs that get baked into the static bundle. Keep the repo
+root `.env` pointed at localhost for `npm run dev`.
 
 ## Authentication flow
 
@@ -93,7 +96,7 @@ The Monaco/file-explorer/console components still exist in the codebase as legac
 
 ## Admin Gradio tab
 
-The "RAG Query Console" tab in `AdminDashboard` probes `VITE_API_BASE_URL/gradio` every 30 seconds:
+The "RAG Query Console" tab in `AdminDashboard` probes `VITE_API_BASE_URL/gradio/` every 30 seconds:
 - Enabled → embeds Gradio in an `<iframe>`.
 - Disabled or unreachable → tab is greyed out with a tooltip.
 
@@ -106,7 +109,9 @@ tabs expose the runtime diagnostics used for model and RAG tuning:
 
 The AI Models panel in the admin dashboard can route RAG and chat through
 Cohere, OpenAI, Bedrock, Ollama, or SageMaker. Under Bedrock, the available
-model options include Amazon Nova 2 Lite and Anthropic Claude 3.5 Haiku.
+model options include Amazon Nova 2 Lite, Anthropic Claude Sonnet 4.6, and
+Anthropic Claude Haiku 4.5. For Haiku 4.5, use the Bedrock inference profile
+ID `us.anthropic.claude-haiku-4-5-20251001-v1:0` (or the global profile ID).
 
 The Pipeline tab exposes the retrieval presets used for RAG tuning:
 - experiment baseline at `K=8` with `similarity` reranking

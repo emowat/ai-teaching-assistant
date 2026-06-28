@@ -12,8 +12,12 @@ from rag.schemas import AssistMode
 
 from rag_eng.config import Settings, get_settings
 from rag_eng.gradio_tools import (
+    describe_runtime_routes,
+    fetch_input_guardrail_status,
+    format_input_guardrail_status_html,
     fetch_sagemaker_status,
     format_traffic_lights_html,
+    invoke_input_guardrail_review,
     invoke_guardrail_review,
     invoke_pipeline_chat,
     invoke_sagemaker_direct,
@@ -145,6 +149,22 @@ def _clear_sagemaker_request() -> tuple[str, str]:
     )
 
 
+def _refresh_input_guardrail_status() -> str:
+    try:
+        status = fetch_input_guardrail_status()
+        return format_input_guardrail_status_html(status)
+    except Exception as exc:
+        return f"<p style='color:#ef4444;'>Status check failed: {exc}</p>"
+
+
+def _refresh_pipeline_route() -> str:
+    try:
+        route = describe_runtime_routes()
+        return f"Current runtime routes: **{route}**"
+    except Exception as exc:
+        return f"Current runtime routes: **unavailable** ({exc})"
+
+
 def _pipeline_invoke(
     student_message: str,
     code_raw: str,
@@ -198,17 +218,67 @@ def _guardrail_invoke(
     )
 
 
-def build_gradio_app(settings: Settings | None = None) -> gr.Blocks:
-    """Single Gradio app with three admin tabs, mounted once at /gradio."""
-    runtime = settings or get_settings()
-    route_hint = (
-        f"SageMaker `{runtime.sagemaker_endpoint}`"
-        if runtime.use_sagemaker
-        else "Ollama (see inference_config.yaml)"
+def _input_guardrail_invoke(
+    student_message: str,
+    student_code: str,
+    course_topic: str,
+    assignment_context: str,
+) -> tuple[str, str, str]:
+    return invoke_input_guardrail_review(
+        student_message,
+        student_code,
+        course_topic,
+        assignment_context,
     )
+
+
+def build_gradio_app(settings: Settings | None = None) -> gr.Blocks:
+    """Single Gradio app with diagnostic tabs, mounted once at /gradio."""
+    runtime = settings or get_settings()
 
     with gr.Blocks(title="Backend Diagnostic Console") as demo:
         gr.Markdown("# Backend Diagnostic Console")
+
+        with gr.Tab("Input Guardrail"):
+            gr.Markdown(
+                "Pre-RAG input screening for the student's raw question. "
+                "Use this tab to inspect the rule pass/block decision and the CodeBERT score."
+            )
+            ig_status = gr.HTML(value=format_input_guardrail_status_html(fetch_input_guardrail_status()))
+            ig_refresh = gr.Button("Refresh status", variant="secondary")
+            with gr.Row():
+                ig_student = gr.Textbox(
+                    label="Student Message",
+                    placeholder="Why does my pointer segfault?",
+                    lines=4,
+                )
+                ig_code = gr.Textbox(
+                    label="Student Code",
+                    placeholder="int *p = nullptr;\nstd::cout << *p << std::endl;",
+                    lines=10,
+                )
+            with gr.Row():
+                ig_topic = gr.Textbox(
+                    label="Course Topic",
+                    placeholder="pointers and memory",
+                )
+                ig_context = gr.Textbox(
+                    label="Assignment Context",
+                    placeholder="Intro C++ debugging exercise",
+                )
+            ig_run = gr.Button("Run input guardrail", variant="primary")
+            ig_final = gr.Textbox(label="Blocked Response", lines=8)
+            ig_raw = gr.Code(label="Raw JSON response", language="json")
+            ig_result = gr.Textbox(label="Guardrail status", interactive=False)
+            ig_refresh.click(
+                fn=_refresh_input_guardrail_status,
+                outputs=ig_status,
+            )
+            ig_run.click(
+                fn=_input_guardrail_invoke,
+                inputs=[ig_student, ig_code, ig_topic, ig_context],
+                outputs=[ig_final, ig_raw, ig_result],
+            )
 
         with gr.Tab("RAG Query"):
             gr.Markdown(
@@ -362,9 +432,11 @@ def build_gradio_app(settings: Settings | None = None) -> gr.Blocks:
 
         with gr.Tab("Pipeline Console"):
             gr.Markdown(
-                f"Full extension-style pipeline: context extraction → RAG → prompt budget → inference → guardrails.  \n"
-                f"Current route: **{route_hint}**"
+                "Full extension-style pipeline: context extraction → input guardrails → RAG → prompt budget → inference → output guardrails."
             )
+            with gr.Row():
+                pp_route = gr.Markdown(value=_refresh_pipeline_route())
+                pp_route_refresh = gr.Button("Refresh route", variant="secondary")
             with gr.Row():
                 pp_question = gr.Textbox(
                     label="Student Question",
@@ -452,13 +524,24 @@ def build_gradio_app(settings: Settings | None = None) -> gr.Blocks:
                 ],
                 outputs=[pp_response, pp_raw, pp_status],
             )
+            pp_route_refresh.click(
+                fn=_refresh_pipeline_route,
+                inputs=[],
+                outputs=[pp_route],
+            )
 
     return demo
 
 
-def mount_gradio_consoles(app: Any) -> Any:
+def mount_gradio_consoles(app: Any, settings: Settings | None = None) -> Any:
     """Mount the single tabbed admin console at /gradio."""
-    return gr.mount_gradio_app(app, build_gradio_app(), path="/gradio")
+    runtime = settings or get_settings()
+    return gr.mount_gradio_app(
+        app,
+        build_gradio_app(runtime),
+        path="/gradio",
+        root_path=runtime.gradio_root_path,
+    )
 
 
 # Keep these for any code that imports them directly (tests, etc.)

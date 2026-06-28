@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from rag_eng.config import bedrock_inference_profile_id
+from rag_eng.config import is_deprecated_bedrock_model_id
 from rag.schemas import CourseSource as RagCourseSource, QueryInput, RetrievalResult
 
 RetrievalRerankStrategy = Literal["similarity", "mmr_0.5", "mmr_0.7", "mmr_0.9"]
@@ -109,6 +111,7 @@ class QueryResult(BaseModel):
     retrieval_result: RetrievalResult
     formatted_context: str
     guardrail: GuardrailResult | None = None
+    input_guardrail: dict[str, Any] | None = None
     session_id: str | None = None
     request_id: str | None = None
     turn_id: str | None = None
@@ -117,6 +120,12 @@ class QueryResult(BaseModel):
 
 class QueryResponse(QueryResult):
     """Compatibility alias for callers that still import the old response name."""
+
+
+class ChatMessage(BaseModel):
+    """Minimal chat message payload returned by the pipeline endpoints."""
+
+    content: str
 
 
 class HealthResponse(BaseModel):
@@ -169,6 +178,13 @@ class ModelRouteConfig(BaseModel):
             return self
         if not self.model.strip():
             raise ValueError(f"model is required for provider '{self.provider}'")
+        if self.provider == "bedrock" and is_deprecated_bedrock_model_id(self.model):
+            profile_id = bedrock_inference_profile_id(self.model)
+            raise ValueError(
+                "Bedrock Claude Sonnet 4.6 must use an inference profile ID "
+                f"such as '{profile_id}' or 'global.anthropic.claude-sonnet-4-6'; "
+                "the foundation-model ID 'anthropic.claude-sonnet-4-6' is not supported."
+            )
         return self
 
 
@@ -197,6 +213,68 @@ class RestartResponse(BaseModel):
     success: bool
     scheduled: bool
     message: str
+
+
+class DiagnosticTrace(BaseModel):
+    """Trace identifiers returned by the admin diagnostics endpoints."""
+
+    session_id: str | None = None
+    request_id: str | None = None
+    turn_id: str | None = None
+    turn_index: int | None = None
+
+
+class InputGuardrailDiagnosticResponse(BaseModel):
+    """Response for the admin input-guardrail diagnostic endpoint."""
+
+    diagnostic_source: str = "admin_diagnostic"
+    trace: DiagnosticTrace
+    input_guardrail: dict[str, Any]
+    blocked: bool
+    final_answer: str
+    orchestrator_context: dict[str, Any] | None = None
+
+
+class RagDiagnosticResponse(BaseModel):
+    """Response for the admin RAG diagnostic endpoint."""
+
+    diagnostic_source: str = "admin_diagnostic"
+    trace: DiagnosticTrace
+    answer: str
+    retrieval_result: RetrievalResult
+    formatted_context: str
+    prompt_preview: str
+    input_guardrail: dict[str, Any] | None = None
+
+
+class OutputGuardrailReviewRequest(QueryPayload):
+    """Payload for the admin output-guardrail diagnostic endpoint."""
+
+    draft_answer: str
+    conversation_history: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class OutputGuardrailDiagnosticResponse(BaseModel):
+    """Response for the admin output-guardrail diagnostic endpoint."""
+
+    diagnostic_source: str = "admin_diagnostic"
+    trace: DiagnosticTrace
+    draft_answer: str
+    final_answer: str
+    guardrail: GuardrailResult
+
+
+class PipelineDiagnosticResponse(BaseModel):
+    """Response for the admin full-pipeline diagnostic endpoint."""
+
+    diagnostic_source: str = "admin_diagnostic"
+    message: ChatMessage
+    guardrail: GuardrailResult | None = None
+    input_guardrail: dict[str, Any] | None = None
+    session_id: str | None = None
+    request_id: str | None = None
+    turn_id: str | None = None
+    turn_index: int | None = None
 
 
 class AdminCourse(BaseModel):

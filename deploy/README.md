@@ -1,6 +1,6 @@
 # deploy/
 
-Operational tooling for provisioning the **fine-tuned Qwen inference model** on **Amazon SageMaker AI**. This folder is **not** part of the runtime application (`rag_eng`); run these scripts once (or when you need to refresh the model or endpoint).
+Operational tooling for provisioning the **fine-tuned Qwen inference model** on **Amazon SageMaker AI**, the **`rag_eng` ECS/Fargate orchestrator service**, and the planned **frontend static hosting** stack. This folder is **not** part of the runtime application (`rag_eng`); run these scripts once (or when you need to refresh the model, endpoint, or online service wiring).
 
 ## Overview
 
@@ -21,7 +21,7 @@ Google Drive (fine-tuned Qwen)
 |---|---|---|
 | **Configuration** | `deploy/deployment.yaml` | Single source of truth for all deploy settings |
 | **Shell wrappers** (start here) | `deploy/scripts/*.sh` | Human-friendly entry points with `--help` |
-| **Python implementation** | `deploy/upload_model.py`, `deploy/deploy_sagemaker.py`, `deploy/deploy_ingestion_worker.py`, `deploy/sagemaker_io.py` | Download, S3 upload, SageMaker API calls, ECS task-definition helpers, async payload helpers |
+| **Python implementation** | `deploy/upload_model.py`, `deploy/deploy_sagemaker.py`, `deploy/deploy_ingestion_worker.py`, `deploy/deploy_rag_eng_ecs.py`, `deploy/provision_rag_eng_stack.py`, `deploy/sagemaker_io.py` | Download, S3 upload, SageMaker API calls, ECS task-definition helpers, rag_eng AWS provisioning, async payload helpers |
 | **Application** | `rag_eng/inference.py` | Calls the live endpoint at request time |
 
 ---
@@ -53,6 +53,7 @@ export DEPLOY_CONFIG=/path/to/my-deployment.yaml
 | `inference_smoke_test` | `default_prompt`, `chat_template`, generation params | `invoke` smoke test |
 | `huggingface_packaging` | `required_files` | Validation before packaging |
 | `rag_eng` | `model_family`, `use_sagemaker`, `inference_backend` | Values to copy into `.env` after deploy |
+| `frontend_web` | `enabled`, `app_dir`, `dist_dir`, `bucket_name`, `bucket_prefix`, `default_root_object`, `spa_fallback_path`, `price_class`, `cloudfront`, `build` | Vite SPA build settings and S3 + CloudFront provisioning/publishing wiring |
 
 The `_reference` block at the bottom of `deployment.yaml` documents each field (also printed by `describe`).
 
@@ -70,6 +71,16 @@ The `_reference` block at the bottom of `deployment.yaml` documents each field (
 | `SAGEMAKER_EXECUTION_ROLE_ARN` | `sagemaker.execution_role_arn` |
 | `SAGEMAKER_INFERENCE_BACKEND` | `sagemaker.container.inference_backend` / `rag_eng.inference_backend` |
 | `MODEL_FAMILY` | `rag_eng.model_family` |
+| `FRONTEND_ENABLED` | `frontend_web.enabled` |
+| `FRONTEND_BUCKET_NAME` | `frontend_web.bucket_name` |
+| `FRONTEND_BUCKET_PREFIX` | `frontend_web.bucket_prefix` |
+| `FRONTEND_CLOUDFRONT_DISTRIBUTION_ID` | `frontend_web.cloudfront.distribution_id` |
+| `FRONTEND_CLOUDFRONT_ALIASES` | `frontend_web.cloudfront.aliases` |
+| `FRONTEND_CLOUDFRONT_ORIGIN_PROTOCOL_POLICY` | `frontend_web.cloudfront.origin_protocol_policy` |
+| `VITE_API_BASE_URL` | `frontend_web.build.vite_api_base_url` |
+| `VITE_COGNITO_DOMAIN` | `frontend_web.build.vite_cognito_domain` |
+| `VITE_COGNITO_REDIRECT_URI` | `frontend_web.build.vite_cognito_redirect_uri` |
+| `VITE_COGNITO_LOGOUT_URI` | `frontend_web.build.vite_cognito_logout_uri` |
 
 **SageMaker execution role:** must be a dedicated IAM role that trusts `sagemaker.amazonaws.com` and can read `aws.s3_bucket`. Your SSO login role (`AWSReservedSSO_*`) is **not** valid — set `sagemaker.execution_role_arn` in `deployment.yaml`.
 
@@ -229,6 +240,21 @@ These are the **recommended** way to run deployment. Each script:
 
 **Success output:** the local checkpoint directory contains `config.json`, tokenizer files, and model weights, ready for `output_guardrails.semantic_guardrail.predict_safety()`.
 
+### `rag-eng-startup.sh`
+
+**Purpose:** ECS entrypoint for the online orchestrator. It restores both guardrail checkpoints from S3, then starts `uvicorn`.
+
+**Behavior:**
+
+- restores the input guardrail checkpoint with `deploy/restore_input_guardrail_checkpoint.py`
+- restores the output guardrail checkpoint with `deploy/restore_guardrail_checkpoint.py`
+- then runs `uvicorn rag_eng.main:app --host 0.0.0.0 --port 8001 --proxy-headers --forwarded-allow-ips '*'`
+- sets `GRADIO_ROOT_PATH=/gradio` and `GRADIO_PUBLIC_ORIGIN` to the public
+  CloudFront origin so the embedded console generates HTTPS-safe asset and API
+  links without breaking the mounted route
+
+This keeps the Docker image small while ensuring the checkpoints are present in the task filesystem before the service starts.
+
 ---
 
 ### `deploy-ingestion-worker.sh`
@@ -378,8 +404,137 @@ The worker task definition itself should keep its own runtime env values for:
 - `EMBEDDING_MODEL`
 - `QDRANT_COLLECTION_MIT13`
 - `QDRANT_COLLECTION_MIT14`
-- `QDRANT_COLLECTION_CS50`
-- `QDRANT_COLLECTION_GUIDELINES`
+
+### `deploy-rag-eng-ecs.sh`
+
+**Purpose:** Describe, render, register, or deploy the ECS/Fargate service that runs the `rag_eng` orchestrator behind an ALB.
+
+This is the online application runtime for `/api/chat`, `/query`, `/me`, and the admin APIs. It is separate from the SageMaker model deployment scripts.
+
+| Action | What it does |
+|---|---|
+| `describe` | Print the resolved orchestrator service wiring and any missing values |
+| `render-task-definition` | Emit the ECS task-definition JSON payload |
+| `render-service-spec` | Emit the ECS service spec JSON payload |
+| `register-task-definition` | Register the task definition with ECS using boto3 |
+| `deploy` | Register the task definition and create/update the ECS service |
+| `status` | Print the current ECS service status |
+
+**Usage:**
+
+```bash
+./deploy/scripts/deploy-rag-eng-ecs.sh describe
+./deploy/scripts/deploy-rag-eng-ecs.sh render-task-definition
+./deploy/scripts/deploy-rag-eng-ecs.sh render-service-spec
+./deploy/scripts/deploy-rag-eng-ecs.sh register-task-definition
+./deploy/scripts/deploy-rag-eng-ecs.sh deploy
+./deploy/scripts/deploy-rag-eng-ecs.sh status
+```
+
+**Required service settings:**
+
+| Variable | Description |
+|---|---|
+| `RAG_ENG_ECS_IMAGE_URI` | ECR image URI for the orchestrator container |
+| `RAG_ENG_ECS_EXECUTION_ROLE_ARN` | ECS task execution role ARN |
+| `RAG_ENG_ECS_TASK_ROLE_ARN` | ECS task role ARN |
+| `RAG_ENG_ECS_CLUSTER` | ECS cluster name |
+| `RAG_ENG_ECS_SERVICE_NAME` | ECS service name |
+| `RAG_ENG_ECS_TASK_FAMILY` | Task family name |
+| `RAG_ENG_ECS_TASK_DEFINITION` | Task definition name or ARN used by the backend launcher |
+| `RAG_ENG_ECS_CONTAINER_NAME` | Container name inside the task definition |
+| `RAG_ENG_ECS_SUBNETS` | Comma-separated ECS subnets for the service |
+| `RAG_ENG_ECS_SECURITY_GROUPS` | Comma-separated ECS security groups for the service |
+| `RAG_ENG_ECS_TARGET_GROUP_ARN` | ALB target group ARN for the service |
+
+**Notes:**
+
+- `rag_eng_ecs.environment` in `deploy/deployment.yaml` stores the non-secret runtime env baked into the task definition.
+- `rag_eng_ecs.secret_arn_map` stores the Secrets Manager ARNs for secret env vars injected at task launch.
+- `APP_PORT` is set to `8001` in the task definition and matches the local `uvicorn` command.
+- The runtime behavior knobs that should stay editable without rebuilding the task definition live in [`rag_eng/runtime_config.yaml`](/home/user/MIDS/w210/capstone/rag_eng/runtime_config.yaml).
+
+### `provision-rag-eng-stack.sh`
+
+**Purpose:** Provision the AWS infrastructure for the `rag_eng` online orchestrator, then build/push the Docker image and deploy the ECS service.
+
+**What it creates or updates:**
+
+- ECR repository for the orchestrator image
+- ECS cluster for the online service
+- ECS execution role and task role
+- CloudWatch log group
+- Secrets Manager entries for the runtime secret env vars
+- ALB security group, application load balancer, target group, and listener
+- ECS task definition and ECS service
+
+**Usage:**
+
+```bash
+./deploy/scripts/provision-rag-eng-stack.sh describe
+./deploy/scripts/provision-rag-eng-stack.sh apply
+```
+
+**Notes:**
+
+- The script expects the `rag_eng_ecs` block in `deploy/deployment.yaml` to contain the shared network and runtime settings.
+- The resulting ARNs and DNS name are printed as JSON so they can be copied back into `deploy/deployment.yaml`.
+
+### Frontend static hosting
+
+The React/Vite frontend lives in [`frontend/`](/home/user/MIDS/w210/capstone/frontend) and reads the repo-root `.env` at build time. The deployment config now includes a `frontend_web` section for the S3 + CloudFront publishing slice.
+
+The infrastructure helper is [`deploy/scripts/provision-frontend-stack.sh`](/home/user/MIDS/w210/capstone/deploy/scripts/provision-frontend-stack.sh).
+
+The current helper is [`deploy/scripts/publish-frontend.sh`](/home/user/MIDS/w210/capstone/deploy/scripts/publish-frontend.sh).
+
+What it does:
+
+- build `frontend/` into `frontend/dist/`
+- upload the static bundle to S3
+- delete stale objects under the configured bucket prefix
+- invalidate the configured CloudFront distribution
+
+Build behavior:
+
+- If the local Node.js runtime is new enough for the current Vite toolchain, the helper builds directly on the host.
+- If the local Node.js runtime is too old, the helper automatically falls back to a Dockerized Node 22 build so the publish flow still works on older workstations.
+
+Required config for this flow:
+
+- `frontend_web.bucket_name`
+- `frontend_web.cloudfront.distribution_id`
+- `frontend_web.cloudfront.invalidation_paths`
+- `frontend_web.build.vite_api_base_url`
+- `frontend_web.build.vite_cognito_domain`
+- `frontend_web.build.vite_cognito_redirect_uri`
+- `frontend_web.build.vite_cognito_logout_uri`
+
+For production publishing, the Cognito callback/logout URLs must match the
+actual CloudFront origin used by the static site, not the local dev server.
+The localhost values remain appropriate for `npm run dev`; the CloudFront
+values belong in `deploy/deployment.yaml` so the published bundle is built with
+the correct origin baked in.
+The frontend publish helper intentionally ignores repo-root `.env` overrides
+for the build-time `VITE_*` frontend URLs so the deployment file stays the
+source of truth for production bundle settings.
+
+The relevant values live in:
+
+- `frontend_web.app_dir`
+- `frontend_web.dist_dir`
+- `frontend_web.bucket_name`
+- `frontend_web.bucket_prefix`
+- `frontend_web.cloudfront.distribution_id`
+- `frontend_web.cloudfront.aliases`
+- `frontend_web.cloudfront.api_path_patterns`
+- `frontend_web.cloudfront.origin_protocol_policy`
+- `frontend_web.build.vite_api_base_url`
+- `frontend_web.build.vite_cognito_domain`
+- `frontend_web.build.vite_cognito_redirect_uri`
+- `frontend_web.build.vite_cognito_logout_uri`
+
+The provision helper creates the missing S3 bucket and CloudFront distribution ID, then prints the resolved values so they can be copied into `deploy/deployment.yaml`.
 
 ### 5. Smoke test the control plane
 

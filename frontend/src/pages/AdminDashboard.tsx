@@ -70,8 +70,12 @@ const COHERE_MODEL_OPTIONS: ModelOption[] = [
 const BEDROCK_MODEL_OPTIONS: ModelOption[] = [
   { label: "Amazon Nova 2 Lite", value: "us.amazon.nova-2-lite-v1:0" },
   {
-    label: "Anthropic Claude 3.5 Haiku",
-    value: "us.anthropic.claude-3-5-haiku-20241022-v1:0",
+    label: "Anthropic Claude Sonnet 4.6",
+    value: "us.anthropic.claude-sonnet-4-6",
+  },
+  {
+    label: "Anthropic Claude Haiku 4.5",
+    value: "us.anthropic.claude-haiku-4-5-20251001-v1:0",
   },
 ];
 const OLLAMA_MODEL_OPTIONS: ModelOption[] = [
@@ -79,6 +83,35 @@ const OLLAMA_MODEL_OPTIONS: ModelOption[] = [
   { label: "llama3.1:8b", value: "llama3.1:8b" },
   { label: "llama3.2:3b", value: "llama3.2:3b" },
 ];
+
+const HEALTH_POLL_INTERVAL_SECONDS = (() => {
+  const parsed = Number(import.meta.env.VITE_HEALTH_POLL_INTERVAL_SECONDS ?? "15");
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 15;
+})();
+
+interface BackendHealthResponse {
+  ready?: boolean;
+  qdrant_configured?: boolean;
+  course_registry_configured?: boolean;
+  cohere_configured?: boolean;
+  openai_configured?: boolean;
+  bedrock_configured?: boolean;
+  qdrant_reachable?: boolean;
+  course_registry_reachable?: boolean;
+  cohere_reachable?: boolean;
+  openai_reachable?: boolean;
+  bedrock_reachable?: boolean;
+  message?: string;
+}
+
+interface HealthState {
+  loading: boolean;
+  refreshing: boolean;
+  healthy: boolean | null;
+  snapshot: BackendHealthResponse | null;
+  checkedAt: string | null;
+  error: string | null;
+}
 
 function getModelOptions(provider: LlmProvider): ModelOption[] {
   switch (provider) {
@@ -93,6 +126,53 @@ function getModelOptions(provider: LlmProvider): ModelOption[] {
     case "sagemaker":
       return [];
   }
+}
+
+function describeHealthService(configured?: boolean, reachable?: boolean): string {
+  if (configured === false) return "not configured";
+  if (reachable === false) return "configured, unreachable";
+  if (configured === true && reachable === true) return "configured, reachable";
+  return "unknown";
+}
+
+function formatHealthTooltip(state: HealthState): string {
+  const lines: string[] = [];
+
+  if (state.loading) {
+    lines.push("Checking backend health...");
+  } else if (state.healthy) {
+    lines.push("Backend health: healthy");
+  } else {
+    lines.push("Backend health: unavailable or degraded");
+  }
+
+  if (state.error) {
+    lines.push(`Error: ${state.error}`);
+  }
+
+  if (state.snapshot?.message) {
+    lines.push(`Message: ${state.snapshot.message}`);
+  }
+
+  const snapshot = state.snapshot;
+  if (snapshot) {
+    lines.push(`Qdrant: ${describeHealthService(snapshot.qdrant_configured, snapshot.qdrant_reachable)}`);
+    lines.push(
+      `Course registry: ${describeHealthService(
+        snapshot.course_registry_configured,
+        snapshot.course_registry_reachable,
+      )}`,
+    );
+    lines.push(`Cohere: ${describeHealthService(snapshot.cohere_configured, snapshot.cohere_reachable)}`);
+    lines.push(`OpenAI: ${describeHealthService(snapshot.openai_configured, snapshot.openai_reachable)}`);
+    lines.push(`Bedrock: ${describeHealthService(snapshot.bedrock_configured, snapshot.bedrock_reachable)}`);
+  }
+
+  if (state.checkedAt) {
+    lines.push(`Last checked (UTC): ${state.checkedAt}`);
+  }
+
+  return lines.join("\n");
 }
 
 function resolveModelValue(selected: string, customValue: string): string {
@@ -137,7 +217,14 @@ export function AdminDashboard({
   accessToken,
 }: AdminDashboardProps) {
   const [tab, setTab] = useState("backend-console");
-  const [healthOk, setHealthOk] = useState<boolean | null>(null);
+  const [healthState, setHealthState] = useState<HealthState>({
+    loading: true,
+    refreshing: false,
+    healthy: null,
+    snapshot: null,
+    checkedAt: null,
+    error: null,
+  });
   const [cohereConfigured, setCohereConfigured] = useState<boolean | null>(null);
   const [gradioAvailable, setGradioAvailable] = useState<boolean | null>(null);
   const [config, setConfig] = useState<AdminLlmConfig | null>(null);
@@ -158,13 +245,68 @@ export function AdminDashboard({
 
   useEffect(() => {
     const base = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8001";
-    fetch(`${base}/health`)
-      .then((r) => r.json())
-      .then((data: { ready?: boolean; cohere_configured?: boolean }) => {
-        setHealthOk(Boolean(data.ready));
+    let cancelled = false;
+    let activeController: AbortController | null = null;
+
+    const pollHealth = async (initialLoad: boolean) => {
+      activeController?.abort();
+      const controller = new AbortController();
+      activeController = controller;
+
+      setHealthState((prev) => ({
+        ...prev,
+        loading: prev.snapshot === null && prev.checkedAt === null,
+        refreshing: !initialLoad && prev.snapshot !== null,
+        error: null,
+      }));
+
+      try {
+        const response = await fetch(`${base}/health`, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        const data = (await response.json()) as BackendHealthResponse;
+        if (cancelled) return;
+        const checkedAt = new Date().toISOString();
+        setHealthState({
+          loading: false,
+          refreshing: false,
+          healthy: Boolean(data.ready),
+          snapshot: data,
+          checkedAt,
+          error: null,
+        });
         setCohereConfigured(data.cohere_configured ?? null);
-      })
-      .catch(() => setHealthOk(false));
+      } catch (err) {
+        if (cancelled) return;
+        if (err instanceof DOMException && err.name === "AbortError") {
+          return;
+        }
+        const message = err instanceof Error ? err.message : "Unable to load backend health.";
+        setHealthState((prev) => ({
+          loading: false,
+          refreshing: false,
+          healthy: false,
+          snapshot: prev.snapshot,
+          checkedAt: new Date().toISOString(),
+          error: message,
+        }));
+      }
+    };
+
+    void pollHealth(true);
+    const intervalId = window.setInterval(() => {
+      void pollHealth(false);
+    }, HEALTH_POLL_INTERVAL_SECONDS * 1000);
+
+    return () => {
+      cancelled = true;
+      activeController?.abort();
+      window.clearInterval(intervalId);
+    };
   }, []);
 
   useEffect(() => {
@@ -233,18 +375,44 @@ export function AdminDashboard({
   }, [gradioAvailable]);
 
   const activeTab = tab;
+  const healthBadgeColor = healthState.loading || healthState.refreshing
+    ? D.yellow
+    : healthState.healthy
+      ? D.green
+      : D.red;
+  const healthBadgeLabel = healthState.loading
+    ? "○ CHECKING..."
+    : healthState.refreshing
+      ? "↻ CHECKING..."
+      : healthState.healthy
+        ? "● SYSTEM ONLINE"
+        : "● SYSTEM OFFLINE";
+  const healthSubtext = healthState.loading
+    ? "Contacting backend..."
+    : healthState.refreshing
+      ? "Refreshing backend health..."
+      : healthState.healthy
+        ? "All services healthy"
+        : healthState.error
+          ? healthState.snapshot
+            ? "Backend responded, but one or more services are unavailable"
+            : "Backend unreachable"
+          : "One or more services are unavailable";
+  const healthTooltip = useMemo(() => formatHealthTooltip(healthState), [healthState]);
 
   const footer = (
     <Card style={{ padding: "10px 12px", marginTop: 12, borderRadius: 8 }}>
-      <div style={{ ...mono, fontSize: 11, color: healthOk ? D.green : D.red }}>
-        {healthOk === null ? "○ CHECKING..." : healthOk ? "● SYSTEM ONLINE" : "● SYSTEM OFFLINE"}
-      </div>
-      <div style={{ fontSize: 11, color: D.muted, marginTop: 3 }}>
-        {healthOk === null
-          ? "Contacting backend..."
-          : healthOk
-            ? "All services healthy"
-            : "Backend unreachable"}
+      <div
+        title={healthTooltip}
+        style={{ cursor: "help" }}
+      >
+        <div style={{ ...mono, fontSize: 11, color: healthBadgeColor }}>
+          {healthBadgeLabel}
+        </div>
+        <div style={{ fontSize: 11, color: D.muted, marginTop: 3 }}>{healthSubtext}</div>
+        <div style={{ fontSize: 10, color: D.dim, marginTop: 3 }}>
+          Polling every {HEALTH_POLL_INTERVAL_SECONDS}s
+        </div>
       </div>
     </Card>
   );

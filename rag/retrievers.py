@@ -21,6 +21,9 @@ from rag.runtime import create_qdrant_client, get_runtime_config
 # ---------------------------------------------------------------------------
 _client = None
 _model = None
+_LEGACY_SOURCE_DOMAIN_ALIASES: dict[str, SourceDomain] = {
+    "cpp_reference": SourceDomain.CPP_CORE_GUIDELINES,
+}
 
 
 def _get_client():
@@ -53,7 +56,42 @@ def close_client() -> None:
             _client = None
 
 
-def _hit_to_doc(hit) -> RetrievedDoc:
+def _coerce_source_domain(
+    raw_value: object | None,
+    *,
+    default: SourceDomain,
+) -> SourceDomain:
+    """Map stored payload values to the canonical SourceDomain enum.
+
+    Older Qdrant points may still use legacy labels such as ``cpp_reference``.
+    We normalize those values here so retrieval can continue to read old points
+    while new indexing continues to write the canonical enum value.
+    """
+    if raw_value is None:
+        return default
+
+    normalized = str(raw_value).strip()
+    if not normalized:
+        return default
+
+    legacy = _LEGACY_SOURCE_DOMAIN_ALIASES.get(normalized.casefold())
+    if legacy is not None:
+        return legacy
+
+    try:
+        return SourceDomain(normalized)
+    except ValueError as exc:
+        allowed = ", ".join(domain.value for domain in SourceDomain)
+        raise ValueError(
+            f"{normalized!r} is not a valid SourceDomain; allowed values: {allowed}"
+        ) from exc
+
+
+def _hit_to_doc(
+    hit,
+    *,
+    default_source_domain: SourceDomain = SourceDomain.MIT_OCW_LECTURE,
+) -> RetrievedDoc:
     """Convert a Qdrant search hit to a RetrievedDoc."""
     p = hit.payload or {}
     return RetrievedDoc(
@@ -63,7 +101,10 @@ def _hit_to_doc(hit) -> RetrievedDoc:
         week=p.get("week", 0),
         priority=p.get("priority", 3),
         score=hit.score,
-        source_domain=SourceDomain(p.get("source_domain", "mit_ocw_lecture")),
+        source_domain=_coerce_source_domain(
+            p.get("source_domain"),
+            default=default_source_domain,
+        ),
         source_type=p.get("source_type", ""),
     )
 
@@ -170,7 +211,10 @@ def retrieve_syllabus(
         week=week,
         priority=1,
         score=1.0,
-        source_domain=SourceDomain(p.get("source_domain", "mit_ocw_syllabus")),
+        source_domain=_coerce_source_domain(
+            p.get("source_domain"),
+            default=SourceDomain.MIT_OCW_SYLLABUS,
+        ),
         source_type=p.get("source_type", ""),
     )
 
@@ -202,7 +246,10 @@ def retrieve_semantic(
         limit=top_k,
     ).points
 
-    return [_hit_to_doc(h) for h in hits]
+    return [
+        _hit_to_doc(h, default_source_domain=SourceDomain.MIT_OCW_LECTURE)
+        for h in hits
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -234,7 +281,10 @@ def retrieve_strict_rules(
         score_threshold=threshold,
     ).points
 
-    return [_hit_to_doc(h) for h in hits]
+    return [
+        _hit_to_doc(h, default_source_domain=SourceDomain.MIT_OCW_LECTURE)
+        for h in hits
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -264,7 +314,10 @@ def retrieve_guidelines(
         score_threshold=threshold,
     ).points
 
-    return [_hit_to_doc(h) for h in hits]
+    return [
+        _hit_to_doc(h, default_source_domain=SourceDomain.CPP_CORE_GUIDELINES)
+        for h in hits
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -319,7 +372,10 @@ def retrieve_harvard(
         limit=top_k,
     ).points
 
-    return [_hit_to_doc(h) for h in hits]
+    return [
+        _hit_to_doc(h, default_source_domain=SourceDomain.HARVARD_CS50)
+        for h in hits
+    ]
 
 
 def retrieve_harvard_rules(
@@ -345,4 +401,7 @@ def retrieve_harvard_rules(
         score_threshold=threshold,
     ).points
 
-    return [_hit_to_doc(h) for h in hits]
+    return [
+        _hit_to_doc(h, default_source_domain=SourceDomain.HARVARD_CS50)
+        for h in hits
+    ]

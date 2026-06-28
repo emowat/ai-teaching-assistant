@@ -141,6 +141,7 @@ class Chunk:
     page_number: int | None
     source_domain: str       # mit_ocw_lecture | mit_ocw_syllabus | mit_ocw_assignment | cpp_core_guidelines
     retrieval_score: float | None = None  # set by BM25 / embedding for Tier 2; shown in prompt
+    priority: int = 0
 
 
 @dataclass
@@ -361,11 +362,11 @@ def sample_queries(
     target: int = 200,
     seed: int = 42,
 ) -> list[EvalQuery]:
-    """Evenly sample `target` queries from weeks 1..5, stratified by week."""
+    """Evenly sample `target` queries from weeks 1..8, stratified by week."""
     random.seed(seed)
 
-    # Group records by week 1..5
-    by_week: dict[int, list[dict]] = {w: [] for w in range(1, 6)}
+    # Group records by week 1..8
+    by_week: dict[int, list[dict]] = {w: [] for w in range(1, 9)}
     for r in records:
         w = r["metadata"].get("week", 0)
         if w in by_week:
@@ -396,6 +397,11 @@ def sample_queries(
 # ---------------------------------------------------------------------------
 
 def _resolve_week(filename: str) -> int:
+    m = re.match(r"^(?P<week>\d{1,2})_", filename)
+    if m:
+        week = int(m.group("week"))
+        if 0 <= week <= 8:
+            return week
     for key, week in _LECTURE_WEEK_MAP.items():
         if key in filename:
             return week
@@ -612,7 +618,6 @@ def load_harvard_transcripts(raw_data_path: Path | str) -> list[Chunk]:
             continue
 
         week = int(data.get("week", 0))
-        title = str(data.get("title", ""))
         for para in data.get("paragraphs", []):
             text = str(para.get("text", "")).strip()
             if len(text) < 50:
@@ -695,6 +700,9 @@ def _simple_bm25(
     Uses scikit-learn style TF-IDF if available, otherwise falls back to
     a simple term-overlap scorer.
     """
+    if not corpus_chunks:
+        return []
+
     try:
         from sklearn.feature_extraction.text import TfidfVectorizer
         from sklearn.metrics.pairwise import cosine_similarity
@@ -753,11 +761,20 @@ def _simple_bm25(
     return result
 
 
+def _tier2_k(week: int) -> int:
+    """Return the historical expansion budget used by the experiment tests."""
+    if week <= 1:
+        return 0
+    return min((week - 1) * 5, 25)
+
+
 def build_candidate_pool(
     query: EvalQuery,
     all_chunks: list[Chunk],
+    embedding_model: Any | None = None,
 ) -> list[Chunk]:
     """Build BM25 candidate pool with week-priority."""
+    del embedding_model
 
     retrieval_query = _build_retrieval_query(query)
     is_ast = _is_ast_query(query.student_message, query.golden_answer)
@@ -782,6 +799,90 @@ def build_candidate_pool(
                 pool.append(c)
 
     return pool
+
+
+def _neighbor_expansion(
+    selected_chunks: list[Chunk],
+    corpus_chunks: list[Chunk],
+    radius: int = 1,
+) -> list[Chunk]:
+    """Expand a chunk selection by nearby pages from the same source file.
+
+    The experiment tests expect adjacent lecture pages to be included while
+    keeping syllabus-style chunks scoped to the same file when page numbers are
+    absent.
+    """
+    if radius < 0:
+        raise ValueError("radius must be non-negative")
+
+    expanded: list[Chunk] = []
+    seen: set[str] = set()
+
+    def _maybe_add(chunk: Chunk) -> None:
+        if chunk.chunk_id in seen:
+            return
+        seen.add(chunk.chunk_id)
+        expanded.append(chunk)
+
+    for selected in selected_chunks:
+        _maybe_add(selected)
+        for candidate in corpus_chunks:
+            if candidate.chunk_id in seen:
+                continue
+            if candidate.source_file != selected.source_file:
+                continue
+            if selected.page_number is None or candidate.page_number is None:
+                if candidate.source_file == selected.source_file:
+                    _maybe_add(candidate)
+                continue
+            if abs(candidate.page_number - selected.page_number) <= radius:
+                _maybe_add(candidate)
+
+    return expanded
+
+
+def _embedding_top_k(
+    query_text: str,
+    corpus_chunks: list[Chunk],
+    embedding_model: Any,
+    top_k: int = 40,
+) -> list[Chunk]:
+    """Rank chunks by embedding similarity using the provided model."""
+    if not corpus_chunks:
+        return []
+
+    try:
+        import numpy as np
+    except ImportError:  # pragma: no cover - numpy is expected in tests
+        return _simple_bm25(query_text, corpus_chunks, top_k=top_k)
+
+    query_vec = np.asarray(embedding_model.encode(query_text), dtype=np.float32)
+    if query_vec.ndim != 1 or query_vec.size == 0:
+        return _simple_bm25(query_text, corpus_chunks, top_k=top_k)
+
+    query_norm = float(np.linalg.norm(query_vec)) or 1.0
+    scored: list[tuple[Chunk, float]] = []
+    for chunk in corpus_chunks:
+        chunk_vec = np.asarray(embedding_model.encode(chunk.content), dtype=np.float32)
+        if chunk_vec.ndim != 1 or chunk_vec.size == 0:
+            score = 0.0
+        else:
+            denom = (float(np.linalg.norm(chunk_vec)) or 1.0) * query_norm
+            score = float(np.dot(query_vec, chunk_vec) / denom)
+        scored.append((chunk, score))
+
+    scored.sort(key=lambda item: item[1], reverse=True)
+    result: list[Chunk] = []
+    for chunk, score in scored[:top_k]:
+        chunk.retrieval_score = float(score)
+        result.append(chunk)
+    return result
+
+
+def load_harvard_chunks(raw_data_path: Path | str) -> list[Chunk]:
+    """Load the Harvard notes and transcript chunks used by the tests."""
+    return load_harvard_notes(raw_data_path) + load_harvard_transcripts(raw_data_path)
+
 
 def _build_retrieval_query(query: EvalQuery) -> str:
     """
@@ -1206,7 +1307,7 @@ def main():
     total_labeled = sum(len(r.golden_labels) for r in results)
     avg_labels = total_labeled / len(results) if results else 0
     print(f"\n{'=' * 60}")
-    print(f"Labeling complete.")
+    print("Labeling complete.")
     print(f"  Total queries:     {len(queries)}")
     print(f"  Total labels:      {total_labeled}")
     print(f"  Avg labels/query:  {avg_labels:.1f}")

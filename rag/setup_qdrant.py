@@ -4,7 +4,7 @@ Qdrant setup: create collections and index course materials per course.
 Collections:
   mit13_course     — MIT 6.0013 (lecture slides + syllabus + assignments)
   mit14_course     — MIT 6.0014 (placeholder: same as MIT13)
-  cs50_course      — Harvard CS50 (lecture notes + transcripts)
+  harvard_cs50     — Harvard CS50 (lecture notes + transcripts)
   cpp_guidelines   — C++ Core Guidelines (shared, week 0)
 
 Usage:
@@ -48,7 +48,7 @@ VECTOR_SIZE = 768
 COLLECTIONS = {
     "mit13": "mit13_course",
     "mit14": "mit14_course",
-    "cs50": "cs50_course",
+    "cs50": "harvard_cs50",
 }
 GUIDELINES_COLLECTION = "cpp_guidelines"
 

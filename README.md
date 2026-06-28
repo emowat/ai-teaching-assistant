@@ -49,7 +49,7 @@ Endpoints:
 - `GET  /health` — liveness probe
 - `GET  /me` — authenticated profile + role
 - `POST /query` — RAG query
-- `POST /api/chat` — VS Code extension / chat API
+- `POST /api/chat` — VS Code extension / full pipeline chat API
 - `POST /run/compile` — C++ compile + run
 - `GET  /gradio` — Gradio RAG interrogation UI
 - `POST /admin/index/ensure` — idempotent index bootstrap
@@ -90,7 +90,8 @@ Roles are derived from the Cognito JWT `custom:role` claim. The TopBar shows a s
 2. Open the Admin dashboard.
 3. Create or edit courses in the `Courses` tab.
 4. Upload source files and launch `parse` / `chunk-index` jobs from `RAG Docs`.
-5. Use `AI Models` to change non-secret model routing and `Backend Diagnostic Console` for retrieval/debug inspection.
+5. Use `AI Models` to change non-secret model routing.
+6. Use `Backend Diagnostic Console` for input guardrail, retrieval, guardrail, and pipeline inspection.
 
 ### Student workflow
 

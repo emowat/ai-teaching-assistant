@@ -5,7 +5,9 @@ from types import SimpleNamespace
 from rag_eng.gradio_tools import SageMakerStatus, TrafficLight
 from rag_eng.ui import (
     _clear_sagemaker_request,
+    _input_guardrail_invoke,
     _guardrail_invoke,
+    _refresh_pipeline_route,
     _query_api,
     _resolve_retrieval_preset,
     _pipeline_invoke,
@@ -14,6 +16,7 @@ from rag_eng.ui import (
     build_pipeline_console_app,
     build_rag_query_app,
     build_sagemaker_console_app,
+    mount_gradio_consoles,
 )
 
 
@@ -35,6 +38,9 @@ def test_build_gradio_app_smoke() -> None:
         assert "_refresh_sagemaker_status" in fn_names
         assert "_clear_sagemaker_request" in fn_names
         assert "_guardrail_invoke" in fn_names
+        assert "_input_guardrail_invoke" in fn_names
+        assert "_refresh_input_guardrail_status" in fn_names
+        assert "_refresh_pipeline_route" in fn_names
 
 
 def test_refresh_sagemaker_status_renders_current_status(monkeypatch) -> None:
@@ -64,6 +70,49 @@ def test_clear_sagemaker_request_returns_retry_hint() -> None:
     response, status = _clear_sagemaker_request()
     assert response == ""
     assert "send it again" in status.lower()
+
+
+def test_refresh_pipeline_route_uses_runtime_route(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "rag_eng.ui.describe_runtime_routes",
+        lambda: "RAG Bedrock (us.amazon.nova-2-lite-v1:0) · Chat OpenAI (gpt-5.4-mini)",
+    )
+
+    text = _refresh_pipeline_route()
+    assert "Current runtime routes" in text
+    assert "RAG Bedrock (us.amazon.nova-2-lite-v1:0)" in text
+    assert "Chat OpenAI (gpt-5.4-mini)" in text
+
+
+def test_mount_gradio_consoles_uses_configured_root_path(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr("rag_eng.ui.build_gradio_app", lambda settings=None: "demo-app")
+    monkeypatch.setattr(
+        "rag_eng.ui.gr.mount_gradio_app",
+        lambda app, blocks, path, root_path=None: captured.update(
+            {
+                "app": app,
+                "blocks": blocks,
+                "path": path,
+                "root_path": root_path,
+            }
+        )
+        or "mounted-app",
+    )
+
+    result = mount_gradio_consoles(
+        "fastapi-app",
+        SimpleNamespace(gradio_root_path="/gradio"),
+    )
+
+    assert result == "mounted-app"
+    assert captured == {
+        "app": "fastapi-app",
+        "blocks": "demo-app",
+        "path": "/gradio",
+        "root_path": "/gradio",
+    }
 
 
 def test_resolve_retrieval_preset_uses_saved_values() -> None:
@@ -276,3 +325,39 @@ def test_guardrail_invoke_forwards_inputs(monkeypatch) -> None:
     assert captured["student_question"] == "Why does my pointer segfault?"
     assert captured["student_code"] == "int *p;"
     assert captured["conversation_history_json"] == '[{"role": "user", "content": "previous"}]'
+
+
+def test_input_guardrail_invoke_forwards_inputs(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_invoke_input_guardrail_review(
+        student_message,
+        student_code,
+        course_topic,
+        assignment_context,
+    ):
+        captured["student_message"] = student_message
+        captured["student_code"] = student_code
+        captured["course_topic"] = course_topic
+        captured["assignment_context"] = assignment_context
+        return ("final", "{}", "status")
+
+    monkeypatch.setattr(
+        "rag_eng.ui.invoke_input_guardrail_review",
+        fake_invoke_input_guardrail_review,
+    )
+
+    response, raw, status = _input_guardrail_invoke(
+        "Why does my pointer segfault?",
+        "int *p;",
+        "pointers",
+        "Intro C++ debugging exercise",
+    )
+
+    assert response == "final"
+    assert raw == "{}"
+    assert status == "status"
+    assert captured["student_message"] == "Why does my pointer segfault?"
+    assert captured["student_code"] == "int *p;"
+    assert captured["course_topic"] == "pointers"
+    assert captured["assignment_context"] == "Intro C++ debugging exercise"

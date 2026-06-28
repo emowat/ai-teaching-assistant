@@ -33,6 +33,56 @@ ENV_OVERRIDES: dict[str, str] = {
     "SAGEMAKER_EXECUTION_ROLE_ARN": "sagemaker.execution_role_arn",
     "MODEL_FAMILY": "rag_eng.model_family",
     "SAGEMAKER_INFERENCE_BACKEND": "rag_eng.inference_backend",
+    "RAG_ENG_ECS_CLUSTER": "rag_eng_ecs.cluster",
+    "RAG_ENG_ECS_SERVICE_NAME": "rag_eng_ecs.service_name",
+    "RAG_ENG_ECS_TASK_FAMILY": "rag_eng_ecs.task_family",
+    "RAG_ENG_ECS_TASK_DEFINITION": "rag_eng_ecs.task_definition",
+    "RAG_ENG_ECS_CONTAINER_NAME": "rag_eng_ecs.container_name",
+    "RAG_ENG_ECS_LAUNCH_TYPE": "rag_eng_ecs.launch_type",
+    "RAG_ENG_ECS_PLATFORM_VERSION": "rag_eng_ecs.platform_version",
+    "RAG_ENG_ECS_ASSIGN_PUBLIC_IP": "rag_eng_ecs.assign_public_ip",
+    "RAG_ENG_ECS_SUBNETS": "rag_eng_ecs.subnet_ids",
+    "RAG_ENG_ECS_SECURITY_GROUPS": "rag_eng_ecs.security_group_ids",
+    "RAG_ENG_ECS_ALB_SECURITY_GROUP_ID": "rag_eng_ecs.alb_security_group_id",
+    "RAG_ENG_ECS_IMAGE_URI": "rag_eng_ecs.image_uri",
+    "RAG_ENG_ECS_EXECUTION_ROLE_ARN": "rag_eng_ecs.execution_role_arn",
+    "RAG_ENG_ECS_TASK_ROLE_ARN": "rag_eng_ecs.task_role_arn",
+    "RAG_ENG_ECS_CPU": "rag_eng_ecs.cpu",
+    "RAG_ENG_ECS_MEMORY": "rag_eng_ecs.memory",
+    "RAG_ENG_ECS_CONTAINER_PORT": "rag_eng_ecs.container_port",
+    "RAG_ENG_ECS_DESIRED_COUNT": "rag_eng_ecs.desired_count",
+    "RAG_ENG_ECS_HEALTH_CHECK_PATH": "rag_eng_ecs.health_check_path",
+    "RAG_ENG_ECS_HEALTH_CHECK_GRACE_PERIOD_SECONDS": (
+        "rag_eng_ecs.health_check_grace_period_seconds"
+    ),
+    "RAG_ENG_ECS_LOG_GROUP": "rag_eng_ecs.log_group",
+    "RAG_ENG_ECS_LOG_STREAM_PREFIX": "rag_eng_ecs.log_stream_prefix",
+    "RAG_ENG_ECS_TARGET_GROUP_ARN": "rag_eng_ecs.target_group_arn",
+    "RAG_ENG_ECS_ENV_JSON": "rag_eng_ecs.environment",
+    "RAG_ENG_ECS_SECRET_ARNS_JSON": "rag_eng_ecs.secret_arn_map",
+    "FRONTEND_ENABLED": "frontend_web.enabled",
+    "FRONTEND_APP_DIR": "frontend_web.app_dir",
+    "FRONTEND_DIST_DIR": "frontend_web.dist_dir",
+    "FRONTEND_BUCKET_NAME": "frontend_web.bucket_name",
+    "FRONTEND_BUCKET_PREFIX": "frontend_web.bucket_prefix",
+    "FRONTEND_DEFAULT_ROOT_OBJECT": "frontend_web.default_root_object",
+    "FRONTEND_SPA_FALLBACK_PATH": "frontend_web.spa_fallback_path",
+    "FRONTEND_PRICE_CLASS": "frontend_web.price_class",
+    "FRONTEND_CLOUDFRONT_ALIASES": "frontend_web.cloudfront.aliases",
+    "FRONTEND_CLOUDFRONT_DISTRIBUTION_ID": "frontend_web.cloudfront.distribution_id",
+    "FRONTEND_CLOUDFRONT_CERTIFICATE_ARN": "frontend_web.cloudfront.certificate_arn",
+    "FRONTEND_CLOUDFRONT_COMMENT": "frontend_web.cloudfront.comment",
+    "FRONTEND_CLOUDFRONT_CREATE_OAC": "frontend_web.cloudfront.create_oac",
+    "FRONTEND_CLOUDFRONT_INVALIDATION_PATHS": "frontend_web.cloudfront.invalidation_paths",
+    "FRONTEND_CLOUDFRONT_API_PATH_PATTERNS": "frontend_web.cloudfront.api_path_patterns",
+    "FRONTEND_CLOUDFRONT_ORIGIN_PROTOCOL_POLICY": "frontend_web.cloudfront.origin_protocol_policy",
+    "FRONTEND_CLOUDFRONT_CACHE_STATIC_ASSETS": "frontend_web.cloudfront.cache_static_assets",
+    "FRONTEND_CLOUDFRONT_CACHE_HTML_SECONDS": "frontend_web.cloudfront.cache_html_seconds",
+    "VITE_API_BASE_URL": "frontend_web.build.vite_api_base_url",
+    "VITE_COGNITO_DOMAIN": "frontend_web.build.vite_cognito_domain",
+    "VITE_COGNITO_REDIRECT_URI": "frontend_web.build.vite_cognito_redirect_uri",
+    "VITE_COGNITO_LOGOUT_URI": "frontend_web.build.vite_cognito_logout_uri",
+    "FRONTEND_EXTRA_ENV_JSON": "frontend_web.build.extra_env",
     "DEPLOY_CONFIG": "_config_path",  # special: path only, not merged into tree
 }
 
@@ -180,6 +230,82 @@ class RagEngConfig:
 
 
 @dataclass
+class RagEngEcsConfig:
+    cluster: str
+    service_name: str
+    task_family: str
+    task_definition: str
+    container_name: str
+    launch_type: str
+    platform_version: str
+    assign_public_ip: str
+    subnet_ids: tuple[str, ...]
+    security_group_ids: tuple[str, ...]
+    alb_security_group_id: str | None
+    image_uri: str | None
+    execution_role_arn: str | None
+    task_role_arn: str | None
+    cpu: int
+    memory: int
+    container_port: int
+    desired_count: int
+    health_check_path: str
+    health_check_grace_period_seconds: int
+    log_group: str
+    log_stream_prefix: str
+    target_group_arn: str | None
+    environment: dict[str, str]
+    secret_arn_map: dict[str, str | None]
+
+
+@dataclass
+class FrontendCloudFrontConfig:
+    distribution_id: str | None
+    aliases: tuple[str, ...]
+    certificate_arn: str | None
+    comment: str
+    create_oac: bool
+    invalidation_paths: tuple[str, ...]
+    api_path_patterns: tuple[str, ...]
+    origin_protocol_policy: str
+    cache_static_assets: bool
+    cache_html_seconds: int
+
+
+@dataclass
+class FrontendBuildConfig:
+    vite_api_base_url: str
+    vite_cognito_domain: str
+    vite_cognito_redirect_uri: str
+    vite_cognito_logout_uri: str
+    extra_env: dict[str, str]
+
+    def as_env_dict(self) -> dict[str, str]:
+        env = {
+            "VITE_API_BASE_URL": self.vite_api_base_url,
+            "VITE_COGNITO_DOMAIN": self.vite_cognito_domain,
+            "VITE_COGNITO_REDIRECT_URI": self.vite_cognito_redirect_uri,
+            "VITE_COGNITO_LOGOUT_URI": self.vite_cognito_logout_uri,
+        }
+        env.update(self.extra_env)
+        return env
+
+
+@dataclass
+class FrontendWebConfig:
+    enabled: bool
+    app_dir: str
+    dist_dir: str
+    bucket_name: str
+    bucket_prefix: str
+    default_root_object: str
+    spa_fallback_path: str
+    price_class: str
+    cloudfront: FrontendCloudFrontConfig
+    build: FrontendBuildConfig
+
+
+@dataclass
 class DeployConfig:
     config_path: Path
     google_drive: GoogleDriveConfig
@@ -190,6 +316,8 @@ class DeployConfig:
     inference_smoke_test: InferenceSmokeTestConfig
     huggingface_packaging: HuggingFacePackagingConfig
     rag_eng: RagEngConfig
+    rag_eng_ecs: RagEngEcsConfig
+    frontend_web: FrontendWebConfig
     _raw: dict[str, Any] = field(repr=False, default_factory=dict)
 
     @property
@@ -259,7 +387,10 @@ def _apply_env_overrides(data: dict[str, Any]) -> None:
             _set_nested(data, dot_path, None)
         elif dot_path.endswith("s3_uri") and raw.lower() in ("null", "none"):
             _set_nested(data, dot_path, None)
-        elif dot_path.endswith("execution_role_arn") and raw.lower() in ("null", "none"):
+        elif dot_path.endswith("execution_role_arn") and raw.lower() in (
+            "null",
+            "none",
+        ):
             _set_nested(data, dot_path, None)
         else:
             _set_nested(data, dot_path, raw)
@@ -275,6 +406,78 @@ def _as_tuple_str_required(value: Any) -> tuple[str, ...]:
     if isinstance(value, list):
         return tuple(str(v) for v in value)
     return ()
+
+
+def _as_tuple_str_or_csv(value: Any, default: tuple[str, ...]) -> tuple[str, ...]:
+    if isinstance(value, list):
+        return tuple(str(v).strip() for v in value if str(v).strip())
+    if isinstance(value, str):
+        return tuple(item.strip() for item in value.split(",") if item.strip())
+    return default
+
+
+def _as_str_mapping(value: Any) -> dict[str, str]:
+    if isinstance(value, dict):
+        return {
+            str(key).strip(): str(val).strip()
+            for key, val in value.items()
+            if str(key).strip() and val is not None and str(val).strip()
+        }
+    if isinstance(value, str) and value.strip():
+        parsed = json.loads(value)
+        if isinstance(parsed, dict):
+            return {
+                str(key).strip(): str(val).strip()
+                for key, val in parsed.items()
+                if str(key).strip() and val is not None and str(val).strip()
+            }
+        raise ValueError("Expected a JSON object for mapping overrides.")
+    return {}
+
+
+def _as_optional_str_mapping(value: Any) -> dict[str, str | None]:
+    if isinstance(value, dict):
+        return {
+            str(key).strip(): (
+                None if val is None or not str(val).strip() else str(val).strip()
+            )
+            for key, val in value.items()
+            if str(key).strip()
+        }
+    if isinstance(value, str) and value.strip():
+        parsed = json.loads(value)
+        if isinstance(parsed, dict):
+            return {
+                str(key).strip(): (
+                    None if val is None or not str(val).strip() else str(val).strip()
+                )
+                for key, val in parsed.items()
+                if str(key).strip()
+            }
+        raise ValueError("Expected a JSON object for mapping overrides.")
+    return {}
+
+
+def _str_or_default(value: Any, default: str) -> str:
+    if value is None:
+        return default
+    text = str(value).strip()
+    return text if text else default
+
+
+def _as_bool(value: Any, default: bool) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    text = str(value).strip().lower()
+    if not text:
+        return default
+    if text in {"1", "true", "yes", "on"}:
+        return True
+    if text in {"0", "false", "no", "off"}:
+        return False
+    return default
 
 
 def _load_scale_from_zero_alarm(autoscale: dict) -> ScaleFromZeroAlarmConfig:
@@ -305,6 +508,10 @@ def load_deploy_config(path: str | Path | None = None) -> DeployConfig:
     smoke = raw.get("inference_smoke_test", {})
     hf = raw.get("huggingface_packaging", {})
     rag = raw.get("rag_eng", {})
+    rag_ecs = raw.get("rag_eng_ecs", {})
+    frontend = raw.get("frontend_web", {})
+    frontend_cloudfront = frontend.get("cloudfront", {})
+    frontend_build = frontend.get("build", {})
 
     profile = aws.get("profile")
     if profile in ("", "null", "none"):
@@ -321,9 +528,40 @@ def load_deploy_config(path: str | Path | None = None) -> DeployConfig:
     extra_env_raw = container.get("extra_env") or {}
     extra_env = {str(k): str(v) for k, v in extra_env_raw.items()}
 
+    ecs_environment = _as_str_mapping(rag_ecs.get("environment", {}))
+    ecs_secret_arn_map = _as_optional_str_mapping(rag_ecs.get("secret_arn_map", {}))
+
     s3_uri = ma.get("s3_uri")
     if s3_uri in ("", "null", "none"):
         s3_uri = None
+
+    rag_ecs_execution_role = rag_ecs.get("execution_role_arn")
+    if rag_ecs_execution_role in ("", "null", "none"):
+        rag_ecs_execution_role = None
+
+    rag_ecs_task_role = rag_ecs.get("task_role_arn")
+    if rag_ecs_task_role in ("", "null", "none"):
+        rag_ecs_task_role = None
+
+    rag_ecs_image_uri = rag_ecs.get("image_uri")
+    if rag_ecs_image_uri in ("", "null", "none"):
+        rag_ecs_image_uri = None
+
+    rag_ecs_alb_security_group_id = rag_ecs.get("alb_security_group_id")
+    if rag_ecs_alb_security_group_id in ("", "null", "none"):
+        rag_ecs_alb_security_group_id = None
+
+    rag_ecs_target_group_arn = rag_ecs.get("target_group_arn")
+    if rag_ecs_target_group_arn in ("", "null", "none"):
+        rag_ecs_target_group_arn = None
+
+    frontend_certificate_arn = frontend_cloudfront.get("certificate_arn")
+    if frontend_certificate_arn in ("", "null", "none"):
+        frontend_certificate_arn = None
+
+    frontend_distribution_id = frontend_cloudfront.get("distribution_id")
+    if frontend_distribution_id in ("", "null", "none"):
+        frontend_distribution_id = None
 
     return DeployConfig(
         config_path=config_path,
@@ -436,6 +674,123 @@ def load_deploy_config(path: str | Path | None = None) -> DeployConfig:
             use_sagemaker=bool(rag.get("use_sagemaker", False)),
             inference_backend=str(rag.get("inference_backend", "vllm")),
         ),
+        rag_eng_ecs=RagEngEcsConfig(
+            cluster=_str_or_default(rag_ecs.get("cluster"), ""),
+            service_name=_str_or_default(rag_ecs.get("service_name"), ""),
+            task_family=_str_or_default(rag_ecs.get("task_family"), ""),
+            task_definition=_str_or_default(rag_ecs.get("task_definition"), ""),
+            container_name=_str_or_default(rag_ecs.get("container_name"), "rag-eng"),
+            launch_type=_str_or_default(rag_ecs.get("launch_type"), "FARGATE"),
+            platform_version=_str_or_default(
+                rag_ecs.get("platform_version"),
+                "LATEST",
+            ),
+            assign_public_ip=_str_or_default(
+                rag_ecs.get("assign_public_ip"),
+                "ENABLED",
+            ),
+            subnet_ids=_as_tuple_str_or_csv(rag_ecs.get("subnet_ids"), ()),
+            security_group_ids=_as_tuple_str_or_csv(
+                rag_ecs.get("security_group_ids"),
+                (),
+            ),
+            alb_security_group_id=rag_ecs_alb_security_group_id,
+            image_uri=rag_ecs_image_uri,
+            execution_role_arn=rag_ecs_execution_role,
+            task_role_arn=rag_ecs_task_role,
+            cpu=int(rag_ecs.get("cpu", 1024)),
+            memory=int(rag_ecs.get("memory", 2048)),
+            container_port=int(rag_ecs.get("container_port", 8001)),
+            desired_count=int(rag_ecs.get("desired_count", 1)),
+            health_check_path=_str_or_default(
+                rag_ecs.get("health_check_path"), "/health"
+            ),
+            health_check_grace_period_seconds=int(
+                rag_ecs.get("health_check_grace_period_seconds", 120)
+            ),
+            log_group=_str_or_default(
+                rag_ecs.get("log_group"), "/ecs/codingrabbit-rag-eng"
+            ),
+            log_stream_prefix=_str_or_default(rag_ecs.get("log_stream_prefix"), "ecs"),
+            target_group_arn=rag_ecs_target_group_arn,
+            environment=ecs_environment,
+            secret_arn_map=ecs_secret_arn_map,
+        ),
+        frontend_web=FrontendWebConfig(
+            enabled=_as_bool(frontend.get("enabled", False), False),
+            app_dir=str(frontend.get("app_dir", "./frontend")),
+            dist_dir=str(frontend.get("dist_dir", "./frontend/dist")),
+            bucket_name=str(frontend.get("bucket_name", "")),
+            bucket_prefix=str(frontend.get("bucket_prefix", "")),
+            default_root_object=str(frontend.get("default_root_object", "index.html")),
+            spa_fallback_path=str(frontend.get("spa_fallback_path", "/index.html")),
+            price_class=str(frontend.get("price_class", "PriceClass_100")),
+            cloudfront=FrontendCloudFrontConfig(
+                distribution_id=frontend_distribution_id,
+                aliases=_as_tuple_str_or_csv(frontend_cloudfront.get("aliases"), ()),
+                certificate_arn=frontend_certificate_arn,
+                comment=_str_or_default(
+                    frontend_cloudfront.get("comment"),
+                    "CodingRabbit frontend distribution",
+                ),
+                create_oac=_as_bool(
+                    frontend_cloudfront.get("create_oac", True),
+                    True,
+                ),
+                invalidation_paths=_as_tuple_str_or_csv(
+                    frontend_cloudfront.get("invalidation_paths"),
+                    ("/*",),
+                ),
+                api_path_patterns=_as_tuple_str_or_csv(
+                    frontend_cloudfront.get("api_path_patterns"),
+                    (
+                        "/api/*",
+                        "/admin/*",
+                        "/run/*",
+                        "/me",
+                        "/query",
+                        "/health",
+                        "/docs",
+                        "/openapi.json",
+                        "/gradio*",
+                    ),
+                ),
+                origin_protocol_policy=str(
+                    frontend_cloudfront.get("origin_protocol_policy", "http-only")
+                ),
+                cache_static_assets=_as_bool(
+                    frontend_cloudfront.get("cache_static_assets", True),
+                    True,
+                ),
+                cache_html_seconds=int(
+                    frontend_cloudfront.get("cache_html_seconds", 60)
+                ),
+            ),
+            build=FrontendBuildConfig(
+                vite_api_base_url=str(
+                    frontend_build.get("vite_api_base_url", "http://localhost:8001")
+                ),
+                vite_cognito_domain=str(
+                    frontend_build.get(
+                        "vite_cognito_domain",
+                        "https://us-east-1z5dab8wni.auth.us-east-1.amazoncognito.com",
+                    )
+                ),
+                vite_cognito_redirect_uri=str(
+                    frontend_build.get(
+                        "vite_cognito_redirect_uri",
+                        "http://localhost:5173/auth/callback",
+                    )
+                ),
+                vite_cognito_logout_uri=str(
+                    frontend_build.get(
+                        "vite_cognito_logout_uri",
+                        "http://localhost:5173/logout",
+                    )
+                ),
+                extra_env=_as_str_mapping(frontend_build.get("extra_env", {})),
+            ),
+        ),
         _raw=raw,
     )
 
@@ -454,6 +809,74 @@ def get_dotpath(cfg: DeployConfig, dot_path: str) -> Any:
         "sagemaker.endpoint_name": cfg.sagemaker.endpoint_name,
         "sagemaker.instance_type": cfg.sagemaker.instance_type,
         "rag_eng.model_family": cfg.rag_eng.model_family,
+        "rag_eng_ecs.cluster": cfg.rag_eng_ecs.cluster,
+        "rag_eng_ecs.service_name": cfg.rag_eng_ecs.service_name,
+        "rag_eng_ecs.task_family": cfg.rag_eng_ecs.task_family,
+        "rag_eng_ecs.task_definition": cfg.rag_eng_ecs.task_definition,
+        "rag_eng_ecs.container_name": cfg.rag_eng_ecs.container_name,
+        "rag_eng_ecs.alb_security_group_id": cfg.rag_eng_ecs.alb_security_group_id
+        or "",
+        "rag_eng_ecs.subnet_ids": ",".join(cfg.rag_eng_ecs.subnet_ids),
+        "rag_eng_ecs.security_group_ids": ",".join(cfg.rag_eng_ecs.security_group_ids),
+        "rag_eng_ecs.image_uri": cfg.rag_eng_ecs.image_uri or "",
+        "rag_eng_ecs.execution_role_arn": cfg.rag_eng_ecs.execution_role_arn or "",
+        "rag_eng_ecs.task_role_arn": cfg.rag_eng_ecs.task_role_arn or "",
+        "rag_eng_ecs.launch_type": cfg.rag_eng_ecs.launch_type,
+        "rag_eng_ecs.platform_version": cfg.rag_eng_ecs.platform_version,
+        "rag_eng_ecs.assign_public_ip": cfg.rag_eng_ecs.assign_public_ip,
+        "rag_eng_ecs.container_port": str(cfg.rag_eng_ecs.container_port),
+        "rag_eng_ecs.desired_count": str(cfg.rag_eng_ecs.desired_count),
+        "rag_eng_ecs.target_group_arn": cfg.rag_eng_ecs.target_group_arn or "",
+        "rag_eng_ecs.health_check_path": cfg.rag_eng_ecs.health_check_path,
+        "rag_eng_ecs.health_check_grace_period_seconds": str(
+            cfg.rag_eng_ecs.health_check_grace_period_seconds
+        ),
+        "rag_eng_ecs.log_group": cfg.rag_eng_ecs.log_group,
+        "rag_eng_ecs.log_stream_prefix": cfg.rag_eng_ecs.log_stream_prefix,
+        "frontend_web.enabled": str(cfg.frontend_web.enabled),
+        "frontend_web.app_dir": cfg.frontend_web.app_dir,
+        "frontend_web.dist_dir": cfg.frontend_web.dist_dir,
+        "frontend_web.bucket_name": cfg.frontend_web.bucket_name,
+        "frontend_web.bucket_prefix": cfg.frontend_web.bucket_prefix,
+        "frontend_web.default_root_object": cfg.frontend_web.default_root_object,
+        "frontend_web.spa_fallback_path": cfg.frontend_web.spa_fallback_path,
+        "frontend_web.price_class": cfg.frontend_web.price_class,
+        "frontend_web.cloudfront.aliases": ",".join(
+            cfg.frontend_web.cloudfront.aliases
+        ),
+        "frontend_web.cloudfront.distribution_id": (
+            cfg.frontend_web.cloudfront.distribution_id or ""
+        ),
+        "frontend_web.cloudfront.certificate_arn": (
+            cfg.frontend_web.cloudfront.certificate_arn or ""
+        ),
+        "frontend_web.cloudfront.comment": cfg.frontend_web.cloudfront.comment,
+        "frontend_web.cloudfront.create_oac": str(
+            cfg.frontend_web.cloudfront.create_oac
+        ),
+        "frontend_web.cloudfront.invalidation_paths": ",".join(
+            cfg.frontend_web.cloudfront.invalidation_paths
+        ),
+        "frontend_web.cloudfront.api_path_patterns": ",".join(
+            cfg.frontend_web.cloudfront.api_path_patterns
+        ),
+        "frontend_web.cloudfront.origin_protocol_policy": (
+            cfg.frontend_web.cloudfront.origin_protocol_policy
+        ),
+        "frontend_web.cloudfront.cache_static_assets": str(
+            cfg.frontend_web.cloudfront.cache_static_assets
+        ),
+        "frontend_web.cloudfront.cache_html_seconds": str(
+            cfg.frontend_web.cloudfront.cache_html_seconds
+        ),
+        "frontend_web.build.vite_api_base_url": cfg.frontend_web.build.vite_api_base_url,
+        "frontend_web.build.vite_cognito_domain": cfg.frontend_web.build.vite_cognito_domain,
+        "frontend_web.build.vite_cognito_redirect_uri": (
+            cfg.frontend_web.build.vite_cognito_redirect_uri
+        ),
+        "frontend_web.build.vite_cognito_logout_uri": (
+            cfg.frontend_web.build.vite_cognito_logout_uri
+        ),
     }
     return mapping.get(dot_path, _get_nested(cfg._raw, dot_path))
 
@@ -473,6 +896,71 @@ def shell_export(cfg: DeployConfig | None = None) -> str:
         "DEPLOY_MODEL_FAMILY": cfg.rag_eng.model_family,
         "DEPLOY_DOWNLOAD_DIR": cfg.local_paths.download_dir,
         "DEPLOY_TARBALL_PATH": cfg.local_paths.tarball_path,
+        "DEPLOY_RAG_ENG_ECS_CLUSTER": cfg.rag_eng_ecs.cluster,
+        "DEPLOY_RAG_ENG_ECS_SERVICE_NAME": cfg.rag_eng_ecs.service_name,
+        "DEPLOY_RAG_ENG_ECS_TASK_FAMILY": cfg.rag_eng_ecs.task_family,
+        "DEPLOY_RAG_ENG_ECS_TASK_DEFINITION": cfg.rag_eng_ecs.task_definition,
+        "DEPLOY_RAG_ENG_ECS_CONTAINER_NAME": cfg.rag_eng_ecs.container_name,
+        "DEPLOY_RAG_ENG_ECS_ALB_SECURITY_GROUP_ID": (
+            cfg.rag_eng_ecs.alb_security_group_id or ""
+        ),
+        "DEPLOY_RAG_ENG_ECS_TARGET_GROUP_ARN": cfg.rag_eng_ecs.target_group_arn or "",
+        "DEPLOY_RAG_ENG_ECS_CONTAINER_PORT": str(cfg.rag_eng_ecs.container_port),
+        "DEPLOY_RAG_ENG_ECS_LAUNCH_TYPE": cfg.rag_eng_ecs.launch_type,
+        "DEPLOY_RAG_ENG_ECS_PLATFORM_VERSION": cfg.rag_eng_ecs.platform_version,
+        "DEPLOY_RAG_ENG_ECS_ASSIGN_PUBLIC_IP": cfg.rag_eng_ecs.assign_public_ip,
+        "DEPLOY_RAG_ENG_ECS_SUBNETS": ",".join(cfg.rag_eng_ecs.subnet_ids),
+        "DEPLOY_RAG_ENG_ECS_SECURITY_GROUPS": ",".join(
+            cfg.rag_eng_ecs.security_group_ids
+        ),
+        "DEPLOY_FRONTEND_ENABLED": str(cfg.frontend_web.enabled),
+        "DEPLOY_FRONTEND_APP_DIR": cfg.frontend_web.app_dir,
+        "DEPLOY_FRONTEND_DIST_DIR": cfg.frontend_web.dist_dir,
+        "DEPLOY_FRONTEND_BUCKET_NAME": cfg.frontend_web.bucket_name,
+        "DEPLOY_FRONTEND_BUCKET_PREFIX": cfg.frontend_web.bucket_prefix,
+        "DEPLOY_FRONTEND_DEFAULT_ROOT_OBJECT": cfg.frontend_web.default_root_object,
+        "DEPLOY_FRONTEND_SPA_FALLBACK_PATH": cfg.frontend_web.spa_fallback_path,
+        "DEPLOY_FRONTEND_PRICE_CLASS": cfg.frontend_web.price_class,
+        "DEPLOY_FRONTEND_CLOUDFRONT_ALIASES": ",".join(
+            cfg.frontend_web.cloudfront.aliases
+        ),
+        "DEPLOY_FRONTEND_CLOUDFRONT_DISTRIBUTION_ID": (
+            cfg.frontend_web.cloudfront.distribution_id or ""
+        ),
+        "DEPLOY_FRONTEND_CLOUDFRONT_CERTIFICATE_ARN": (
+            cfg.frontend_web.cloudfront.certificate_arn or ""
+        ),
+        "DEPLOY_FRONTEND_CLOUDFRONT_COMMENT": cfg.frontend_web.cloudfront.comment,
+        "DEPLOY_FRONTEND_CLOUDFRONT_CREATE_OAC": str(
+            cfg.frontend_web.cloudfront.create_oac
+        ),
+        "DEPLOY_FRONTEND_CLOUDFRONT_INVALIDATION_PATHS": ",".join(
+            cfg.frontend_web.cloudfront.invalidation_paths
+        ),
+        "DEPLOY_FRONTEND_CLOUDFRONT_API_PATH_PATTERNS": ",".join(
+            cfg.frontend_web.cloudfront.api_path_patterns
+        ),
+        "DEPLOY_FRONTEND_CLOUDFRONT_ORIGIN_PROTOCOL_POLICY": (
+            cfg.frontend_web.cloudfront.origin_protocol_policy
+        ),
+        "DEPLOY_FRONTEND_CLOUDFRONT_CACHE_STATIC_ASSETS": str(
+            cfg.frontend_web.cloudfront.cache_static_assets
+        ),
+        "DEPLOY_FRONTEND_CLOUDFRONT_CACHE_HTML_SECONDS": str(
+            cfg.frontend_web.cloudfront.cache_html_seconds
+        ),
+        "DEPLOY_FRONTEND_VITE_API_BASE_URL": cfg.frontend_web.build.vite_api_base_url,
+        "DEPLOY_FRONTEND_VITE_COGNITO_DOMAIN": cfg.frontend_web.build.vite_cognito_domain,
+        "DEPLOY_FRONTEND_VITE_COGNITO_REDIRECT_URI": (
+            cfg.frontend_web.build.vite_cognito_redirect_uri
+        ),
+        "DEPLOY_FRONTEND_VITE_COGNITO_LOGOUT_URI": (
+            cfg.frontend_web.build.vite_cognito_logout_uri
+        ),
+        "DEPLOY_FRONTEND_EXTRA_ENV_JSON": json.dumps(
+            cfg.frontend_web.build.extra_env,
+            sort_keys=True,
+        ),
     }
     lines = []
     for key, value in pairs.items():
@@ -503,25 +991,76 @@ def describe_config(path: str | Path | None = None) -> None:
         print()
     print("Resolved values (after env overrides):")
     cfg = load_deploy_config(config_path)
-    print(json.dumps(
-        {
-            "aws": {
-                "region": cfg.aws.region,
-                "profile": cfg.aws.profile,
-                "s3_bucket": cfg.aws.s3_bucket,
+    print(
+        json.dumps(
+            {
+                "aws": {
+                    "region": cfg.aws.region,
+                    "profile": cfg.aws.profile,
+                    "s3_bucket": cfg.aws.s3_bucket,
+                },
+                "model_artifact": {
+                    "s3_key": cfg.model_artifact.s3_key,
+                    "s3_uri": cfg.model_data_uri,
+                },
+                "sagemaker": {
+                    "endpoint_name": cfg.sagemaker.endpoint_name,
+                    "instance_type": cfg.sagemaker.instance_type,
+                },
+                "rag_eng": {"model_family": cfg.rag_eng.model_family},
+                "rag_eng_ecs": {
+                    "cluster": cfg.rag_eng_ecs.cluster,
+                    "service_name": cfg.rag_eng_ecs.service_name,
+                    "task_family": cfg.rag_eng_ecs.task_family,
+                    "task_definition": cfg.rag_eng_ecs.task_definition,
+                    "container_name": cfg.rag_eng_ecs.container_name,
+                    "alb_security_group_id": cfg.rag_eng_ecs.alb_security_group_id,
+                    "subnet_ids": cfg.rag_eng_ecs.subnet_ids,
+                    "security_group_ids": cfg.rag_eng_ecs.security_group_ids,
+                    "execution_role_arn": cfg.rag_eng_ecs.execution_role_arn,
+                    "task_role_arn": cfg.rag_eng_ecs.task_role_arn,
+                    "launch_type": cfg.rag_eng_ecs.launch_type,
+                    "platform_version": cfg.rag_eng_ecs.platform_version,
+                    "assign_public_ip": cfg.rag_eng_ecs.assign_public_ip,
+                    "container_port": cfg.rag_eng_ecs.container_port,
+                    "desired_count": cfg.rag_eng_ecs.desired_count,
+                    "target_group_arn": cfg.rag_eng_ecs.target_group_arn,
+                    "health_check_path": cfg.rag_eng_ecs.health_check_path,
+                    "health_check_grace_period_seconds": cfg.rag_eng_ecs.health_check_grace_period_seconds,
+                    "log_group": cfg.rag_eng_ecs.log_group,
+                    "log_stream_prefix": cfg.rag_eng_ecs.log_stream_prefix,
+                    "environment_keys": sorted(cfg.rag_eng_ecs.environment),
+                    "secret_keys": sorted(cfg.rag_eng_ecs.secret_arn_map),
+                },
+                "frontend_web": {
+                    "enabled": cfg.frontend_web.enabled,
+                    "bucket_name": cfg.frontend_web.bucket_name,
+                    "bucket_prefix": cfg.frontend_web.bucket_prefix,
+                    "app_dir": cfg.frontend_web.app_dir,
+                    "dist_dir": cfg.frontend_web.dist_dir,
+                    "default_root_object": cfg.frontend_web.default_root_object,
+                    "spa_fallback_path": cfg.frontend_web.spa_fallback_path,
+                    "price_class": cfg.frontend_web.price_class,
+                    "aliases": cfg.frontend_web.cloudfront.aliases,
+                    "distribution_id": cfg.frontend_web.cloudfront.distribution_id,
+                    "certificate_arn": cfg.frontend_web.cloudfront.certificate_arn,
+                    "comment": cfg.frontend_web.cloudfront.comment,
+                    "create_oac": cfg.frontend_web.cloudfront.create_oac,
+                    "invalidation_paths": cfg.frontend_web.cloudfront.invalidation_paths,
+                    "api_path_patterns": cfg.frontend_web.cloudfront.api_path_patterns,
+                    "origin_protocol_policy": cfg.frontend_web.cloudfront.origin_protocol_policy,
+                    "cache_static_assets": cfg.frontend_web.cloudfront.cache_static_assets,
+                    "cache_html_seconds": cfg.frontend_web.cloudfront.cache_html_seconds,
+                    "vite_api_base_url": cfg.frontend_web.build.vite_api_base_url,
+                    "vite_cognito_domain": cfg.frontend_web.build.vite_cognito_domain,
+                    "vite_cognito_redirect_uri": cfg.frontend_web.build.vite_cognito_redirect_uri,
+                    "vite_cognito_logout_uri": cfg.frontend_web.build.vite_cognito_logout_uri,
+                    "extra_env_keys": sorted(cfg.frontend_web.build.extra_env),
+                },
             },
-            "model_artifact": {
-                "s3_key": cfg.model_artifact.s3_key,
-                "s3_uri": cfg.model_data_uri,
-            },
-            "sagemaker": {
-                "endpoint_name": cfg.sagemaker.endpoint_name,
-                "instance_type": cfg.sagemaker.instance_type,
-            },
-            "rag_eng": {"model_family": cfg.rag_eng.model_family},
-        },
-        indent=2,
-    ))
+            indent=2,
+        )
+    )
 
 
 def main() -> None:
@@ -541,16 +1080,42 @@ def main() -> None:
         describe_config(args.config)
     elif args.command == "json":
         cfg = load_deploy_config(args.config)
-        print(json.dumps(
-            {
-                "config_path": str(cfg.config_path),
-                "model_data_uri": cfg.model_data_uri,
-                "endpoint_name": cfg.sagemaker.endpoint_name,
-                "s3_bucket": cfg.aws.s3_bucket,
-                "region": cfg.aws.region,
-            },
-            indent=2,
-        ))
+        print(
+            json.dumps(
+                {
+                    "config_path": str(cfg.config_path),
+                    "model_data_uri": cfg.model_data_uri,
+                    "endpoint_name": cfg.sagemaker.endpoint_name,
+                    "s3_bucket": cfg.aws.s3_bucket,
+                    "region": cfg.aws.region,
+                    "rag_eng_ecs": {
+                        "cluster": cfg.rag_eng_ecs.cluster,
+                        "service_name": cfg.rag_eng_ecs.service_name,
+                        "task_family": cfg.rag_eng_ecs.task_family,
+                        "task_definition": cfg.rag_eng_ecs.task_definition,
+                        "container_name": cfg.rag_eng_ecs.container_name,
+                        "alb_security_group_id": cfg.rag_eng_ecs.alb_security_group_id,
+                        "subnet_ids": cfg.rag_eng_ecs.subnet_ids,
+                        "security_group_ids": cfg.rag_eng_ecs.security_group_ids,
+                        "execution_role_arn": cfg.rag_eng_ecs.execution_role_arn,
+                        "task_role_arn": cfg.rag_eng_ecs.task_role_arn,
+                        "launch_type": cfg.rag_eng_ecs.launch_type,
+                        "platform_version": cfg.rag_eng_ecs.platform_version,
+                        "assign_public_ip": cfg.rag_eng_ecs.assign_public_ip,
+                        "container_port": cfg.rag_eng_ecs.container_port,
+                        "desired_count": cfg.rag_eng_ecs.desired_count,
+                        "target_group_arn": cfg.rag_eng_ecs.target_group_arn,
+                        "health_check_path": cfg.rag_eng_ecs.health_check_path,
+                        "health_check_grace_period_seconds": cfg.rag_eng_ecs.health_check_grace_period_seconds,
+                        "log_group": cfg.rag_eng_ecs.log_group,
+                        "log_stream_prefix": cfg.rag_eng_ecs.log_stream_prefix,
+                        "environment_keys": sorted(cfg.rag_eng_ecs.environment),
+                        "secret_keys": sorted(cfg.rag_eng_ecs.secret_arn_map),
+                    },
+                },
+                indent=2,
+            )
+        )
     elif args.command == "get":
         if not args.path:
             print("ERROR: get requires a dot-path argument")

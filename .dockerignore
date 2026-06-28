@@ -1,0 +1,56 @@
+# Local secrets and environment files
+.env
+.env.*
+
+# VCS and local tooling state
+.git/
+.agents/
+.codex/
+.pytest_cache/
+.ruff_cache/
+**/__pycache__/
+**/*.pyc
+**/*.swp
+**/*.swo
+.DS_Store
+**/.DS_Store
+
+# Local virtual environments
+.venv/
+.venv311/
+
+# Large local model artifacts
+model_download/
+model.tar.gz
+input_guardrails/models/checkpoints/
+output_guardrails/models/checkpoints/
+
+# Generated data and local datasets
+raw_courses/
+raw_data/
+synthetic-transcripts/
+
+# Frontend / extension / local app build output
+frontend/
+frontend/dist/
+ui/
+vscode-extension/
+**/node_modules/
+**/*.vsix
+
+# Non-runtime docs and test fixtures
+docs/
+local_docs/
+test/
+model_eval/
+codespaces_examples/
+backend/
+data_ingestion/
+ingestion_worker/
+runner/
+scripts/
+
+# Orchestrator / local runtime logs
+*.log
+orchestrator.log
+ast_test.log

@@ -27,6 +27,19 @@ There are three auth patterns in the service today:
 | most `/admin/*` routes | admin Cognito bearer token or `X-Admin-Token` |
 | `POST /admin/index/ensure`, `POST /admin/index/rebuild` | `X-Admin-Token` only |
 
+`POST /query` and `POST /api/chat` now run the pre-RAG input guardrail before
+retrieval. If the guardrail blocks a request, the service short-circuits and
+returns a safe redirect response without spending retrieval or inference
+compute.
+
+The orchestrator keeps the session-level warning count in Aurora under
+`tutor_sessions.metadata` using the `Session_Adversarial_Warnings` family of
+keys. The warning and end-chat thresholds are configured in
+[`runtime_config.yaml`](./runtime_config.yaml)
+under `runtime.input_guardrail_orchestration`, and every persisted turn snapshot
+now records the policy snapshot plus the session state before and after the
+orchestrator decision.
+
 Admin bearer auth means:
 
 - `Authorization: Bearer <access-token>`
@@ -46,9 +59,9 @@ routes accept either auth style.
 | `GET` | `/health` | none | readiness plus dependency status |
 | `GET` | `/me` | bearer | current authenticated user / role |
 | `POST` | `/query` | none | RAG query with reranking |
-| `POST` | `/api/chat` | none | chat / VS Code extension endpoint |
+| `POST` | `/api/chat` | none | full pipeline chat / VS Code extension endpoint |
 | `POST` | `/run/compile` | bearer | compile + run C++ code |
-| `GET` | `/gradio` | browser | Gradio diagnostic console |
+| `GET` | `/gradio` | browser | Gradio diagnostic console, including the Input Guardrail tab |
 | `GET` | `/admin/courses` | admin bearer or `X-Admin-Token` | list courses |
 | `GET` | `/admin/courses/{course_id}` | admin bearer or `X-Admin-Token` | get one course |
 | `POST` | `/admin/courses` | admin bearer or `X-Admin-Token` | create course |
@@ -109,10 +122,97 @@ export INGESTION_ECS_SECURITY_GROUPS=sg-...
 export INGESTION_JOBS_DATABASE_URL="postgresql://user:password@aurora-endpoint:5432/postgres?sslmode=require"
 ```
 
-8. Start the service:
+8. If you want the input guardrail model stage active, restore the checkpoint:
+
+```bash
+./deploy/scripts/restore-input-guardrail-checkpoint.sh
+```
+
+By default this downloads from `s3://codingrabbit-data-dev/models/guardrails/input_codebert_v1/`
+into `input_guardrails/models/checkpoints/input_codebert_v1`.
+If that S3 location is a prefix containing `model.tar.gz`, the restore helper
+will extract the archive into the local checkpoint directory automatically.
+
+For the ECS deployment, both the input and output guardrail checkpoints are
+restored automatically at container startup by `deploy/scripts/rag-eng-startup.sh`,
+which also starts `uvicorn` with proxy headers enabled. The ECS task definition
+sets `GRADIO_ROOT_PATH=/gradio` and `GRADIO_PUBLIC_ORIGIN` to the public
+CloudFront origin so Gradio emits HTTPS-safe asset and API links without
+breaking the mounted route.
+The container image stays small because the checkpoints are loaded from S3 at
+runtime instead of being baked into the image.
+If `RUNTIME_CONFIG_S3_URI` is set, the same startup path restores
+[`runtime_config.yaml`](./runtime_config.yaml) from S3 before the app starts,
+and `POST /admin/llm/config` syncs saved routing changes back to that object
+so the admin model selection survives ECS task replacement.
+
+9. Start the service:
 
 ```bash
 uv run uvicorn rag_eng.main:app --host 0.0.0.0 --port 8001
+```
+
+The local server port stays aligned with the ECS container port. Runtime
+behavior knobs remain in `rag_eng/runtime_config.yaml`; AWS service wiring
+for the online orchestrator is in `deploy/deployment.yaml` under
+`rag_eng_ecs`.
+
+10. If you want to export offline-eval turn logs from Aurora to S3, use:
+
+```bash
+uv run python -m rag_eng.cli export-turn-snapshots \
+  --database-url "$COURSE_REGISTRY_DATABASE_URL" \
+  --bucket "$S3_DATA_BUCKET" \
+  --start-date 2026-06-23 \
+  --end-date 2026-06-23
+```
+
+By default the exporter writes JSONL files under:
+
+```text
+eval/chat_logs/turn_logs/date=YYYY-MM-DD/turn_snapshots.jsonl
+```
+
+If you pass `--course-id`, the exporter adds a `course_id=...` partition
+between the prefix and the date partition.
+
+The export destination and Aurora query timeout are configured in
+[`runtime_config.yaml`](./runtime_config.yaml) under
+`runtime.chat_log_export`. `--bucket` and `--connect-timeout-seconds` still
+override those defaults for one-off runs.
+
+Each exported turn snapshot includes the `policy_snapshot` and the
+`orchestrator_phase` block, which makes it easier to audit whether a turn was
+handled by the input guardrail, a session-level end-chat decision, or the main
+model path.
+
+## Validation
+
+Run the full repository test suite from the repo root:
+
+```bash
+uv run pytest -q
+```
+
+If you want to run the known stable test roots explicitly, use:
+
+```bash
+uv run pytest -q test input_guardrails/tests output_guardrails rag/experiments/test_labeling_chunks.py
+```
+
+For local service work, these focused checks are the most useful:
+
+```bash
+uv run pytest -q test/test_rag_eng_service.py test/test_rag_eng_api.py
+uv run pytest -q test/test_offline_eval_smoke.py
+uv run pytest -q test/test_offline_eval_live_smoke.py
+```
+
+Lint and formatting checks:
+
+```bash
+uv run ruff check rag_eng test
+git diff --check
 ```
 
 ## Common runtime examples
@@ -120,6 +220,8 @@ uv run uvicorn rag_eng.main:app --host 0.0.0.0 --port 8001
 ### `GET /health`
 
 Use this to confirm the backend, Qdrant, Aurora, and model provider wiring.
+The admin dashboard polls this endpoint periodically and uses the configured
+and reachable flags to populate the health badge tooltip.
 
 ```bash
 curl -s http://localhost:8001/health
@@ -148,6 +250,10 @@ curl -s http://localhost:8001/query \
     "rerank_strategy": "similarity"
   }'
 ```
+
+The query endpoint now runs the input guardrail before retrieval. If the input
+is blocked, the response returns the guardrail metadata plus a safe redirect
+answer and no retrieval context.
 
 ### `POST /run/compile`
 
@@ -180,6 +286,47 @@ curl -s http://localhost:8001/api/chat \
   }'
 ```
 
+This is the full pipeline path:
+
+1. input guardrail
+2. retrieval
+3. prompt assembly
+4. inference
+5. output guardrails
+
+If the input guardrail blocks the request, the backend skips retrieval and
+inference and returns the safe redirect response immediately.
+
+### Admin diagnostics
+
+The backend also exposes admin-only, non-persisting probes for stage-by-stage
+inspection. These call the same service logic as the public endpoints but do
+not write turn snapshots or session state.
+
+- `POST /admin/diagnostics/input-guardrail`
+- `POST /admin/diagnostics/rag`
+- `POST /admin/diagnostics/output-guardrail`
+- `POST /admin/diagnostics/pipeline`
+
+Example:
+
+```bash
+curl -s http://localhost:8001/admin/diagnostics/pipeline \
+  -H "X-Admin-Token: $ADMIN_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model": "codingrabbit-ta",
+    "course_id": "mit14",
+    "messages": [
+      {"role": "user", "content": "Explain why this pointer crash is undefined behavior."}
+    ],
+    "stream": false
+  }'
+```
+
+Use these diagnostics for black-box checks in tests and operations. Keep `/health`
+focused on readiness and dependency reachability.
+
 ## Admin workflows
 
 For the full course creation, document upload, parse, and chunk-index flow, use:
@@ -199,13 +346,35 @@ That guide includes:
 
 The Gradio backend console exposes:
 
+- input guardrail inspection
 - retrieval presets
 - top-k / final result count controls
 - rerank strategy selection
 - route / trace overrides
 - a guardrail console
 
+The Input Guardrail tab is the quickest way to inspect the new pre-RAG model
+decision before the request reaches retrieval.
+
 Use `Experiment baseline (K=8, similarity)` as the default-safe preset.
+
+## Offline eval exports
+
+The per-turn snapshot table can be exported to S3 JSONL for offline evaluation
+jobs and LLM-as-a-judge tooling.
+
+```bash
+uv run python -m rag_eng.cli export-turn-snapshots \
+  --database-url "$COURSE_REGISTRY_DATABASE_URL" \
+  --bucket "$S3_DATA_BUCKET" \
+  --prefix eval/chat_logs/turn_logs \
+  --start-date 2026-06-23 \
+  --end-date 2026-06-23
+```
+
+The exported JSONL records are the canonical turn snapshots captured in
+`tutor_turn_snapshots`; each line includes the trace ids, course metadata,
+input/output guardrail phases, retrieval metadata, and final rendered text.
 
 ## C++ sandbox security constraints
 
@@ -228,6 +397,7 @@ Build the runner image before using docker mode:
 
 | Variable | Default | Description |
 |---|---|---|
+| `APP_PORT` | `8001` | local server port and ECS container port |
 | `RUNNER_MODE` | `docker` | `docker` or `subprocess` |
 | `RUNNER_IMAGE` | `codingrabbit-cpp-runner:0.1` | Docker image tag |
 | `CORS_ORIGINS` | `http://localhost:5173` | allowed browser origins |
@@ -239,6 +409,7 @@ Build the runner image before using docker mode:
 | `AWS_PROFILE` | — | optional AWS profile |
 | `COURSE_REGISTRY_DATABASE_URL` | — | Aurora/PostgreSQL URL for course routing |
 | `DATABASE_URL` | — | fallback Aurora/PostgreSQL URL |
+| `RUNTIME_CONFIG_S3_URI` | — | optional `s3://bucket/key` object used to restore and persist `runtime_config.yaml` |
 | `INGESTION_ECS_CLUSTER` | — | ECS cluster for on-demand ingestion |
 | `INGESTION_ECS_TASK_DEFINITION` | — | ECS task definition |
 | `INGESTION_ECS_CONTAINER_NAME` | `ingestion-worker` | container name inside the task definition |
@@ -249,6 +420,25 @@ Build the runner image before using docker mode:
 | `INGESTION_ECS_SECURITY_GROUPS` | — | comma-separated security groups |
 | `INGESTION_JOBS_DATABASE_URL` | — | Aurora/PostgreSQL URL for ingestion job tracking |
 | `INGESTION_JOBS_CONNECT_TIMEOUT_SECONDS` | `5` | DB connect timeout for job tracking |
+| `INPUT_GUARDRAILS_ENABLED` | `true` | enable the pre-RAG input guardrail model stage |
+| `INPUT_GUARDRAILS_CODEBERT_S3_URI` | `s3://codingrabbit-data-dev/models/guardrails/input_codebert_v1/` | S3 checkpoint or tarball for the input guardrail model |
+| `INPUT_GUARDRAILS_CODEBERT_CHECKPOINT_DIR` | `input_guardrails/models/checkpoints/input_codebert_v1` | local Hugging Face checkpoint directory |
+| `INPUT_GUARDRAILS_CODEBERT_PASS_BELOW` | `0.30` | model score below which the request is treated as pass |
+| `INPUT_GUARDRAILS_CODEBERT_BLOCK_ABOVE` | `0.70` | model score above which the request is blocked |
 | `RESTART_COMMAND` | — | optional backend restart command |
 
 The editable non-secret route settings live in `rag_eng/runtime_config.yaml`.
+When `RUNTIME_CONFIG_S3_URI` is set, that file is restored from S3 on startup
+and saved back to S3 whenever the admin LLM config is updated.
+For Bedrock Anthropic Claude Sonnet 4.6, use the inference profile ID
+`us.anthropic.claude-sonnet-4-6` (or the global profile ID) instead of the
+foundation-model ID `anthropic.claude-sonnet-4-6`.
+For Bedrock Anthropic Claude Haiku 4.5, use the inference profile ID
+`us.anthropic.claude-haiku-4-5-20251001-v1:0` (or the global profile ID)
+instead of the shorter `us.anthropic.claude-haiku-4-5` alias.
+Those Sonnet 4.6 and Haiku 4.5 models reject `temperature` and `top_p`
+together in Converse, so the service sends `temperature` only for that model
+family.
+AWS deployment wiring for the online service lives in `deploy/deployment.yaml`
+under `rag_eng_ecs`, and the ECS service helper is
+[`deploy/scripts/deploy-rag-eng-ecs.sh`](/home/user/MIDS/w210/capstone/deploy/scripts/deploy-rag-eng-ecs.sh).

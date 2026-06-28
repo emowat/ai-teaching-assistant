@@ -1,9 +1,9 @@
 # =============================================================================
-# CodingRabbit — SageMaker deployment configuration
+# CodingRabbit — AWS deployment configuration
 # =============================================================================
 #
 # Single source of truth for deploy/upload_model.py, deploy/deploy_sagemaker.py,
-# and deploy/scripts/*.sh
+# deploy/deploy_rag_eng_ecs.py, and deploy/scripts/*.sh
 #
 # Override precedence (highest wins):
 #   1. CLI flags (--bucket, --role-arn, etc.)
@@ -189,6 +189,140 @@ rag_eng:
   use_sagemaker: false
   inference_backend: "vllm"
 
+# -----------------------------------------------------------------------------
+# `rag_eng` ECS/Fargate service (online orchestrator)
+# -----------------------------------------------------------------------------
+rag_eng_ecs:
+  # ECS service / task family names for the online orchestrator container.
+  cluster: "codingrabbit-rag-eng"
+  service_name: "codingrabbit-rag-eng"
+  task_family: "codingrabbit-rag-eng"
+  task_definition: "codingrabbit-rag-eng"
+  container_name: "rag-eng"
+
+  # ECS launch and placement settings.
+  launch_type: "FARGATE"
+  platform_version: "LATEST"
+  assign_public_ip: "ENABLED"
+  subnet_ids:
+    - subnet-01b26a7b1a7f1b746
+    - subnet-0711779df65a14e9d
+  security_group_ids:
+    - sg-0ce5f60034441172a
+  alb_security_group_id: "sg-04ffec4079dbda38a"
+  target_group_arn: "arn:aws:elasticloadbalancing:us-east-1:976193240866:targetgroup/codingrabbit-rag-eng/e6f66bbebacdceab"
+
+  # Container image and task sizing.
+  image_uri: "976193240866.dkr.ecr.us-east-1.amazonaws.com/codingrabbit-rag-eng:latest"
+  execution_role_arn: "arn:aws:iam::976193240866:role/codingrabbit-rag-eng-execution-role"
+  task_role_arn: "arn:aws:iam::976193240866:role/codingrabbit-rag-eng-task"
+  cpu: 1024
+  memory: 2048
+  container_port: 8001
+  desired_count: 1
+  health_check_path: "/health"
+  # The ECS entrypoint restores both guardrail checkpoints from S3 before
+  # uvicorn starts, so give the task time to warm up before ALB checks.
+  health_check_grace_period_seconds: 600
+
+  # CloudWatch Logs for the service task definition.
+  log_group: "/ecs/codingrabbit-rag-eng"
+  log_stream_prefix: "ecs"
+
+  # Non-secret runtime env values baked into the ECS task definition.
+  environment:
+    APP_PORT: "8001"
+    AWS_REGION: "us-east-1"
+    CORS_ORIGINS: "http://localhost:5173"
+    COGNITO_REGION: "us-east-1"
+    COGNITO_USER_POOL_ID: "us-east-1_Z5DAb8wni"
+    COGNITO_APP_CLIENT_ID: "5k11ek5do9l3p6vhpev3aifh0f"
+    COGNITO_ISSUER: "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_Z5DAb8wni"
+    COGNITO_JWKS_URL: "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_Z5DAb8wni/.well-known/jwks.json"
+    LOG_LEVEL: "INFO"
+    GRADIO_ROOT_PATH: "/gradio"
+    GRADIO_PUBLIC_ORIGIN: "https://d26myplnp1msqn.cloudfront.net"
+    OPENAI_BASE_URL: "https://api.openai.com/v1"
+    QDRANT_URL: "https://ccc1cf4f-26c6-441c-ab70-a2a8f2da9464.us-east-1-1.aws.cloud.qdrant.io:6333"
+    QDRANT_COLLECTION_NAME: "codingrabbit_rag_vectordb"
+    QDRANT_GUIDELINES_COLLECTION_NAME: "cpp_guidelines"
+    QDRANT_HARVARD_COLLECTION_NAME: "harvard_cs50"
+    QDRANT_COLLECTION_MIT13: "mit13_course"
+    QDRANT_COLLECTION_MIT14: "mit14_course"
+    QDRANT_COLLECTION_CS50: "harvard_cs50"
+    QDRANT_COLLECTION_GUIDELINES: "cpp_guidelines"
+    EMBEDDING_MODEL: "sentence-transformers/multi-qa-mpnet-base-dot-v1"
+    # Guardrail checkpoints are restored from S3 at startup; only the small
+    # app image is baked into the ECS container.
+    INPUT_GUARDRAILS_ENABLED: "true"
+    INPUT_GUARDRAILS_CODEBERT_S3_URI: "s3://codingrabbit-data-dev/models/guardrails/input_codebert_v1/model.tar.gz"
+    INPUT_GUARDRAILS_CODEBERT_CHECKPOINT_DIR: "input_guardrails/models/checkpoints/input_codebert_v1"
+    INPUT_GUARDRAILS_CODEBERT_PASS_BELOW: "0.30"
+    INPUT_GUARDRAILS_CODEBERT_BLOCK_ABOVE: "0.70"
+    GUARDRAILS_CODEBERT_S3_URI: "s3://codingrabbit-data-dev/models/guardrails/codebert_v2_1/model.tar.gz"
+    GUARDRAILS_CODEBERT_CHECKPOINT_DIR: "output_guardrails/models/checkpoints/codebert_v2_1"
+    RUNTIME_CONFIG_S3_URI: "s3://codingrabbit-data-dev/config/rag_eng/runtime_config.yaml"
+    USE_SAGEMAKER: "true"
+    SAGEMAKER_ENDPOINT: "codingrabbit-qwen-async"
+    SAGEMAKER_INFERENCE_BACKEND: "vllm"
+    SAGEMAKER_POLL_TIMEOUT_SECONDS: "900"
+    S3_DATA_BUCKET: "codingrabbit-data-dev"
+    MODEL_FAMILY: "qwen"
+
+  # Secrets injected at task launch.
+  secret_arn_map:
+    COHERE_API_KEY: "arn:aws:secretsmanager:us-east-1:976193240866:secret:codingrabbit/rag_eng/COHERE_API_KEY-GMdI8x"
+    OPENAI_API_KEY: "arn:aws:secretsmanager:us-east-1:976193240866:secret:codingrabbit/rag_eng/OPENAI_API_KEY-xH5rH5"
+    QDRANT_API_KEY: "arn:aws:secretsmanager:us-east-1:976193240866:secret:codingrabbit/rag_eng/QDRANT_API_KEY-S8nEwS"
+    COURSE_REGISTRY_DATABASE_URL: "arn:aws:secretsmanager:us-east-1:976193240866:secret:codingrabbit/rag_eng/COURSE_REGISTRY_DATABASE_URL-4fLsHS"
+
+# -----------------------------------------------------------------------------
+# Frontend web app (S3 + CloudFront static hosting)
+# -----------------------------------------------------------------------------
+frontend_web:
+  enabled: true
+  app_dir: "./frontend"
+  dist_dir: "./frontend/dist"
+  bucket_name: "codingrabbit-frontend-976193240866-us-east-1"
+  bucket_prefix: ""
+  default_root_object: "index.html"
+  spa_fallback_path: "/index.html"
+  price_class: "PriceClass_100"
+
+  cloudfront:
+    distribution_id: "E1JMKN6NBFY206"
+    aliases: []
+    certificate_arn: null
+    comment: "CodingRabbit frontend distribution"
+    create_oac: true
+    invalidation_paths:
+      - "/*"
+    api_path_patterns:
+      - "/api/*"
+      - "/admin/*"
+      - "/run/*"
+      - "/me"
+      - "/query"
+      - "/health"
+      - "/docs"
+      - "/openapi.json"
+      - "/gradio*"
+    # The rag_eng ALB only exposes HTTP on port 80, so CloudFront must talk to
+    # the backend origin over HTTP rather than HTTPS.
+    origin_protocol_policy: "http-only"
+    cache_static_assets: true
+    cache_html_seconds: 60
+
+  build:
+    # Empty string means same-origin API calls when the frontend is served from CloudFront.
+    vite_api_base_url: ""
+    vite_cognito_domain: "https://us-east-1z5dab8wni.auth.us-east-1.amazoncognito.com"
+    # Production frontend origin served through CloudFront.
+    vite_cognito_redirect_uri: "https://d26myplnp1msqn.cloudfront.net/auth/callback"
+    vite_cognito_logout_uri: "https://d26myplnp1msqn.cloudfront.net/logout"
+    extra_env:
+      VITE_HEALTH_POLL_INTERVAL_SECONDS: "15"
+
 # =============================================================================
 # Field reference (documentation — ignored by loader, used by `describe` CLI)
 # =============================================================================
@@ -272,3 +406,136 @@ _reference:
   rag_eng.model_family:
     description: Set MODEL_FAMILY in .env after deploy.
     env_override: MODEL_FAMILY
+  rag_eng_ecs.cluster:
+    description: ECS cluster name for the online orchestrator service.
+    env_override: RAG_ENG_ECS_CLUSTER
+  rag_eng_ecs.service_name:
+    description: ECS service name for the online orchestrator service.
+    env_override: RAG_ENG_ECS_SERVICE_NAME
+  rag_eng_ecs.task_family:
+    description: ECS task family name for the orchestrator task definition.
+    env_override: RAG_ENG_ECS_TASK_FAMILY
+  rag_eng_ecs.task_definition:
+    description: ECS task definition name or ARN used by the service.
+    env_override: RAG_ENG_ECS_TASK_DEFINITION
+  rag_eng_ecs.container_name:
+    description: Container name inside the task definition.
+    env_override: RAG_ENG_ECS_CONTAINER_NAME
+  rag_eng_ecs.subnet_ids:
+    description: Public subnets used for the rag_eng ECS service and ALB.
+    env_override: RAG_ENG_ECS_SUBNETS
+  rag_eng_ecs.security_group_ids:
+    description: Security groups attached to the rag_eng ECS tasks.
+    env_override: RAG_ENG_ECS_SECURITY_GROUPS
+  rag_eng_ecs.alb_security_group_id:
+    description: Security group attached to the application load balancer.
+    env_override: RAG_ENG_ECS_ALB_SECURITY_GROUP_ID
+  rag_eng_ecs.image_uri:
+    description: ECR image URI for the orchestrator container.
+    env_override: RAG_ENG_ECS_IMAGE_URI
+  rag_eng_ecs.execution_role_arn:
+    description: ECS execution role ARN for pulling images and reading task secrets.
+    env_override: RAG_ENG_ECS_EXECUTION_ROLE_ARN
+  rag_eng_ecs.task_role_arn:
+    description: ECS task role ARN for runtime S3, SageMaker, and Bedrock access.
+    env_override: RAG_ENG_ECS_TASK_ROLE_ARN
+  rag_eng_ecs.container_port:
+    description: Container port exposed by the rag_eng app and ALB target group.
+    env_override: RAG_ENG_ECS_CONTAINER_PORT
+  rag_eng_ecs.desired_count:
+    description: Desired ECS service replica count.
+    env_override: RAG_ENG_ECS_DESIRED_COUNT
+  rag_eng_ecs.launch_type:
+    description: ECS launch type for the service.
+    env_override: RAG_ENG_ECS_LAUNCH_TYPE
+  rag_eng_ecs.platform_version:
+    description: ECS Fargate platform version.
+    env_override: RAG_ENG_ECS_PLATFORM_VERSION
+  rag_eng_ecs.assign_public_ip:
+    description: Whether ECS tasks receive public IPs.
+    env_override: RAG_ENG_ECS_ASSIGN_PUBLIC_IP
+  rag_eng_ecs.target_group_arn:
+    description: ALB target group ARN for the service.
+    env_override: RAG_ENG_ECS_TARGET_GROUP_ARN
+  rag_eng_ecs.health_check_path:
+    description: ALB target-group health check path.
+  rag_eng_ecs.health_check_grace_period_seconds:
+    description: ECS service health-check grace period in seconds.
+  rag_eng_ecs.log_group:
+    description: CloudWatch log group for the rag_eng task definition.
+  rag_eng_ecs.log_stream_prefix:
+    description: CloudWatch log stream prefix for the rag_eng task definition.
+  rag_eng_ecs.environment:
+    description: Non-secret runtime env vars baked into the ECS task definition.
+  rag_eng_ecs.secret_arn_map:
+    description: Secret env vars mapped to AWS Secrets Manager ARNs.
+  frontend_web.enabled:
+    description: Toggle the frontend static hosting and CloudFront deployment slice.
+    env_override: FRONTEND_ENABLED
+  frontend_web.app_dir:
+    description: Repository path containing the Vite frontend project.
+    env_override: FRONTEND_APP_DIR
+  frontend_web.dist_dir:
+    description: Build output directory produced by `vite build`.
+    env_override: FRONTEND_DIST_DIR
+  frontend_web.bucket_name:
+    description: S3 bucket that will host the built frontend assets.
+    env_override: FRONTEND_BUCKET_NAME
+  frontend_web.bucket_prefix:
+    description: Optional S3 prefix under the frontend hosting bucket.
+    env_override: FRONTEND_BUCKET_PREFIX
+  frontend_web.default_root_object:
+    description: CloudFront default object for the SPA entrypoint.
+    env_override: FRONTEND_DEFAULT_ROOT_OBJECT
+  frontend_web.spa_fallback_path:
+    description: Path used by the deploy flow for SPA fallback rewrites.
+    env_override: FRONTEND_SPA_FALLBACK_PATH
+  frontend_web.price_class:
+    description: CloudFront price class for the frontend distribution.
+    env_override: FRONTEND_PRICE_CLASS
+  frontend_web.cloudfront.aliases:
+    description: Alternate hostnames attached to the CloudFront distribution.
+    env_override: FRONTEND_CLOUDFRONT_ALIASES
+  frontend_web.cloudfront.distribution_id:
+    description: CloudFront distribution ID used for frontend invalidations.
+    env_override: FRONTEND_CLOUDFRONT_DISTRIBUTION_ID
+  frontend_web.cloudfront.certificate_arn:
+    description: ACM certificate ARN for CloudFront aliases, if any.
+    env_override: FRONTEND_CLOUDFRONT_CERTIFICATE_ARN
+  frontend_web.cloudfront.comment:
+    description: CloudFront distribution comment/description.
+    env_override: FRONTEND_CLOUDFRONT_COMMENT
+  frontend_web.cloudfront.create_oac:
+    description: Create an Origin Access Control for the S3 frontend origin.
+    env_override: FRONTEND_CLOUDFRONT_CREATE_OAC
+  frontend_web.cloudfront.invalidation_paths:
+    description: CloudFront invalidation paths issued after frontend deploys.
+    env_override: FRONTEND_CLOUDFRONT_INVALIDATION_PATHS
+  frontend_web.cloudfront.api_path_patterns:
+    description: Ordered CloudFront behaviors that route API traffic to the ALB.
+    env_override: FRONTEND_CLOUDFRONT_API_PATH_PATTERNS
+  frontend_web.cloudfront.origin_protocol_policy:
+    description: Protocol CloudFront uses when talking to the rag_eng ALB origin.
+    env_override: FRONTEND_CLOUDFRONT_ORIGIN_PROTOCOL_POLICY
+    options: "http-only, https-only, match-viewer"
+  frontend_web.cloudfront.cache_static_assets:
+    description: Cache policy toggle for versioned frontend static assets.
+    env_override: FRONTEND_CLOUDFRONT_CACHE_STATIC_ASSETS
+  frontend_web.cloudfront.cache_html_seconds:
+    description: Cache TTL for HTML entrypoints such as `index.html`.
+    env_override: FRONTEND_CLOUDFRONT_CACHE_HTML_SECONDS
+  frontend_web.build.vite_api_base_url:
+    description: Base URL injected into the frontend build for API calls.
+    env_override: VITE_API_BASE_URL
+  frontend_web.build.vite_cognito_domain:
+    description: Cognito Hosted UI domain injected into the frontend build.
+    env_override: VITE_COGNITO_DOMAIN
+  frontend_web.build.vite_cognito_redirect_uri:
+    description: Cognito callback URI injected into the frontend build.
+    env_override: VITE_COGNITO_REDIRECT_URI
+  frontend_web.build.vite_cognito_logout_uri:
+    description: Cognito logout URI injected into the frontend build.
+    env_override: VITE_COGNITO_LOGOUT_URI
+  frontend_web.build.extra_env:
+    description: Additional frontend build env vars as a JSON object.
+    env_override: FRONTEND_EXTRA_ENV_JSON
