@@ -19,11 +19,13 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { Avatar, Btn, Card, Stat, Tag } from "../design/atoms";
+import { Btn, Card, Stat, Tag } from "../design/atoms";
 import { chartTooltipStyle, D, mono } from "../design/tokens";
 import { Sidebar, type SidebarTab } from "../components/Sidebar";
 import { TopBar } from "../components/TopBar";
 import { CourseManagementPanel } from "../components/admin/CourseManagementPanel";
+import { SectionManagementPanel } from "../components/admin/SectionManagementPanel";
+import { UserManagementPanel } from "../components/admin/UserManagementPanel";
 import { RagDocsPanel } from "../components/admin/RagDocsPanel";
 import type { AppView } from "../types/navigation";
 
@@ -194,16 +196,9 @@ function getDefaultModel(provider: LlmProvider): string {
   }
 }
 
-// STUB — replace when model config API is available
-// STUB — replace when GET /admin/users is available
-const professors = [
-  { name: "Dr. Rivera", email: "crivera@university.edu", courses: 3, students: 87, status: "active" },
-  { name: "Prof. Kim", email: "jkim@university.edu", courses: 2, students: 54, status: "active" },
-  { name: "Dr. Patel", email: "rpatel@university.edu", courses: 1, students: 30, status: "invited" },
-];
-
 const baseAdminTabs: SidebarTab[] = [
   { key: "users", icon: "👥", label: "Users" },
+  { key: "classes", icon: "🏫", label: "Classes" },
   { key: "courses", icon: "🎓", label: "Courses" },
   { key: "rag", icon: "📚", label: "RAG Docs" },
   { key: "stats", icon: "📊", label: "Evaluation" },
@@ -922,29 +917,11 @@ export function AdminDashboard({
           )}
 
           {activeTab === "users" && (
-            <div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-                <div style={{ fontSize: 18, fontWeight: 600 }}>
-                  Professors <Tag color={D.muted}>STUB</Tag>
-                </div>
-                <Btn small>+ Add professor</Btn>
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {professors.map((p) => (
-                  <Card key={p.email} style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 16px" }}>
-                    <Avatar name={p.name.split(" ").pop() ?? p.name} />
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 13, fontWeight: 500 }}>{p.name}</div>
-                      <div style={{ fontSize: 11, color: D.muted }}>{p.email}</div>
-                    </div>
-                    <Tag color={p.status === "active" ? D.green : D.yellow}>{p.status}</Tag>
-                    <Btn variant="danger" small>
-                      Remove
-                    </Btn>
-                  </Card>
-                ))}
-              </div>
-            </div>
+            <UserManagementPanel accessToken={accessToken} />
+          )}
+
+          {activeTab === "classes" && (
+            <SectionManagementPanel accessToken={accessToken} />
           )}
 
           {activeTab === "courses" && (

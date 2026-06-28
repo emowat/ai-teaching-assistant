@@ -4,10 +4,15 @@ import pytest
 from pydantic import ValidationError
 
 from rag_eng.schemas import (
+    AdminSection,
+    AdminSectionCreate,
+    AdminSectionMembershipCreate,
     AdminCourseAliasCreate,
     AdminCourseCreate,
     AdminCourseDocumentUploadRequest,
     AdminCourseUpdate,
+    AdminUser,
+    AdminUserCreate,
     QueryPayload,
     QueryRequest,
     QueryResponse,
@@ -139,3 +144,47 @@ def test_admin_course_document_upload_request_trims_fields() -> None:
 
     assert request.file_name == "lecture-01.pdf"
     assert request.content_type == "application/pdf"
+
+
+def test_admin_user_and_section_models_validate_defaults() -> None:
+    user = AdminUserCreate(
+        email="prof@example.edu",
+        display_name="Prof",
+        primary_role="professor",
+    )
+    section = AdminSectionCreate(
+        section_id="mit14-fall-001",
+        course_id="mit14",
+        display_name="MIT 6.0014 Section A",
+    )
+    membership = AdminSectionMembershipCreate(
+        user_id="user-1",
+        role_in_section="professor",
+    )
+
+    assert user.status == "invited"
+    assert section.is_active is True
+    assert membership.status == "active"
+
+    admin_user = AdminUser(
+        user_id="user-1",
+        cognito_sub="sub-1",
+        email="prof@example.edu",
+        display_name="Prof",
+        primary_role="professor",
+        status="active",
+        created_at="2026-06-20T00:00:00+00:00",
+        updated_at="2026-06-20T00:00:00+00:00",
+        section_memberships=[],
+    )
+    admin_section = AdminSection(
+        section_id="mit14-fall-001",
+        course_id="mit14",
+        course_display_name="MIT 6.0014",
+        display_name="MIT 6.0014 Section A",
+        term="Fall 2026",
+        memberships=[],
+    )
+
+    assert admin_user.primary_role == "professor"
+    assert admin_section.course_id == "mit14"

@@ -40,6 +40,11 @@ under `runtime.input_guardrail_orchestration`, and every persisted turn snapshot
 now records the policy snapshot plus the session state before and after the
 orchestrator decision.
 
+Aurora is also the source of truth for application users, sections, and
+section memberships. Cognito still handles authentication and the coarse
+global role, but the `/admin/users`, `/admin/sections`, and `/professor/*`
+routes read from the Aurora-backed application registry.
+
 Admin bearer auth means:
 
 - `Authorization: Bearer <access-token>`
@@ -72,6 +77,16 @@ routes accept either auth style.
 | `POST` | `/admin/courses/{course_id}/documents/upload-url` | admin bearer or `X-Admin-Token` | create presigned S3 upload URL |
 | `DELETE` | `/admin/courses/{course_id}/documents` | admin bearer or `X-Admin-Token` | delete a source file by `key` |
 | `GET` | `/admin/courses/{course_id}/corpus-versions` | admin bearer or `X-Admin-Token` | list corpus build history |
+| `GET` | `/admin/users` | admin bearer or `X-Admin-Token` | list application users with memberships |
+| `POST` | `/admin/users` | admin bearer or `X-Admin-Token` | create an invited application user |
+| `PATCH` | `/admin/users/{user_id}` | admin bearer or `X-Admin-Token` | update a user’s role or status |
+| `GET` | `/admin/sections` | admin bearer or `X-Admin-Token` | list sections with roster summaries |
+| `POST` | `/admin/sections` | admin bearer or `X-Admin-Token` | create a section in Aurora |
+| `PATCH` | `/admin/sections/{section_id}` | admin bearer or `X-Admin-Token` | update section metadata |
+| `POST` | `/admin/sections/{section_id}/memberships` | admin bearer or `X-Admin-Token` | assign a user to a section |
+| `PATCH` | `/admin/sections/{section_id}/memberships/{user_id}` | admin bearer or `X-Admin-Token` | update a section membership |
+| `GET` | `/professor/sections` | bearer | list sections visible to the current professor/TA |
+| `GET` | `/professor/sections/{section_id}/students` | bearer | list active students and live usage fields |
 | `GET` | `/admin/ingestion/jobs` | admin bearer or `X-Admin-Token` | list recent ingestion jobs |
 | `POST` | `/admin/ingestion/launch` | admin bearer or `X-Admin-Token` | launch ECS ingestion task |
 | `GET` | `/admin/ingestion/jobs/{job_id}` | admin bearer or `X-Admin-Token` | inspect one ingestion job |

@@ -7,12 +7,17 @@ from fastapi.testclient import TestClient
 
 from rag.schemas import QueryInput, RetrievalResult
 from rag_eng.api import create_app
+from rag_eng.auth.dependencies import require_authenticated_user
 from rag_eng.auth.models import CurrentUser
 from rag_eng.schemas import (
+    AdminSection,
+    AdminUser,
     IngestionJobResponse,
     HealthResponse,
     IndexEnsureResponse,
     IndexRebuildResponse,
+    ProfessorSectionStudent,
+    ProfessorSectionSummary,
     QueryResponse,
 )
 
@@ -414,6 +419,192 @@ def test_admin_diagnostics_pipeline_allows_authorized_request(
 
     assert response.status_code == 200
     assert response.json()["message"]["content"] == "pipeline answer"
+
+
+def test_me_endpoint_syncs_application_user_for_professor(
+    monkeypatch, client: TestClient
+) -> None:
+    called = {"count": 0}
+
+    monkeypatch.setattr(
+        "rag_eng.api.sync_application_user",
+        lambda current_user: called.__setitem__("count", called["count"] + 1),
+    )
+    client.app.dependency_overrides[require_authenticated_user] = lambda: CurrentUser(
+        cognito_sub="prof-sub",
+        email="prof@example.edu",
+        primary_role="professor",
+    )
+
+    try:
+        response = client.get("/me")
+    finally:
+        client.app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert called["count"] == 1
+    assert response.json()["primary_role"] == "professor"
+
+
+def test_admin_users_and_sections_routes_allow_authorized_requests(
+    monkeypatch, client: TestClient
+) -> None:
+    monkeypatch.setenv("ADMIN_TOKEN", "expected-token")
+    monkeypatch.setattr(
+        "rag_eng.api.list_admin_users",
+        lambda: [
+            AdminUser(
+                user_id="user-1",
+                cognito_sub="sub-1",
+                email="prof@example.edu",
+                display_name="Prof",
+                primary_role="professor",
+                status="active",
+                created_at="2026-06-20T00:00:00+00:00",
+                updated_at="2026-06-20T00:00:00+00:00",
+                section_memberships=[],
+            )
+        ],
+    )
+    monkeypatch.setattr(
+        "rag_eng.api.list_admin_sections",
+        lambda: [
+            AdminSection(
+                section_id="mit14-fall-001",
+                course_id="mit14",
+                course_display_name="MIT 6.0014",
+                display_name="MIT 6.0014 Section A",
+                term="Fall 2026",
+                is_active=True,
+                professor_count=1,
+                ta_count=0,
+                student_count=1,
+                memberships=[],
+                created_at="2026-06-20T00:00:00+00:00",
+                updated_at="2026-06-20T00:00:00+00:00",
+            )
+        ],
+    )
+    monkeypatch.setattr(
+        "rag_eng.api.create_admin_user",
+        lambda payload: AdminUser(
+            user_id="user-2",
+            cognito_sub=None,
+            email=payload.email,
+            display_name=payload.display_name,
+            primary_role=payload.primary_role,
+            status=payload.status,
+            created_at="2026-06-20T00:00:00+00:00",
+            updated_at="2026-06-20T00:00:00+00:00",
+            section_memberships=[],
+        ),
+    )
+    monkeypatch.setattr(
+        "rag_eng.api.create_admin_section",
+        lambda payload: AdminSection(
+            section_id=payload.section_id,
+            course_id=payload.course_id,
+            course_display_name="MIT 6.0014",
+            display_name=payload.display_name,
+            term=payload.term,
+            is_active=payload.is_active,
+            professor_count=0,
+            ta_count=0,
+            student_count=0,
+            memberships=[],
+            created_at="2026-06-20T00:00:00+00:00",
+            updated_at="2026-06-20T00:00:00+00:00",
+        ),
+    )
+
+    users_response = client.get(
+        "/admin/users",
+        headers={"X-Admin-Token": "expected-token"},
+    )
+    sections_response = client.get(
+        "/admin/sections",
+        headers={"X-Admin-Token": "expected-token"},
+    )
+    created_user_response = client.post(
+        "/admin/users",
+        headers={"X-Admin-Token": "expected-token"},
+        json={
+            "email": "invite@example.edu",
+            "display_name": "Invite",
+            "primary_role": "professor",
+        },
+    )
+    created_section_response = client.post(
+        "/admin/sections",
+        headers={"X-Admin-Token": "expected-token"},
+        json={
+            "section_id": "mit14-fall-002",
+            "course_id": "mit14",
+            "display_name": "MIT 6.0014 Section B",
+            "term": "Fall 2026",
+        },
+    )
+
+    assert users_response.status_code == 200
+    assert sections_response.status_code == 200
+    assert created_user_response.status_code == 200
+    assert created_section_response.status_code == 200
+    assert users_response.json()[0]["email"] == "prof@example.edu"
+    assert sections_response.json()[0]["section_id"] == "mit14-fall-001"
+
+
+def test_professor_section_routes_return_live_data(
+    monkeypatch, client: TestClient
+) -> None:
+    client.app.dependency_overrides[require_authenticated_user] = lambda: CurrentUser(
+        cognito_sub="prof-sub",
+        email="prof@example.edu",
+        primary_role="professor",
+    )
+    monkeypatch.setattr(
+        "rag_eng.api.list_professor_sections",
+        lambda current_user: [
+            ProfessorSectionSummary(
+                section_id="mit14-fall-001",
+                course_id="mit14",
+                course_display_name="MIT 6.0014",
+                display_name="MIT 6.0014 Section A",
+                term="Fall 2026",
+                is_active=True,
+                professor_count=1,
+                ta_count=0,
+                student_count=1,
+                created_at="2026-06-20T00:00:00+00:00",
+                updated_at="2026-06-20T00:00:00+00:00",
+            )
+        ],
+    )
+    monkeypatch.setattr(
+        "rag_eng.api.list_professor_section_students",
+        lambda current_user, section_id: [
+            ProfessorSectionStudent(
+                user_id="student-1",
+                cognito_sub="student-sub",
+                email="student@example.edu",
+                display_name="Student",
+                membership_status="active",
+                role_in_section="student",
+                session_count=3,
+                last_session_at="2026-06-20T00:00:00+00:00",
+            )
+        ],
+    )
+
+    try:
+        sections_response = client.get("/professor/sections")
+        students_response = client.get("/professor/sections/mit14-fall-001/students")
+    finally:
+        client.app.dependency_overrides.clear()
+
+    assert sections_response.status_code == 200
+    assert students_response.status_code == 200
+    assert sections_response.json()[0]["section_id"] == "mit14-fall-001"
+    assert students_response.json()[0]["email"] == "student@example.edu"
 
 
 def test_admin_ensure_returns_500_on_service_exception(

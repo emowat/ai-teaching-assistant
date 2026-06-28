@@ -18,6 +18,28 @@ from pydantic import BaseModel, Field
 from rag_eng.auth.cognito import verify_cognito_access_token
 from rag_eng.auth.dependencies import require_authenticated_user
 from rag_eng.auth.models import MeResponse
+from rag_eng.app_registry import (
+    AppUserConflictError,
+    AppUserDisabledError,
+    AppUserNotFoundError,
+    AppUserNotProvisionedError,
+    MembershipAccessDeniedError,
+    MembershipConflictError,
+    MembershipNotFoundError,
+    SectionConflictError,
+    SectionNotFoundError,
+    create_admin_section,
+    create_admin_user,
+    create_section_membership,
+    list_admin_sections,
+    list_admin_users,
+    list_professor_section_students,
+    list_professor_sections,
+    sync_application_user,
+    update_admin_section,
+    update_admin_user,
+    update_section_membership,
+)
 from rag_eng.course_admin import (
     CourseConflictError,
     CourseNotFoundError,
@@ -56,12 +78,22 @@ from rag_eng.schemas import (
     AdminCourseDocumentUploadRequest,
     AdminCourseDocumentUploadResponse,
     AdminCourseUpdate,
+    AdminSection,
+    AdminSectionCreate,
+    AdminSectionMembershipCreate,
+    AdminSectionMembershipUpdate,
+    AdminSectionUpdate,
+    AdminUser,
+    AdminUserCreate,
+    AdminUserUpdate,
     InputGuardrailDiagnosticResponse,
     IngestionJobLaunchRequest,
     IngestionJobResponse,
     HealthResponse,
     IndexEnsureResponse,
     IndexRebuildResponse,
+    ProfessorSectionStudent,
+    ProfessorSectionSummary,
     OutputGuardrailDiagnosticResponse,
     OutputGuardrailReviewRequest,
     QueryPayload,
@@ -200,6 +232,34 @@ def _course_admin_http_error(exc: Exception) -> HTTPException:
     return HTTPException(status_code=500, detail=str(exc))
 
 
+def _app_registry_http_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, (AppUserNotFoundError, SectionNotFoundError, MembershipNotFoundError)):
+        return HTTPException(status_code=404, detail=str(exc))
+    if isinstance(
+        exc,
+        (
+            AppUserConflictError,
+            SectionConflictError,
+            MembershipConflictError,
+        ),
+    ):
+        return HTTPException(status_code=409, detail=str(exc))
+    if isinstance(
+        exc,
+        (
+            AppUserDisabledError,
+            AppUserNotProvisionedError,
+            MembershipAccessDeniedError,
+        ),
+    ):
+        return HTTPException(status_code=403, detail=str(exc))
+    if isinstance(exc, ValueError):
+        return HTTPException(status_code=400, detail=str(exc))
+    if isinstance(exc, CourseNotFoundError):
+        return HTTPException(status_code=404, detail=str(exc))
+    return HTTPException(status_code=500, detail=str(exc))
+
+
 def create_app() -> FastAPI:
     """Create the FastAPI app for the RAG service."""
     settings = get_settings()
@@ -252,6 +312,11 @@ def create_app() -> FastAPI:
 
     @app.get("/me", response_model=MeResponse)
     def me(current_user=Depends(require_authenticated_user)) -> MeResponse:
+        if current_user.primary_role in {"professor", "student"}:
+            try:
+                sync_application_user(current_user)
+            except Exception as exc:
+                raise _app_registry_http_error(exc) from exc
         return MeResponse.from_current_user(current_user)
 
     @app.post("/query", response_model=QueryResult)
@@ -394,6 +459,131 @@ def create_app() -> FastAPI:
             return deactivate_admin_course_alias(course_id, alias)
         except Exception as exc:
             raise _course_admin_http_error(exc) from exc
+
+    @app.get(
+        "/admin/users",
+        response_model=list[AdminUser],
+        dependencies=[Depends(_require_admin_access)],
+    )
+    def admin_list_users_endpoint() -> list[AdminUser]:
+        try:
+            return list_admin_users()
+        except Exception as exc:
+            raise _app_registry_http_error(exc) from exc
+
+    @app.post(
+        "/admin/users",
+        response_model=AdminUser,
+        dependencies=[Depends(_require_admin_access)],
+    )
+    def admin_create_user(payload: AdminUserCreate) -> AdminUser:
+        try:
+            return create_admin_user(payload)
+        except Exception as exc:
+            raise _app_registry_http_error(exc) from exc
+
+    @app.patch(
+        "/admin/users/{user_id}",
+        response_model=AdminUser,
+        dependencies=[Depends(_require_admin_access)],
+    )
+    def admin_update_user(user_id: str, payload: AdminUserUpdate) -> AdminUser:
+        try:
+            return update_admin_user(user_id, payload)
+        except Exception as exc:
+            raise _app_registry_http_error(exc) from exc
+
+    @app.get(
+        "/admin/sections",
+        response_model=list[AdminSection],
+        dependencies=[Depends(_require_admin_access)],
+    )
+    def admin_list_sections_endpoint() -> list[AdminSection]:
+        try:
+            return list_admin_sections()
+        except Exception as exc:
+            raise _app_registry_http_error(exc) from exc
+
+    @app.post(
+        "/admin/sections",
+        response_model=AdminSection,
+        dependencies=[Depends(_require_admin_access)],
+    )
+    def admin_create_section(payload: AdminSectionCreate) -> AdminSection:
+        try:
+            return create_admin_section(payload)
+        except Exception as exc:
+            raise _app_registry_http_error(exc) from exc
+
+    @app.patch(
+        "/admin/sections/{section_id}",
+        response_model=AdminSection,
+        dependencies=[Depends(_require_admin_access)],
+    )
+    def admin_update_section(
+        section_id: str,
+        payload: AdminSectionUpdate,
+    ) -> AdminSection:
+        try:
+            return update_admin_section(section_id, payload)
+        except Exception as exc:
+            raise _app_registry_http_error(exc) from exc
+
+    @app.post(
+        "/admin/sections/{section_id}/memberships",
+        response_model=AdminSection,
+        dependencies=[Depends(_require_admin_access)],
+    )
+    def admin_create_section_membership(
+        section_id: str,
+        payload: AdminSectionMembershipCreate,
+    ) -> AdminSection:
+        try:
+            return create_section_membership(section_id, payload)
+        except Exception as exc:
+            raise _app_registry_http_error(exc) from exc
+
+    @app.patch(
+        "/admin/sections/{section_id}/memberships/{user_id}",
+        response_model=AdminSection,
+        dependencies=[Depends(_require_admin_access)],
+    )
+    def admin_update_section_membership(
+        section_id: str,
+        user_id: str,
+        payload: AdminSectionMembershipUpdate,
+    ) -> AdminSection:
+        try:
+            return update_section_membership(section_id, user_id, payload)
+        except Exception as exc:
+            raise _app_registry_http_error(exc) from exc
+
+    @app.get(
+        "/professor/sections",
+        response_model=list[ProfessorSectionSummary],
+        dependencies=[Depends(require_authenticated_user)],
+    )
+    def professor_list_sections(
+        current_user=Depends(require_authenticated_user),
+    ) -> list[ProfessorSectionSummary]:
+        try:
+            return list_professor_sections(current_user)
+        except Exception as exc:
+            raise _app_registry_http_error(exc) from exc
+
+    @app.get(
+        "/professor/sections/{section_id}/students",
+        response_model=list[ProfessorSectionStudent],
+        dependencies=[Depends(require_authenticated_user)],
+    )
+    def professor_list_section_students(
+        section_id: str,
+        current_user=Depends(require_authenticated_user),
+    ) -> list[ProfessorSectionStudent]:
+        try:
+            return list_professor_section_students(current_user, section_id)
+        except Exception as exc:
+            raise _app_registry_http_error(exc) from exc
 
     @app.get(
         "/admin/courses/{course_id}/documents",

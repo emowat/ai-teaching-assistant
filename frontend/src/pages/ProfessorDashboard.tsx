@@ -8,7 +8,13 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { Avatar, Btn, Card, ProgressBar, Stat, Tag } from "../design/atoms";
+import {
+  listProfessorSectionStudents,
+  listProfessorSections,
+  type ProfessorSectionStudent,
+  type ProfessorSectionSummary,
+} from "../api/professorSectionsApi";
+import { Avatar, Btn, Card, Stat, Tag } from "../design/atoms";
 import { chartTooltipStyle, D, mono } from "../design/tokens";
 import { Sidebar } from "../components/Sidebar";
 import { TopBar } from "../components/TopBar";
@@ -26,18 +32,9 @@ interface ProfessorDashboardProps {
   onNavigate: (view: AppView) => void;
   allowedViews: AppView[];
   onSignOut: () => void;
+  accessToken: string;
 }
 
-// STUB — replace when GET /professor/sections/:id/students is available
-const students = [
-  { id: "s1", name: "Alice Chen", last: "2h ago", sessions: 23, hints: 8, progress: 85, stuck: false },
-  { id: "s2", name: "Bob Martinez", last: "15m ago", sessions: 18, hints: 14, progress: 62, stuck: true },
-  { id: "s3", name: "Carol Liu", last: "1d ago", sessions: 31, hints: 3, progress: 94, stuck: false },
-  { id: "s4", name: "David Osei", last: "3h ago", sessions: 12, hints: 19, progress: 45, stuck: true },
-  { id: "s5", name: "Emma Park", last: "30m ago", sessions: 27, hints: 6, progress: 78, stuck: false },
-];
-
-// STUB — replace when analytics API is available
 const weekData = [
   { week: "W1", sessions: 4, hints: 1 },
   { week: "W2", sessions: 6, hints: 2 },
@@ -63,21 +60,100 @@ const inputStyle = {
   width: "100%",
 };
 
+function formatLastSession(value: string): string {
+  if (!value) {
+    return "No sessions yet";
+  }
+  return value;
+}
+
 export function ProfessorDashboard({
   onNavigate,
   allowedViews,
   onSignOut,
+  accessToken,
 }: ProfessorDashboardProps) {
   const [tab, setTab] = useState("overview");
-  const [monitorId, setMonitorId] = useState<string | null>(null);
   const [weeks, setWeeks] = useState<WeekLaunchConfig[]>(() => loadWeekLaunchConfigs());
+  const [sections, setSections] = useState<ProfessorSectionSummary[]>([]);
+  const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
+  const [students, setStudents] = useState<ProfessorSectionStudent[]>([]);
+  const [loadingSections, setLoadingSections] = useState(true);
+  const [loadingStudents, setLoadingStudents] = useState(false);
+  const [sectionError, setSectionError] = useState<string | null>(null);
+  const [studentError, setStudentError] = useState<string | null>(null);
+  const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
 
-  const monitored = students.find((s) => s.id === monitorId);
   const enabledWeeks = useMemo(() => weeks.filter((week) => week.enabled), [weeks]);
+  const selectedSection = useMemo(
+    () => sections.find((section) => section.section_id === selectedSectionId) ?? null,
+    [sections, selectedSectionId]
+  );
+  const selectedStudent = useMemo(
+    () => students.find((student) => student.user_id === selectedStudentId) ?? null,
+    [selectedStudentId, students]
+  );
 
   useEffect(() => {
     saveWeekLaunchConfigs(weeks);
   }, [weeks]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void listProfessorSections(accessToken)
+      .then((nextSections) => {
+        if (cancelled) return;
+        setSections(nextSections);
+        setSelectedSectionId((current) => current ?? nextSections[0]?.section_id ?? null);
+      })
+      .catch((err: Error) => {
+        if (!cancelled) {
+          setSections([]);
+          setSectionError(err.message);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingSections(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken]);
+
+  useEffect(() => {
+    if (!selectedSectionId) {
+      setStudents([]);
+      setSelectedStudentId(null);
+      return;
+    }
+
+    let cancelled = false;
+    setLoadingStudents(true);
+    setStudentError(null);
+    setSelectedStudentId(null);
+
+    void listProfessorSectionStudents(selectedSectionId, accessToken)
+      .then((nextStudents) => {
+        if (cancelled) return;
+        setStudents(nextStudents);
+        setSelectedStudentId(nextStudents[0]?.user_id ?? null);
+      })
+      .catch((err: Error) => {
+        if (!cancelled) {
+          setStudents([]);
+          setStudentError(err.message);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingStudents(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken, selectedSectionId]);
 
   const updateWeek = (id: string, patch: Partial<WeekLaunchConfig>) => {
     setWeeks((current) =>
@@ -88,6 +164,10 @@ export function ProfessorDashboard({
   const resetWeeks = () => {
     setWeeks(defaultWeekLaunchConfigs.map((week) => ({ ...week })));
   };
+
+  const rosterSummary = selectedSection
+    ? `${selectedSection.student_count} students · ${selectedSection.ta_count} TAs · ${selectedSection.professor_count} professors`
+    : "Select a section to view the roster";
 
   return (
     <div
@@ -106,6 +186,7 @@ export function ProfessorDashboard({
         allowedViews={allowedViews}
         onSignOut={onSignOut}
       />
+
       <div
         style={{
           padding: "9px 20px",
@@ -114,10 +195,13 @@ export function ProfessorDashboard({
           alignItems: "center",
           gap: 14,
           background: D.surface,
+          flexWrap: "wrap",
         }}
       >
         <span style={{ fontSize: 13, color: D.muted }}>Teaching:</span>
         <select
+          value={selectedSectionId ?? ""}
+          onChange={(event) => setSelectedSectionId(event.target.value || null)}
           style={{
             background: D.card,
             border: `1px solid ${D.border}`,
@@ -126,73 +210,42 @@ export function ProfessorDashboard({
             padding: "5px 10px",
             fontSize: 13,
             cursor: "pointer",
+            minWidth: 280,
           }}
         >
-          <option>CS101 — Intro to C++</option>
-          <option>CS201 — Data Structures</option>
+          {loadingSections && <option value="">Loading sections...</option>}
+          {!loadingSections && sections.length === 0 && <option value="">No sections found</option>}
+          {sections.map((section) => (
+            <option key={section.section_id} value={section.section_id}>
+              {section.section_id} · {section.display_name}
+            </option>
+          ))}
         </select>
         <div style={{ flex: 1 }} />
-        <Tag color={D.green}>32 enrolled</Tag>
-        <Tag color={D.red}>2 stuck now</Tag>
-        <Tag color={D.muted}>STUB</Tag>
+        <Tag color={D.green}>{selectedSection ? selectedSection.course_id : "no section"}</Tag>
+        <Tag color={D.red}>{selectedSection ? `${selectedSection.student_count} students` : "no roster"}</Tag>
+        <Tag color={D.muted}>Live roster</Tag>
       </div>
 
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
         <Sidebar
           tabs={profTabs}
-          active={monitorId ? null : tab}
-          onTab={(t) => {
-            setTab(t);
-            setMonitorId(null);
+          active={tab}
+          onTab={(next) => {
+            setTab(next);
+            setSelectedStudentId(null);
           }}
         />
 
         <div style={{ flex: 1, overflow: "auto", padding: 22 }}>
-          {monitorId && monitored ? (
-            <div>
-              <button
-                type="button"
-                onClick={() => setMonitorId(null)}
-                style={{
-                  background: "none",
-                  border: "none",
-                  color: D.orange,
-                  cursor: "pointer",
-                  fontSize: 13,
-                  marginBottom: 18,
-                  padding: 0,
-                }}
-              >
-                ← Back to students
-              </button>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
-                <Avatar name={monitored.name} size={38} stuck={monitored.stuck} />
-                <div style={{ fontSize: 17, fontWeight: 600 }}>{monitored.name}</div>
-                {monitored.stuck && <Tag color={D.red}>🔴 Stuck</Tag>}
-              </div>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(3, 1fr)",
-                  gap: 12,
-                  marginBottom: 18,
-                }}
-              >
-                <Stat label="// total_sessions" value={monitored.sessions} sub="all time" />
-                <Stat label="// hints_used" value={monitored.hints} sub="this course" color={D.yellow} />
-                <Stat
-                  label="// curriculum_done"
-                  value={`${monitored.progress}%`}
-                  sub="of Week 2"
-                  color={D.green}
-                />
-              </div>
-            </div>
-          ) : tab === "overview" ? (
+          {tab === "overview" ? (
             <div>
               <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 18 }}>
-                CS101 — overview <Tag color={D.muted}>STUB</Tag>
+                {selectedSection ? selectedSection.display_name : "Professor overview"}
               </div>
+              {sectionError && (
+                <Card style={{ marginBottom: 14, color: D.red, fontSize: 12 }}>{sectionError}</Card>
+              )}
               <div
                 style={{
                   display: "grid",
@@ -201,11 +254,42 @@ export function ProfessorDashboard({
                   marginBottom: 18,
                 }}
               >
-                <Stat label="// enrolled" value="32" sub="students" />
-                <Stat label="// avg_progress" value="71%" sub="curriculum" color={D.green} />
-                <Stat label="// stuck_now" value="2" sub="need attention" color={D.red} />
-                <Stat label="// sessions_week" value="89" sub="this week" color={D.blue} />
+                <Stat
+                  label="// enrolled"
+                  value={selectedSection?.student_count ?? 0}
+                  sub={rosterSummary}
+                  color={D.green}
+                />
+                <Stat
+                  label="// ta_count"
+                  value={selectedSection?.ta_count ?? 0}
+                  sub="assigned helpers"
+                  color={D.blue}
+                />
+                <Stat
+                  label="// professor_count"
+                  value={selectedSection?.professor_count ?? 0}
+                  sub="section owners"
+                  color={D.orange}
+                />
+                <Stat
+                  label="// section_state"
+                  value={selectedSection?.is_active ? "active" : "inactive"}
+                  sub={selectedSection?.term || "no term"}
+                  color={selectedSection?.is_active ? D.green : D.yellow}
+                />
               </div>
+              <Card>
+                <div style={{ fontSize: 12, color: D.muted, marginBottom: 6 }}>Current section</div>
+                <div style={{ fontSize: 14, fontWeight: 600 }}>
+                  {selectedSection ? selectedSection.section_id : "No section selected"}
+                </div>
+                <div style={{ fontSize: 12, color: D.dim, marginTop: 4 }}>
+                  {selectedSection
+                    ? `${selectedSection.course_id} · ${selectedSection.course_display_name} · ${selectedSection.term || "n/a"}`
+                    : "Choose a section from the selector above."}
+                </div>
+              </Card>
             </div>
           ) : tab === "materials" ? (
             <div>
@@ -315,31 +399,75 @@ export function ProfessorDashboard({
               </div>
             </div>
           ) : tab === "students" ? (
-            <div>
-              <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 18 }}>
-                Students — CS101 <Tag color={D.muted}>STUB</Tag>
+            <div style={{ display: "grid", gap: 14 }}>
+              <div style={{ fontSize: 18, fontWeight: 600 }}>
+                Students for {selectedSection ? selectedSection.display_name : "selected section"}{" "}
+                <Tag color={D.muted}>{loadingStudents ? "loading" : "live"}</Tag>
               </div>
+              {studentError && <Card style={{ color: D.red, fontSize: 12 }}>{studentError}</Card>}
+              {selectedStudent ? (
+                <Card style={{ display: "grid", gap: 10 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <Avatar name={selectedStudent.display_name || selectedStudent.email} size={38} />
+                    <div style={{ display: "grid", gap: 2 }}>
+                      <div style={{ fontSize: 17, fontWeight: 600 }}>{selectedStudent.display_name}</div>
+                      <div style={{ fontSize: 12, color: D.muted }}>{selectedStudent.email}</div>
+                      <div style={{ fontSize: 11, color: D.dim }}>
+                        {selectedStudent.role_in_section} · {selectedStudent.membership_status}
+                      </div>
+                    </div>
+                  </div>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(3, 1fr)",
+                      gap: 12,
+                    }}
+                  >
+                    <Stat
+                      label="// total_sessions"
+                      value={selectedStudent.session_count}
+                      sub="all time"
+                    />
+                    <Stat
+                      label="// membership"
+                      value={selectedStudent.membership_status}
+                      sub="Aurora status"
+                      color={D.blue}
+                    />
+                    <Stat
+                      label="// last_session"
+                      value={selectedStudent.last_session_at ? "recent" : "none"}
+                      sub={formatLastSession(selectedStudent.last_session_at)}
+                      color={selectedStudent.last_session_at ? D.green : D.muted}
+                    />
+                  </div>
+                </Card>
+              ) : null}
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {students.map((s) => (
+                {loadingStudents && <div style={{ fontSize: 12, color: D.muted }}>Loading roster...</div>}
+                {!loadingStudents && students.length === 0 && (
+                  <div style={{ fontSize: 12, color: D.dim }}>No students found for this section.</div>
+                )}
+                {students.map((student) => (
                   <Card
-                    key={s.id}
-                    onClick={() => setMonitorId(s.id)}
+                    key={student.user_id}
+                    onClick={() => setSelectedStudentId(student.user_id)}
                     style={{
                       display: "flex",
                       alignItems: "center",
                       gap: 14,
-                      borderColor: s.stuck ? `${D.red}40` : D.border,
-                      background: s.stuck ? `${D.red}06` : D.card,
+                      borderColor: student.user_id === selectedStudentId ? D.orangeBorder : D.border,
+                      background: student.user_id === selectedStudentId ? D.orangeGlow : D.card,
                     }}
                   >
-                    <Avatar name={s.name} stuck={s.stuck} />
+                    <Avatar name={student.display_name || student.email} />
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 13, fontWeight: 500 }}>{s.name}</div>
-                      <div style={{ fontSize: 11, color: D.muted }}>Last active: {s.last}</div>
+                      <div style={{ fontSize: 13, fontWeight: 500 }}>{student.display_name}</div>
+                      <div style={{ fontSize: 11, color: D.muted }}>{student.email}</div>
                     </div>
-                    <ProgressBar pct={s.progress} />
-                    {s.stuck && <Tag color={D.red}>🔴 Stuck</Tag>}
-                    <span style={{ color: D.muted, fontSize: 16 }}>›</span>
+                    <Tag color={D.green}>{student.session_count} sessions</Tag>
+                    <Tag color={D.blue}>{student.membership_status}</Tag>
                   </Card>
                 ))}
               </div>
@@ -349,6 +477,10 @@ export function ProfessorDashboard({
               <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 18 }}>
                 Class analytics <Tag color={D.muted}>STUB</Tag>
               </div>
+              <Card style={{ marginBottom: 12, fontSize: 12, color: D.muted }}>
+                Analytics cards remain stubbed until the aggregation API lands. The roster and section
+                selector above are live.
+              </Card>
               <Card>
                 <div style={{ ...mono, fontSize: 11, color: D.muted, marginBottom: 14 }}>
                   // avg_sessions_and_hints_per_week

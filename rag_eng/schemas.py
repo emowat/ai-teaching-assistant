@@ -13,6 +13,10 @@ from rag.schemas import CourseSource as RagCourseSource, QueryInput, RetrievalRe
 RetrievalRerankStrategy = Literal["similarity", "mmr_0.5", "mmr_0.7", "mmr_0.9"]
 IngestionJobKind = Literal["parse", "chunk-index"]
 IngestionJobStatus = Literal["queued", "running", "completed", "failed", "launch_failed"]
+AppPrimaryRole = Literal["admin", "professor", "student"]
+UserStatus = Literal["invited", "active", "disabled"]
+SectionMembershipStatus = Literal["invited", "active", "dropped", "disabled"]
+SectionMembershipRole = Literal["professor", "ta", "student"]
 RERANK_STRATEGY_CHOICES: tuple[str, ...] = (
     "similarity",
     "mmr_0.5",
@@ -143,6 +147,152 @@ class HealthResponse(BaseModel):
     openai_reachable: bool = False
     bedrock_reachable: bool = False
     message: str = ""
+
+
+class SectionMembershipSummary(BaseModel):
+    """Nested section membership summary used by admin and professor views."""
+
+    section_id: str
+    user_id: str | None = None
+    section_display_name: str = ""
+    course_id: str
+    course_display_name: str = ""
+    role_in_section: SectionMembershipRole
+    status: SectionMembershipStatus
+    created_at: str = ""
+    updated_at: str = ""
+
+
+class AdminUser(BaseModel):
+    """Application user record backed by Aurora."""
+
+    user_id: str
+    cognito_sub: str | None = None
+    email: str
+    display_name: str = ""
+    primary_role: AppPrimaryRole
+    status: UserStatus = "invited"
+    section_memberships: list[SectionMembershipSummary] = Field(default_factory=list)
+    created_at: str = ""
+    updated_at: str = ""
+
+
+class AdminUserCreate(BaseModel):
+    """Payload used to create an application user in Aurora."""
+
+    email: str = Field(min_length=1)
+    display_name: str = ""
+    primary_role: AppPrimaryRole
+    status: UserStatus = "invited"
+
+
+class AdminUserUpdate(BaseModel):
+    """Payload used to update an application user in Aurora."""
+
+    display_name: str | None = None
+    primary_role: AppPrimaryRole | None = None
+    status: UserStatus | None = None
+
+    @model_validator(mode="after")
+    def _validate_non_empty_update(self) -> "AdminUserUpdate":
+        if (
+            self.display_name is None
+            and self.primary_role is None
+            and self.status is None
+        ):
+            raise ValueError("At least one user field must be provided.")
+        return self
+
+
+class AdminSection(BaseModel):
+    """Application section record backed by Aurora."""
+
+    section_id: str
+    course_id: str
+    course_display_name: str = ""
+    display_name: str
+    term: str = ""
+    is_active: bool = True
+    professor_count: int = 0
+    ta_count: int = 0
+    student_count: int = 0
+    memberships: list[SectionMembershipSummary] = Field(default_factory=list)
+    created_at: str = ""
+    updated_at: str = ""
+
+
+class AdminSectionCreate(BaseModel):
+    """Payload used to create a section in Aurora."""
+
+    section_id: str = Field(min_length=1)
+    course_id: str = Field(min_length=1)
+    display_name: str = Field(min_length=1)
+    term: str = ""
+    is_active: bool = True
+
+
+class AdminSectionUpdate(BaseModel):
+    """Payload used to update a section in Aurora."""
+
+    display_name: str | None = None
+    term: str | None = None
+    is_active: bool | None = None
+
+    @model_validator(mode="after")
+    def _validate_non_empty_update(self) -> "AdminSectionUpdate":
+        if self.display_name is None and self.term is None and self.is_active is None:
+            raise ValueError("At least one section field must be provided.")
+        return self
+
+
+class AdminSectionMembershipCreate(BaseModel):
+    """Payload used to create a section membership in Aurora."""
+
+    user_id: str = Field(min_length=1)
+    role_in_section: SectionMembershipRole
+    status: SectionMembershipStatus = "active"
+
+
+class AdminSectionMembershipUpdate(BaseModel):
+    """Payload used to update a section membership in Aurora."""
+
+    role_in_section: SectionMembershipRole | None = None
+    status: SectionMembershipStatus | None = None
+
+    @model_validator(mode="after")
+    def _validate_non_empty_update(self) -> "AdminSectionMembershipUpdate":
+        if self.role_in_section is None and self.status is None:
+            raise ValueError("At least one membership field must be provided.")
+        return self
+
+
+class ProfessorSectionSummary(BaseModel):
+    """Professor-facing section summary with roster counts."""
+
+    section_id: str
+    course_id: str
+    course_display_name: str = ""
+    display_name: str
+    term: str = ""
+    is_active: bool = True
+    professor_count: int = 0
+    ta_count: int = 0
+    student_count: int = 0
+    created_at: str = ""
+    updated_at: str = ""
+
+
+class ProfessorSectionStudent(BaseModel):
+    """Professor-facing student roster row."""
+
+    user_id: str
+    cognito_sub: str | None = None
+    email: str
+    display_name: str = ""
+    membership_status: SectionMembershipStatus
+    role_in_section: SectionMembershipRole
+    session_count: int = 0
+    last_session_at: str = ""
 
 
 class IndexEnsureResponse(BaseModel):

@@ -35,3 +35,24 @@ export async function apiPost<TRequest, TResponse>(
 
   return response.json() as Promise<TResponse>;
 }
+
+export async function apiPatch<TRequest, TResponse>(
+  path: string,
+  body: TRequest,
+  accessToken: string
+): Promise<TResponse> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    throw new Error(`API error ${response.status}: ${await response.text()}`);
+  }
+
+  return response.json() as Promise<TResponse>;
+}

@@ -1,6 +1,8 @@
 -- Aurora course registry bootstrap for the codingrabbit capstone.
 -- Keep this file versioned in Git so schema changes are reviewable.
 
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 CREATE TABLE IF NOT EXISTS courses (
   course_id text PRIMARY KEY,
   course_source text NOT NULL,
@@ -36,6 +38,52 @@ CREATE TABLE IF NOT EXISTS course_corpus_versions (
   started_at timestamptz,
   completed_at timestamptz
 );
+
+CREATE TABLE IF NOT EXISTS users (
+  user_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  cognito_sub text UNIQUE,
+  email text UNIQUE NOT NULL,
+  display_name text NOT NULL DEFAULT '',
+  primary_role text NOT NULL CHECK (primary_role IN ('admin', 'professor', 'student')),
+  status text NOT NULL DEFAULT 'invited' CHECK (status IN ('invited', 'active', 'disabled')),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS sections (
+  section_id text PRIMARY KEY,
+  course_id text NOT NULL REFERENCES courses(course_id) ON DELETE CASCADE,
+  display_name text NOT NULL,
+  term text NOT NULL DEFAULT '',
+  is_active boolean NOT NULL DEFAULT TRUE,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS section_memberships (
+  section_id text NOT NULL REFERENCES sections(section_id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+  role_in_section text NOT NULL CHECK (role_in_section IN ('professor', 'ta', 'student')),
+  status text NOT NULL DEFAULT 'active' CHECK (status IN ('invited', 'active', 'dropped', 'disabled')),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (section_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS users_email_idx
+  ON users (email);
+
+CREATE INDEX IF NOT EXISTS users_cognito_sub_idx
+  ON users (cognito_sub);
+
+CREATE INDEX IF NOT EXISTS sections_course_id_is_active_idx
+  ON sections (course_id, is_active);
+
+CREATE INDEX IF NOT EXISTS section_memberships_user_id_status_idx
+  ON section_memberships (user_id, status);
+
+CREATE INDEX IF NOT EXISTS section_memberships_section_id_role_status_idx
+  ON section_memberships (section_id, role_in_section, status);
 
 CREATE TABLE IF NOT EXISTS ingestion_jobs (
   job_id text PRIMARY KEY,
