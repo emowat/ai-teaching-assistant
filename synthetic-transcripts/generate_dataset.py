@@ -7,6 +7,11 @@ from dotenv import load_dotenv
 from openai import OpenAI
 from sentence_transformers import SentenceTransformer
 import numpy as np
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed, wait, FIRST_COMPLETED
+
+embedding_lock = threading.Lock()
+state_lock = threading.Lock()
 
 # Initialize local embedding model for deduplication
 try:
@@ -21,18 +26,22 @@ except Exception as e:
     embedding_model = None
     existing_embeddings = []
 
-def is_duplicate(text, threshold=0.85):
-    if embedding_model is None or not existing_embeddings:
+def is_duplicate(text, threshold=0.95):
+    """Computes semantic embedding of the text and checks if cosine similarity > threshold against the global index."""
+    with embedding_lock:
+        if embedding_model is None or not existing_embeddings:
+            return False
+        new_emb = embedding_model.encode(text)
+        similarities = np.dot(existing_embeddings, new_emb) / (np.linalg.norm(existing_embeddings, axis=1) * np.linalg.norm(new_emb))
+        if len(similarities) > 0 and np.max(similarities) > threshold:
+            return True
         return False
-    new_emb = embedding_model.encode(text)
-    similarities = np.dot(existing_embeddings, new_emb) / (np.linalg.norm(existing_embeddings, axis=1) * np.linalg.norm(new_emb))
-    if len(similarities) > 0 and np.max(similarities) > threshold:
-        return True
-    return False
 
 def add_embedding(text):
-    if embedding_model is not None:
-        existing_embeddings.append(embedding_model.encode(text))
+    with embedding_lock:
+        if embedding_model is not None:
+            new_emb = embedding_model.encode(text)
+            existing_embeddings.append(new_emb)
 
 # Initialize Tree-sitter for C++
 print("Initializing tree-sitter...")
@@ -71,11 +80,16 @@ def extract_ast_metadata(raw_code, target_function=None):
             "Has_Nullptr": False,
             "Has_Recursion": False,
             "Has_Early_Return": False,
-            "Has_Unexpected_Bitwise_Shift": False
+            "Has_Iterator": False,
+            "Has_STL_Algorithm": False,
+            "Has_Smart_Pointer": False,
+            "Has_Pass_By_Value": False
         }
     }
 
     def get_id(n):
+        if n.type == 'destructor_name':
+            return n.text.decode('utf8').split('::')[-1]
         if n.type in ['identifier', 'field_identifier']:
             return n.text.decode('utf8').split('::')[-1]
         for child in n.children:
@@ -121,9 +135,9 @@ def extract_ast_metadata(raw_code, target_function=None):
         (null) @null_val
 
         (for_statement) @loop
+        (for_range_loop) @range_loop
         (while_statement) @loop
         (return_statement) @return_stmt
-        (binary_expression operator: ">>" left: (unary_expression operator: "!")) @bad_shift
     """)
 
     cursor = tree_sitter.QueryCursor(query)
@@ -178,6 +192,10 @@ def extract_ast_metadata(raw_code, target_function=None):
                             func_names.add(name)
                 elif tag == "call_id":
                     call_name = clean_name
+                    if call_name in ["find", "sort", "accumulate", "transform", "copy", "remove_if"]:
+                        metadata["Features"]["Has_STL_Algorithm"] = True
+                    if call_name in ["begin", "end", "cbegin", "cend", "rbegin", "rend"]:
+                        metadata["Features"]["Has_Iterator"] = True
                     # Walk up the tree to find enclosing function definition
                     curr = node.parent
                     while curr:
@@ -190,6 +208,10 @@ def extract_ast_metadata(raw_code, target_function=None):
                             break
                         curr = curr.parent
                 elif tag == "any_id":
+                    if text in ["unique_ptr", "shared_ptr", "weak_ptr"]:
+                        metadata["Features"]["Has_Smart_Pointer"] = True
+                    if text in ["iterator", "const_iterator"]:
+                        metadata["Features"]["Has_Iterator"] = True
                     if text not in metadata["Target_Variables"] and text not in ["main", "std", "cout", "endl", "printf", "malloc", "free", "nullptr", "NULL"]:
                         # Heuristic: Add if it looks like a variable in a declaration or use
                         parent = node.parent
@@ -219,6 +241,9 @@ def extract_ast_metadata(raw_code, target_function=None):
                     metadata["Features"]["Has_Nullptr"] = True
                 elif tag == "loop":
                     metadata["Features"]["Has_Loop"] = True
+                elif tag == "range_loop":
+                    metadata["Features"]["Has_Loop"] = True
+                    metadata["Features"]["Has_Iterator"] = True
                 elif tag == "return_stmt":
                     # Check if it's inside an if/while/for block before hitting the function def
                     curr = node.parent
@@ -230,8 +255,23 @@ def extract_ast_metadata(raw_code, target_function=None):
                         curr = curr.parent
                     if is_early:
                         metadata["Features"]["Has_Early_Return"] = True
-                elif tag == "bad_shift":
-                    metadata["Features"]["Has_Unexpected_Bitwise_Shift"] = True
+
+    # Fallback string heuristics for templates that Tree-Sitter sometimes flattens
+    if "shared_ptr" in raw_code or "unique_ptr" in raw_code or "weak_ptr" in raw_code:
+        metadata["Features"]["Has_Smart_Pointer"] = True
+        metadata["Features"]["Has_Pointer"] = True
+        
+    import re
+    # Simple regex heuristic: look for vector/string/map followed by a variable name and a comma/paren, without an ampersand
+    if re.search(r'\b(vector|string|map|set|list)(?:<[^>]+>)?\s+[a-zA-Z_]\w*\s*[,)]', raw_code):
+        metadata["Features"]["Has_Pass_By_Value"] = True
+        
+    # Tree-Sitter misses scoped identifiers (std::find) and field identifiers (.begin()) in the flat query
+    if re.search(r'\bstd::(find|sort|accumulate|transform|copy|remove_if)\b', raw_code):
+        metadata["Features"]["Has_STL_Algorithm"] = True
+        
+    if re.search(r'\b(begin|end|cbegin|cend|rbegin|rend)\s*\(', raw_code) or ".begin(" in raw_code or ".end(" in raw_code:
+        metadata["Features"]["Has_Iterator"] = True
 
     return metadata
 
@@ -270,7 +310,6 @@ CRITICAL CHECKS:
 1. Compilation & Types: Are there glaring type mismatches? (e.g. passing an `int` buffer to `strcpy`, or calling `.size()` on a raw array). If it wouldn't compile due to a basic syntax/type error unrelated to the bug, reject it. DO NOT reject a problem solely for missing standard `#include` headers (like `<iostream>`). Assume all necessary standard headers are implicitly included.
 2. Conceptual Accuracy: Does the code make sense? (e.g. `sizeof(int)` is 4 bytes, not 1. A buffer of `int buffer[10]` holds 40 bytes, not 10 chars).
 3. The Claimed Bug: Does the code actually contain the specific vulnerability claimed below?
-4. Comment Leakage: Does the code contain comments that explicitly reveal the bug (e.g., "// Bug: Incorrect range", "// Forgot to delete")? If yes, REJECT it immediately. Code must look like a real student's submission.
 
 CLAIMED BUG: {problem['Hidden_Vulnerability']}
 TECHNICAL ANALYSIS: {problem['Hidden_Trigger_Condition']}
@@ -289,6 +328,7 @@ Output ONLY a JSON object:
             messages=[{"role": "system", "content": prompt}],
             temperature=0.1, # Low temp for factual review
             max_tokens=1000,
+            timeout=60.0,
             response_format={"type": "json_object"}
         )
         result = json.loads(response.choices[0].message.content)
@@ -298,14 +338,56 @@ Output ONLY a JSON object:
         return {"is_valid": True} # Fallback to assume valid on error
 
 SYLLABUS_MATRIX = {
-    1: {"name": "C Basics", "allowed": "printf, primitive types, main", "forbidden": "pointers, arrays, structures, new/delete"},
-    2: {"name": "Arrays & Strings", "allowed": "arrays, string.h, functions", "forbidden": "pointers, dynamic allocation, structures"},
-    3: {"name": "Pointers & Memory", "allowed": "raw pointers, references, stack allocation, address-of (&)", "forbidden": "new/delete, vectors, smart pointers"},
-    4: {"name": "Manual Heap Management", "allowed": "new, delete, malloc, free, references", "forbidden": "std::vector, smart pointers, RAII objects"},
-    5: {"name": "Object-Oriented C++", "allowed": "classes, inheritance, multiple inheritance, virtual functions, operator overload", "forbidden": "templates"},
-    6: {"name": "Modern C++ & STL", "allowed": "std::vector, std::unique_ptr, RAII, templates, STL", "forbidden": "raw malloc/free, bare new/delete"},
-    7: {"name": "Algorithms & Complexity", "allowed": "recursion, sorting algorithms, Big O notation, binary search trees", "forbidden": "raw malloc/free, bare new/delete"},
-    8: {"name": "Advanced Data Structures", "allowed": "hash tables, tries, queues, stacks, linked lists", "forbidden": "raw malloc/free, bare new/delete"}
+    1: {
+        "name": "Introduction to C: Welcome to the Memory Jungle",
+        "allowed": "primitive types, control loops, functions, basic pointers, sizeof, printf",
+        "forbidden": "structs, custom alignment, manual malloc, assembly, C++ classes"
+    },
+    2: {
+        "name": "Subtleties of C: Data Structures & Floating-Point",
+        "allowed": "structures, raw pointers, custom memory alignment, custom trees/lists, floating-point arithmetic",
+        "forbidden": "x86 assembly, pointer casting exploits, C++ references, new/delete"
+    },
+    3: {
+        "name": "Assembly & Secure Programming in C",
+        "allowed": "x86 assembly registers, stack frames, buffer overflow analysis, bounds checking",
+        "forbidden": "C++ syntax, classes, std::vector, iostream"
+    },
+    4: {
+        "name": "Style and Structure: Transition from C to C++",
+        "allowed": "namespaces, function overloading, standard reference variables (&), iostream (std::cout), stack-allocated custom vectors",
+        "forbidden": "C++ classes, inheritance, explicit heap management (new/delete)"
+    },
+    5: {
+        "name": "Object-Oriented C++: Abstraction & Core STL",
+        "allowed": "classes, access modifiers (public/private), basic inheritance, std::vector, std::queue",
+        "forbidden": "templates, raw pointer dynamic casting, complex pointers, manual memory deletion"
+    },
+    6: {
+        "name": "Design Patterns: Higher-Level Program Design",
+        "allowed": "virtual functions, polymorphism, abstract base classes, composite pattern, strategy pattern, std::unique_ptr",
+        "forbidden": "raw malloc/free, third-party frameworks, manual pointer arithmetic inside patterns"
+    },
+    7: {
+        "name": "Introduction to Projects: Unit Testing & Review",
+        "allowed": "assert, unit test blocks, third-party header libraries, modular compilation",
+        "forbidden": "makefiles, large-scale multi-directory linkages, graphical engines"
+    },
+    8: {
+        "name": "Project Environments: Iterators & N-Body Setup",
+        "allowed": "STL iterators, macro definitions (#define), header guards, math.h, simulation loops",
+        "forbidden": "raw pointer traversal (must use iterators), OpenGL, automated graphics libraries"
+    },
+    9: {
+        "name": "Visualization & Build Systems",
+        "allowed": "GNU Makefiles, compiler optimization flags (-O2, -O3), basic OpenGL context, structural linking",
+        "forbidden": "unoptimized code paths, nested raw loops without look-ahead analysis"
+    },
+    10: {
+        "name": "Course Recap, Technical Interviews, & Advanced Topics",
+        "allowed": "rvalue references, move semantics, template metaprogramming concepts, interview data structures",
+        "forbidden": "legacy C practices (e.g., raw void* pointers where type-safety applies)"
+    }
 }
 
 STYLE_A = """[Style_Context]
@@ -539,7 +621,12 @@ def generate_ta_response(chat_history, system_context, exemplars, is_study_mode=
     """Calls the LLM acting as the TA."""
     # The mode rules are already in BASE_TA_SYSTEM_PROMPT
     oracle_block = f"\n[ORACLE_ANSWER_KEY - DO NOT MENTION THIS KEY IN YOUR RESPONSE]\nBug: {oracle_vuln}\nTrigger: {oracle_trigger}\n" if oracle_vuln else ""
-    dynamic_metadata = f"\nSession_Adversarial_Warnings: {adversarial_count}\nSession_Style_Nudged: {str(style_nudged).lower()}\n"
+    
+    # The TA needs to know how many warnings it has ALREADY given.
+    # If the student just made their 1st adversarial input, adversarial_count is 1, but prior_warnings is 0.
+    prior_warnings = max(0, adversarial_count - 1)
+    
+    dynamic_metadata = f"\nSession_Adversarial_Warnings: {prior_warnings}\nSession_Style_Nudged: {str(style_nudged).lower()}\n"
     full_system_prompt = f"{BASE_TA_SYSTEM_PROMPT}\n\nBelow are exemplars of how you must behave:\n\n<exemplars>\n{''.join(exemplars)}\n</exemplars>\n{oracle_block}\nCURRENT SESSION CONTEXT:\n{system_context}{dynamic_metadata}"
 
     messages = [
@@ -553,7 +640,8 @@ def generate_ta_response(chat_history, system_context, exemplars, is_study_mode=
                 model=MODEL_NAME,
                 messages=messages,
                 temperature=0.5, # Increased from 0.2 for more varied phrasing
-                max_tokens=800
+                max_tokens=800,
+                timeout=60.0
             )
             reply = response.choices[0].message.content.strip()
             if not reply:
@@ -595,7 +683,8 @@ def generate_student_response(chat_history):
                 model=MODEL_NAME,
                 messages=messages,
                 temperature=0.7, # Higher temp for varied student responses
-                max_tokens=150
+                max_tokens=150,
+                timeout=60.0
             )
             content = response.choices[0].message.content.strip()
             if not content:
@@ -689,15 +778,26 @@ def get_automated_context(problem, raw_code="", ast_metadata=None, mode="Homewor
     current_week_docs = [doc for doc in RAG_DOCUMENT_BANK if doc["week"] == week_number]
     past_week_docs = [doc for doc in RAG_DOCUMENT_BANK if doc["week"] < week_number]
 
+    def format_chunk(doc):
+        source = "Assignment Instructions"
+        if doc['category'] == "Supplementary":
+            source = "Ed Discussion"
+        elif doc['category'] == "Pedagogical_Context":
+            source = f"Lecture Note {doc['week']}"
+        elif doc['category'] == "Strict_Rules":
+            source = f"Assignment {doc['week']} Instructions"
+            
+        return f"[{doc['category']}]\nSource: \"{source}\"\nWeek: {doc['week']}\nContent: {doc['content']}"
+
     # A real vector database would prioritize exact semantic matches for the current week
     if current_week_docs:
         rel_doc = random.choice(current_week_docs)
-        chunks.append(f"[{rel_doc['category']}]\nWeek: {rel_doc['week']}\nContent: {rel_doc['content']}")
+        chunks.append(format_chunk(rel_doc))
 
     # Inject 1 past distractor to simulate slightly noisy retrieval
     if past_week_docs and random.random() > 0.3:
         dist_doc = random.choice(past_week_docs)
-        chunks.append(f"[{dist_doc['category']}]\nWeek: {dist_doc['week']}\nContent: {dist_doc['content']}")
+        chunks.append(format_chunk(dist_doc))
 
     # 3. Shuffle chunks
     random.shuffle(chunks)
@@ -730,13 +830,11 @@ Trigger_Event: "{terminal_block['Trigger_Event']}"
 """
     return context_string
 
-
-
-def generate_dynamic_problem(week_number, topic, suggested_vulnerabilities, theme, style_context=STYLE_A):
+def generate_dynamic_problem(week_number, topic, chosen_vulnerability, theme, style_context=STYLE_A):
     """Calls the LLM to act as a Professor and design a new debugging problem, with Critic validation."""
     syllabus = SYLLABUS_MATRIX.get(week_number, {"name": "Advanced", "allowed": "All"})
 
-    max_retries = 5
+    max_retries = 10
     for attempt in range(max_retries):
         # Use 30% chance to request a Misleading Crash (GDB session)
         trigger_type = "gdb_request" if random.random() < 0.30 else "terminal_help"
@@ -747,12 +845,13 @@ def generate_dynamic_problem(week_number, topic, suggested_vulnerabilities, them
 NOTE: Ensure `expected_terminal_output` and `expected_exit_code` realistically match the bug. If it's an uninitialized read, output garbage values (Exit 0). If it's a syntax error, output the compiler error (Exit 1). If it's a memory crash, output a Segfault (Exit 139). DO NOT blindly output 'Segmentation fault'.
 CRITICAL: DO NOT write comments in the code that reveal the bug or the solution (e.g., "// Missing delete statement", "// Forgot to initialize", "// Bug: Incorrect range"). THE CRITIC WILL AUTOMATICALLY REJECT YOUR CODE IF YOU LEAVE DEBUG COMMENTS. The code must look like a genuine, struggling student's submission.
 CRITICAL: The "code" MUST be a fully self-contained, compilable C++ program including `#include` headers and a `main()` function. DO NOT output partial snippets.
+CRITICAL: DO NOT use 'using namespace std;' anywhere in the generated code! You MUST explicitly use the 'std::' prefix (e.g. std::cout, std::vector). The dataset already has enough 'using namespace std;' examples.
 
 STYLE GUIDE:
 {style_context}
-CRITICAL: The "code" MUST be formatted across multiple lines using '\n' and proper indentation. DO NOT minify the code onto a single line.
-CRITICAL: You MUST base the buggy code entirely on the vulnerability you chose or invented. Do not fall back to generic out-of-bounds array errors or simple syntax typos unless that is the specific vulnerability chosen!
-CRITICAL: You are generating a JSON object. You MUST properly escape all double quotes (\") and backslashes (\\) inside the C++ code string so that Python's `json.loads` does not crash!
+CRITICAL: The "code" MUST be formatted across multiple lines using '\\n' and proper indentation. DO NOT minify the code onto a single line.
+CRITICAL: You MUST base the buggy code entirely on the exact Vulnerability Category provided below!
+CRITICAL: You are generating a JSON object. You MUST properly escape all double quotes (\\") and backslashes (\\\\) inside the C++ code string so that Python's `json.loads` does not crash!
 
 Output ONLY a valid JSON object matching this template:
 {{
@@ -761,7 +860,7 @@ Output ONLY a valid JSON object matching this template:
   "plan": "Explain exactly how you will implement the bug in C++ before writing the code",
   "code": "// Your buggy snippet here (NO line numbers)",
   "initial_message": "Student's confused question (Concise, NO code)",
-  "Hidden_Vulnerability": "Name of the vulnerability you chose or invented",
+  "Hidden_Vulnerability": "Copy the EXACT string from the Vulnerability Category provided",
   "Hidden_Trigger_Condition": "Deep technical analysis of the failure",
   "bug_location_function": "The exact name of the C++ function where the bug occurs (e.g. 'addVote'). Do NOT put 'main' unless the bug is actually inside main().",
   "trigger": "{trigger_type}",
@@ -771,8 +870,7 @@ Output ONLY a valid JSON object matching this template:
 
 CONTEXT:
 Topic: {topic}
-Suggested Vulnerabilities (Pick ONE that makes logical sense for the Topic, or invent a NEW one if none fit well!):
-{chr(10).join(f"- {v}" for v in suggested_vulnerabilities)}
+Vulnerability Category (YOU MUST IMPLEMENT THIS EXACT VULNERABILITY): {chosen_vulnerability}
 Problem Theme/Scenario: {theme}
 Syllabus Allowed: {syllabus['allowed']}
 Syllabus Forbidden: {syllabus.get('forbidden', 'None')}
@@ -784,6 +882,7 @@ Syllabus Forbidden: {syllabus.get('forbidden', 'None')}
                 messages=[{"role": "system", "content": prompt}],
                 temperature=0.8,
                 max_tokens=3000,
+                timeout=60.0,
                 response_format={"type": "json_object"}
             )
 
@@ -826,7 +925,7 @@ Syllabus Forbidden: {syllabus.get('forbidden', 'None')}
                 if "//" in line:
                     code_part, comment_part = line.split("//", 1)
                     lower_comment = comment_part.lower()
-                    if any(bad in lower_comment for bad in ["bug:", "vulnerab", "issue:", "fix:", "underflow", "overflow", "leak:", "leak "]):
+                    if any(bad in lower_comment for bad in ["bug", "vulnerab", "issue", "fix", "underflow", "overflow", "leak", "forgot", "missing", "error", "wrong", "todo", "note:"]):
                         line = code_part.rstrip()
                 cleaned_lines.append(line)
             
@@ -953,7 +1052,7 @@ def generate_synthetic_transcript(problem_config, max_turns=6, is_study_mode=Fal
 
         # 2. Student's Turn (Adversarial & Conceptual Injection Logic)
         rand_val = random.random()
-        adversarial_chance = 0.30 if adversarial_count > 0 else 0.05
+        adversarial_chance = 0.0
 
         is_injected = False
         if rand_val < adversarial_chance:
@@ -1009,68 +1108,20 @@ if __name__ == "__main__":
 
     print(f"\n--- Generating Dynamic Problem Dataset ---")
     TOPICS = [
-        (3, "Pointer arithmetic and array access"),
-        (4, "Linked list manipulation"),
-        (4, "Dynamic memory allocation"),
-        (5, "Inheritance, multiple inheritance, and virtual functions"),
-        (5, "Copy constructors and operator overload"),
-        (6, "RAII, templates, and STL containers (vectors, maps)"),
-        (7, "Binary search tree node insertion and deletion"),
-        (7, "Recursion, sorting, and run-time complexity (Big O)"),
-        (8, "Hash tables and collision resolution"),
-        (8, "Tries and prefix trees"),
-        (8, "Stacks, Queues, and Deques")
+        (5, "std::vector, passing by value vs reference, and iterators"),
+        (5, "std::map, key-value pairs, operator[] vs .at(), and unique keys"),
+        (5, "std::find, algorithm inclusion, and iterator bounds")
     ]
 
     VULNERABILITIES = [
-        "Variable shadowing leading to incorrect state update (e.g. local variable masking a class member)",
-        "Null pointer dereference",
-        "Memory leak",
-        "Logic error leading to infinite recursion or excessive runtime",
-        "Object slicing or incorrect virtual function override",
-        "Iterator invalidation during container modification",
-        "Memory leak in exception handler",
-        "Output formatting errors (e.g. printf type mismatch, missing cout overload for custom objects)",
-        "Out-of-bounds access in loop condition",
-        "Operator precedence misunderstanding (e.g. !ss >> val, *ptr++, a == b & c)",
-        "Bitwise vs logical operator confusion (& vs &&, | vs ||)",
-        "Early return skipping resource cleanup or validation",
-        "Incorrect formatting leading to unexpected results (e.g. missing braces, semicolon after loop)",
-        "Switch statement fall-through missing break",
-        "Floating-point equality comparison without epsilon",
-        "Returning a pointer/reference to a local stack variable",
-        "Input parsing leading to incorrect results (e.g. incorrect delimiters, string truncation, unhandled edge cases)",
-        "Errors in handling stream state",
-        "Modifying a string literal causing segmentation fault",
-        "Integer division yielding zero instead of floating point",
-        "Signed vs unsigned integer comparison underflow (e.g. -1 < 1U evaluating to false)",
-        "Macro side effects (e.g. SQUARE(x+1) evaluating incorrectly)",
-        "Missing header guards causing multiple definition errors",
-        "The getline / cin newline trap: Mixing std::cin >> var with std::getline(), leaving a newline character in the buffer",
-        "Uncleared stream failure flags: A failed cin >> int setting the failbit, causing infinite loops because clear() was omitted",
-        "The Bitwise vs. Equality trap: Writing if (flags & MASK == 0) expecting a bitwise check, but == has higher precedence",
-        "The Dangling Else: Misaligned indentation masking the fact that an else binds to the innermost if statement",
-        "Assignment inside conditionals: Writing if (x = 5) instead of ==, which evaluates to true and overwrites state",
-        "Switch case fall-through: Forgetting the break; statement, causing execution to bleed into the next case",
-        "Array decay blindness: Using sizeof(arr) / sizeof(arr[0]) on a pointer parameter instead of an array",
-        "Realloc memory leaks: If realloc fails and returns NULL, the original memory block is orphaned and leaked"
+        "Passing a large std::vector or std::map by value instead of const reference causing performance issues",
+        "Using std::map::operator[] instead of std::map::at() causing accidental default-insertions of keys",
+        "Dereferencing the iterator returned by std::find without checking if it equals container.end()",
+        "Iterator invalidation: holding onto a std::vector iterator and then calling push_back()",
+        "Assuming std::find works on an array without passing proper begin/end pointers or iterators"
     ]
 
-    FAVORITE_VULNERABILITIES = [
-        "Use-after-free",
-        "Buffer overflow via unsafe C-string operations (e.g. strcpy)",
-        "Uninitialized primitive variables leading to undefined behavior",
-        "Dangling reference returned from function",
-        "Incorrect size parameter in dynamic allocation",
-        "Stack reference leakage: Returning a reference or pointer to a local stack variable",
-        "Unsigned integer underflow in loops: Writing for (size_t i = 0; i < vec.size() - 1; ++i) on an empty vector",
-        "Use-after-move: Accessing an object's state immediately after calling std::move() on it",
-        "Dangling iterators post-erasure: Calling vec.erase(it) inside a loop without assigning the return value back to it",
-        "Virtual dispatch in constructors: Calling a virtual function inside a base class constructor or destructor",
-        "Shallow copy causing double free",
-        "String view invalidation: Constructing a std::string_view from a temporary std::string that immediately goes out of scope",
-        "Mismatched new[] and delete (using delete instead of delete[])"
-    ]
+    FAVORITE_VULNERABILITIES = []
 
     THEMES = [
         "Student grading system",
@@ -1249,87 +1300,119 @@ if __name__ == "__main__":
 
     import collections
     
-    output_filename = "homework_debug_dataset.jsonl"
+    output_filename = "targeted_dataset.jsonl"
     
     NUM_PROBLEMS_TO_GENERATE = args.num_problems
     
-    # Analytics tracking (dynamic)
     vulnerability_distribution = collections.defaultdict(int)
     generated_count = 0
+    started_count = 0
     
     while generated_count < NUM_PROBLEMS_TO_GENERATE:
-        # Dynamically pick a topic and theme
-        week, topic = random.choice(TOPICS)
-        theme = random.choice(THEMES)
-        
-        # 10% chance to include the LLM's favorite vulnerabilities to keep them rare
-        if random.random() < 0.10:
-            pool = VULNERABILITIES + FAVORITE_VULNERABILITIES
-        else:
-            pool = VULNERABILITIES
-        suggested_vulnerabilities = random.sample(pool, min(15, len(pool)))
-        
-        rand_val = random.random()
-        is_study_mode = False
+        def generate_single_item(_):
+            global generated_count, all_transcripts, started_count
+            
+            with state_lock:
+                if generated_count >= NUM_PROBLEMS_TO_GENERATE:
+                    return False
+                started_count += 1
+                current_count = started_count
 
-        if rand_val < 0.00:
-            print(f"\n[!] Generating OUT-OF-SCOPE Problem snippet...")
-            problem = random.choice(OUT_OF_SCOPE_PROBLEM_BANK)
-        elif rand_val < 0.00:
-            print(f"\n[!] Generating STUDY ASSIST Mode snippet...")
-            problem = random.choice(STUDY_MODE_PROBLEM_BANK)
-            is_study_mode = True
-        else:
-            print(f"\n[{generated_count+1}/{NUM_PROBLEMS_TO_GENERATE}] Generating: Topic '{topic}', Theme '{theme}'...")
-            try:
-                # Randomize style for future data generation
-                is_messy = random.random() < 0.20
-                if is_messy:
-                    student_style = random.choice([STYLE_A, STYLE_B, STYLE_C])
-                    ta_styles = [s for s in STYLE_PROFILES if s != student_style]
-                    ta_style = random.choice(ta_styles)
-                else:
-                    student_style = random.choice(STYLE_PROFILES)
-                    ta_style = student_style
+            week, topic = random.choice(TOPICS)
+            theme = random.choice(THEMES)
+            
+            if random.random() < 0.10:
+                pool = VULNERABILITIES + FAVORITE_VULNERABILITIES
+            else:
+                pool = VULNERABILITIES
+            chosen_vulnerability = random.choice(pool)
+            
+            rand_val = random.random()
+            is_study_mode = False
 
-                problem = generate_dynamic_problem(week, topic, suggested_vulnerabilities, theme, style_context=student_style)
-                problem["ta_style"] = ta_style
-                print(f"Generated Problem: {problem['problem_id']} (Vulnerability: {problem.get('Hidden_Vulnerability', 'Unknown')})")
-            except Exception as e:
-                print(f"Failed to generate dynamic problem: {e}")
-                continue
+            if rand_val < 0.00:
+                print(f"\n[!] Generating OUT-OF-SCOPE Problem snippet...")
+                problem = random.choice(OUT_OF_SCOPE_PROBLEM_BANK)
+            elif rand_val < 0.00:
+                print(f"\n[!] Generating STUDY ASSIST Mode snippet...")
+                problem = random.choice(STUDY_MODE_PROBLEM_BANK)
+                is_study_mode = True
+            else:
+                print(f"\n[{current_count}/{NUM_PROBLEMS_TO_GENERATE}] Generating: Topic '{topic}', Theme '{theme}'...")
+                try:
+                    is_messy = random.random() < 0.20
+                    if is_messy:
+                        student_style = random.choice([STYLE_A, STYLE_B, STYLE_C])
+                        ta_styles = [s for s in STYLE_PROFILES if s != student_style]
+                        ta_style = random.choice(ta_styles)
+                    else:
+                        student_style = random.choice(STYLE_PROFILES)
+                        ta_style = student_style
 
-        transcript_success = False
-        for transcript_attempt in range(3):
-            try:
-                transcript = generate_synthetic_transcript(problem, max_turns=5, is_study_mode=is_study_mode)
-                all_transcripts.append(transcript)
+                    problem = generate_dynamic_problem(week, topic, chosen_vulnerability, theme, style_context=student_style)
+                    problem["ta_style"] = ta_style
+                    problem["Hidden_Vulnerability"] = chosen_vulnerability # Override LLM!
+                    print(f"Generated Problem: {problem['problem_id']} (Vulnerability: {problem.get('Hidden_Vulnerability', 'Unknown')})")
+                except Exception as e:
+                    print(f"Failed to generate dynamic problem: {e}")
+                    return False
+
+            transcript_success = False
+            for transcript_attempt in range(3):
+                try:
+                    transcript = generate_synthetic_transcript(problem, max_turns=5, is_study_mode=is_study_mode)
                     
-                # Analytics update
-                if not is_study_mode and rand_val >= 0.00:
-                    actual_vuln = problem.get("Hidden_Vulnerability", "Unknown")
-                    vulnerability_distribution[actual_vuln] += 1
+                    with state_lock:
+                        all_transcripts.append(transcript)
+                        if not is_study_mode and rand_val >= 0.00:
+                            actual_vuln = problem.get("Hidden_Vulnerability", "Unknown")
+                            vulnerability_distribution[actual_vuln] += 1
+                        generated_count += 1
+                        
+                        if generated_count > 0 and generated_count % 100 == 0:
+                            print(f"\n[CHECKPOINT] Saving 100 problems to homework_debug_dataset.jsonl...")
+                            save_to_jsonl(all_transcripts, filename="homework_debug_dataset.jsonl")
+                            all_transcripts.clear()
+                            if existing_embeddings:
+                                np.save("embeddings.npy", np.array(existing_embeddings))
                     
-                generated_count += 1
-                transcript_success = True
-                break
-            except Exception as e:
-                print(f"Failed to generate transcript (Attempt {transcript_attempt+1}): {e}")
+                    transcript_success = True
+                    break
+                except Exception as e:
+                    print(f"Failed to generate transcript (Attempt {transcript_attempt+1}): {e}")
 
-        if not transcript_success:
-            print(f"Giving up on problem {problem['problem_id']}. Popping embedding...")
-            if existing_embeddings:
-                existing_embeddings.pop() # Remove the embedding so it can be generated again!
+            if not transcript_success:
+                print(f"Giving up on problem {problem['problem_id']}. Popping embedding...")
+                with embedding_lock:
+                    if existing_embeddings:
+                        existing_embeddings.pop()
+                return False
                 
-        # Checkpoint every 100 problems
-        if generated_count > 0 and generated_count % 100 == 0:
-            print(f"\n[CHECKPOINT] Saving 100 problems to homework_debug_dataset.jsonl...")
-            save_to_jsonl(all_transcripts, filename="homework_debug_dataset.jsonl")
-            all_transcripts = [] # Clear so we don't append duplicates next checkpoint!
-            if existing_embeddings:
-                np.save("embeddings.npy", np.array(existing_embeddings))
+            return True
 
-    output_filename = "homework_debug_dataset.jsonl"
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = set()
+            while True:
+                with state_lock:
+                    if generated_count >= NUM_PROBLEMS_TO_GENERATE:
+                        break
+                
+                while len(futures) < 2 and generated_count + len(futures) < NUM_PROBLEMS_TO_GENERATE:
+                    futures.add(executor.submit(generate_single_item, None))
+                    
+                if not futures:
+                    break
+                    
+                done, futures = wait(futures, return_when=FIRST_COMPLETED)
+                
+            # Wait for any stragglers
+            if futures:
+                wait(futures)
+
+        # Break the outer while loop since ThreadPool handled it
+        break
+
+    output_filename = "stl_dataset_v5.jsonl"
     save_to_jsonl(all_transcripts, filename=output_filename)
     if existing_embeddings:
         np.save("embeddings.npy", np.array(existing_embeddings))

@@ -34,8 +34,10 @@ ollama:
 
   # Model-level generation options forwarded to the Ollama /api/chat payload
   options:
-    temperature: 0.7
+    temperature: 0.4
     top_p: 0.9
+    presence_penalty: 0.2
+    frequency_penalty: 0.2
     num_ctx: 8192       # context window; raise if prompts are very long
     num_predict: 2048   # max output tokens
 
@@ -61,5 +63,7 @@ sagemaker:
   # Generation parameters forwarded to the vLLM OpenAI-compatible payload
   generation:
     max_tokens: 2048
-    temperature: 0.7
+    temperature: 0.3
     top_p: 0.9
+    presence_penalty: 0.1
+    frequency_penalty: 0.1

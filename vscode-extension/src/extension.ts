@@ -56,9 +56,10 @@ export function activate(context: vscode.ExtensionContext) {
         for (const change of event.contentChanges) {
             // 1. Record significant deletions (to detect cut-and-paste or vim 'dd' -> 'p')
             if (change.rangeLength > 10 && change.text.trim().length === 0) {
-                const deletedText = before.substring(change.rangeOffset, change.rangeOffset + change.rangeLength).trim();
-                if (deletedText.length > 10) {
-                    const hash = crypto.createHash('md5').update(deletedText).digest('hex');
+                const deletedText = before.substring(change.rangeOffset, change.rangeOffset + change.rangeLength);
+                const normalizedDeleted = deletedText.replace(/\s+/g, '');
+                if (normalizedDeleted.length > 10) {
+                    const hash = crypto.createHash('md5').update(normalizedDeleted).digest('hex');
                     recentlyDeletedHashes.add(hash);
                     // Prevent memory leak
                     if (recentlyDeletedHashes.size > 20) {
@@ -71,8 +72,13 @@ export function activate(context: vscode.ExtensionContext) {
             const insertedText = change.text.trim();
             if (insertedText.length > 30 || (change.text.includes("\n") && insertedText.length > 15)) {
                 // If the exact same text was recently deleted OR already exists elsewhere in the file, it's an internal move/copy.
-                const insertedHash = crypto.createHash('md5').update(insertedText).digest('hex');
-                const isInternalCopy = before.includes(insertedText);
+                const normalizedInserted = insertedText.replace(/\s+/g, '');
+                const insertedHash = crypto.createHash('md5').update(normalizedInserted).digest('hex');
+                
+                // Also ignore whitespace for the internal copy check
+                const normalizedBefore = before.replace(/\s+/g, '');
+                const isInternalCopy = normalizedBefore.includes(normalizedInserted);
+                
                 const isInternalCut = recentlyDeletedHashes.has(insertedHash);
                 
                 if (!isInternalCopy && !isInternalCut) {

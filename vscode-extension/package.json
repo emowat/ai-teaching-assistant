@@ -2,7 +2,7 @@
   "name": "coding-rabbit",
   "displayName": "CodingRabbit",
   "description": "C++ CodingRabbit Teaching Assistant via the remote rag_eng backend",
-  "version": "0.0.10",
+  "version": "0.1.0",
   "publisher": "berkeley",
   "repository": "https://github.com/berkeley/coding-rabbit",
   "engines": {
@@ -21,8 +21,8 @@
       "properties": {
         "codingRabbit.apiUrl": {
           "type": "string",
-          "default": "http://host.docker.internal:8000/api/chat",
-          "description": "The backend API URL for the CodingRabbit model."
+          "default": "http://127.0.0.1:8001/api/chat",
+          "description": "The URL of the CodingRabbit backend API"
         },
         "codingRabbit.modelName": {
           "type": "string",

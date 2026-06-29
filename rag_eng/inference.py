@@ -81,6 +81,8 @@ async def _invoke_sagemaker(
         max_tokens=max_tokens,
         temperature=ic.generation.temperature,
         top_p=ic.generation.top_p,
+        presence_penalty=getattr(ic.generation, "presence_penalty", 0.0),
+        frequency_penalty=getattr(ic.generation, "frequency_penalty", 0.0),
         formatted_prompt=formatted_prompt,
     )
 
@@ -234,6 +236,30 @@ async def _invoke_openai(
 
 
 # ---------------------------------------------------------------------------
+# Bedrock path
+# ---------------------------------------------------------------------------
+
+async def _invoke_bedrock(
+    messages: list[dict],
+    settings: Settings,
+    stream: bool = False,
+) -> dict | AsyncIterator[bytes]:
+    """Invoke the Bedrock Converse API."""
+    from rag_eng.llm_clients import BedrockChatConfig, ainvoke_bedrock_chat_completion
+
+    ic = get_inference_config().chat
+    config = BedrockChatConfig(
+        region=settings.aws_region,
+        model_id=ic.model,
+        profile_name=settings.aws_profile,
+    )
+    text = await ainvoke_bedrock_chat_completion(messages, config)
+    if not stream:
+        return {"message": {"content": text}}
+    return chunk_text(text, get_inference_config().sagemaker.streaming_chunk_size)
+
+
+# ---------------------------------------------------------------------------
 # Public interface
 # ---------------------------------------------------------------------------
 
@@ -258,5 +284,8 @@ async def run_inference(
 
     if chat_provider == "openai":
         return await _invoke_openai(messages, settings, stream=stream)
+
+    if chat_provider == "bedrock":
+        return await _invoke_bedrock(messages, settings, stream=stream)
 
     return await _invoke_ollama(messages, settings, stream=stream)

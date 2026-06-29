@@ -776,6 +776,31 @@ def create_app() -> FastAPI:
         except Exception as exc:
             raise HTTPException(status_code=500, detail=_error_detail(exc)) from exc
 
+    class FeedbackPayload(BaseModel):
+        session_id: str | None = None
+        rating: str
+        reason: str | None = None
+        message_index: int | None = None
+
+    @app.post("/api/feedback")
+    async def feedback_endpoint(payload: FeedbackPayload):
+        from datetime import datetime
+        import json
+        try:
+            feedback_data = {
+                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "session_id": payload.session_id,
+                "rating": payload.rating,
+                "reason": payload.reason,
+                "message_index": payload.message_index
+            }
+            with open("telemetry.jsonl", "a") as f:
+                f.write(json.dumps(feedback_data) + "\n")
+            return {"status": "success"}
+        except Exception as e:
+            print(f"Error logging feedback: {str(e)}")
+            raise HTTPException(status_code=500, detail=str(e))
+
     @app.post("/api/chat")
     async def chat(
         payload: ChatRequest,

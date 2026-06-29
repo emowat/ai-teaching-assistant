@@ -20,7 +20,7 @@
                 // 2. Point CodingRabbit to the student tutor backend.
                 // Codespaces should provide the deployed rag_eng URL via RAG_ENG_URL.
                 // The extension prefers that env var and falls back to this local-dev setting.
-                "codingRabbit.apiUrl": "http://host.docker.internal:8000/api/chat",
+                "codingRabbit.apiUrl": "http://codingrabbit-rag-eng-1327788709.us-east-1.elb.amazonaws.com/api/chat",
                 "codingRabbit.modelName": "codingrabbit-ta",
 
                 // 2. Disable the noisy C++ Doxygen lightbulbs and snippets
@@ -41,7 +41,7 @@
             "extensions": [
                 "ms-vscode.cpptools",
                 "ms-vscode.cpptools-extension-pack",
-                "/workspace/.devcontainer/coding-rabbit-0.0.10.vsix"
+                "/workspace/.devcontainer/coding-rabbit-0.1.0.vsix"
             ]
         }
     },

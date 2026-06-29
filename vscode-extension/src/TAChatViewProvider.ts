@@ -13,7 +13,7 @@ function resolveChatApiUrl(): string {
     const candidate = envUrl || (configuredUrl && !configuredUrl.startsWith('${') ? configuredUrl : undefined);
 
     if (!candidate) {
-        return 'http://host.docker.internal:8000/api/chat';
+        return 'http://host.docker.internal:8001/api/chat';
     }
 
     if (candidate.endsWith('/api/chat')) {
@@ -36,6 +36,7 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
     private _hasSentWakeup: boolean = false;
     private _hasProactivelyAskedAboutPaste: boolean = false;
     private _adversarialWarningCount: number = 0;
+    private _sessionId: string = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
     
     private _totalElapsedSeconds: number = 0;
     private _isStopwatchPaused: boolean = false;
@@ -182,6 +183,23 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
                     await this._handleAskTA(data.text, data.mode, webviewView);
                     break;
                 }
+                case 'feedback': {
+                    const apiUrl = vscode.workspace.getConfiguration('codingRabbit').get('apiUrl') || 'http://host.docker.internal:8001/api/chat';
+                    const feedbackUrl = apiUrl.toString().replace('/api/chat', '/api/feedback');
+                    fetch(feedbackUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            session_id: this._sessionId,
+                            rating: data.rating,
+                            reason: data.reason || "",
+                            message_index: data.messageIndex
+                        })
+                    }).catch(e => {
+                        TAChatViewProvider.getOutputChannel().appendLine(`[Feedback Error]: ${e}`);
+                    });
+                    break;
+                }
                 case 'startTerminal': {
                     vscode.commands.executeCommand('coding-rabbit.startTerminal');
                     break;
@@ -255,6 +273,10 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
                     }
                     webview.postMessage({ type: 'addResponse', text: content, isHtml: false, isThinking: false, isUser: true });
                 } else {
+                    const thinkMatch = content.match(/<think>[\s\S]*?<\/think>/);
+                    if (thinkMatch) {
+                        content = content.replace(thinkMatch[0], '').trim();
+                    }
                     const analysisMatch = content.match(/<analysis>[\s\S]*?<\/analysis>/);
                     if (analysisMatch) {
                         content = content.replace(analysisMatch[0], '').trim();
@@ -292,7 +314,11 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
                 continue; // Do not export hidden IDE events
             }
             
-            // Strip out <analysis> tags if present in the TA's raw history
+            // Strip out <think> and <analysis> tags if present in the TA's raw history
+            const thinkMatch = content.match(/<think>[\s\S]*?<\/think>/);
+            if (thinkMatch) {
+                content = content.replace(thinkMatch[0], '').trim();
+            }
             const analysisMatch = content.match(/<analysis>[\s\S]*?<\/analysis>/);
             if (analysisMatch) {
                 content = content.replace(analysisMatch[0], '').trim();
@@ -411,9 +437,9 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
                     (call_expression function: (identifier) @call_id)
                     (null) @null_val
                     (for_statement) @loop
+                    (for_range_loop) @range_loop
                     (while_statement) @loop
                     (return_statement) @return_stmt
-                    (binary_expression operator: ">>" left: (unary_expression operator: "!")) @bad_shift
                 `;
                 const query = this._cppLanguage!.query(queryStr);
                 let focusScope = "global";
@@ -426,7 +452,8 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
                         const decl = cursorNode.childForFieldName("declarator");
                         if (decl) {
                             const get_id = (n: any): string | null => {
-                                if (n.type === 'identifier') return n.text.split('::').pop() || n.text;
+                                if (n.type === 'destructor_name') return n.text.split('::').pop() || n.text;
+                                if (n.type === 'identifier' || n.type === 'field_identifier') return n.text.split('::').pop() || n.text;
                                 for (let i = 0; i < n.childCount; i++) {
                                     const res = get_id(n.child(i));
                                     if (res) return res;
@@ -455,7 +482,10 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
                     Has_Nullptr: false,
                     Has_Recursion: false,
                     Has_Early_Return: false,
-                    Has_Unexpected_Bitwise_Shift: false
+                    Has_Iterator: false,
+                    Has_STL_Algorithm: false,
+                    Has_Smart_Pointer: false,
+                    Has_Pass_By_Value: false
                 };
                 
                 const matches = query.matches(targetNode);
@@ -469,6 +499,8 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
                         if (tag === "call_id") {
                             if (cleanName === "malloc") features.Has_Malloc = true;
                             if (cleanName === "free") features.Has_Free = true;
+                            if (["find", "sort", "accumulate", "transform", "copy", "remove_if"].includes(cleanName)) features.Has_STL_Algorithm = true;
+                            if (["begin", "end", "cbegin", "cend", "rbegin", "rend"].includes(cleanName)) features.Has_Iterator = true;
                             
                             // Recursion check
                             let curr: any = node.parent;
@@ -477,7 +509,8 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
                                     const decl = curr.childForFieldName("declarator");
                                     if (decl) {
                                         const get_id = (n: any): string | null => {
-                                            if (n.type === 'identifier') return n.text.split('::').pop() || n.text;
+                                            if (n.type === 'destructor_name') return n.text.split('::').pop() || n.text;
+                                            if (n.type === 'identifier' || n.type === 'field_identifier') return n.text.split('::').pop() || n.text;
                                             for (let i = 0; i < n.childCount; i++) {
                                                 const res = get_id(n.child(i));
                                                 if (res) return res;
@@ -494,6 +527,8 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
                                 curr = curr.parent;
                             }
                         } else if (tag === "any_id") {
+                            if (["unique_ptr", "shared_ptr", "weak_ptr"].includes(text)) features.Has_Smart_Pointer = true;
+                            if (["iterator", "const_iterator"].includes(text)) features.Has_Iterator = true;
                             const ignoreList = ["main", "std", "cout", "endl", "printf", "malloc", "free", "nullptr", "NULL"];
                             if (!targetVariables.has(text) && !ignoreList.includes(text)) {
                                 let parent: any = node.parent;
@@ -521,12 +556,31 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
                             features.Has_Nullptr = true;
                         } else if (tag === "loop") {
                             features.Has_Loop = true;
+                        } else if (tag === "range_loop") {
+                            features.Has_Loop = true;
+                            features.Has_Iterator = true;
                         } else if (tag === "return_stmt") {
                             features.Has_Early_Return = true;
-                        } else if (tag === "bad_shift") {
-                            features.Has_Unexpected_Bitwise_Shift = true;
                         }
                     }
+                }
+                
+                if (rawCode.includes("shared_ptr") || rawCode.includes("unique_ptr") || rawCode.includes("weak_ptr")) {
+                    features.Has_Smart_Pointer = true;
+                    features.Has_Pointer = true;
+                }
+                
+                // Simple regex heuristic: look for vector/string/map followed by a variable name and a comma/paren, without an ampersand
+                if (/\b(vector|string|map|set|list)(?:<[^>]+>)?\s+[a-zA-Z_]\w*\s*[,)]/.test(rawCode)) {
+                    features.Has_Pass_By_Value = true;
+                }
+                
+                if (/\bstd::(find|sort|accumulate|transform|copy|remove_if)\b/.test(rawCode)) {
+                    features.Has_STL_Algorithm = true;
+                }
+                
+                if (/\b(begin|end|cbegin|cend|rbegin|rend)\s*\(/.test(rawCode) || rawCode.includes(".begin(") || rawCode.includes(".end(")) {
+                    features.Has_Iterator = true;
                 }
                 
                 const variableTypes: Record<string, string> = {};
@@ -596,7 +650,26 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
                     // We'll leave it out of Features to strictly match python, but we can add it if needed.
                 }
                 
-                astMetadata = `AST_Metadata:\n- Focus_Scope: "${focusScope}"\n- Target_Variables: ${JSON.stringify(variableTypes)}\n- Features: ${JSON.stringify(features)}`;
+                // Extract STL algorithms +/- 1 line from cursor
+                const cursorLine = editor.selection.active.line;
+                const narrowStartLine = Math.max(0, cursorLine - 1);
+                const narrowEndLine = Math.min(document.lineCount - 1, cursorLine + 1);
+                const narrowCode = document.getText(new vscode.Range(narrowStartLine, 0, narrowEndLine + 1, 0));
+                
+                const nearCursorStl: string[] = [];
+                const stlRegex = /\bstd::([a-zA-Z0-9_]+)\b/g;
+                let matchRegex;
+                while ((matchRegex = stlRegex.exec(narrowCode)) !== null) {
+                    const funcName = matchRegex[1];
+                    // Filter out common types/objects to focus on algorithms/containers
+                    if (['cout', 'cin', 'endl', 'string'].indexOf(funcName) === -1) {
+                        if (!nearCursorStl.includes(funcName)) {
+                            nearCursorStl.push(funcName);
+                        }
+                    }
+                }
+                
+                astMetadata = `AST_Metadata:\n- Focus_Scope: "${focusScope}"\n- Target_Variables: ${JSON.stringify(variableTypes)}\n- Near_Cursor_STL: ${JSON.stringify(nearCursorStl)}\n- Features: ${JSON.stringify(features)}`;
             } catch (err) {
                 TAChatViewProvider.getOutputChannel().appendLine(`AST Parsing Error: ${err}`);
                 astMetadata = 'AST_Metadata: (Error Parsing AST)';
@@ -605,7 +678,38 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
 
         const rawTerminalOutput = terminalBuffer.join('').trim();
         // Strip ANSI escape codes (colors, cursor movements, etc.) so the LLM can read the plain text history
-        const terminalOutput = rawTerminalOutput.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
+        let terminalOutput = rawTerminalOutput.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
+        
+        // Massive GCC errors can easily blow out the LLM context window. 
+        // In C++, the first error is often the most important, while the last lines contain final status.
+        const outputLines = terminalOutput.split('\n');
+        
+        // Find the most recent command prompt to anchor the truncation
+        let promptIndex = -1;
+        for (let i = outputLines.length - 1; i >= 0; i--) {
+            if (/[$#%>]\s+[a-zA-Z0-9.\-\/]/.test(outputLines[i])) {
+                promptIndex = i;
+                break;
+            }
+        }
+        
+        if (promptIndex !== -1) {
+            const relevantLines = outputLines.slice(promptIndex);
+            if (relevantLines.length > 20) {
+                const first10 = relevantLines.slice(0, 10).join('\n');
+                const last10 = relevantLines.slice(-10).join('\n');
+                terminalOutput = first10 + "\n\n...[Middle terminal output truncated due to length]...\n\n" + last10;
+            } else {
+                terminalOutput = relevantLines.join('\n');
+            }
+        } else {
+            if (outputLines.length > 20) {
+                const first10 = outputLines.slice(0, 10).join('\n');
+                const last10 = outputLines.slice(-10).join('\n');
+                terminalOutput = first10 + "\n\n...[Middle terminal output truncated due to length]...\n\n" + last10;
+            }
+        }
+        
         const exitCode = lastExitCode ?? 'N/A';
 
         // State updates for Frustration_Index
@@ -647,20 +751,18 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
    - Turn 2: Use [CONCEPTUAL_INTEGRATION]. Bridge the analogy to a previously mastered C++ concept.
    - Turn 3+: Use a [DIRECT_THEORY_SCAFFOLD]. Provide the formal, rigorous definition using the [Vector_Database_Results] with markdown citations.`;
 
-        // The dynamic context that changes on every turn
-        const pasteContext = likelyPasteDetected ? "Likely_Paste_Detected: true\n" : "Likely_Paste_Detected: false\n";
-        
         let dynamicContext = `[State_Tracking]
+Mode: ${mode}
+${likelyPasteDetected ? "Likely_Paste_Detected: true" : "Likely_Paste_Detected: false"}
 Session_Style_Nudged: ${this._hasGivenStyleNudge}
 Session_Adversarial_Warnings: ${this._adversarialWarningCount}
 Active_Editor_Time_Sec: ${this._activeEditorSeconds}
 Active_Shell_Time_Sec: ${this._activeShellSeconds}
-Active_Chat_Time_Sec: ${this._activeChatSeconds}
-Mode: ${mode}`;
+Active_Chat_Time_Sec: ${this._activeChatSeconds}`;
 
         if (mode !== 'Study Assist') {
-            dynamicContext += `\n[Code_Context]
-${pasteContext}Raw_Code:
+            dynamicContext += `\n\n[Code_Context]
+Raw_Code:
 ${rawCode}
 ${astMetadata}
 [Terminal_Context]
@@ -686,6 +788,10 @@ ${terminalOutput}`;
             let content = msg.content;
             // If in Study Assist mode, aggressively blindfold the LLM from its past thoughts about the code
             if (mode === 'Study Assist' && msg.role === 'assistant') {
+                const thinkMatch = content.match(/<think>[\s\S]*?<\/think>/);
+                if (thinkMatch) {
+                    content = content.replace(thinkMatch[0], '').trim();
+                }
                 const analysisMatch = content.match(/<analysis>[\s\S]*?<\/analysis>/);
                 if (analysisMatch) {
                     content = content.replace(analysisMatch[0], '').trim();
@@ -744,18 +850,35 @@ ${terminalOutput}`;
             let rawTaResponse = data.message?.content || "No response generated.";
             
             let displayResponse = rawTaResponse;
-
-            if (rawTaResponse.toLowerCase().includes("style_violation_check") && rawTaResponse.toLowerCase().includes("nudge") && !this._hasGivenStyleNudge) {
+            
+            // Extract just the Style_Violation_Check block to prevent false positive matches
+            const styleCheckMatch = rawTaResponse.match(/- Style_Violation_Check:.*?(?=\n\s*-|$)/is);
+            if (styleCheckMatch && styleCheckMatch[0].toLowerCase().includes("nudge") && !this._hasGivenStyleNudge) {
                 if (!displayResponse.includes('[STYLE_NUDGE]')) {
                     displayResponse += " [STYLE_NUDGE]";
                     rawTaResponse += " [STYLE_NUDGE]";
                 }
             }
             
-            // Strip the <analysis> block out of the text displayed to the user UI
-            const analysisMatch = displayResponse.match(/<analysis>[\s\S]*?<\/analysis>/);
-            if (analysisMatch) {
-                displayResponse = displayResponse.replace(analysisMatch[0], '').trim();
+            // If the LLM successfully generated an analysis block but the student isn't supposed to see it
+            if (displayResponse.includes('<think>')) {
+                if (!displayResponse.includes('</think>')) {
+                    displayResponse = displayResponse.substring(0, displayResponse.indexOf('<think>')) + '\n\n*(Coding Rabbit is thinking...)*';
+                } else {
+                    displayResponse = displayResponse.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+                }
+            }
+            if (displayResponse.includes('<analysis>')) {
+                if (!displayResponse.includes('</analysis>')) {
+                    displayResponse = displayResponse.substring(0, displayResponse.indexOf('<analysis>')) + '\n\n*(Coding Rabbit is analyzing code...)*';
+                } else {
+                    displayResponse = displayResponse.replace(/<analysis>[\s\S]*?<\/analysis>/g, '').trim();
+                }
+            }
+            
+            // Clean up accidental markdown code block wrappers generated by the 14B model
+            if (displayResponse.startsWith('```\n') && displayResponse.endsWith('\n```')) {
+                displayResponse = displayResponse.substring(4, displayResponse.length - 4).trim();
             }
             
             // Strip hallucinated pedagogical tags and residual CoT headers
@@ -988,6 +1111,7 @@ ${terminalOutput}`;
                             } else {
                                 thinkingElement.innerText = content;
                             }
+                            appendFeedbackButtons(thinkingElement);
                             thinkingElement = null;
                         } else {
                             addMessage(content, msgClass, message.isHtml);
@@ -1003,6 +1127,48 @@ ${terminalOutput}`;
             }
         });
 
+        function appendFeedbackButtons(div) {
+            const msgIndex = document.querySelectorAll('.message').length;
+            const feedbackDiv = document.createElement('div');
+            feedbackDiv.style.marginTop = '0px';
+            feedbackDiv.style.display = 'flex';
+            feedbackDiv.style.gap = '8px';
+            feedbackDiv.style.justifyContent = 'flex-end';
+            feedbackDiv.style.opacity = '0.7';
+            
+            const upBtn = document.createElement('button');
+            upBtn.innerText = '👍';
+            upBtn.style.background = 'transparent';
+            upBtn.style.width = 'auto';
+            upBtn.style.padding = '4px 8px';
+            upBtn.title = 'Good response';
+            
+            const downBtn = document.createElement('button');
+            downBtn.innerText = '👎';
+            downBtn.style.background = 'transparent';
+            downBtn.style.width = 'auto';
+            downBtn.style.padding = '4px 8px';
+            downBtn.title = 'Bad response';
+            
+            upBtn.onclick = () => {
+                const reason = prompt("Optional reason for positive feedback:");
+                vscode.postMessage({ type: 'feedback', rating: 'up', reason, messageIndex: msgIndex });
+                upBtn.style.background = 'var(--vscode-button-background)';
+                downBtn.style.background = 'transparent';
+            };
+            
+            downBtn.onclick = () => {
+                const reason = prompt("Optional reason for negative feedback:");
+                vscode.postMessage({ type: 'feedback', rating: 'down', reason, messageIndex: msgIndex });
+                downBtn.style.background = 'var(--vscode-button-background)';
+                upBtn.style.background = 'transparent';
+            };
+            
+            feedbackDiv.appendChild(upBtn);
+            feedbackDiv.appendChild(downBtn);
+            div.appendChild(feedbackDiv);
+        }
+
         function addMessage(content, className, isHtml = false) {
             const div = document.createElement('div');
             div.className = 'message ' + className;
@@ -1012,6 +1178,11 @@ ${terminalOutput}`;
                 div.innerText = content;
             }
             messages.appendChild(div);
+            
+            if (className.includes('ta-message')) {
+                appendFeedbackButtons(div);
+            }
+            
             // Scroll to the bottom to ensure the user sees the latest response and carrot updates
             messages.scrollTop = messages.scrollHeight;
             return div;

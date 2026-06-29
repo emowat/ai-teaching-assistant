@@ -12,6 +12,9 @@ def analyze_dataset(filepath):
     migration_count = 0
     termination_count = 0
     style_flagged_count = 0
+    syllabus_flagged_count = 0
+    both_flagged_count = 0
+    total_nudged_count = 0
     paste_detected_count = 0
     debug_ideas_count = 0
     conceptual_questions_count = 0
@@ -20,6 +23,7 @@ def analyze_dataset(filepath):
     oos_termination_count = 0
     adversarial_termination_count = 0
     two_pivot_termination_count = 0
+    adversarial_warning_only_count = 0
     
     vulnerability_distribution = {}
     
@@ -33,6 +37,16 @@ def analyze_dataset(filepath):
             trigger = metadata.get("trigger", "")
             hidden_vuln = metadata.get("Hidden_Vulnerability", "")
             if hidden_vuln:
+                # Retroactively classify legacy False Positives
+                if hidden_vuln == "None - False Positive":
+                    trigger_cond = metadata.get("Hidden_Trigger_Condition", "").lower()
+                    if "precedence" in trigger_cond or "parenthes" in trigger_cond or "!" in trigger_cond:
+                        hidden_vuln = "False Positive (Precedence)"
+                    elif "guard" in trigger_cond or "bounds" in trigger_cond or "index" in trigger_cond or "return" in trigger_cond:
+                        hidden_vuln = "False Positive (Guardrails)"
+                    else:
+                        hidden_vuln = "False Positive (Edge Cases)"
+                
                 vulnerability_distribution[hidden_vuln] = vulnerability_distribution.get(hidden_vuln, 0) + 1
             
             messages = entry.get("messages", [])
@@ -72,8 +86,14 @@ def analyze_dataset(filepath):
                     adversarial_termination_count += 1
                 else:
                     two_pivot_termination_count += 1
+            elif has_adversarial_warning:
+                adversarial_warning_only_count += 1
                 
-            # Parse CoT fields
+            # Parse CoT fields and Flags
+            transcript_had_style_nudge = False
+            transcript_had_syllabus = False
+            transcript_had_style = False
+            transcript_had_reward = False
             for msg in messages:
                 if msg.get("role") == "assistant":
                     content = msg.get("content", "")
@@ -94,14 +114,22 @@ def analyze_dataset(filepath):
                             if "true" in analysis_block.split("- Paste_Detection_Check:")[1].split("\n")[0].lower() and "false" not in analysis_block.split("- Paste_Detection_Check:")[1].split("\n")[0].lower():
                                 paste_detected_count += 1
                                 
-                        if "[STYLE_NUDGE]" in content:
-                            style_flagged_count += 1
+                        # Check Syllabus vs Style
+                        if "- Syllabus_Check:" in analysis_block:
+                            syl_text = analysis_block.split("- Syllabus_Check:")[1].split("\n")[0].lower()
+                            if "no syllabus constraint" not in syl_text and "no syllabus violation" not in syl_text and "no syllabus issues" not in syl_text and "already nudged" not in syl_text and syl_text.strip():
+                                transcript_had_syllabus = True
                                 
-                        # Parse Reward_Check
-                        if "- Reward_Check:" in analysis_block:
-                            reward_line = analysis_block.split("- Reward_Check:")[1].split("\n")[0].lower()
-                            if "yes" in reward_line and "not " not in reward_line and "no " not in reward_line:
-                                debug_ideas_count += 1
+                        if "- Style_Violation_Check:" in analysis_block:
+                            sty_text = analysis_block.split("- Style_Violation_Check:")[1].split("\n")[0].lower()
+                            if "no style violation" not in sty_text and "no style issues" not in sty_text and "proceed without further nudging" not in sty_text and sty_text.strip():
+                                transcript_had_style = True
+                                
+                    if "[STYLE_NUDGE]" in content or "[Style_Violation_Nudge]" in content:
+                        transcript_had_style_nudge = True
+                            
+                    if "[DEBUG_IDEA_UNLOCKED]" in content:
+                        transcript_had_reward = True
                                 
                         # Parse Adversarial_Check
                         if "- Adversarial_Check:" in analysis_block:
@@ -118,6 +146,17 @@ def analyze_dataset(filepath):
                             elif "[1](http" in content:
                                 conceptual_questions_count += 1
 
+            if transcript_had_style_nudge:
+                total_nudged_count += 1
+                if transcript_had_syllabus and transcript_had_style:
+                    both_flagged_count += 1
+                elif transcript_had_syllabus:
+                    syllabus_flagged_count += 1
+                else:
+                    style_flagged_count += 1
+            if transcript_had_reward:
+                debug_ideas_count += 1
+
     print("=== Dataset Statistics ===")
     print(f"Total Transcripts:      {total_count}")
     print(f"Homework Assist (Debug):{hw_assist_count} ({hw_assist_count/total_count:.1%})")
@@ -130,12 +169,17 @@ def analyze_dataset(filepath):
     print(f"Terminations OOS:        {oos_termination_count} ({oos_termination_count/total_count:.1%})")
     print(f"Terminations Adversarial:{adversarial_termination_count} ({adversarial_termination_count/total_count:.1%})")
     print(f"Terminations 2-Pivot:    {two_pivot_termination_count} ({two_pivot_termination_count/total_count:.1%})")
+    print(f"Warnings (No Term):     {adversarial_warning_only_count} ({adversarial_warning_only_count/total_count:.1%})")
     print(f"Paste Detected:         {paste_detected_count} ({paste_detected_count/total_count:.1%})")
     print(f"Empathetic Frustration: {frustration_empathetic_count} (L4/L5 + Human TA)")
     print(f"Adversarial Frustration:{frustration_adversarial_count} (L4/L5 + END/WARN)")
     print(f"Debug Ideas Unlocked:   {debug_ideas_count} (total tags)")
     print(f"Conceptual Questions:   {conceptual_questions_count} (via Pivot_Check)")
-    print(f"Style Flagged:          {style_flagged_count} ({style_flagged_count/total_count:.1%})")
+    print(f"Total Nudged:           {total_nudged_count} ({total_nudged_count/total_count:.1%})")
+    if total_nudged_count > 0:
+        print(f"  - Pure Syllabus:      {syllabus_flagged_count} ({syllabus_flagged_count/total_nudged_count:.1%} of nudges)")
+        print(f"  - Pure Formatting:    {style_flagged_count} ({style_flagged_count/total_nudged_count:.1%} of nudges)")
+        print(f"  - Both Violated:      {both_flagged_count} ({both_flagged_count/total_nudged_count:.1%} of nudges)")
     print("-" * 26)
     print("Vulnerability Distribution:")
     for v, count in sorted(vulnerability_distribution.items(), key=lambda x: x[1], reverse=True):

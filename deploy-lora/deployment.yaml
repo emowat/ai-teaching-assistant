@@ -1,0 +1,277 @@
+# =============================================================================
+# CodingRabbit — SageMaker deployment configuration
+# =============================================================================
+#
+# Single source of truth for deploy/upload_model.py, deploy/deploy_sagemaker.py,
+# and deploy/scripts/*.sh
+#
+# Override precedence (highest wins):
+#   1. CLI flags (--bucket, --role-arn, etc.)
+#   2. Environment variables (see _reference.env_override per field)
+#   3. This file (deploy/deployment.yaml)
+#
+# Print field documentation:
+#   python deploy/deployment_config.py describe
+#
+# Custom config path:
+#   export DEPLOY_CONFIG=/path/to/deployment.yaml
+#
+# =============================================================================
+
+meta:
+  config_version: "1"
+  project: codingrabbit
+  model_name: qwen-finetuned-ta
+
+# -----------------------------------------------------------------------------
+# Google Drive — source of the fine-tuned HuggingFace model
+# -----------------------------------------------------------------------------
+google_drive:
+  # Folder ID from the URL: .../drive/folders/{folder_id}
+  folder_id: "14Gp0dkdI3RJi7AqH_uADkzF69ou3Ev3O"
+  # Human-readable link (documentation only; not used by scripts)
+  folder_url: "https://drive.google.com/drive/u/0/folders/14Gp0dkdI3RJi7AqH_uADkzF69ou3Ev3O"
+
+# -----------------------------------------------------------------------------
+# Local paths (relative to repository root unless absolute)
+# -----------------------------------------------------------------------------
+local_paths:
+  # Directory where gdown writes HuggingFace shards (gitignored)
+  download_dir: "./model_download"
+  # Packaged artifact before S3 upload (gitignored)
+  tarball_path: "./model.tar.gz"
+  # Suffixes gdown leaves on interrupted transfers (resume reuses these)
+  partial_file_suffixes:
+    - ".part"
+    - ".tmp"
+    - ".crdownload"
+
+# -----------------------------------------------------------------------------
+# AWS — shared credentials and storage
+# -----------------------------------------------------------------------------
+aws:
+  # Region for S3 and SageMaker. Options: any AWS region where SageMaker GPU
+  # instances are available (e.g. us-east-1, us-west-2).
+  region: "us-east-1"
+  # Named AWS CLI profile. Set to null to use default credential chain.
+  # Options: null | your profile name from ~/.aws/credentials
+  profile: null
+  # S3 bucket for model artifacts and async inference I/O
+  s3_bucket: "codingrabbit-data-dev"
+
+# -----------------------------------------------------------------------------
+# Model artifact on S3 (output of prepare-custom-model-from-google-drive.sh)
+# -----------------------------------------------------------------------------
+model_artifact:
+  # Object key inside s3_bucket (not a full URI)
+  s3_key: "models/qwen2.5-coder-14b-w4a16/"
+  # Full s3:// URI. Leave null to auto-build: s3://{aws.s3_bucket}/{s3_key}
+  s3_uri: null
+
+# -----------------------------------------------------------------------------
+# SageMaker Async Inference endpoint
+# Docs: https://docs.aws.amazon.com/sagemaker/latest/dg/async-inference.html
+# -----------------------------------------------------------------------------
+sagemaker:
+  # Endpoint name — must match SAGEMAKER_ENDPOINT in rag_eng .env
+  endpoint_name: "codingrabbit-qwen-async-v22"
+  # GPU instance type. Qwen2-14B bf16 needs ml.g5.12xlarge OR 4-bit on g5.2xlarge.
+  #   ml.g5.2xlarge  — 1× A10G, 24 GB VRAM — 4-bit quantized 14B (vLLM)
+  #   ml.g5.4xlarge  — same GPU as 2xlarge; more CPU/RAM only
+  #   ml.g5.12xlarge — 4× A10G, 96 GB VRAM — bf16 14B without quantization
+  instance_type: "ml.g5.4xlarge"
+  # Number of instances in the production variant (usually 1 for capstone)
+  initial_instance_count: 1
+  # IAM execution role for SageMaker (NOT your SSO login role).
+  execution_role_arn: "arn:aws:iam::976193240866:role/service-role/SageMaker-ExecutionRole-20260609T133358"
+  # Required for huggingface-vllm GPU images (CUDA 12.9+). See AWS DLC vLLM docs.
+  inference_ami_version: "al2-ami-sagemaker-inference-gpu-3-1"
+
+  async_inference:
+    output_s3_prefix: "async-inference/output/"
+    max_concurrent_invocations_per_instance: 4
+    invoke_poll_interval_seconds: 3
+    invoke_poll_max_attempts: 120
+    deploy_wait_delay_seconds: 30
+    deploy_wait_max_attempts: 60
+
+  # Application Auto Scaling — scale GPU instances to 0 when idle (no inference cost)
+  #
+  # Two policies are registered on deploy (see deploy_sagemaker._setup_autoscaling):
+  #
+  # 1. Target tracking (ApproximateBacklogSizePerInstance)
+  #    Scales the variant while at least one instance exists: scale out when backlog
+  #    per instance exceeds target_backlog_per_instance; scale in when idle long
+  #    enough (scale_in_cooldown_seconds). With min_capacity: 0, this drives scale-in
+  #    to zero after sessions end.
+  #
+  # 2. Step scaling from zero (HasBacklogWithoutCapacity)
+  #    When min_capacity is 0, target tracking alone does not wake the endpoint —
+  #    backlog per instance is undefined with zero instances. AWS recommends a
+  #    second policy on the HasBacklogWithoutCapacity metric: queue length > 0 while
+  #    desired instance count is 0. A CloudWatch alarm (scale_from_zero_alarm) fires
+  #    the step policy to add one instance. scale_from_zero_cooldown_seconds is the
+  #    step policy cooldown between scale-out actions.
+  #
+  # Cold-start latency after long idle = alarm wake time + instance launch + model load.
+  # Tuning scale_from_zero_alarm trades responsiveness vs. stability (faster settings
+  # react sooner; AWS docs often use period_seconds: 60, evaluation_periods: 2 for
+  # conservative wake). max_capacity: 1 caps cost — only one GPU can spin up.
+  #
+  # Docs: https://docs.aws.amazon.com/sagemaker/latest/dg/async-inference-autoscale.html
+  autoscaling:
+    enabled: true
+    variant_name: "AllTraffic"
+    min_capacity: 0
+    max_capacity: 1
+    # Target tracking: backlog per instance while >= 1 instance is running
+    target_backlog_per_instance: 5.0  # How many requests per instance before scaling out (with max 1, this won’t add instances)
+    scale_in_cooldown_seconds: 600 # Main “how long GPU stays warm after traffic stops” knob  currently set to 5 minutes
+    scale_out_cooldown_seconds: 300 # How long to wait after scaling out before scaling in again (currently set to 5 minutes) Useless with max_capacity: 1
+    # Step policy cooldown after scaling up from zero (HasBacklogWithoutCapacity)
+    scale_from_zero_cooldown_seconds: 300 # Only matters for repeated wake events (e.g. if alarm fires twice in a row)
+    # CloudWatch alarm that triggers scale-from-zero (~period * evaluation_periods)
+    scale_from_zero_alarm:
+      period_seconds: 30 # How often to check for backlog (currently set to 30 seconds)
+      evaluation_periods: 1 # How many periods to evaluate before firing the alarm (currently set to 1)
+      datapoints_to_alarm: 1 # How many datapoints to breach before firing the alarm (currently set to 1)
+
+  # vLLM DLC — 4-bit bitsandbytes load at startup (no model re-upload needed)
+  # Catalog: https://aws.github.io/deep-learning-containers/reference/available_images/
+  dlc:
+    account_id: "763104351884"
+    repository: "huggingface-vllm"
+    tag: "0.17.0-transformers4.57.5-gpu-py312-cu129-ubuntu22.04"
+
+  container:
+    # Inference stack: vllm (OpenAI-style JSON) | huggingface (legacy pipeline)
+    inference_backend: "vllm"
+    # Legacy huggingface-pytorch-inference only (ignored when inference_backend=vllm)
+    hf_task: "text-generation"
+    model_server_workers: "1"
+    # vLLM env vars — SM_VLLM_* map to vLLM CLI flags
+    extra_env:
+      SM_VLLM_TENSOR_PARALLEL_SIZE: "1"
+      SM_VLLM_QUANTIZATION: "compressed-tensors"
+      SM_VLLM_ENFORCE_EAGER: "true"
+      SM_VLLM_DTYPE: "bfloat16"
+      SM_VLLM_MAX_MODEL_LEN: "8192"         # <-- Lowered from 10240 to prevent OOM
+      SM_VLLM_GPU_MEMORY_UTILIZATION: "0.90"
+      SM_VLLM_MODEL: "/opt/ml/model"
+      SM_VLLM_CHAT_TEMPLATE: "/opt/ml/model/chat_template.jinja"
+
+  runtime_io:
+    input_s3_prefix: "temp/sagemaker_inputs/"
+
+# -----------------------------------------------------------------------------
+# Smoke test (deploy_sagemaker.py invoke)
+# -----------------------------------------------------------------------------
+inference_smoke_test:
+  default_prompt: "Why does my C++ pointer cause a segmentation fault?"
+  system_message: "You are CodingRabbit, a Socratic C++ teaching assistant."
+  chat_template: "qwen"
+  max_new_tokens: 512
+  temperature: 0.2
+  top_p: 0.9
+  presence_penalty: 0.5
+  frequency_penalty: 0.5
+
+# -----------------------------------------------------------------------------
+# HuggingFace packaging validation (upload_model.py package step)
+# -----------------------------------------------------------------------------
+huggingface_packaging:
+  required_files:
+    - config.json
+    - tokenizer_config.json
+
+# -----------------------------------------------------------------------------
+# Values to copy into rag_eng .env after deploy succeeds
+# -----------------------------------------------------------------------------
+rag_eng:
+  model_family: "qwen"
+  use_sagemaker: true
+  inference_backend: "vllm"
+
+# =============================================================================
+# Field reference (documentation — ignored by loader, used by `describe` CLI)
+# =============================================================================
+_reference:
+  google_drive.folder_id:
+    description: Google Drive folder ID containing the fine-tuned HuggingFace model files.
+    env_override: DRIVE_FOLDER_ID
+  local_paths.download_dir:
+    description: Local directory for downloaded model shards before packaging.
+  local_paths.tarball_path:
+    description: Path to the model.tar.gz artifact created before S3 upload.
+  aws.region:
+    description: AWS region for S3 and SageMaker resources.
+    env_override: AWS_REGION
+    options: "us-east-1, us-west-2, eu-west-1, …"
+  aws.profile:
+    description: Named AWS CLI profile. null uses the default credential chain.
+    env_override: AWS_PROFILE
+  aws.s3_bucket:
+    description: S3 bucket for model artifacts and async inference input/output.
+    env_override: S3_DATA_BUCKET
+  model_artifact.s3_key:
+    description: S3 object key for model.tar.gz inside aws.s3_bucket.
+  model_artifact.s3_uri:
+    description: Full s3:// URI to model.tar.gz. Auto-built from bucket+key when null.
+    env_override: MODEL_DATA_URI
+  sagemaker.endpoint_name:
+    description: SageMaker endpoint name; must match rag_eng SAGEMAKER_ENDPOINT.
+    env_override: SAGEMAKER_ENDPOINT
+  sagemaker.instance_type:
+    description: GPU instance type for the async endpoint.
+    env_override: SAGEMAKER_INSTANCE_TYPE
+    options: "ml.g5.2xlarge (4-bit 14B), ml.g5.12xlarge (bf16 14B)"
+  sagemaker.execution_role_arn:
+    description: SageMaker execution role (trusts sagemaker.amazonaws.com, s3 access to model bucket).
+    env_override: SAGEMAKER_EXECUTION_ROLE_ARN
+  sagemaker.inference_ami_version:
+    description: SageMaker host AMI for GPU DLCs (required for huggingface-vllm).
+  sagemaker.dlc.repository:
+    description: ECR repository name.
+    options: "huggingface-vllm (4-bit via bitsandbytes), huggingface-pytorch-inference (legacy)"
+  sagemaker.dlc.tag:
+    description: ECR image tag for the inference DLC.
+  sagemaker.container.inference_backend:
+    description: Request/response format for async invoke.
+    options: "vllm (OpenAI messages JSON), huggingface (inputs/parameters)"
+  sagemaker.container.extra_env.SM_VLLM_MAX_MODEL_LEN:
+    description: >
+      vLLM max sequence length (prompt + completion). 10240 supports ~8K input +
+      2K output. Requires endpoint redeploy after change; watch GPU memory on ml.g5.2xlarge.
+  sagemaker.container.extra_env.SM_VLLM_CHAT_TEMPLATE:
+    description: Path to custom Jinja chat template inside /opt/ml/model (bypasses corrupted HF metadata).
+  sagemaker.container.extra_env.SM_VLLM_QUANTIZATION:
+    description: vLLM quantization at model load. Use bitsandbytes for 4-bit inflight quant.
+  sagemaker.autoscaling.enabled:
+    description: Enable Application Auto Scaling to scale GPU instances to min_capacity when idle.
+  sagemaker.autoscaling.min_capacity:
+    description: Minimum instance count (0 = no GPU cost when idle; requests queue until scale-out).
+  sagemaker.autoscaling.max_capacity:
+    description: Maximum instance count for the async endpoint variant.
+  sagemaker.autoscaling.scale_from_zero_alarm.period_seconds:
+    description: CloudWatch alarm Period (seconds) for HasBacklogWithoutCapacity; lower = faster wake from zero.
+  sagemaker.autoscaling.scale_from_zero_alarm.evaluation_periods:
+    description: Number of Period-length windows evaluated before alarm state changes.
+  sagemaker.autoscaling.scale_from_zero_alarm.datapoints_to_alarm:
+    description: Breaching datapoints required within evaluation_periods to fire the alarm.
+  sagemaker.autoscaling.scale_from_zero_cooldown_seconds:
+    description: Step scaling policy cooldown after scaling up from zero instances.
+  sagemaker.autoscaling.target_backlog_per_instance:
+    description: Target tracking setpoint for ApproximateBacklogSizePerInstance (instances >= 1).
+  sagemaker.autoscaling.scale_in_cooldown_seconds:
+    description: Target tracking cooldown before scaling in after backlog drops.
+  sagemaker.autoscaling.scale_out_cooldown_seconds:
+    description: Target tracking cooldown before scaling out after backlog rises.
+  rag_eng.inference_backend:
+    description: Must match sagemaker.container.inference_backend in rag_eng .env.
+    env_override: SAGEMAKER_INFERENCE_BACKEND
+  inference_smoke_test.chat_template:
+    description: Prompt format for smoke tests and rag_eng MODEL_FAMILY.
+    options: "qwen, llama3, generic"
+  rag_eng.model_family:
+    description: Set MODEL_FAMILY in .env after deploy.
+    env_override: MODEL_FAMILY

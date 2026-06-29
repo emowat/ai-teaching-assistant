@@ -15,6 +15,6 @@
         "comments": "off",
         "strings": "off"
     },
-    "codingRabbit.apiUrl": "http://host.docker.internal:8000/api/chat",
+    "codingRabbit.apiUrl": "http://codingrabbit-rag-eng-1327788709.us-east-1.elb.amazonaws.com/api/chat",
     "codingRabbit.modelName": "codingrabbit-qwen"
 }

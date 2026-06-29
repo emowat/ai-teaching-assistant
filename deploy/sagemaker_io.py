@@ -13,6 +13,8 @@ def build_async_payload(
     max_tokens: int,
     temperature: float,
     top_p: float,
+    presence_penalty: float = 0.0,
+    frequency_penalty: float = 0.0,
     formatted_prompt: str | None = None,
 ) -> dict[str, Any]:
     """Build JSON body for invoke_endpoint_async."""
@@ -24,6 +26,9 @@ def build_async_payload(
             "max_tokens": max_tokens,
             "temperature": temperature,
             "top_p": top_p,
+            "presence_penalty": presence_penalty,
+            "frequency_penalty": frequency_penalty,
+            "stop": ["<|im_end|>", "<|endoftext|>"],
         }
 
     if not formatted_prompt:

@@ -6,7 +6,7 @@ set -e
 
 if [ "$#" -lt 2 ] || [ "$#" -gt 3 ]; then
     echo "Usage: $0 <EXTENSION_DIR> <DEST_DIR> [API_URL]"
-    echo "Example: $0 /path/to/vscode-extension /path/to/assignment5/.devcontainer http://localhost:8000/api/chat"
+    echo "Example: $0 /path/to/vscode-extension /path/to/assignment5/.devcontainer http://host.docker.internal:8001/api/chat"
     exit 1
 fi
 
@@ -15,22 +15,20 @@ EXTENSION_DIR=$(cd "$1" && pwd)
 mkdir -p "$2"
 DEST_DIR=$(cd "$2" && pwd)
 ASSIGNMENT_ROOT=$(dirname "$DEST_DIR")
-API_URL=${3:-""}
+API_URL=${3:-"http://host.docker.internal:8001/api/chat"}
 
 # Automatically initialize assignment directory with templates if missing
-if [ ! -f "$DEST_DIR/devcontainer.json" ]; then
-    echo "Initializing assignment directory with CodingRabbit templates..."
-    mkdir -p "$ASSIGNMENT_ROOT/.vscode"
-    cp "$EXTENSION_DIR/assignment_template/.devcontainer/devcontainer.json" "$DEST_DIR/"
-    cp "$EXTENSION_DIR/assignment_template/.devcontainer/Dockerfile" "$DEST_DIR/"
-    cp "$EXTENSION_DIR/assignment_template/.vscode/extensions.json" "$ASSIGNMENT_ROOT/.vscode/"
-    cp "$EXTENSION_DIR/assignment_template/.vscode/settings.json" "$ASSIGNMENT_ROOT/.vscode/"
-fi
+echo "Updating assignment directory with CodingRabbit templates..."
+mkdir -p "$ASSIGNMENT_ROOT/.vscode"
+cp "$EXTENSION_DIR/assignment_template/.devcontainer/devcontainer.json" "$DEST_DIR/"
+cp "$EXTENSION_DIR/assignment_template/.devcontainer/Dockerfile" "$DEST_DIR/"
+cp "$EXTENSION_DIR/assignment_template/.vscode/extensions.json" "$ASSIGNMENT_ROOT/.vscode/"
+cp "$EXTENSION_DIR/assignment_template/.vscode/settings.json" "$ASSIGNMENT_ROOT/.vscode/"
 
 if [ -n "$API_URL" ]; then
     echo "Injecting custom API URL into package.json: $API_URL"
     # Create backup and replace default API URL using | as delimiter
-    sed -i.bak "s|\"default\": \"http://host.docker.internal:8000/api/chat\"|\"default\": \"$API_URL\"|g" "$EXTENSION_DIR/package.json"
+    sed -i.bak "s|\"default\": \"http://127.0.0.1:8001/api/chat\"|\"default\": \"$API_URL\"|g" "$EXTENSION_DIR/package.json"
 fi
 
 echo "Spawning headless Linux Docker container to cross-compile native dependencies and fetch WASM binaries..."
@@ -41,6 +39,7 @@ cd "$EXTENSION_DIR"
 npm run compile
 
 echo "Packaging .vsix..."
+rm -f coding-rabbit-*.vsix
 npx vsce package --allow-missing-repository --allow-star-activation
 
 if [ -n "$API_URL" ]; then
@@ -50,5 +49,9 @@ fi
 
 echo "Copying to Dev Container directory..."
 cp coding-rabbit-*.vsix "$DEST_DIR/"
+
+echo "Updating assignment_template..."
+rm -f "$EXTENSION_DIR/assignment_template/.devcontainer/"coding-rabbit-*.vsix
+cp coding-rabbit-*.vsix "$EXTENSION_DIR/assignment_template/.devcontainer/"
 
 echo "Done! Reinstall the VSIX in VS Code to apply changes."
