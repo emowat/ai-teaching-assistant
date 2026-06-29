@@ -13,6 +13,7 @@ from rag_eng.gradio_tools import (
     fetch_sagemaker_status,
     format_input_guardrail_status_html,
     format_traffic_lights_html,
+    invoke_foundation_model_direct,
     invoke_input_guardrail_review,
     invoke_guardrail_review,
     invoke_pipeline_chat,
@@ -67,6 +68,92 @@ def test_fetch_sagemaker_status_without_aws(monkeypatch) -> None:
     status = fetch_sagemaker_status()
     assert status.endpoint_name
     assert any(light.label == "rag_eng routing" for light in status.lights)
+
+
+def test_invoke_foundation_model_direct_for_bedrock(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(
+        "rag_eng.gradio_tools._load_deploy_config",
+        lambda: SimpleNamespace(
+            inference_smoke_test=SimpleNamespace(
+                system_message="You are CodingRabbit.",
+                temperature=0.2,
+                top_p=0.95,
+                max_new_tokens=256,
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        "rag_eng.gradio_tools.get_inference_config",
+        lambda: SimpleNamespace(
+            chat=SimpleNamespace(
+                provider="bedrock",
+                model="us.anthropic.claude-haiku-4-5-20251001-v1:0",
+            )
+        ),
+    )
+
+    async def fake_ainvoke(messages, config):
+        captured["messages"] = messages
+        captured["config"] = config
+        return "foundation response"
+
+    monkeypatch.setattr(
+        "rag_eng.gradio_tools.ainvoke_bedrock_chat_completion",
+        fake_ainvoke,
+    )
+
+    response, status = invoke_foundation_model_direct(
+        "Explain pointers.",
+        SimpleNamespace(
+            aws_region="us-east-1",
+            aws_profile=None,
+            openai_api_key="sk-test",
+            openai_base_url="https://api.openai.com/v1",
+            use_sagemaker=True,
+        ),
+    )
+
+    assert response == "foundation response"
+    assert "Completed in" in status
+    assert "Bedrock" in status
+    assert captured["messages"][0]["role"] == "system"
+    assert captured["messages"][1]["content"] == "Explain pointers."
+    assert captured["config"].model_id == "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+
+
+def test_invoke_foundation_model_direct_rejects_sagemaker_route(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "rag_eng.gradio_tools._load_deploy_config",
+        lambda: SimpleNamespace(
+            inference_smoke_test=SimpleNamespace(
+                system_message="You are CodingRabbit.",
+                temperature=0.2,
+                top_p=0.95,
+                max_new_tokens=256,
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        "rag_eng.gradio_tools.get_inference_config",
+        lambda: SimpleNamespace(
+            chat=SimpleNamespace(provider="sagemaker", model="")
+        ),
+    )
+
+    response, status = invoke_foundation_model_direct(
+        "Explain pointers.",
+        SimpleNamespace(
+            aws_region="us-east-1",
+            aws_profile=None,
+            openai_api_key="sk-test",
+            openai_base_url="https://api.openai.com/v1",
+            use_sagemaker=True,
+        ),
+    )
+
+    assert response == ""
+    assert "non-SageMaker chat route" in status
 
 
 def test_fetch_sagemaker_status_reports_access_denied(monkeypatch) -> None:

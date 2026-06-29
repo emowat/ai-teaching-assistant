@@ -366,10 +366,15 @@ The Gradio backend console exposes:
 - top-k / final result count controls
 - rerank strategy selection
 - route / trace overrides
+- a SageMaker direct-invoke console for async endpoint smoke tests
+- a foundation-model console for the active non-SageMaker chat route
 - a guardrail console
 
 The Input Guardrail tab is the quickest way to inspect the new pre-RAG model
 decision before the request reaches retrieval.
+The SageMaker console exercises the async endpoint directly, while the
+foundation-model console calls the currently configured Bedrock/OpenAI/Ollama
+chat route without going through SageMaker.
 
 Use `Experiment baseline (K=8, similarity)` as the default-safe preset.
 

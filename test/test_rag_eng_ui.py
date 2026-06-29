@@ -5,8 +5,12 @@ from types import SimpleNamespace
 from rag_eng.gradio_tools import SageMakerStatus, TrafficLight
 from rag_eng.ui import (
     _clear_sagemaker_request,
+    _clear_foundation_model_request,
+    _foundation_model_invoke,
     _input_guardrail_invoke,
     _guardrail_invoke,
+    _refresh_foundation_model_route,
+    _refresh_foundation_model_route_badge,
     _refresh_pipeline_route,
     _query_api,
     _resolve_retrieval_preset,
@@ -37,6 +41,10 @@ def test_build_gradio_app_smoke() -> None:
         }
         assert "_refresh_sagemaker_status" in fn_names
         assert "_clear_sagemaker_request" in fn_names
+        assert "_refresh_foundation_model_route" in fn_names
+        assert "_refresh_foundation_model_route_badge" in fn_names
+        assert "_foundation_model_invoke" in fn_names
+        assert "_clear_foundation_model_request" in fn_names
         assert "_guardrail_invoke" in fn_names
         assert "_input_guardrail_invoke" in fn_names
         assert "_refresh_input_guardrail_status" in fn_names
@@ -68,6 +76,54 @@ def test_refresh_sagemaker_status_renders_current_status(monkeypatch) -> None:
 
 def test_clear_sagemaker_request_returns_retry_hint() -> None:
     response, status = _clear_sagemaker_request()
+    assert response == ""
+    assert "send it again" in status.lower()
+
+
+def test_refresh_foundation_model_route_uses_runtime_route(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "rag_eng.ui.describe_chat_route",
+        lambda: "Bedrock (us.anthropic.claude-haiku-4-5-20251001-v1:0)",
+    )
+
+    text = _refresh_foundation_model_route()
+    assert "Current chat route" in text
+    assert "Bedrock (us.anthropic.claude-haiku-4-5-20251001-v1:0)" in text
+
+
+def test_refresh_foundation_model_route_badge_uses_runtime_route(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "rag_eng.ui.describe_chat_route",
+        lambda: "OpenAI (gpt-5.4-mini)",
+    )
+
+    html = _refresh_foundation_model_route_badge()
+    assert "OpenAI" in html
+    assert "gpt-5.4-mini" in html
+    assert "#38bdf8" in html
+
+
+def test_foundation_model_invoke_forwards_prompt(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_invoke(prompt: str):
+        captured["prompt"] = prompt
+        return "answer", "status"
+
+    monkeypatch.setattr(
+        "rag_eng.ui.invoke_foundation_model_direct",
+        fake_invoke,
+    )
+
+    response, status = _foundation_model_invoke("Why does my pointer segfault?")
+
+    assert response == "answer"
+    assert status == "status"
+    assert captured["prompt"] == "Why does my pointer segfault?"
+
+
+def test_clear_foundation_model_request_returns_retry_hint() -> None:
+    response, status = _clear_foundation_model_request()
     assert response == ""
     assert "send it again" in status.lower()
 

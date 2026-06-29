@@ -6,16 +6,19 @@ import asyncio
 import json
 import sys
 import time
+from dataclasses import replace
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 from botocore.exceptions import ClientError
 from output_guardrails.combined import apply_all_guardrails
 
 from rag_eng.config import Settings, get_inference_config, get_settings
-from rag_eng.inference import _invoke_sagemaker
+from rag_eng.llm_clients import BedrockChatConfig, ainvoke_bedrock_chat_completion
+from rag_eng.inference import _invoke_sagemaker, run_inference
 from input_guardrails.runtime import evaluate_input_guardrail, runtime_status
 from rag_eng.service import run_chat
 
@@ -381,6 +384,76 @@ def invoke_sagemaker_direct(prompt: str, settings: Settings | None = None) -> tu
 
     elapsed = time.time() - started
     return text, f"Completed in {elapsed:.1f}s via {settings.sagemaker_endpoint}"
+
+
+def invoke_foundation_model_direct(
+    prompt: str,
+    settings: Settings | None = None,
+) -> tuple[str, str]:
+    """Smoke-test the configured non-SageMaker chat route directly."""
+    settings = settings or get_settings()
+    prompt = (prompt or "").strip()
+    if not prompt:
+        return "", "Enter a prompt first."
+
+    try:
+        deploy_cfg = _load_deploy_config()
+        smoke = deploy_cfg.inference_smoke_test
+        messages = [
+            {"role": "system", "content": smoke.system_message},
+            {"role": "user", "content": prompt},
+        ]
+    except Exception as exc:
+        return "", f"Failed to load deploy config: {exc}"
+
+    route = get_inference_config().chat
+    if route.provider == "sagemaker":
+        return (
+            "",
+            "Foundation model console requires a non-SageMaker chat route. "
+            "Update runtime_config.yaml to Bedrock, OpenAI, or Ollama.",
+        )
+
+    try:
+        direct_settings = replace(settings, use_sagemaker=False)
+    except TypeError:
+        settings_values = dict(vars(settings))
+        settings_values["use_sagemaker"] = False
+        direct_settings = SimpleNamespace(**settings_values)
+
+    started = time.time()
+    try:
+        if route.provider == "bedrock":
+            config = BedrockChatConfig(
+                region=settings.aws_region,
+                model_id=route.model,
+                timeout_seconds=120.0,
+                temperature=smoke.temperature,
+                top_p=smoke.top_p,
+                max_tokens=smoke.max_new_tokens,
+                profile_name=settings.aws_profile,
+            )
+            text = asyncio.run(ainvoke_bedrock_chat_completion(messages, config))
+        else:
+            result = asyncio.run(
+                run_inference(
+                    messages,
+                    route.model,
+                    direct_settings,
+                    stream=False,
+                )
+            )
+            text = (
+                result["message"]["content"]
+                if isinstance(result, dict)
+                else str(result)
+            )
+    except Exception as exc:
+        elapsed = time.time() - started
+        return "", f"Invoke failed after {elapsed:.1f}s via {describe_chat_route(settings)}: {exc}"
+
+    elapsed = time.time() - started
+    return text, f"Completed in {elapsed:.1f}s via {describe_chat_route(settings)}"
 
 
 def invoke_input_guardrail_review(

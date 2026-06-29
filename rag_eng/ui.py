@@ -12,11 +12,13 @@ from rag.schemas import AssistMode
 
 from rag_eng.config import Settings, get_settings
 from rag_eng.gradio_tools import (
+    describe_chat_route,
     describe_runtime_routes,
     fetch_input_guardrail_status,
     format_input_guardrail_status_html,
     fetch_sagemaker_status,
     format_traffic_lights_html,
+    invoke_foundation_model_direct,
     invoke_input_guardrail_review,
     invoke_guardrail_review,
     invoke_pipeline_chat,
@@ -143,6 +145,55 @@ def _sagemaker_invoke(prompt: str) -> tuple[str, str]:
 
 
 def _clear_sagemaker_request() -> tuple[str, str]:
+    return (
+        "",
+        "Request cancelled. The prompt is still in the textbox, so you can send it again.",
+    )
+
+
+def _refresh_foundation_model_route() -> str:
+    try:
+        route = describe_chat_route()
+        return f"Current chat route: **{route}**"
+    except Exception as exc:
+        return f"Current chat route: **unavailable** ({exc})"
+
+
+def _refresh_foundation_model_route_badge() -> str:
+    try:
+        route = describe_chat_route()
+        provider = route.split(" ", 1)[0]
+        color = {
+            "Bedrock": "#22c55e",
+            "OpenAI": "#38bdf8",
+            "Ollama": "#f59e0b",
+            "SageMaker": "#a855f7",
+        }.get(provider, "#94a3b8")
+        return (
+            "<div style='display:inline-flex;align-items:center;gap:8px;"
+            "padding:8px 12px;border-radius:999px;border:1px solid rgba(148,163,184,.35);"
+            "background:rgba(15,23,42,.55);font-size:13px;'>"
+            f"<span style='width:10px;height:10px;border-radius:999px;background:{color};"
+            f"box-shadow:0 0 6px {color};display:inline-block;'></span>"
+            f"<strong>{provider}</strong>"
+            f"<span style='color:#94a3b8;'>{route}</span>"
+            "</div>"
+        )
+    except Exception as exc:
+        return (
+            "<div style='display:inline-flex;align-items:center;gap:8px;"
+            "padding:8px 12px;border-radius:999px;border:1px solid rgba(239,68,68,.35);"
+            "background:rgba(15,23,42,.55);font-size:13px;color:#ef4444;'>"
+            f"Route unavailable ({exc})"
+            "</div>"
+        )
+
+
+def _foundation_model_invoke(prompt: str) -> tuple[str, str]:
+    return invoke_foundation_model_direct(prompt)
+
+
+def _clear_foundation_model_request() -> tuple[str, str]:
     return (
         "",
         "Request cancelled. The prompt is still in the textbox, so you can send it again.",
@@ -393,6 +444,51 @@ def build_gradio_app(settings: Settings | None = None) -> gr.Blocks:
             gr.Markdown(
                 "Use **Cancel request** to stop the active call. The prompt stays in place, "
                 "so you can press **Send again** or **Invoke SageMaker** to resubmit it."
+            )
+
+        with gr.Tab("Foundation Model Console"):
+            gr.Markdown(
+                "Direct invoke for the configured non-SageMaker chat route.  \n"
+                "Use this tab to exercise the active Bedrock/OpenAI/Ollama model without the SageMaker endpoint."
+            )
+            fm_route_badge = gr.HTML(value=_refresh_foundation_model_route_badge())
+            fm_route = gr.Markdown(value=_refresh_foundation_model_route())
+            fm_refresh = gr.Button("Refresh route", variant="secondary")
+            gr.Markdown("### Direct invoke")
+            fm_prompt = gr.Textbox(
+                label="Prompt",
+                placeholder="Why does my C++ pointer cause a segmentation fault?",
+                lines=4,
+            )
+            with gr.Row():
+                fm_invoke = gr.Button("Invoke foundation model", variant="primary")
+                fm_retry = gr.Button("Send again", variant="secondary")
+                fm_cancel = gr.Button("Cancel request", variant="stop")
+            fm_response = gr.Textbox(label="Model response", lines=16)
+            fm_status = gr.Textbox(label="Invoke status", interactive=False)
+            fm_refresh.click(
+                fn=_refresh_foundation_model_route_badge,
+                outputs=fm_route_badge,
+            )
+            fm_refresh.click(fn=_refresh_foundation_model_route, outputs=fm_route)
+            fm_invoke_event = fm_invoke.click(
+                fn=_foundation_model_invoke,
+                inputs=fm_prompt,
+                outputs=[fm_response, fm_status],
+            )
+            fm_retry_event = fm_retry.click(
+                fn=_foundation_model_invoke,
+                inputs=fm_prompt,
+                outputs=[fm_response, fm_status],
+            )
+            fm_cancel.click(
+                fn=_clear_foundation_model_request,
+                cancels=[fm_invoke_event, fm_retry_event],
+                outputs=[fm_response, fm_status],
+            )
+            gr.Markdown(
+                "Use **Cancel request** to stop the active call. The prompt stays in place, "
+                "so you can press **Send again** or **Invoke foundation model** to resubmit it."
             )
 
         with gr.Tab("Guardrail Console"):
