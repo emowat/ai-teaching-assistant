@@ -184,17 +184,31 @@ def _rules_filter(week: int, *, cumulative: bool = False) -> Filter:
 # Retriever A: Syllabus (exact lookup, no vector search)
 # ---------------------------------------------------------------------------
 
+<<<<<<< Updated upstream
 def retrieve_syllabus(
     week: int,
     *,
     collection_name: str,
 ) -> RetrievedDoc | None:
     """Exact lookup of the syllabus document for a given week."""
+=======
+def retrieve_syllabus(week: int, *, course: str = "mit13") -> RetrievedDoc | None:
+    """Exact lookup of the syllabus document for a given week and course.
+
+    The *course* parameter selects the Qdrant collection via runtime config
+    (``"mit13"``, ``"mit14"``, ``"cs50"``).
+    """
+>>>>>>> Stashed changes
     client = _get_client()
+    collection = get_runtime_config().collection_for(course)
     records, _ = client.scroll(
+<<<<<<< Updated upstream
         # The collection name is now config-driven so the same code can point
         # at any hosted Qdrant collection without code changes.
         collection_name=collection_name,
+=======
+        collection_name=collection,
+>>>>>>> Stashed changes
         scroll_filter=_syllabus_filter(week),
         limit=1,
     )

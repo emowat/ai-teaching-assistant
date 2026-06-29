@@ -623,7 +623,7 @@ def get_settings() -> Settings:
         openai_base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
         embedding_model=os.getenv(
             "EMBEDDING_MODEL",
-            "sentence-transformers/multi-qa-mpnet-base-dot-v1",
+            "BAAI/bge-large-en-v1.5",
         ),
         app_host=os.getenv("APP_HOST", "0.0.0.0"),
         app_port=int(os.getenv("APP_PORT", "8001")),

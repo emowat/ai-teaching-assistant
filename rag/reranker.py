@@ -1,5 +1,5 @@
 """
-Reranker: mode-aware category-priority weighting + MMR diversification.
+Reranker: category-priority weighting + MMR diversification.
 """
 from __future__ import annotations
 
@@ -9,34 +9,31 @@ from rag.schemas import AssistMode, DocCategory, RetrievedDoc
 
 
 # ---------------------------------------------------------------------------
-# Mode-aware category weights
+# Category weights
 # ---------------------------------------------------------------------------
 
-# Fallback (used when no mode specified)
-BASE_WEIGHTS: dict[DocCategory, float] = {
+CATEGORY_WEIGHTS: dict[DocCategory, float] = {
     DocCategory.SYLLABUS: 1.5,
-    DocCategory.STRICT_RULES: 1.5,
+    DocCategory.STRICT_RULES: 1.6,
     DocCategory.PEDAGOGICAL_CONTEXT: 1.0,
-    DocCategory.GUIDELINE: 0.8,
-    DocCategory.SUPPLEMENTARY: 0.5,
+    DocCategory.GUIDELINE: 1.2,
+    DocCategory.SUPPLEMENTARY: 1.5,
 }
 
-MODE_WEIGHTS: dict[AssistMode, dict[DocCategory, float]] = {
-    AssistMode.HOMEWORK_ASSIST: {
-        DocCategory.SYLLABUS: 1.5,
-        DocCategory.STRICT_RULES: 1.8,          # rules are critical during debugging
-        DocCategory.PEDAGOGICAL_CONTEXT: 0.9,
-        DocCategory.GUIDELINE: 0.3,              # dim guidelines — stay focused on the bug
-        DocCategory.SUPPLEMENTARY: 0.3,          # dampen distractions
-    },
-    AssistMode.STUDY_ASSIST: {
-        DocCategory.SYLLABUS: 1.5,
-        DocCategory.STRICT_RULES: 1.0,
-        DocCategory.PEDAGOGICAL_CONTEXT: 1.5,    # concepts are the focus
-        DocCategory.GUIDELINE: 1.2,              # C++ Core Guidelines support deeper study
-        DocCategory.SUPPLEMENTARY: 0.8,           # extra material is valuable
-    },
+CATEGORY_WEIGHTS_CPP: dict[DocCategory, float] = {
+    DocCategory.SYLLABUS: 1.5,
+    DocCategory.STRICT_RULES: 1.6,
+    DocCategory.PEDAGOGICAL_CONTEXT: 1.0,
+    DocCategory.GUIDELINE: 1.2,
+    DocCategory.SUPPLEMENTARY: 1.5,
 }
+
+
+def should_search_cpp(query_text: str, *, code_raw: str = "") -> bool:
+    """Return True if the query suggests C++ STL/reference material is relevant."""
+    if "std::" in query_text or "std::" in code_raw:
+        return True
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -51,7 +48,7 @@ def apply_category_weights(
     Multiply each document's score by its category weight.
     Returns the same list with scores adjusted in place, re-sorted descending.
     """
-    w = weights or BASE_WEIGHTS
+    w = weights or CATEGORY_WEIGHTS
     for doc in docs:
         doc.score = doc.score * w.get(doc.category, 1.0)
     docs.sort(key=lambda d: d.score, reverse=True)
@@ -124,15 +121,16 @@ def merge_and_rerank(
     rules: list[RetrievedDoc],
     guidelines: list[RetrievedDoc] | None = None,
     mode: AssistMode = AssistMode.HOMEWORK_ASSIST,
+    weights: dict[DocCategory, float] | None = None,
     lambda_param: float = 0.7,
     final_k: int | None = None,
 ) -> tuple[RetrievedDoc | None, list[RetrievedDoc], list[RetrievedDoc], list[RetrievedDoc], list[RetrievedDoc]]:
     """
-    Merge results from retrievers, apply mode-aware category weights, MMR diversify.
+    Merge results from retrievers, apply category weights, MMR diversify.
 
     Returns (syllabus, strict_rules, pedagogical, supplementary, guidelines).
     """
-    weights = MODE_WEIGHTS.get(mode, BASE_WEIGHTS)
+    weights = weights or CATEGORY_WEIGHTS
     if final_k is None:
         final_k = 5 if mode == AssistMode.HOMEWORK_ASSIST else 8
 

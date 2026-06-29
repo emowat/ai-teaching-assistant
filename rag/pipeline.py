@@ -29,7 +29,7 @@ from rag.retrievers import (
     retrieve_syllabus, retrieve_semantic, retrieve_strict_rules, retrieve_guidelines,
     retrieve_harvard, retrieve_harvard_rules,
 )
-from rag.reranker import merge_and_rerank
+from rag.reranker import merge_and_rerank, CATEGORY_WEIGHTS, CATEGORY_WEIGHTS_CPP, should_search_cpp
 from rag.context_assembler import build_retrieval_result
 
 
@@ -40,21 +40,21 @@ from rag.context_assembler import build_retrieval_result
 MODE_PARAMS: dict[AssistMode, dict] = {
     AssistMode.HOMEWORK_ASSIST: {
         "cumulative": False,  # current week only — stay focused
-        "semantic_top_k": 8,
-        "rules_top_k": 4,
+        "semantic_top_k": 5,
+        "rules_top_k": 3,
         "rules_threshold": 0.55,
-        "guidelines_top_k": 3,
+        "guidelines_top_k": 5,
         "guidelines_threshold": 0.6,   # high threshold — minimal distraction
-        "final_k": 8,
+        "final_k": 5,
     },
     AssistMode.STUDY_ASSIST: {
         "cumulative": True,  # weeks 1..X — allow review of past concepts
-        "semantic_top_k": 8,
+        "semantic_top_k": 5,
         "rules_top_k": 3,
         "rules_threshold": 0.45,  # relaxed — more conceptual material
-        "guidelines_top_k": 4,
+        "guidelines_top_k": 5,
         "guidelines_threshold": 0.45,  # lower threshold — deeper study
-        "final_k": 8,
+        "final_k": 5,
     },
 }
 
@@ -132,6 +132,7 @@ def run_retrieval(query: QueryInput) -> RetrievalResult:
         threshold=params["guidelines_threshold"],
     )
 
+<<<<<<< Updated upstream
     if route.course_source == CourseSource.CS50:
         # Harvard CS50: no syllabus, use CS50-specific retrievers (notes + transcripts)
         syllabus = None
@@ -146,16 +147,52 @@ def run_retrieval(query: QueryInput) -> RetrievalResult:
             dense_query,
             query.week,
             top_k=retrieval_top_k,
+=======
+    if query.course_source == CourseSource.MIT_14:
+        # MIT 6.0014 (default): syllabus + course material retrievers
+        syllabus = retrieve_syllabus(query.week, course="mit14")
+        semantic = retrieve_semantic(
+            dense_query,
+            query.week,
+            top_k=params["semantic_top_k"],
+            cumulative=params["cumulative"],
+        )
+        rules = retrieve_strict_rules(
+            dense_query,
+            query.week,
+            top_k=params["rules_top_k"],
+>>>>>>> Stashed changes
             threshold=params["rules_threshold"],
             cumulative=params["cumulative"],
             collection_name=route.collection_name,
         )
+    elif query.course_source == CourseSource.CS50:
+        # Harvard CS50: syllabus + CS50-specific retrievers (notes + transcripts)
+        syllabus = retrieve_syllabus(query.week, course="cs50")
+        semantic = retrieve_harvard(
+            dense_query,
+            query.week,
+            top_k=params["semantic_top_k"],
+            cumulative=params["cumulative"],
+        )
+        rules = retrieve_harvard_rules(
+            dense_query,
+            query.week,
+            top_k=params["rules_top_k"],
+            threshold=params["rules_threshold"],
+            cumulative=params["cumulative"],
+        )
     else:
+<<<<<<< Updated upstream
         # MIT 6.0013 / 6.0014: syllabus + course material retrievers
         syllabus = retrieve_syllabus(
             query.week,
             collection_name=route.collection_name,
         )
+=======
+        # MIT 6.0013 (legacy): syllabus + course material retrievers
+        syllabus = retrieve_syllabus(query.week, course="mit13")
+>>>>>>> Stashed changes
         semantic = retrieve_semantic(
             dense_query,
             query.week,
@@ -173,12 +210,23 @@ def run_retrieval(query: QueryInput) -> RetrievalResult:
         )
 
     # Merge + rerank (now returns 5-tuple with guidelines)
+    search_cpp = (
+        should_search_cpp(dense_query, code_raw=query.code_raw)
+        or any([
+            query.ast_features.has_pointer,
+            query.ast_features.has_reference,
+            query.ast_features.has_new,
+            query.ast_features.has_delete,
+        ])
+    )
+    weights = CATEGORY_WEIGHTS_CPP if search_cpp else CATEGORY_WEIGHTS
     syllabus, rules_out, pedagogical_out, supplementary_out, guidelines_out = merge_and_rerank(
         syllabus=syllabus,
         semantic=semantic,
         rules=rules,
         guidelines=guidelines,
         mode=query.mode,
+        weights=weights,
         final_k=final_k,
         lambda_param=lambda_param,
     )

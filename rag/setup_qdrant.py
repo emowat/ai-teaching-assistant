@@ -1,16 +1,27 @@
 """
-Qdrant setup: create collections and index course materials per course.
+Qdrant setup: create collections and index course materials.
 
+<<<<<<< Updated upstream
 Collections:
   mit13_course     — MIT 6.0013 (lecture slides + syllabus + assignments)
   mit14_course     — MIT 6.0014 (placeholder: same as MIT13)
   harvard_cs50     — Harvard CS50 (lecture notes + transcripts)
   cpp_guidelines   — C++ Core Guidelines (shared, week 0)
+=======
+Collections (3):
+  cs50_course      — Harvard CS50 (lecture notes + transcripts)
+  mit14_course     — MIT 6.0014 (lecture slides + syllabus + assignments)
+  cpp_knowledge    — C++ Core Guidelines + cppreference.com (shared, week 0)
+
+Cloud support:
+  Set QDRANT_URL + QDRANT_API_KEY in .env; optional QDRANT_COLLECTION_NAME as prefix.
+>>>>>>> Stashed changes
 
 Usage:
-  python setup_qdrant.py                    # index all courses
-  python setup_qdrant.py --course cs50      # index CS50 only
-  python setup_qdrant.py --course mit13     # index MIT13 only
+  python setup_qdrant.py                    # index all 3 collections
+  python setup_qdrant.py --course cs50      # CS50 only
+  python setup_qdrant.py --course mit14     # MIT 2014 only
+  python setup_qdrant.py --course cpp       # C++ knowledge only
 """
 
 from __future__ import annotations
@@ -33,8 +44,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from rag.loader import (
     CourseMaterialLoader,
     CppGuidelinesLoader,
+    CppReferenceLoader,
     HarvardNotesLoader,
     HarvardTranscriptsLoader,
+    MIT14Loader,
 )
 
 # ---------------------------------------------------------------------------
@@ -42,15 +55,25 @@ from rag.loader import (
 # ---------------------------------------------------------------------------
 QDRANT_PATH = os.path.join(os.path.dirname(__file__), "..", "qdrant_local_data")
 RAW_DATA_PATH = os.path.join(os.path.dirname(__file__), "..", "raw_data")
-EMBEDDING_MODEL = "sentence-transformers/multi-qa-mpnet-base-dot-v1"
-VECTOR_SIZE = 768
+EMBEDDING_MODEL = "BAAI/bge-large-en-v1.5"
+VECTOR_SIZE = 1024
+
+# Cloud support — set these env vars to use Qdrant Cloud instead of local
+QDRANT_URL = os.environ.get("QDRANT_URL", "")
+QDRANT_API_KEY = os.environ.get("QDRANT_API_KEY", "")
+# Optional prefix for all collection names on cloud (e.g. "codingrabbit_rag_vectordb")
+QDRANT_COLLECTION_PREFIX = os.environ.get("QDRANT_COLLECTION_NAME", "")
 
 COLLECTIONS = {
-    "mit13": "mit13_course",
     "mit14": "mit14_course",
     "cs50": "harvard_cs50",
 }
-GUIDELINES_COLLECTION = "cpp_guidelines"
+CPP_KNOWLEDGE_COLLECTION = "cpp_knowledge"  # guidelines + cppreference combined
+
+# Apply prefix for cloud collections
+if QDRANT_COLLECTION_PREFIX:
+    COLLECTIONS = {k: f"{QDRANT_COLLECTION_PREFIX}_{v}" for k, v in COLLECTIONS.items()}
+    CPP_KNOWLEDGE_COLLECTION = f"{QDRANT_COLLECTION_PREFIX}_{CPP_KNOWLEDGE_COLLECTION}"
 
 STANDARD_PAYLOAD_INDEXES = ["week", "category", "priority", "source_domain"]
 GUIDELINES_PAYLOAD_INDEXES = ["source_domain"]
@@ -80,7 +103,7 @@ def _ensure_collection(client: QdrantClient, name: str, indexes: list[str]) -> N
 def _chunk_to_point(chunk) -> PointStruct:
     return PointStruct(
         id=chunk.chunk_id,
-        vector=None,  # filled later
+        vector=[],  # placeholder — filled by _embed_and_upsert
         payload={
             "chunk_id": chunk.chunk_id,
             "content": chunk.content,
@@ -144,22 +167,30 @@ def index_cs50(client: QdrantClient, model: SentenceTransformer) -> int:
     return total
 
 
-def index_mit(client: QdrantClient, model: SentenceTransformer, course: str) -> int:
-    collection = COLLECTIONS[course]
+def index_mit14(client: QdrantClient, model: SentenceTransformer) -> int:
+    collection = COLLECTIONS["mit14"]
     _ensure_collection(client, collection, STANDARD_PAYLOAD_INDEXES)
 
-    chunks = CourseMaterialLoader(RAW_DATA_PATH).load_all()
-    total = _embed_and_upsert(client, model, collection, chunks, f"{course} course")
+    chunks = MIT14Loader(RAW_DATA_PATH).load_all()
+    total = _embed_and_upsert(client, model, collection, chunks, "MIT 2014")
 
-    print(f"{course.upper()} total: {total} chunks in '{collection}'.")
+    print(f"MIT14 total: {total} chunks in '{collection}'.")
     return total
 
 
-def index_guidelines(client: QdrantClient, model: SentenceTransformer) -> int:
-    _ensure_collection(client, GUIDELINES_COLLECTION, GUIDELINES_PAYLOAD_INDEXES)
+def index_cpp_knowledge(client: QdrantClient, model: SentenceTransformer) -> int:
+    """Combined C++ knowledge: guidelines + cppreference in one collection."""
+    _ensure_collection(client, CPP_KNOWLEDGE_COLLECTION, GUIDELINES_PAYLOAD_INDEXES)
 
+    total = 0
     chunks = CppGuidelinesLoader(RAW_DATA_PATH).load_all()
-    return _embed_and_upsert(client, model, GUIDELINES_COLLECTION, chunks, "C++ guidelines")
+    total += _embed_and_upsert(client, model, CPP_KNOWLEDGE_COLLECTION, chunks, "C++ guidelines")
+
+    chunks = CppReferenceLoader(RAW_DATA_PATH).load_all()
+    total += _embed_and_upsert(client, model, CPP_KNOWLEDGE_COLLECTION, chunks, "C++ reference")
+
+    print(f"C++ knowledge total: {total} chunks in '{CPP_KNOWLEDGE_COLLECTION}'.")
+    return total
 
 
 # ---------------------------------------------------------------------------
@@ -169,13 +200,19 @@ def index_guidelines(client: QdrantClient, model: SentenceTransformer) -> int:
 def main():
     parser = argparse.ArgumentParser(description="Set up Qdrant collections for RAG courses")
     parser.add_argument("--course", type=str, default=None,
-                        choices=["cs50", "mit13", "mit14", "guidelines"],
+                        choices=["cs50", "mit14", "cpp"],
                         help="Index a specific course only (default: all)")
     args = parser.parse_args()
 
-    client = QdrantClient(path=QDRANT_PATH)
-    try:
+    if QDRANT_URL:
+        client = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
+        print(f"Qdrant Cloud mode active. Endpoint: {QDRANT_URL}")
+        if QDRANT_COLLECTION_PREFIX:
+            print(f"Collection prefix: {QDRANT_COLLECTION_PREFIX}_")
+    else:
+        client = QdrantClient(path=QDRANT_PATH)
         print(f"Qdrant local mode active. Data path: {QDRANT_PATH}")
+    try:
         print(f"Loading embedding model: {EMBEDDING_MODEL}...")
         model = SentenceTransformer(EMBEDDING_MODEL)
 
@@ -184,14 +221,11 @@ def main():
         if args.course == "cs50" or args.course is None:
             total += index_cs50(client, model)
 
-        if args.course in ("mit13", None):
-            total += index_mit(client, model, "mit13")
-
         if args.course in ("mit14", None):
-            total += index_mit(client, model, "mit14")
+            total += index_mit14(client, model)
 
-        if args.course in ("guidelines", None):
-            total += index_guidelines(client, model)
+        if args.course in ("cpp", None):
+            total += index_cpp_knowledge(client, model)
 
         print(f"\nSetup complete. {total} total documents indexed.")
     finally:

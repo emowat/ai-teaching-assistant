@@ -76,7 +76,6 @@ OUTPUT_PREFIX = os.getenv(
 
 OUTPUT_DIR = OUTPUT_PREFIX
 
-
 def _is_s3_url(path: str | Path) -> bool:
     s = str(path)
     return s.startswith("s3://") or "console.aws.amazon.com/s3/object/" in s
@@ -461,6 +460,68 @@ def load_harvard_cs50_chunks(raw_data_path: Path | str, overlap: int = 0) -> lis
 # 3. Qdrant Indexing
 # ---------------------------------------------------------------------------
 
+class OpenAIEmbeddingModel:
+    """Small adapter matching the SentenceTransformer encode() surface we use."""
+
+    def __init__(self, model_name: str):
+        try:
+            from openai import OpenAI
+        except ModuleNotFoundError as e:
+            raise RuntimeError(
+                "OpenAI embedding models require the openai package. "
+                "Install dependencies with `pip install -r requirements.txt`."
+            ) from e
+
+        if not os.getenv("OPENAI_API_KEY"):
+            raise RuntimeError(f"{model_name} requires OPENAI_API_KEY to be set.")
+
+        self.model_name = model_name
+        self.client = OpenAI()
+        self._dimension: int | None = None
+
+    def get_sentence_embedding_dimension(self) -> int:
+        if self._dimension is None:
+            vector = self.encode("dimension probe", normalize_embeddings=True)
+            self._dimension = int(vector.shape[0])
+        return self._dimension
+
+    def encode(
+        self,
+        texts: str | list[str],
+        normalize_embeddings: bool = True,
+        show_progress_bar: bool = False,
+    ) -> np.ndarray:
+        single_input = isinstance(texts, str)
+        input_texts = [texts] if single_input else texts
+        if not input_texts:
+            return np.array([])
+
+        response = self.client.embeddings.create(
+            model=self.model_name,
+            input=input_texts,
+        )
+        vectors = np.array(
+            [item.embedding for item in sorted(response.data, key=lambda item: item.index)],
+            dtype=np.float32,
+        )
+        if normalize_embeddings:
+            norms = np.linalg.norm(vectors, axis=1, keepdims=True)
+            vectors = vectors / np.maximum(norms, 1e-12)
+
+        if self._dimension is None and vectors.size:
+            self._dimension = int(vectors.shape[1])
+
+        return vectors[0] if single_input else vectors
+
+
+def _load_embedding_model(embedding_model_name: str) -> Any:
+    if embedding_model_name.startswith("text-embedding-"):
+        return OpenAIEmbeddingModel(embedding_model_name)
+
+    from sentence_transformers import SentenceTransformer
+    return SentenceTransformer(embedding_model_name)
+
+
 def _get_qdrant_client():
     from qdrant_client import QdrantClient
     url = os.getenv("QDRANT_URL", "")
@@ -481,11 +542,10 @@ def build_index(
     vector_size: int = 768,
 ) -> Any:
     """Build a Qdrant collection with embedded chunk vectors. Returns the client."""
-    from sentence_transformers import SentenceTransformer
     from qdrant_client.models import Distance, PointStruct, VectorParams, PayloadSchemaType
 
     print(f"  Loading embedding model: {embedding_model_name} ...")
-    model = SentenceTransformer(embedding_model_name)
+    model = _load_embedding_model(embedding_model_name)
     actual_dim = model.get_sentence_embedding_dimension()
 
     client = _get_qdrant_client()
@@ -691,12 +751,14 @@ def compute_metrics(
 EMBEDDING_MODELS = [
     "all-MiniLM-L6-v2",
     "sentence-transformers/multi-qa-mpnet-base-dot-v1",
-    "BAAI/bge-base-en-v1.5",
-    "intfloat/e5-base-v2",
+    # "BAAI/bge-base-en-v1.5",
+    # "intfloat/e5-base-v2",
+    "text-embedding-3-small",
     # "intfloat/e5-large-v2",
 ]
 
-TOP_K_VALUES = [3, 5, 8, 10, 15]
+# TOP_K_VALUES = [3, 5, 8, 10, 15, 20]
+TOP_K_VALUES = [15, 20]
 
 RERANK_STRATEGIES = [
     "similarity",

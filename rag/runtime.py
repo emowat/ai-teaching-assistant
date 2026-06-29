@@ -68,7 +68,7 @@ def get_runtime_config() -> RagRuntimeConfig:
         collection_guidelines=os.getenv("QDRANT_COLLECTION_GUIDELINES", "cpp_guidelines"),
         embedding_model=os.getenv(
             "EMBEDDING_MODEL",
-            "sentence-transformers/multi-qa-mpnet-base-dot-v1",
+            "BAAI/bge-large-en-v1.5",
         ),
         raw_data_path=os.getenv("RAW_DATA_PATH", str(default_raw_data_path)),
     )
@@ -84,8 +84,22 @@ def create_qdrant_client(config: RagRuntimeConfig | None = None):
     from qdrant_client import QdrantClient
 
     runtime = config or get_runtime_config()
+    timeout = int(os.getenv("QDRANT_TIMEOUT", "120"))
     if runtime.qdrant_url:
-        # Hosted mode: authenticate directly against the remote cluster.
-        return QdrantClient(url=runtime.qdrant_url, api_key=runtime.qdrant_api_key)
+        # Hosted mode: use gRPC for reliable long-lived connections.
+        # gRPC handles large payloads and keepalive natively (port 6334).
+        return QdrantClient(
+            url=runtime.qdrant_url,
+            api_key=runtime.qdrant_api_key,
+            timeout=timeout,
+            prefer_grpc=True,
+            grpc_port=6334,
+            grpc_options={
+                "grpc.keepalive_time_ms": 30_000,       # ping every 30s
+                "grpc.keepalive_timeout_ms": 10_000,    # wait 10s for pong
+                "grpc.keepalive_permit_without_calls": True,
+                "grpc.http2.max_ping_strikes": 2,       # max failed pings before close
+            },
+        )
     # Local mode: preserve the original on-disk Qdrant workflow.
     return QdrantClient(path=runtime.qdrant_path)

@@ -319,6 +319,27 @@ SYLLABUS_MATRIX: dict[int, dict[str, str]] = {
     8: {"name": "Advanced Data Structures", "allowed": "hash tables, tries, queues, stacks, linked lists", "forbidden": "raw malloc/free, bare new/delete"},
 }
 
+MIT_2014_MATRIX: dict[int, dict[str, str]] = {
+    1: {"name": "Introduction to C: Welcome to the Memory Jungle", "allowed": "primitive types, control loops, functions, basic pointers, sizeof, printf", "forbidden": "structs, custom alignment, manual malloc, assembly, C++ classes"},
+    2: {"name": "Subtleties of C: Data Structures & Floating-Point", "allowed": "structures, raw pointers, custom memory alignment, custom trees/lists, floating-point arithmetic", "forbidden": "x86 assembly, pointer casting exploits, C++ references, new/delete"},
+    3: {"name": "Assembly & Secure Programming in C", "allowed": "x86 assembly registers, stack frames, buffer overflow analysis, bounds checking", "forbidden": "C++ syntax, classes, std::vector, iostream"},
+    4: {"name": "Style and Structure: Transition from C to C++", "allowed": "namespaces, function overloading, standard reference variables (&), iostream (std::cout), stack-allocated custom vectors", "forbidden": "C++ classes, inheritance, explicit heap management (new/delete)"},
+    5: {"name": "Object-Oriented C++: Abstraction & Core STL", "allowed": "classes, access modifiers (public/private), basic inheritance, std::vector, std::queue", "forbidden": "templates, raw pointer dynamic casting, complex pointers, manual memory deletion"},
+    6: {"name": "Design Patterns: Higher-Level Program Design", "allowed": "virtual functions, polymorphism, abstract base classes, composite pattern, strategy pattern, std::unique_ptr", "forbidden": "raw malloc/free, third-party frameworks, manual pointer arithmetic inside patterns"},
+    7: {"name": "Introduction to Projects: Unit Testing & Review", "allowed": "assert, unit test blocks, third-party header libraries, modular compilation", "forbidden": "makefiles, large-scale multi-directory linkages, graphical engines"},
+    8: {"name": "Project Environments: Iterators & N-Body Setup", "allowed": "STL iterators, macro definitions (#define), header guards, math.h, simulation loops", "forbidden": "raw pointer traversal (must use iterators), OpenGL, automated graphics libraries"},
+    9: {"name": "Visualization & Build Systems", "allowed": "GNU Makefiles, compiler optimization flags (-O2, -O3), basic OpenGL context, structural linking", "forbidden": "unoptimized code paths, nested raw loops without look-ahead analysis"},
+    10: {"name": "Course Recap, Technical Interviews, & Advanced Topics", "allowed": "rvalue references, move semantics, template metaprogramming concepts, interview data structures", "forbidden": "legacy C practices (e.g., raw void* pointers where type-safety applies)"},
+}
+
+CS50_SYLLABUS_MATRIX: dict[int, dict[str, str]] = {
+    1: {"name": "C Basics", "allowed": "C primitives, loops, conditionals, variables, operators, cs50.h (get_int, get_string), stdio.h (printf)", "forbidden": "arrays, pointers, structs, dynamic memory (malloc/free), C++ features (std::cout, classes)"},
+    2: {"name": "Arrays & Strings", "allowed": "arrays, strings, command-line arguments (argc, argv), string.h functions, ctype.h", "forbidden": "pointers, dynamic memory (malloc/free), structs, file I/O"},
+    3: {"name": "Algorithms", "allowed": "recursion, sorting algorithms (bubble, selection, merge), linear/binary search", "forbidden": "pointers, dynamic memory (malloc/free), structs, file I/O"},
+    4: {"name": "Memory & File I/O", "allowed": "pointers, dynamic memory allocation (malloc, free, realloc), stack/heap manipulation, file I/O (fopen, fread, fwrite)", "forbidden": "abstract data types (linked lists, trees, hash tables), C++ features (new/delete, std::fstream)"},
+    5: {"name": "Data Structures", "allowed": "structs, linked lists, trees, binary search trees, hash tables, tries", "forbidden": "C++ STL containers (std::vector, std::map), classes, smart pointers"},
+}
+
 
 # ---------------------------------------------------------------------------
 # C++ Core Guidelines loader
@@ -330,18 +351,19 @@ GUIDELINES_JSON_PATH = Path("cppcoreguidelines") / "cppcoreguidelines.json"
 class CppGuidelinesLoader:
     """Loads C++ Core Guidelines from raw_data/cppcoreguidelines/cppcoreguidelines.json.
 
-    Chunking strategy:
-      - One chunk per h3-level rule (the actual enforceable guideline).
-      - Concatenates title, section path, reason, examples, notes, and enforcement
-        into a single structured content block.
-      - h1/h2 headings are used for section context but not indexed as chunks.
+    Chunking strategy (2 chunk types):
+      - ``rule``:      rule_number + title + reason (compact reference, ~80-200 tokens)
+      - ``rule_example``: rule_number + title + code example (~100-400 tokens)
+      These are indexed as separate chunks for fine-grained retrieval; a query
+      matching a specific code pattern hits an example chunk directly rather
+      than retrieving the entire rule.
 
     Usage:
         loader = CppGuidelinesLoader("raw_data")
         chunks = loader.load_all()
     """
 
-    MAX_CONTENT_LENGTH = 4000
+    MAX_CONTENT_LENGTH = 2000
 
     def __init__(self, raw_data_path: str | Path):
         self.raw_data = Path(raw_data_path)
@@ -350,9 +372,11 @@ class CppGuidelinesLoader:
             raise FileNotFoundError(f"Guidelines JSON not found: {self.json_path}")
 
     def load_all(self) -> list[ChunkPayload]:
-        """Parse the guidelines JSON and return one chunk per h3 rule."""
+        """Parse the guidelines JSON and return two chunk types per h3 rule."""
         data = json.loads(self.json_path.read_text(encoding="utf-8"))
         chunks: list[ChunkPayload] = []
+        rule_count = 0
+        example_count = 0
 
         for entry in data:
             if entry.get("level") != 3:
@@ -361,66 +385,402 @@ class CppGuidelinesLoader:
             title = str(entry.get("title", ""))
             rule_number = str(entry.get("rule_number", ""))
             section = str(entry.get("section", ""))
-            subsection = str(entry.get("subsection", ""))
             reason = str(entry.get("reason", ""))
-            notes = entry.get("notes", [])
-            enforcement = str(entry.get("enforcement", ""))
             examples = entry.get("examples", [])
 
-            # Assemble a structured content block
+            base_topic = f"cpp_guideline::{rule_number}" if rule_number else "cpp_guideline"
+
+            # --- chunk type: rule (summary) ---
             parts: list[str] = []
             if section:
-                parts.append(f"Section: {section}")
-            if subsection:
-                parts.append(f"Subsection: {subsection}")
-            parts.append(f"Rule: {title}")
-
+                parts.append(f"[{section}]")
+            parts.append(f"Rule {rule_number}: {title}" if rule_number else f"Rule: {title}")
             if reason:
                 parts.append(f"Reason: {reason}")
 
-            for ex in examples:
-                label = ex.get("label", "Example")
-                desc = ex.get("description", "")
-                code = ex.get("code", "")
-                if desc:
-                    parts.append(f"{label}: {desc}")
-                if code:
-                    parts.append(f"{label} code:\n{code}")
-
-            for note in notes:
-                parts.append(f"Note: {note}")
-
-            if enforcement:
-                parts.append(f"Enforcement: {enforcement}")
-
-            content = "\n\n".join(parts)
+            content = "\n".join(parts)
             if len(content) > self.MAX_CONTENT_LENGTH:
                 content = content[: self.MAX_CONTENT_LENGTH]
 
-            if not content.strip():
-                continue
+            if content.strip():
+                rule_id = _stable_chunk_id("cpp_guideline", "rule", rule_number or title)
+                chunks.append(ChunkPayload(
+                    chunk_id=rule_id,
+                    content=content,
+                    week=0,
+                    category=DocCategory.GUIDELINE,
+                    topic=base_topic,
+                    priority=CATEGORY_PRIORITY.get(DocCategory.GUIDELINE, 2),
+                    source_domain=SourceDomain.CPP_CORE_GUIDELINES,
+                    source_type="cpp_core_guideline_rule",
+                ))
+                rule_count += 1
 
-            chunk_id = _stable_chunk_id(
-                "cpp_guideline",
-                rule_number or title,
-                content[:500],
+            # --- chunk type: rule_example (code examples) ---
+            for i, ex in enumerate(examples):
+                code = str(ex.get("code", "")).strip()
+                if not code:
+                    continue
+                label = str(ex.get("label", f"Example {i + 1}"))
+                desc = str(ex.get("description", "")).strip()
+
+                example_content = f"[{section}] Rule {rule_number}: {title}\n{label}: {desc}\n```cpp\n{code}\n```"
+                if len(example_content) > self.MAX_CONTENT_LENGTH:
+                    example_content = example_content[: self.MAX_CONTENT_LENGTH]
+
+                example_id = _stable_chunk_id("cpp_guideline", "example", rule_number or title, str(i))
+                chunks.append(ChunkPayload(
+                    chunk_id=example_id,
+                    content=example_content,
+                    week=0,
+                    category=DocCategory.GUIDELINE,
+                    topic=f"{base_topic}::example",
+                    priority=CATEGORY_PRIORITY.get(DocCategory.GUIDELINE, 2),
+                    source_domain=SourceDomain.CPP_CORE_GUIDELINES,
+                    source_type="cpp_core_guideline_example",
+                    parent_chunk_id=rule_id,
+                ))
+                example_count += 1
+
+        print(f"  cppcoreguidelines.json: {rule_count} rules + {example_count} examples = {rule_count + example_count} chunks")
+        return chunks
+
+
+# ---------------------------------------------------------------------------
+# C++ Reference (cppreference.com) loader
+# ---------------------------------------------------------------------------
+
+CPPREFERENCE_JSON_PATH = Path("cppreference") / "cppreference.json"
+
+
+class CppReferenceLoader:
+    """Loads the cppreference HTML book parse output and produces granular chunks.
+
+    Chunking strategy (4 chunk types per API entry):
+
+      ``summary``
+        name + header + declarations + description
+        ~150-400 tokens.  Answers *"what is std::vector?"* queries.
+
+      ``section``
+        name + section_name + section_content  (one per section: Parameters,
+        Return value, Complexity, Exceptions, Notes, Example, See also...)
+        ~80-300 tokens.  Answers *"what is the complexity of std::find?"*.
+
+      ``example``
+        name + code example  (only when example text is non-empty)
+        ~100-500 tokens.  Answers *"show me an example of std::sort"*.
+
+      ``member``
+        parent_name + member_name + member_description
+        ~50-150 tokens.  Answers *"what does vector::push_back do?"*.
+
+    Usage:
+        loader = CppReferenceLoader("raw_data")
+        chunks = loader.load_all()
+    """
+
+    MAX_CONTENT_LENGTH = 3000
+
+    def __init__(self, raw_data_path: str | Path):
+        self.raw_data = Path(raw_data_path)
+        self.json_path = self.raw_data / CPPREFERENCE_JSON_PATH
+        if not self.json_path.exists():
+            raise FileNotFoundError(f"CppReference JSON not found: {self.json_path}")
+
+    def load_all(self) -> list[ChunkPayload]:
+        """Parse the cppreference JSON and return 4 chunk types per entry."""
+        data = json.loads(self.json_path.read_text(encoding="utf-8"))
+        chunks: list[ChunkPayload] = []
+        counts = {"summary": 0, "section": 0, "example": 0, "member": 0}
+
+        for entry in data:
+            name = str(entry.get("name", ""))
+            path = str(entry.get("path", ""))
+            category = str(entry.get("category", ""))
+            header = str(entry.get("header", ""))
+            declarations = entry.get("declarations", [])
+            description = str(entry.get("description", ""))
+            sections = entry.get("sections", {})
+            example = str(entry.get("example", ""))
+            members = entry.get("members", [])
+
+            base_topic = f"cppref::{category}::{path}" if category else f"cppref::{path}"
+
+            # --- chunk type: summary ---
+            summary_parts: list[str] = [f"`{name}`"]
+            if header:
+                summary_parts.append(f"Header: {header}")
+            if declarations:
+                summary_parts.append("Declarations:")
+                for d in declarations[:6]:  # cap to 6 to limit token count
+                    summary_parts.append(f"  {d}")
+            if description:
+                summary_parts.append(description)
+
+            summary_text = "\n".join(summary_parts)
+            if len(summary_text) > self.MAX_CONTENT_LENGTH:
+                summary_text = summary_text[: self.MAX_CONTENT_LENGTH]
+
+            if summary_text.strip():
+                summary_id = _stable_chunk_id("cppref", "summary", path, name)
+                chunks.append(ChunkPayload(
+                    chunk_id=summary_id,
+                    content=summary_text,
+                    week=0,
+                    category=DocCategory.GUIDELINE,
+                    topic=base_topic,
+                    priority=CATEGORY_PRIORITY.get(DocCategory.GUIDELINE, 2),
+                    source_domain=SourceDomain.CPP_REFERENCE,
+                    source_type="cppref_summary",
+                ))
+                counts["summary"] += 1
+
+            # --- chunk type: section (one per section) ---
+            for section_name, section_text in sections.items():
+                if not section_text.strip():
+                    continue
+                section_content = f"`{name}` — {section_name}\n{section_text}"
+                if len(section_content) > self.MAX_CONTENT_LENGTH:
+                    section_content = section_content[: self.MAX_CONTENT_LENGTH]
+
+                section_id = _stable_chunk_id("cppref", "section", path, name, section_name)
+                chunks.append(ChunkPayload(
+                    chunk_id=section_id,
+                    content=section_content,
+                    week=0,
+                    category=DocCategory.GUIDELINE,
+                    topic=f"{base_topic}::{section_name.lower().replace(' ', '_')[:40]}",
+                    priority=CATEGORY_PRIORITY.get(DocCategory.GUIDELINE, 2),
+                    source_domain=SourceDomain.CPP_REFERENCE,
+                    source_type="cppref_section",
+                    parent_chunk_id=summary_id,
+                ))
+                counts["section"] += 1
+
+            # --- chunk type: example ---
+            if example.strip():
+                example_content = f"`{name}` example:\n```cpp\n{example}\n```"
+                if len(example_content) > self.MAX_CONTENT_LENGTH:
+                    example_content = example_content[: self.MAX_CONTENT_LENGTH]
+
+                example_id = _stable_chunk_id("cppref", "example", path, name)
+                chunks.append(ChunkPayload(
+                    chunk_id=example_id,
+                    content=example_content,
+                    week=0,
+                    category=DocCategory.GUIDELINE,
+                    topic=f"{base_topic}::example",
+                    priority=CATEGORY_PRIORITY.get(DocCategory.GUIDELINE, 2),
+                    source_domain=SourceDomain.CPP_REFERENCE,
+                    source_type="cppref_example",
+                    parent_chunk_id=summary_id,
+                ))
+                counts["example"] += 1
+
+            # --- chunk type: member (one per member function/type) ---
+            for m in members:
+                member_name = str(m.get("name", "")).strip()
+                member_desc = str(m.get("description", "")).strip()
+                if not member_name:
+                    continue
+
+                member_content = f"`{name}::{member_name}`"
+                if member_desc:
+                    member_content += f"\n{member_desc}"
+                if len(member_content) > self.MAX_CONTENT_LENGTH:
+                    member_content = member_content[: self.MAX_CONTENT_LENGTH]
+
+                member_id = _stable_chunk_id("cppref", "member", path, name, member_name)
+                chunks.append(ChunkPayload(
+                    chunk_id=member_id,
+                    content=member_content,
+                    week=0,
+                    category=DocCategory.GUIDELINE,
+                    topic=f"{base_topic}::member::{member_name.lower().replace(' ', '_')[:50]}",
+                    priority=CATEGORY_PRIORITY.get(DocCategory.GUIDELINE, 2),
+                    source_domain=SourceDomain.CPP_REFERENCE,
+                    source_type="cppref_member",
+                    parent_chunk_id=summary_id,
+                ))
+                counts["member"] += 1
+
+        total = sum(counts.values())
+        print(f"  cppreference.json: {counts['summary']} summary + {counts['section']} section "
+              f"+ {counts['example']} example + {counts['member']} member = {total} chunks")
+        return chunks
+
+
+# ---------------------------------------------------------------------------
+# MIT 2014 loader (parsed PDF blocks)
+# ---------------------------------------------------------------------------
+
+MIT14_JSON_DIR = Path("MIT_2014")
+
+# Lecture filename → week
+_MIT14_LECTURE_WEEK: dict[str, int] = {
+    "Lecture1": 1,
+    "Lecture2": 2,
+    "Lecture3A": 3,
+    "Lecture3S": 3,
+    "Lecture4": 4,
+    "Lecture5": 5,
+    "Lecture6": 6,
+    "Lecture7": 7,
+    "Lecture8": 8,
+    "Lecture9": 8,
+    "Lecture10": 8,
+}
+
+# Assignment filename prefix → approximate week
+_MIT14_ASSIGNMENT_WEEK: dict[str, int] = {
+    "ass1": 2,
+    "ass2": 4,
+    "ass3": 6,
+}
+
+
+class MIT14Loader:
+    """Loads MIT 2014 parsed PDF/TXT files from raw_data/MIT_2014/.
+
+    Chunking strategy:
+      - **Lecture slides**: one chunk per block (= one page/slide). ~50-500 chars.
+        Category: Pedagogical_Context (default) or Strict_Rules (imperative keywords).
+      - **Syllabus**: one chunk from the full syllabus text.
+        Category: Syllabus.
+      - **Assignments**: one chunk per block. Category: Supplementary.
+
+    Usage:
+        loader = MIT14Loader("raw_data")
+        chunks = loader.load_all()
+    """
+
+    MAX_CONTENT_LENGTH = 2000
+
+    def __init__(self, raw_data_path: str | Path):
+        self.raw_data = Path(raw_data_path)
+        self.mit_dir = self.raw_data / MIT14_JSON_DIR
+        if not self.mit_dir.exists():
+            raise FileNotFoundError(f"MIT 2014 directory not found: {self.mit_dir}")
+
+    def load_all(self) -> list[ChunkPayload]:
+        """Parse all MIT14 JSON files and return one chunk per block."""
+        chunks: list[ChunkPayload] = []
+        lecture_count = 0
+        assignment_count = 0
+
+        for json_file in sorted(self.mit_dir.glob("*__pdf.json")):
+            data = json.loads(json_file.read_text(encoding="utf-8"))
+            file_name = str(data.get("file_name", json_file.stem))
+            blocks = data.get("blocks", [])
+
+            week, source_type = self._classify_file(file_name)
+
+            for block in blocks:
+                text = str(block.get("text", "")).strip()
+                if not text:
+                    continue
+
+                page = block.get("page_number")
+                has_code = bool(block.get("has_code", False))
+
+                # Category: same heuristic as CourseMaterialLoader
+                category = classify_category(text, has_code, source=(
+                    "assignment_solution" if "ass" in file_name.lower() else "lecture"
+                ))
+
+                # Prefix with source context
+                source_label = file_name.replace("MIT6_S096IAP14_", "").replace("__pdf", "")
+                content = f"[{source_label} p.{page}] {text}"
+                if len(content) > self.MAX_CONTENT_LENGTH:
+                    content = content[: self.MAX_CONTENT_LENGTH]
+
+                chunk_id = _stable_chunk_id(
+                    "mit14",
+                    file_name,
+                    block.get("block_id", str(page)),
+                    text[:500],
+                )
+
+                chunks.append(ChunkPayload(
+                    chunk_id=chunk_id,
+                    content=content,
+                    week=week,
+                    category=category,
+                    topic=f"mit14::{source_label.lower()}",
+                    priority=CATEGORY_PRIORITY.get(category, 2),
+                    source_domain=SourceDomain.MIT_OCW_LECTURE,
+                    source_type=source_type,
+                    page_number=page,
+                ))
+
+                if "ass" in file_name.lower():
+                    assignment_count += 1
+                else:
+                    lecture_count += 1
+
+        # --- Syllabus ---
+        syllabus_chunks = self._load_syllabus()
+        chunks.extend(syllabus_chunks)
+
+        print(f"  MIT 2014: {lecture_count} lecture + {assignment_count} assignment "
+              f"+ {len(syllabus_chunks)} syllabus = {len(chunks)} chunks")
+        return chunks
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    def _classify_file(self, file_name: str) -> tuple[int, str]:
+        """Return (week, source_type) from the file name."""
+        # Try lecture mapping (longest key first to avoid "Lecture1" matching "Lecture10")
+        for key in sorted(_MIT14_LECTURE_WEEK, key=len, reverse=True):
+            if key in file_name:
+                return _MIT14_LECTURE_WEEK[key], "lecture_slide"
+
+        # Try assignment mapping (same logic)
+        for key in sorted(_MIT14_ASSIGNMENT_WEEK, key=len, reverse=True):
+            if key in file_name:
+                return _MIT14_ASSIGNMENT_WEEK[key], "assignment_solution"
+
+        return 0, "lecture_slide"
+
+    def _load_syllabus(self) -> list[ChunkPayload]:
+        """Build syllabus chunks from MIT_2014_MATRIX with optional file description."""
+        chunks: list[ChunkPayload] = []
+
+        # Try loading supplementary description from file
+        description = ""
+        json_path = self.mit_dir / "syllabus__txt.json"
+        txt_path = self.mit_dir / "syllabus.txt"
+        if json_path.exists():
+            data = json.loads(json_path.read_text(encoding="utf-8"))
+            blocks = data.get("blocks", [])
+            if blocks:
+                description = blocks[0].get("text", "")[:500]
+        elif txt_path.exists():
+            description = txt_path.read_text(encoding="utf-8")[:500]
+
+        for week, info in MIT_2014_MATRIX.items():
+            chunk_id = _stable_chunk_id("mit14", "syllabus", str(week), info["name"])
+            content = (
+                f"Week: {week} - {info['name']}\n"
+                f"Allowed: {info['allowed']}\n"
+                f"Forbidden: {info['forbidden']}"
             )
-
+            if description:
+                content += f"\n\n{description}"
             chunks.append(ChunkPayload(
                 chunk_id=chunk_id,
                 content=content,
-                week=0,  # guidelines are week-agnostic global reference
-                category=DocCategory.GUIDELINE,
-                topic=f"cpp_guideline::{rule_number}" if rule_number else "cpp_guideline",
-                priority=CATEGORY_PRIORITY[DocCategory.GUIDELINE]
-                if DocCategory.GUIDELINE in CATEGORY_PRIORITY
-                else 2,
-                source_domain=SourceDomain.CPP_CORE_GUIDELINES,
-                source_type="cpp_core_guideline",
-                page_number=None,
+                week=week,
+                category=DocCategory.SYLLABUS,
+                topic="mit14_syllabus",
+                priority=1,
+                source_domain=SourceDomain.MIT_OCW_SYLLABUS,
+                source_type="syllabus_page",
             ))
 
-        print(f"  cppcoreguidelines.json: {len(chunks)} h3 rules indexed")
         return chunks
 
 
@@ -507,7 +867,33 @@ class HarvardNotesLoader:
             chunks.extend(file_chunks)
             print(f"  {json_file.name}: week={week} ({title}), {len(file_chunks)} sections")
 
+        # Syllabus
+        syllabus_chunks = self._load_syllabus()
+        chunks.extend(syllabus_chunks)
+
         print(f"Harvard CS50: {len(chunks)} total chunks indexed")
+        return chunks
+
+    def _load_syllabus(self) -> list[ChunkPayload]:
+        """Build syllabus chunks from CS50_SYLLABUS_MATRIX (weeks 1-5)."""
+        chunks: list[ChunkPayload] = []
+        for week, info in CS50_SYLLABUS_MATRIX.items():
+            chunk_id = _stable_chunk_id("cs50", "syllabus", str(week), info["name"])
+            content = (
+                f"Week: {week} - {info['name']}\n"
+                f"Allowed: {info['allowed']}\n"
+                f"Forbidden: {info['forbidden']}"
+            )
+            chunks.append(ChunkPayload(
+                chunk_id=chunk_id,
+                content=content,
+                week=week,
+                category=DocCategory.SYLLABUS,
+                topic="cs50_syllabus",
+                priority=1,
+                source_domain=SourceDomain.HARVARD_CS50,
+                source_type="syllabus_page",
+            ))
         return chunks
 
 

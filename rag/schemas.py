@@ -30,6 +30,7 @@ class SourceDomain(str, Enum):
     MIT_OCW_SYLLABUS = "mit_ocw_syllabus"
     MIT_OCW_ASSIGNMENT = "mit_ocw_assignment"
     CPP_CORE_GUIDELINES = "cpp_core_guidelines"
+    CPP_REFERENCE = "cpp_reference"
     HARVARD_CS50 = "harvard_cs50"
 
 
@@ -94,12 +95,16 @@ class QueryInput(BaseModel):
     week: int = Field(ge=0, le=8)
     mode: AssistMode = AssistMode.HOMEWORK_ASSIST
     ast_features: ASTFeatures = Field(default_factory=ASTFeatures)
+<<<<<<< Updated upstream
     course_id: Optional[str] = None
     course_source: CourseSource = CourseSource.CS50
     session_id: Optional[str] = None
     request_id: Optional[str] = None
     turn_id: Optional[str] = None
     section_id: Optional[str] = None
+=======
+    course_source: CourseSource = CourseSource.MIT_14
+>>>>>>> Stashed changes
 
 
 # ---------------------------------------------------------------------------

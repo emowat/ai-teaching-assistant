@@ -54,19 +54,22 @@ Provides course-aware context to the **CodingRabbit LLM** during student debuggi
 ```
 
 ---
+## Experimentation 
+See `/rag/experiments/experiment_results.md` for details
 
 ## File Map
 
 | File | Responsibility |
 |------|---------------|
-| `schemas.py` | Pydantic contracts: `QueryInput`, `RetrievalResult`, `ChunkPayload`, `ASTFeatures`, `DocCategory`, `SourceDomain`, `AssistMode` |
+| `schemas.py` | Pydantic contracts: `QueryInput`, `RetrievalResult`, `ChunkPayload`, `ASTFeatures`, `DocCategory`, `SourceDomain`, `CourseSource`, `AssistMode` |
 | `query_builder.py` | Fuses student NL + AST features + terminal output → dense embedding query string |
-| `retrievers.py` | Five parallel retrievers: syllabus (exact), semantic (vector), rules (vector+filter), guidelines (separate collection), harvard (separate collection, week-filtered) |
+| `retrievers.py` | Five parallel retrievers: syllabus (exact), semantic (vector), rules (vector+filter), guidelines (separate collection), CS50 (separate collection, week-filtered) |
 | `reranker.py` | Post-processing: deduplicate → category weighting → MMR diversify → group by category |
 | `context_assembler.py` | Formats retrieval results into `[Vector_Database_Results]` block matching CodingRabbit prompt format |
-| `pipeline.py` | Orchestrator: `run_retrieval(query) → RetrievalResult` (context only), `generate_response(query, llm) → str` (full TA answer). Routes to MIT or Harvard collection based on `course_source` |
-| `setup_qdrant.py` | Vector DB: create collections, create payload indexes, call loaders to index course materials |
-| `loader.py` | Three loaders: `CourseMaterialLoader` (MIT OCW), `CppGuidelinesLoader` (C++ Core Guidelines), `HarvardNotesLoader` (Harvard CS50) |
+| `pipeline.py` | Orchestrator: `run_retrieval(query) → RetrievalResult` (context only), `generate_response(query, llm) → str` (full TA answer). Routes to MIT14, CS50, or MIT13 collection based on `course_source` |
+| `setup_qdrant.py` | Vector DB: create collections, create payload indexes, call loaders to index course materials. Supports Qdrant Cloud (`QDRANT_URL`) or local-on-disk |
+| `loader.py` | Loaders: `MIT14Loader` (MIT 6.0014), `CourseMaterialLoader` (MIT 6.0013, legacy), `HarvardNotesLoader` + `HarvardTranscriptsLoader` (CS50), `CppGuidelinesLoader` + `CppReferenceLoader` (C++ knowledge) |
+| `runtime.py` | Runtime configuration: Qdrant connection (local/cloud), collection names, embedding model — all driven by environment variables |
 
 ---
 
@@ -95,13 +98,51 @@ S3 (raw_data/) ──→ data_ingestion/ ──→ Qdrant index ──→ rag pi
 | **S3 fit** | Pull from S3 once at build time | Pull from S3 every query |
 | **Best for** | **Fixed content**: lecture slides, assignment solutions, syllabus | Frequently changing documents |
 
-MIT OCW 6.S096 is a completed course (391 slides), content is fixed. WebLoader's real-time advantage is unnecessary here, while its runtime instability (network, parse failures) directly impacts student experience.
+MIT 6.0014 and Harvard CS50 are completed courses with fixed content. WebLoader's real-time advantage is unnecessary here, while its runtime instability (network, parse failures) directly impacts student experience.
 
 ---
 
 ## Loader Design
 
-### `rag/loader.py` — `CourseMaterialLoader`
+### `rag/loader.py` — Primary loaders
+
+#### `MIT14Loader` — MIT 6.0014 (IAP 2014)
+
+```
+raw_data/MIT_2014/
+    │
+    ├── Lecture*__pdf.json            ──→  _parse_lecture_json()
+    │    (parsed PDF blocks, {text,         →  ChunkPayload per block
+    │     page_number, has_code})           →  week: Lecture1 → 1, Lecture2 → 2, ...
+    │                                       →  classify_category(text, has_code)
+    │                                       →  ~11 lecture files, 8 weeks
+    │
+    ├── ass*__pdf.json                ──→  _parse_assignment_json()
+    │    (assignment solutions)             →  category = Supplementary
+    │                                       →  week: ass1 → 2, ass2 → 4, ass3 → 6
+    │
+    └── syllabus__txt.json            ──→  _load_syllabus()
+         (or syllabus.txt)                 →  8 ChunkPayload (one per week)
+                                           →  category = Syllabus
+```
+
+#### `HarvardNotesLoader` + `HarvardTranscriptsLoader` — Harvard CS50
+
+```
+raw_data/Harvard/
+    │
+    ├── cs50_output/notes_json/notes_*.json  ──→  HarvardNotesLoader
+    │    (lecture notes, one chunk per           →  ChunkPayload per section
+    │     section {heading, text, has_code})     →  week: 0-5
+    │                                            →  category: Pedagogical_Context / Strict_Rules
+    │
+    └── cs50_transcripts/lecture*.json      ──→  HarvardTranscriptsLoader
+         (lecture transcripts, one chunk        →  ChunkPayload per paragraph
+          per paragraph)                        →  category: Pedagogical_Context
+                                                →  min 50 chars, max 3000 chars
+```
+
+#### `CourseMaterialLoader` — MIT 6.0013 (legacy)
 
 ```
 raw_data/
@@ -122,9 +163,45 @@ raw_data/
 
 ### Chunking strategy
 
+#### MIT 2014 course materials (parsed PDF blocks)
+
+- **One block = one chunk** — parsed from PDF/TXT files in `raw_data/MIT_2014/`. Each block is a natural unit (page/slide equivalent).
+- **Content cap**: 2000 chars per chunk.
+- **Source prefix**: file label and page number prepended (e.g. `[Lecture1 p.5] Stack contains local variables...`).
+- **Week mapping**: `Lecture1` → week 1, `Lecture2` → 2, `Lecture3A`/`Lecture3S` → 3, etc.; `ass1` → week 2, `ass2` → 4, `ass3` → 6.
+- **Category**: Same heuristic as MIT 6.0013 — imperative keywords → `Strict_Rules`, assignments → `Supplementary`, syllabus → `Syllabus`, everything else → `Pedagogical_Context`.
+
+#### Course materials (MIT 6.0013 lecture slides, legacy)
+
 - **One slide = one chunk** — natural boundary, already well-scoped. Not merging adjacent slides keeps retrieval granular enough for targeted CodingRabbit nudges.
 - **Content cap**: 2000 chars per chunk (lecture slides are rarely text-heavy).
 - **Section prefix**: slide `section` field prepended for retrieval context (e.g. `[Today…] Stack contains local variables...`).
+
+#### C++ Core Guidelines
+
+Two chunk types per h3-level rule, matching the embedding window constraint (~512 tokens):
+
+| Chunk type | Fields assembled | ~Tokens | Answers queries like |
+|---|---|---|---|
+| `rule` | Section + rule_number + title + reason | 80–200 | "Should I use raw pointers?" |
+| `rule_example` | Section + rule_number + title + code example | 100–400 | "Show me how to pass parameters correctly" |
+
+Each `rule_example` references its parent `rule` via `parent_chunk_id`, enabling expansion retrieval (fetch the rule summary when a code example matches).
+
+#### C++ Reference (cppreference.com)
+
+Four chunk types per API entry, all fitting within the 512-token embedding window:
+
+| Chunk type | Fields assembled | ~Tokens | Answers queries like |
+|---|---|---|---|
+| `summary` | name + header + declarations + description | 150–400 | "What is `std::vector`?" |
+| `section` | name + section_name + section_content | 80–300 | "What is the complexity of `std::find`?" |
+| `example` | name + code example | 100–500 | "Show me an example of `std::sort`" |
+| `member` | `parent_name::member_name` + description | 50–150 | "What does `vector::push_back` do?" |
+
+**Why not chunk the full `content` field?** The raw page text (`content`) can be 5–15K tokens — too large for embedding. Splitting into typed sub-chunks means a query about complexity hits the Complexity section directly, while a query about usage hits the summary + example. No overlap, no noise.
+
+**Metadata** on every chunk: `source_domain=CPP_REFERENCE`, `category=GUIDELINE`, `source_type` (summary|section|example|member), `topic` (e.g. `cppref::container::cpp/container/vector::complexity`), `parent_chunk_id` (links sections/examples/members back to their summary).
 
 ### Category classification heuristic
 
@@ -138,7 +215,7 @@ raw_data/
 4. Everything else                → Pedagogical_Context
 ```
 
-**Result on MIT OCW 6.S096 (405 chunks)**:
+**Example result on MIT 6.0013 (405 chunks, legacy)**:
 
 | Category | Count | Source |
 |----------|-------|--------|
@@ -147,13 +224,15 @@ raw_data/
 | Syllabus | 8 | One per week |
 | Supplementary | 6 | Assignment solutions |
 
+MIT14 and CS50 use the same classification heuristic applied to their respective content formats (PDF blocks for MIT14, markdown sections for CS50).
+
 ### Embedding model
 
-`sentence-transformers/multi-qa-mpnet-base-dot-v1` (768-dim, dot product distance)
+`BAAI/bge-large-en-v1.5` (1024-dim, dot product distance)
 
-- Trained specifically for question-answering retrieval — aligns with student → TA query pattern
+- Strong retrieval performance in the MIT14/CS50 evaluation runs
 - Dot-product similarity is efficient for Qdrant scoring via `query_points` with `score_threshold`
-- 768 dimensions = faster indexing and search than 1024-dim alternatives
+- 1024 dimensions; rebuild Qdrant collections when switching from earlier 768-dim embeddings
 
 ### S3 migration path
 
@@ -173,62 +252,86 @@ The loader's interface (`load_all() → list[ChunkPayload]`) stays the same — 
 
 ## Data Store
 
-### One Qdrant instance, three independent collections
+### One Qdrant instance, three collections (Qdrant Cloud or local-on-disk)
+
+Collection names are configured via environment variables in `rag/runtime.py` (`QDRANT_COLLECTION_MIT14`, `QDRANT_COLLECTION_CS50`, `QDRANT_COLLECTION_GUIDELINES`) with sensible defaults. When `QDRANT_URL` is set, the pipeline connects to Qdrant Cloud (gRPC, port 6334); otherwise it uses local disk-backed Qdrant.
 
 ```
-Qdrant (single instance, local or cloud)
+Qdrant (single instance, local-on-disk or Qdrant Cloud)
 │
-├── Collection: course_knowledge          (768-dim, Dot product)
-│   ├── Source: MIT OCW 6.S096
-│   ├── Content: lecture slides, syllabus, assignment solutions
-│   ├── ~405 chunks (391 slides + 8 syllabus + 6 assignment)
+├── Collection: mit14_course                  (768-dim, Dot product)
+│   ├── Source: MIT 6.0014 (IAP 2014)
+│   ├── Content: lecture blocks, syllabus, assignment solutions
+│   ├── ~1,500+ chunks (parsed from ~11 lecture PDFs + assignments + syllabus)
 │   ├── Payload indexes: week (int), category (keyword),
 │   │   priority (int), source_domain (keyword)
 │   └── Week range: 1-8, filtered per query
 │
-├── Collection: cpp_guidelines            (768-dim, Dot product)
-│   ├── Source: C++ Core Guidelines
-│   ├── Content: h3-level enforceable rules with examples
-│   ├── ~200+ chunks
-│   ├── Payload indexes: source_domain (keyword)
-│   └── Week: always 0 (global, week-agnostic)
+├── Collection: cs50_course                   (768-dim, Dot product)
+│   ├── Source: Harvard CS50 (2025 Fall)
+│   ├── Content: lecture notes (one chunk per section) + transcripts (one chunk per paragraph)
+│   ├── Payload indexes: week (int), category (keyword),
+│   │   source_domain (keyword)
+│   └── Week range: 0-5, filtered per query
 │
-└── Collection: harvard_cs50              (768-dim, Dot product)
-    ├── Source: Harvard CS50 (2025 Fall)
-    ├── Content: lecture notes (one chunk per section)
-    ├── 87 chunks (59 Pedagogical_Context + 28 Strict_Rules)
-    ├── Payload indexes: week (int), category (keyword),
-    │   source_domain (keyword)
-    └── Week range: 0-5, filtered per query
+└── Collection: cpp_knowledge                 (768-dim, Dot product)
+    ├── Source: C++ Core Guidelines + cppreference.com (offline HTML book, ~6K pages)
+    ├── Content: guidelines rules/examples + API reference (summary, section, example, member)
+    ├── ~25,000+ chunks total
+    ├── Payload indexes: source_domain (keyword)
+    └── Week: always 0 (global, week-agnostic)
+
+Legacy (not currently indexed by default):
+  └── Collection: mit13_course — MIT 6.0013 (6.S096), ~405 chunks
 ```
 
 ### Retrieval routing
 
-Each query hits **exactly two collections** — one course collection (MIT or Harvard) + guidelines:
+Each query hits **exactly two collections** — one course collection (MIT14 or CS50) + C++ knowledge. The course collection is selected by `CourseSource`, and the actual Qdrant collection name is resolved at runtime via `rag.runtime` (supporting both local and Qdrant Cloud):
 
 ```python
 # pipeline.py — run_retrieval()
 
-guidelines = retrieve_guidelines(dense_query)       # → cpp_guidelines (always)
+guidelines = retrieve_guidelines(dense_query)       # → cpp_knowledge (always)
 
-if query.course_source == CourseSource.HARVARD:     # default
-    semantic = retrieve_harvard(dense_query, week)  # → harvard_cs50
+if query.course_source == CourseSource.MIT_14:       # default
+    syllabus = retrieve_syllabus(week)               # → mit14_course
+    semantic = retrieve_semantic(dense_query, week)  # → mit14_course
+    rules    = retrieve_strict_rules(dense_query, week)
+elif query.course_source == CourseSource.CS50:
+    semantic = retrieve_harvard(dense_query, week)   # → cs50_course
     rules    = retrieve_harvard_rules(dense_query, week)
-    syllabus = None                                  # Harvard has no syllabus file
-else:                                                # CourseSource.MIT
-    syllabus = retrieve_syllabus(week)               # → course_knowledge
-    semantic = retrieve_semantic(dense_query, week)  # → course_knowledge
+    syllabus = retrieve_syllabus(week)               # → cs50_course
+else:  # CourseSource.MIT_13 (legacy)
+    syllabus = retrieve_syllabus(week)               # → mit13_course
+    semantic = retrieve_semantic(dense_query, week)  # → mit13_course
     rules    = retrieve_strict_rules(dense_query, week)
 ```
 
 Results from both collections are merged, weighted, diversified, and formatted into a single `[Vector_Database_Results]` block.
 
+### Qdrant Cloud integration
+
+Collection names are configurable, not hardcoded. `rag/runtime.py` reads environment variables to determine both **where** to connect (local vs. cloud) and **which collections** to query:
+
+```bash
+# .env — Qdrant Cloud
+QDRANT_URL=https://your-cluster.qdrant.cloud
+QDRANT_API_KEY=your-api-key
+QDRANT_COLLECTION_MIT14=mit14_course        # optional override
+QDRANT_COLLECTION_CS50=cs50_course          # optional override
+QDRANT_COLLECTION_GUIDELINES=cpp_knowledge  # optional override
+```
+
+When `QDRANT_URL` is set, `create_qdrant_client()` uses gRPC (port 6334) with keepalive; otherwise it falls back to local disk-backed Qdrant at `QDRANT_PATH`.
+
 ### Collection independence
 
 - Each collection has its own **vector space**, **HNSW index**, and **payload storage** — no cross-contamination
 - Concurrent queries to different collections have **no interference**
-- Embedding is computed **once per query** — the same 768-dim vector is used to search both collections
-- At current scale (< 2000 vectors total), overhead is negligible; embedding inference dominates latency
+- Embedding is computed **once per query** — the same 768-dim vector is used to search both the course and C++ knowledge collections
+- GUIDELINES and REFERENCE are stored together in `cpp_knowledge` (week = 0, source_domain distinguishes them)
+- Collection names are resolved via `rag.runtime.get_runtime_config()` at query time, not hardcoded — switching between local and Qdrant Cloud requires only environment variables
 
 ---
 
@@ -238,50 +341,51 @@ Results from both collections are merged, weighted, diversified, and formatted i
                     QueryInput (student message + code AST + terminal + week + mode + course_source)
                         │
                         ├── mode ──→ pipeline.py  ← user-selected, drives all params below
-                        ├── course_source ──→ HARVARD (default) or MIT
+                        ├── course_source ──→ MIT_14 (default), CS50, or MIT_13 (legacy)
                         │
                         ▼
               ┌─────────────────────┐
               │  query_builder.py   │  ← fuse NL, AST hints, terminal error → dense query string
               └─────────┬───────────┘
                         │
-                        │     course_source ──→ HARVARD ──────────────┐
-                        │     course_source ──→ MIT ──────────────────┐│
-                        │                                             ││
-          ┌─────────────┼─────────────────────────────┐               ││
-          ▼                           ▼                ▼              ││
-  retrievers.py               retrievers.py     retrievers.py        ││
-  ├─ syllabus(week)          ├─ semantic(...)   ├─ strict_rules(...)  ││
-  │  exact payload filter     │  vector search   │  vector + category ││
-  │  (MIT only)              │  week: exact or  │  filter + threshold││
-  │                          │  cumulative      │  week: exact or    ││
-  │                          │  top_k: 5 or 8   │  cumulative        ││
-  │                          │                  │                    ││
-  │     ┌────────────────────┼──────────────────┼────────────────────┘│
-  │     │                    │                  │                     │
-  │     │    collection:     │  course_knowledge│                     │
-  │     │                    │                  │                     │
-  │     └────────────────────┼──────────────────┼─────────────────────┘
-  │                          │                  │
-  │     ┌────────────────────┼──────────────────┼─────────────────────┐
-  │     │                    │                  │                     │
-  │     │    collection:     │  harvard_cs50    │                     │
-  │     │    (default)       │                  │                     │
-  │     └────────────────────┼──────────────────┼─────────────────────┘
-  │                          │                  │
-  │     ┌────────────────────┼──────────────────┼─────────────────────┐
-  │     │                    │                  │                     │
-  │     │    collection:     │  cpp_guidelines  │  (always queried)   │
-  │     │                    │  week-agnostic   │                     │
-  │     └────────────────────┴──────────────────┴─────────────────────┘
-  │
-          ┌─────────────┴─────────────────────────────┐
-          ▼                           ▼                ▼
+                        │     course_source ──→ MIT_14 (default) ───────┐
+                        │     course_source ──→ CS50 ───────────────────┐│
+                        │     course_source ──→ MIT_13 (legacy) ───────┐││
+                        │                                              │││
+          ┌─────────────┼──────────────────────────────┐               │││
+          ▼                           ▼                 ▼              │││
+  retrievers.py               retrievers.py      retrievers.py        │││
+  ├─ syllabus(week)          ├─ semantic(...)    ├─ strict_rules(...)  │││
+  │  exact payload filter     │  vector search    │  vector + category │││
+  │  (all courses)           │  week: exact or   │  filter + threshold│││
+  │                          │  cumulative       │  week: exact or    │││
+  │                          │  top_k: 8         │  cumulative        │││
+  │                          │                   │                    │││
+  │     ┌────────────────────┼───────────────────┼────────────────────┘││
+  │     │                    │                   │                     ││
+  │     │    collection:     │  mit14_course     │  (default)          ││
+  │     │                    │                   │                     ││
+  │     └────────────────────┼───────────────────┼──────────────────────┘│
+  │                          │                   │                      │
+  │     ┌────────────────────┼───────────────────┼──────────────────────┐│
+  │     │                    │                   │                      ││
+  │     │    collection:     │  cs50_course      │  (or mit13_course)   ││
+  │     │    retrievers:     │  harvard + harvard_rules                 ││
+  │     └────────────────────┼───────────────────┼──────────────────────┘│
+  │                          │                   │                      │
+  │     ┌────────────────────┼───────────────────┼──────────────────────┐│
+  │     │                    │                   │                      ││
+  │     │    collection:     │  cpp_knowledge    │  (always queried)    ││
+  │     │                    │  week-agnostic    │  guidelines + ref    ││
+  │     └────────────────────┴───────────────────┴──────────────────────┘│
+  │                                                                     │
+          ┌─────────────┴──────────────────────────────┐                │
+          ▼                           ▼                 ▼               │
               ┌─────────────────────┐
               │  reranker.py        │
               │  ├─ deduplicate     │  ← by chunk_id
-              │  ├─ category_weight │  ← HOME: rules×1.8  STUDY: ped×1.5
-              │  ├─ mmr_diversify   │  ← Jaccard token similarity, λ=0.7
+              │  ├─ category_weight │  ← syllabus×1.5  rules×1.6  ped×1.0  guidelines×1.2  supp×1.5
+              │  ├─ mmr_diversify   │  ← similarity rerank, λ=1.0
               │  └─ group_by_category│
               └─────────┬───────────┘
                         │
@@ -305,24 +409,59 @@ Results from both collections are merged, weighted, diversified, and formatted i
 
 ## Category Weight Design
 
-Weights are **mode-aware** — selected at query time based on user-chosen mode:
+A single set of weights is applied to all queries regardless of mode:
 
 ```python
-# reranker.py — MODE_WEIGHTS
-Homework Assist:
-    Syllabus:            1.5   # course boundaries always critical
-    Strict_Rules:        1.8   # rules are the most important during debugging
-    Pedagogical_Context: 0.9
-    Supplementary:       0.3   # dampen distractions
-
-Study Assist:
-    Syllabus:            1.5
-    Strict_Rules:        1.0
-    Pedagogical_Context: 1.5   # concepts are the focus in learning mode
-    Supplementary:       0.8   # extra material is valuable for learning
+# reranker.py — CATEGORY_WEIGHTS (default)
+Syllabus:            1.5   # course boundaries always critical
+Strict_Rules:        1.6
+Pedagogical_Context: 1.0
+Guideline:           1.2
+Supplementary:       1.5
 ```
 
-**Rationale**: The CodingRabbit needs "what NOT to do" boundaries (Syllabus Forbidden + Strict Rules) during debugging, but concept explanations take priority when a student is studying.
+### C++-focused weight set
+
+When the query suggests C++ STL/reference material is relevant (determined by
+`should_search_cpp()`), the pipeline can route through `CATEGORY_WEIGHTS_CPP`.
+The current final tuning keeps that set identical to `CATEGORY_WEIGHTS`:
+
+```python
+# reranker.py — CATEGORY_WEIGHTS_CPP
+Syllabus:            1.5
+Strict_Rules:        1.6
+Pedagogical_Context: 1.0
+Guideline:           1.2
+Supplementary:       1.5
+```
+
+### should_search_cpp() trigger
+
+```python
+# reranker.py
+def should_search_cpp(query_text: str, *, code_raw: str = "") -> bool:
+    if "std::" in query_text or "std::" in code_raw:
+        return True
+    return False
+```
+
+In `pipeline.py`, the decision is combined with AST features from the IDE:
+
+```python
+search_cpp = (
+    should_search_cpp(dense_query, code_raw=query.code_raw)
+    or any([query.ast_features.has_pointer, query.ast_features.has_reference,
+            query.ast_features.has_new, query.ast_features.has_delete])
+)
+weights = CATEGORY_WEIGHTS_CPP if search_cpp else CATEGORY_WEIGHTS
+```
+
+**Rationale**: Syllabus and Strict Rules form the hard boundaries (Layer 1),
+while Pedagogical Context, Guidelines, and Supplementary material remain
+competitive enough to survive the final similarity-ranked context when they
+directly match the student query. The mode distinction (Homework vs. Study) is
+handled through retrieval parameters (`top_k`, `cumulative`, `threshold`)
+rather than weights.
 
 ---
 
@@ -338,14 +477,18 @@ MODE_PARAMS = {
     Homework Assist: {
         "cumulative": False,       # current week only
         "semantic_top_k": 5,
+        "rules_top_k": 3,
         "rules_threshold": 0.55,   # tighter — only highly relevant rules
+        "guidelines_top_k": 5,
         "final_k": 5,
     },
     Study Assist: {
         "cumulative": True,        # weeks 1..X (allow review)
-        "semantic_top_k": 8,
+        "semantic_top_k": 5,
+        "rules_top_k": 3,
         "rules_threshold": 0.45,   # relaxed — more conceptual material
-        "final_k": 8,
+        "guidelines_top_k": 5,
+        "final_k": 5,
     },
 }
 ```
@@ -353,8 +496,7 @@ MODE_PARAMS = {
 | Dimension | Homework Assist | Study Assist |
 |-----------|----------------|--------------|
 | **Week range** | Current week only | Cumulative weeks 1..X (review allowed, no spoilers) |
-| **Category weights** | Strict_Rules ↑↑, Supplementary ↓ | Pedagogical ↑↑, Supplementary ↑ |
-| **top_k** | Few and precise (5) | More context (8) |
+| **top_k** | Few and precise (5) | Cumulative but still capped (5) |
 
 ---
 
@@ -368,43 +510,48 @@ The retriever handles two kinds of content with different week semantics:
                          week field      retrieval rule
                          ──────────      ───────────────
 Course material          week = 1..8  →  week ∈ [1, current_week]
-  (MIT lecture slides,   week = 0..5  →  week ∈ [0, current_week]
-   Harvard notes,
+  (MIT14 lecture blocks, week = 0..5  →  week ∈ [0, current_week]
+   CS50 notes/transcripts,
    syllabus, rules)
 
 External references      week = 0     →  always included (week-agnostic)
   (CppCoreGuidelines,
-   future: cppreference)
+   cppreference)
 ```
 
 ### Course routing: `CourseSource` enum
 
-MIT and Harvard are **parallel, mutually exclusive** course sources. The `course_source` field in `QueryInput` determines which course collection is queried:
+MIT14 and CS50 are **parallel, mutually exclusive** course sources. MIT13 is a legacy option. The `course_source` field in `QueryInput` determines which course collection is queried:
 
 ```python
 class CourseSource(str, Enum):
-    MIT = "mit"
-    HARVARD = "harvard"  # default
+    MIT_13 = "mit13"    # MIT 6.0013 — legacy
+    MIT_14 = "mit14"    # MIT 6.0014 (IAP 2014) — default
+    CS50 = "cs50"       # Harvard CS50
 ```
 
 ```python
-# Default: Harvard CS50
-result = run_retrieval(QueryInput(..., week=2))
-# → queries harvard_cs50 + cpp_guidelines
+# Default: MIT 2014
+result = run_retrieval(QueryInput(..., week=3))
+# → queries mit14_course + cpp_knowledge
 
-# Explicit MIT
-result = run_retrieval(QueryInput(..., week=3, course_source=CourseSource.MIT))
-# → queries course_knowledge + cpp_guidelines
+# Explicit Harvard CS50
+result = run_retrieval(QueryInput(..., week=2, course_source=CourseSource.CS50))
+# → queries cs50_course + cpp_knowledge
+
+# Legacy MIT 6.0013
+result = run_retrieval(QueryInput(..., week=3, course_source=CourseSource.MIT_13))
+# → queries mit13_course + cpp_knowledge
 ```
 
 ### Why separate collections instead of a single shared one
 
 | Approach | Pros | Cons |
 |----------|------|------|
-| **Single collection** with `source_domain` filter | Simpler code, one index | Week semantics conflict (MIT 1-8 vs Harvard 0-5); cross-contamination risk; harder to rebuild independently |
+| **Single collection** with `source_domain` filter | Simpler code, one index | Week semantics conflict (MIT14 1-8 vs CS50 0-5); cross-contamination risk; harder to rebuild independently |
 | **Separate collections** (current) | Clean isolation; independent lifecycle (rebuild, delete); no cross-contamination; different payload index strategies | Slightly more code (but mostly mechanical) |
 
-For two parallel courses with different syllabi, week structures, and content domains, separate collections provide cleaner separation. The `CourseSource` enum makes the routing explicit and extensible (add `STANFORD`, `BERKELEY`, etc. by adding an enum value + collection + loader + retriever).
+For multiple courses with different syllabi, week structures, and content domains, separate collections provide cleaner separation. The `CourseSource` enum makes the routing explicit and extensible (add `STANFORD`, `BERKELEY`, etc. by adding an enum value + collection + loader + retriever + runtime config).
 
 This is enforced via a single Qdrant payload filter with conditional week matching:
 
@@ -437,19 +584,22 @@ class SourceDomain(str, Enum):
     MIT_OCW_SYLLABUS = "mit_ocw_syllabus"
     MIT_OCW_ASSIGNMENT = "mit_ocw_assignment"
     CPP_CORE_GUIDELINES = "cpp_core_guidelines"  # external, week-agnostic
+    CPP_REFERENCE = "cpp_reference"               # cppreference.com API reference, week-agnostic
     HARVARD_CS50 = "harvard_cs50"                  # Harvard CS50, parallel to MIT
 
 class CourseSource(str, Enum):
-    MIT = "mit"
-    HARVARD = "harvard"  # default
+    MIT_13 = "mit13"    # MIT 6.0013 (6.S096) — legacy
+    MIT_14 = "mit14"    # MIT 6.0014 (IAP 2014) — default
+    CS50 = "cs50"       # Harvard CS50
 ```
 
-Adding a new course source (e.g. `STANFORD_CS107`) is four steps:
+Adding a new course source (e.g. `STANFORD_CS107`) is five steps:
 1. Add `SourceDomain` enum value
 2. Add `CourseSource` enum value
 3. Write a loader (implement `load_all() → list[ChunkPayload]`)
-4. Add ensure/upsert functions for the new collection
-5. Add retriever functions + route in `pipeline.py`
+4. Add ensure/upsert functions for the new collection in `setup_qdrant.py`
+5. Add collection to `rag/runtime.py` (`RagRuntimeConfig` + `collection_for()`)
+6. Add retriever functions + route in `pipeline.py`
 
 ### Why `week = 0` instead of a separate field
 
@@ -562,30 +712,29 @@ load_dotenv()
 ### 3. Build the Qdrant index
 
 ```bash
+# Local disk-backed Qdrant
 rm -rf qdrant_local_data
+PYTHONPATH=. python rag/setup_qdrant.py
+
+# Index a specific course only
+PYTHONPATH=. python rag/setup_qdrant.py --course mit14   # MIT 2014 only
+PYTHONPATH=. python rag/setup_qdrant.py --course cs50    # CS50 only
+PYTHONPATH=. python rag/setup_qdrant.py --course cpp     # C++ knowledge only
+
+# Qdrant Cloud (set env vars first)
+QDRANT_URL=https://your-cluster.qdrant.cloud \
+QDRANT_API_KEY=your-key \
 PYTHONPATH=. python rag/setup_qdrant.py
 ```
 
-This loads all course materials from `raw_data/` (MIT OCW + C++ Core Guidelines + Harvard CS50), embeds them with `multi-qa-mpnet-base-dot-v1`, and indexes into three Qdrant collections.
+This loads all course materials from `raw_data/` (MIT 2014 + Harvard CS50 + C++ knowledge), embeds them with `BAAI/bge-large-en-v1.5`, and indexes into three Qdrant collections (configurable via `rag/runtime.py`).
 
 ### 4. Retrieve context
 
 ```python
 from rag import run_retrieval, QueryInput, ASTFeatures, AssistMode, CourseSource
 
-# Harvard CS50 (default)
-result = run_retrieval(QueryInput(
-    student_message="Why does my program crash?",
-    code_raw="int* p; *p = 5;",
-    terminal_output="Segmentation fault (core dumped)",
-    exit_code=139,
-    week=2,
-    mode=AssistMode.HOMEWORK_ASSIST,
-    ast_features=ASTFeatures(has_pointer=True),
-    # course_source defaults to CourseSource.HARVARD
-))
-
-# MIT OCW (explicit)
+# MIT 2014 (default)
 result = run_retrieval(QueryInput(
     student_message="Why does my program crash?",
     code_raw="int* p; *p = 5;",
@@ -593,7 +742,19 @@ result = run_retrieval(QueryInput(
     exit_code=139,
     week=3,
     mode=AssistMode.HOMEWORK_ASSIST,
-    course_source=CourseSource.MIT,
+    ast_features=ASTFeatures(has_pointer=True),
+    # course_source defaults to CourseSource.MIT_14
+))
+
+# Harvard CS50 (explicit)
+result = run_retrieval(QueryInput(
+    student_message="Why does my program crash?",
+    code_raw="int* p; *p = 5;",
+    terminal_output="Segmentation fault (core dumped)",
+    exit_code=139,
+    week=2,
+    mode=AssistMode.HOMEWORK_ASSIST,
+    course_source=CourseSource.CS50,
     ast_features=ASTFeatures(has_pointer=True),
 ))
 
