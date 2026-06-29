@@ -160,7 +160,7 @@ OPEN_AI_KEY = userdata.get('OPENAI_API_KEY')
 # model_gpt_4o = ChatOpenAI(openai_api_key=OPEN_AI_KEY, model="gpt-4o-mini")
 
 ta_model= ChatOpenAI(openai_api_key=OPEN_AI_KEY, model="gpt-4o-mini") #cheap model to use
-judge_model=ChatOpenAI(openai_api_key=OPEN_AI_KEY, model="gpt-4o-mini") #https://developers.openai.com/api/docs/models/gpt-5.4-mini (gpt-5.4-mini or gpt-4o-mini or gpt-5-nano)
+judge_model=ChatOpenAI(openai_api_key=OPEN_AI_KEY, model="gpt-4o-mini", temperature= 0) #https://developers.openai.com/api/docs/models/gpt-5.4-mini (gpt-5.4-mini or gpt-4o-mini or gpt-5-nano)
 
 """## Cohere Models"""
 
@@ -1361,8 +1361,6 @@ def make_visuals(name):
   plt.title(name + f": Drift (rate={drift.get('drift_rate')})- left of red=worse")
   plt.tight_layout()
   plt.show()
-
-
 
 for name in all_datasets:
   print(name, "-"*100); make_visuals(name)
