@@ -9,12 +9,13 @@ export function AuthCallbackPage() {
       <div
         style={{
           minHeight: "100vh",
-          background: D.bg,
+          background:
+            "linear-gradient(180deg, rgba(255,253,248,0.98) 0%, rgba(248,243,234,0.98) 100%)",
           color: D.text,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          fontFamily: "system-ui, sans-serif",
+          fontFamily: "var(--font-sans)",
         }}
       >
         Completing sign in...
@@ -27,12 +28,13 @@ export function AuthCallbackPage() {
       <div
         style={{
           minHeight: "100vh",
-          background: D.bg,
+          background:
+            "linear-gradient(180deg, rgba(255,253,248,0.98) 0%, rgba(248,243,234,0.98) 100%)",
           color: D.red,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          fontFamily: "system-ui, sans-serif",
+          fontFamily: "var(--font-sans)",
         }}
       >
         Sign-in failed: {auth.error.message}
@@ -44,12 +46,13 @@ export function AuthCallbackPage() {
     <div
       style={{
         minHeight: "100vh",
-        background: D.bg,
+        background:
+          "linear-gradient(180deg, rgba(255,253,248,0.98) 0%, rgba(248,243,234,0.98) 100%)",
         color: D.text,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        fontFamily: "system-ui, sans-serif",
+        fontFamily: "var(--font-sans)",
       }}
     >
       Redirecting...

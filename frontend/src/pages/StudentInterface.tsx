@@ -75,9 +75,10 @@ export function StudentInterface({
         display: "flex",
         flexDirection: "column",
         minHeight: "100vh",
-        background: D.bg,
+        background:
+          "linear-gradient(180deg, rgba(255,253,248,0.98) 0%, rgba(248,243,234,0.98) 100%)",
         color: D.text,
-        fontFamily: "system-ui, sans-serif",
+        fontFamily: "var(--font-sans)",
       }}
     >
       <TopBar
@@ -99,7 +100,7 @@ export function StudentInterface({
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "minmax(0, 1.4fr) minmax(300px, 0.9fr)",
+              gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
               gap: 18,
             }}
           >
@@ -280,7 +281,7 @@ export function StudentInterface({
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
               gap: 16,
               marginTop: 18,
             }}

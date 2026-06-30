@@ -79,7 +79,7 @@ export function ProfessorDashboard({
   const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
   const [students, setStudents] = useState<ProfessorSectionStudent[]>([]);
   const [loadingSections, setLoadingSections] = useState(true);
-  const [loadingStudents, setLoadingStudents] = useState(false);
+  const [studentFetchComplete, setStudentFetchComplete] = useState(false);
   const [sectionError, setSectionError] = useState<string | null>(null);
   const [studentError, setStudentError] = useState<string | null>(null);
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
@@ -93,6 +93,7 @@ export function ProfessorDashboard({
     () => students.find((student) => student.user_id === selectedStudentId) ?? null,
     [selectedStudentId, students]
   );
+  const loadingStudents = Boolean(selectedSectionId) && !studentFetchComplete && !studentError;
 
   useEffect(() => {
     saveWeekLaunchConfigs(weeks);
@@ -124,15 +125,10 @@ export function ProfessorDashboard({
 
   useEffect(() => {
     if (!selectedSectionId) {
-      setStudents([]);
-      setSelectedStudentId(null);
       return;
     }
 
     let cancelled = false;
-    setLoadingStudents(true);
-    setStudentError(null);
-    setSelectedStudentId(null);
 
     void listProfessorSectionStudents(selectedSectionId, accessToken)
       .then((nextStudents) => {
@@ -147,7 +143,7 @@ export function ProfessorDashboard({
         }
       })
       .finally(() => {
-        if (!cancelled) setLoadingStudents(false);
+        if (!cancelled) setStudentFetchComplete(true);
       });
 
     return () => {
@@ -165,6 +161,14 @@ export function ProfessorDashboard({
     setWeeks(defaultWeekLaunchConfigs.map((week) => ({ ...week })));
   };
 
+  const handleSectionChange = (nextSectionId: string | null) => {
+    setSelectedSectionId(nextSectionId);
+    setStudents([]);
+    setSelectedStudentId(null);
+    setStudentError(null);
+    setStudentFetchComplete(false);
+  };
+
   const rosterSummary = selectedSection
     ? `${selectedSection.student_count} students · ${selectedSection.ta_count} TAs · ${selectedSection.professor_count} professors`
     : "Select a section to view the roster";
@@ -175,9 +179,10 @@ export function ProfessorDashboard({
         display: "flex",
         flexDirection: "column",
         height: "100vh",
-        background: D.bg,
+        background:
+          "linear-gradient(180deg, rgba(255,253,248,0.98) 0%, rgba(248,243,234,0.98) 100%)",
         color: D.text,
-        fontFamily: "system-ui, sans-serif",
+        fontFamily: "var(--font-sans)",
       }}
     >
       <TopBar
@@ -201,7 +206,7 @@ export function ProfessorDashboard({
         <span style={{ fontSize: 13, color: D.muted }}>Teaching:</span>
         <select
           value={selectedSectionId ?? ""}
-          onChange={(event) => setSelectedSectionId(event.target.value || null)}
+          onChange={(event) => handleSectionChange(event.target.value || null)}
           style={{
             background: D.card,
             border: `1px solid ${D.border}`,
@@ -249,7 +254,7 @@ export function ProfessorDashboard({
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "repeat(4, 1fr)",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))",
                   gap: 12,
                   marginBottom: 18,
                 }}
@@ -420,7 +425,7 @@ export function ProfessorDashboard({
                   <div
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "repeat(3, 1fr)",
+                      gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
                       gap: 12,
                     }}
                   >

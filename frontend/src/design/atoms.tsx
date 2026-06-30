@@ -10,16 +10,17 @@ export function Tag({ children, color = D.orange }: TagProps) {
   return (
     <span
       style={{
-        background: `${color}18`,
+        background: `${color}12`,
         color,
-        border: `1px solid ${color}30`,
-        borderRadius: 4,
-        padding: "2px 7px",
+        border: `1px solid ${color}24`,
+        borderRadius: 999,
+        padding: "4px 10px",
         fontSize: 11,
-        fontWeight: 500,
+        fontWeight: 700,
         ...mono,
-        letterSpacing: 0.3,
+        letterSpacing: 0.4,
         whiteSpace: "nowrap",
+        boxShadow: "0 6px 16px rgba(15, 23, 42, 0.04)",
       }}
     >
       {children}
@@ -49,16 +50,22 @@ export function Btn({
   const pad = small ? "5px 11px" : "8px 18px";
   const fs = small ? 12 : 13;
   const map: Record<BtnVariant, CSSProperties> = {
-    primary: { background: D.orange, color: "#fff", border: "none" },
+    primary: {
+      background: `linear-gradient(180deg, ${D.orange} 0%, #ea580c 100%)`,
+      color: "#fff",
+      border: "none",
+      boxShadow: "0 10px 20px rgba(249, 115, 22, 0.22)",
+    },
     ghost: {
-      background: "transparent",
-      color: D.muted,
+      background: "#FFFFFF",
+      color: D.text,
       border: `1px solid ${D.border}`,
+      boxShadow: "0 8px 18px rgba(15, 23, 42, 0.04)",
     },
     danger: {
-      background: `${D.red}18`,
+      background: `${D.red}10`,
       color: D.red,
-      border: `1px solid ${D.red}30`,
+      border: `1px solid ${D.red}24`,
     },
   };
   return (
@@ -68,10 +75,10 @@ export function Btn({
       disabled={disabled}
       style={{
         ...map[variant],
-        borderRadius: 6,
+        borderRadius: 999,
         padding: pad,
         fontSize: fs,
-        fontWeight: 500,
+        fontWeight: 700,
         cursor: disabled ? "not-allowed" : "pointer",
         opacity: disabled ? 0.5 : 1,
         fontFamily: "inherit",
@@ -96,8 +103,9 @@ export function Card({ children, style: sx = {}, onClick }: CardProps) {
       style={{
         background: D.card,
         border: `1px solid ${D.border}`,
-        borderRadius: 10,
-        padding: "16px 18px",
+        borderRadius: 20,
+        padding: "18px 20px",
+        boxShadow: "0 14px 36px rgba(15, 23, 42, 0.06)",
         cursor: onClick ? "pointer" : undefined,
         ...sx,
       }}
@@ -122,8 +130,8 @@ export function Stat({ label, value, sub, color = D.orange }: StatProps) {
       </div>
       <div
         style={{
-          fontSize: 26,
-          fontWeight: 600,
+          fontSize: 28,
+          fontWeight: 700,
           color,
           lineHeight: 1.1,
           marginBottom: 4,
@@ -151,14 +159,15 @@ export function Avatar({ name, color = D.orange, size = 34, stuck }: AvatarProps
         height: size,
         borderRadius: "50%",
         flexShrink: 0,
-        background: stuck ? `${D.red}18` : D.orangeGlow,
-        border: `1px solid ${stuck ? `${D.red}50` : D.orangeBorder}`,
+        background: stuck ? `${D.red}10` : `${color}12`,
+        border: `1px solid ${stuck ? `${D.red}32` : `${color}24`}`,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
         fontSize: size * 0.38,
-        fontWeight: 600,
+        fontWeight: 700,
         color: stuck ? D.red : color,
+        boxShadow: "0 8px 16px rgba(15, 23, 42, 0.05)",
       }}
     >
       {name[0]}
@@ -179,14 +188,21 @@ export function ProgressBar({ pct }: ProgressBarProps) {
       </div>
       <div
         style={{
-          height: 3,
+          height: 6,
           background: D.border,
-          borderRadius: 2,
+          borderRadius: 999,
           overflow: "hidden",
           width: 90,
         }}
       >
-        <div style={{ width: `${pct}%`, height: "100%", background: bg }} />
+        <div
+          style={{
+            width: `${pct}%`,
+            height: "100%",
+            background: bg,
+            borderRadius: 999,
+          }}
+        />
       </div>
     </div>
   );

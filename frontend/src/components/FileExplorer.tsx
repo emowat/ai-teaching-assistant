@@ -80,7 +80,7 @@ export function FileExplorer({
         width: collapsed ? WIDTH_COLLAPSED : WIDTH_OPEN,
         minWidth: collapsed ? WIDTH_COLLAPSED : WIDTH_OPEN,
         borderRight: `1px solid ${D.border}`,
-        background: "#141414",
+        background: "rgba(255, 253, 248, 0.88)",
         display: "flex",
         flexDirection: "column",
         flexShrink: 0,
@@ -165,7 +165,7 @@ export function FileExplorer({
                   background: isActive
                     ? D.orangeGlow
                     : isHovered
-                      ? "rgba(255,255,255,0.04)"
+                      ? "rgba(249, 115, 22, 0.06)"
                       : "transparent",
                   borderLeft: `2px solid ${isActive ? D.orange : "transparent"}`,
                 }}

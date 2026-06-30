@@ -20,13 +20,14 @@ export function Sidebar({ tabs, active, onTab, footer }: SidebarProps) {
   return (
     <div
       style={{
-        width: 208,
+        width: 224,
         borderRight: `1px solid ${D.border}`,
-        background: D.surface,
-        padding: "14px 10px",
+        background: "rgba(255, 253, 248, 0.88)",
+        padding: "16px 12px",
         display: "flex",
         flexDirection: "column",
         flexShrink: 0,
+        boxShadow: "inset -1px 0 0 rgba(15, 23, 42, 0.02)",
       }}
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
@@ -42,19 +43,20 @@ export function Sidebar({ tabs, active, onTab, footer }: SidebarProps) {
               if (!isDisabled) onTab(t.key);
             }}
             style={{
-              background: active === t.key ? D.orangeGlow : "transparent",
+              background: active === t.key ? "#FFFFFF" : "transparent",
               border: `1px solid ${active === t.key ? D.orangeBorder : "transparent"}`,
               color: active === t.key ? D.orange : isDisabled ? D.dim : D.muted,
-              borderRadius: 7,
-              padding: "9px 11px",
+              borderRadius: 14,
+              padding: "10px 12px",
               cursor: isDisabled ? "not-allowed" : "pointer",
               textAlign: "left",
               fontSize: 13,
-              fontWeight: active === t.key ? 500 : 400,
+              fontWeight: active === t.key ? 700 : 500,
               display: "flex",
               alignItems: "center",
               gap: 8,
               opacity: isDisabled ? 0.45 : 1,
+              boxShadow: active === t.key ? "0 8px 18px rgba(249, 115, 22, 0.08)" : "none",
             }}
           >
             <span style={{ fontSize: 14 }}>{t.icon}</span>

@@ -1,3 +1,16 @@
+:root {
+  --font-sans: "Nunito", "Poppins", "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+  --app-bg: #faf7f0;
+  --app-surface: #fffdf8;
+  --app-card: #ffffff;
+  --app-border: #e7ddcf;
+  --app-text: #1f2937;
+  --app-muted: #6b7280;
+  color-scheme: light;
+  background: var(--app-bg);
+}
+
 *,
 *::before,
 *::after {
@@ -15,12 +28,23 @@ body,
 body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  font-family: var(--font-sans);
+  background:
+    radial-gradient(circle at top left, rgba(249, 115, 22, 0.14), transparent 30%),
+    radial-gradient(circle at top right, rgba(37, 99, 235, 0.08), transparent 24%),
+    linear-gradient(180deg, #fffdf8 0%, #f8f3ea 100%);
+  color: var(--app-text);
+  min-height: 100vh;
 }
 
 button,
 textarea,
 select {
   font-family: inherit;
+}
+
+a {
+  color: inherit;
 }
 
 .monaco-line-warning {

@@ -545,9 +545,10 @@ export function AdminDashboard({
         display: "flex",
         flexDirection: "column",
         height: "100vh",
-        background: D.bg,
+        background:
+          "linear-gradient(180deg, rgba(255,253,248,0.98) 0%, rgba(248,243,234,0.98) 100%)",
         color: D.text,
-        fontFamily: "system-ui, sans-serif",
+        fontFamily: "var(--font-sans)",
       }}
     >
       <TopBar
@@ -631,7 +632,7 @@ export function AdminDashboard({
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "repeat(4, 1fr)",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))",
                   gap: 12,
                   marginBottom: 18,
                 }}
@@ -641,7 +642,13 @@ export function AdminDashboard({
                 <Stat label="// problems.solved" value="150" sub="71% resolution rate" color={D.green} />
                 <Stat label="// avg.session_min" value="24m" sub="↑ 3 min this week" color={D.blue} />
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "5fr 2fr", gap: 14 }}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "minmax(0, 1.6fr) minmax(280px, 0.8fr)",
+                  gap: 14,
+                }}
+              >
                 <Card>
                   <div style={{ ...mono, fontSize: 11, color: D.muted, marginBottom: 14 }}>
                     // sessions_this_week
@@ -698,7 +705,13 @@ export function AdminDashboard({
                 </span>
               </div>
               <Card style={{ display: "grid", gap: 16, marginBottom: 16 }}>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+                    gap: 16,
+                  }}
+                >
                   <label style={{ display: "grid", gap: 6 }}>
                     <span style={{ fontSize: 12, color: D.muted }}>RAG provider</span>
                     <select
@@ -744,7 +757,13 @@ export function AdminDashboard({
                   )}
                 </div>
 
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+                    gap: 16,
+                  }}
+                >
                   <label style={{ display: "grid", gap: 6 }}>
                     <span style={{ fontSize: 12, color: D.muted }}>Chat provider</span>
                     <select
@@ -791,7 +810,13 @@ export function AdminDashboard({
                   )}
                 </div>
 
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+                    gap: 16,
+                  }}
+                >
                   <div style={{ display: "grid", gap: 6 }}>
                     <span style={{ fontSize: 12, color: D.muted }}>
                       OpenAI secret {config?.openai_api_key_configured ? "(configured)" : "(not set)"}
@@ -879,7 +904,13 @@ export function AdminDashboard({
                 {formStatus && <div style={{ color: D.green, fontSize: 12 }}>{formStatus}</div>}
               </Card>
 
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                  gap: 10,
+                }}
+              >
                 <Card>
                   <div style={{ fontSize: 12, color: D.muted, marginBottom: 6 }}>RAG route</div>
                   <div style={{ ...mono, fontSize: 13 }}>

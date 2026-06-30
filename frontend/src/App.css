@@ -1,12 +1,12 @@
 :root {
-  --bg: #0f1117;
-  --surface: #1a1d27;
-  --border: #2a2d3a;
+  --bg: #faf7f0;
+  --surface: #ffffff;
+  --border: #e7ddcf;
   --accent: #f97316;
-  --accent-hover: #ea6c0a;
-  --text: #e8eaf0;
+  --accent-hover: #ea580c;
+  --text: #1f2937;
   --muted: #8b8fa8;
-  --radius: 10px;
+  --radius: 16px;
 }
 
 * {
@@ -18,7 +18,7 @@
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+  font-family: var(--font-sans);
   min-height: 100vh;
 }
 

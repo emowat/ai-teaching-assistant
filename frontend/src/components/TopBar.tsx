@@ -21,13 +21,19 @@ export function TopBar({
     <div
       style={{
         height: 48,
-        background: D.bg,
+        background: "rgba(255, 253, 248, 0.84)",
         borderBottom: `1px solid ${D.border}`,
         display: "flex",
         alignItems: "center",
         padding: "0 20px",
         justifyContent: "space-between",
         flexShrink: 0,
+        backdropFilter: "blur(16px)",
+        WebkitBackdropFilter: "blur(16px)",
+        boxShadow: "0 8px 24px rgba(15, 23, 42, 0.04)",
+        position: "sticky",
+        top: 0,
+        zIndex: 20,
       }}
     >
       <button
@@ -43,7 +49,7 @@ export function TopBar({
           padding: 0,
         }}
       >
-        <span style={{ ...mono, fontSize: 15, fontWeight: 700, color: D.text }}>
+        <span style={{ ...mono, fontSize: 15, fontWeight: 800, color: D.text }}>
           codingrabbit<span style={{ color: D.orange }}>.dev</span>
         </span>
         <span style={{ fontSize: 14 }}>🐇</span>
@@ -58,14 +64,15 @@ export function TopBar({
                 type="button"
                 onClick={() => onNavigate(v)}
                 style={{
-                  background: view === v ? D.orangeGlow : "transparent",
+                  background: view === v ? D.orangeGlow : "#FFFFFF",
                   border: `1px solid ${view === v ? D.orangeBorder : D.border}`,
                   color: view === v ? D.orange : D.muted,
-                  borderRadius: 6,
-                  padding: "4px 11px",
+                  borderRadius: 999,
+                  padding: "5px 12px",
                   cursor: "pointer",
                   fontSize: 12,
-                  fontWeight: view === v ? 500 : 400,
+                  fontWeight: view === v ? 700 : 500,
+                  boxShadow: "0 8px 18px rgba(15, 23, 42, 0.04)",
                 }}
               >
                 {getViewLabel(v)}
@@ -78,13 +85,14 @@ export function TopBar({
             type="button"
             onClick={onSignOut}
             style={{
-              background: "transparent",
+              background: "#FFFFFF",
               border: `1px solid ${D.border}`,
-              color: D.muted,
-              borderRadius: 6,
-              padding: "4px 11px",
+              color: D.text,
+              borderRadius: 999,
+              padding: "5px 12px",
               cursor: "pointer",
               fontSize: 12,
+              boxShadow: "0 8px 18px rgba(15, 23, 42, 0.04)",
             }}
           >
             Sign out

@@ -67,9 +67,10 @@ function App() {
       <div
         style={{
           minHeight: "100vh",
-          background: D.bg,
+          background:
+            "linear-gradient(180deg, rgba(255,253,248,0.98) 0%, rgba(248,243,234,0.98) 100%)",
           color: D.text,
-          fontFamily: "system-ui, sans-serif",
+          fontFamily: "var(--font-sans)",
           padding: 48,
           maxWidth: 640,
         }}
@@ -97,12 +98,13 @@ function App() {
       <div
         style={{
           minHeight: "100vh",
-          background: D.bg,
+          background:
+            "linear-gradient(180deg, rgba(255,253,248,0.98) 0%, rgba(248,243,234,0.98) 100%)",
           color: D.muted,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          fontFamily: "system-ui, sans-serif",
+          fontFamily: "var(--font-sans)",
         }}
       >
         Loading...
@@ -115,12 +117,13 @@ function App() {
       <div
         style={{
           minHeight: "100vh",
-          background: D.bg,
+          background:
+            "linear-gradient(180deg, rgba(255,253,248,0.98) 0%, rgba(248,243,234,0.98) 100%)",
           color: D.red,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          fontFamily: "system-ui, sans-serif",
+          fontFamily: "var(--font-sans)",
           padding: 24,
         }}
       >
@@ -150,9 +153,10 @@ function App() {
     <div
       style={{
         minHeight: "100vh",
-        background: D.bg,
+        background:
+          "linear-gradient(180deg, rgba(255,253,248,0.98) 0%, rgba(248,243,234,0.98) 100%)",
         color: D.text,
-        fontFamily: "system-ui, sans-serif",
+        fontFamily: "var(--font-sans)",
         padding: 48,
       }}
     >

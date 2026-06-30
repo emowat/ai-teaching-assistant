@@ -14,8 +14,8 @@ export function ConsolePanel({ result, loading, error }: ConsolePanelProps) {
   return (
     <div
       style={{
-        borderTop: "1px solid #111",
-        background: "#1a1a1a",
+        borderTop: `1px solid ${D.border}`,
+        background: D.card,
         display: "flex",
         flexDirection: "column",
         minHeight: 160,
@@ -26,7 +26,7 @@ export function ConsolePanel({ result, loading, error }: ConsolePanelProps) {
       <div
         style={{
           padding: "6px 12px",
-          borderBottom: "1px solid #252526",
+          borderBottom: `1px solid ${D.border}`,
           display: "flex",
           alignItems: "center",
           gap: 10,
@@ -59,7 +59,7 @@ export function ConsolePanel({ result, loading, error }: ConsolePanelProps) {
           ...mono,
           fontSize: 12,
           lineHeight: 1.55,
-          color: error ? D.red : compile?.stderr ? "#fca5a5" : D.dim,
+          color: error ? D.red : compile?.stderr ? "#B91C1C" : D.muted,
           whiteSpace: "pre-wrap",
           wordBreak: "break-word",
         }}
