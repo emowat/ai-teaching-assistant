@@ -473,12 +473,14 @@ This is the online application runtime for `/api/chat`, `/query`, `/me`, and the
 ```bash
 ./deploy/scripts/provision-rag-eng-stack.sh describe
 ./deploy/scripts/provision-rag-eng-stack.sh apply
+./deploy/scripts/provision-rag-eng-stack.sh apply --skip-preflight
 ```
 
 **Notes:**
 
 - The script expects the `rag_eng_ecs` block in `deploy/deployment.yaml` to contain the shared network and runtime settings.
 - The resulting ARNs and DNS name are printed as JSON so they can be copied back into `deploy/deployment.yaml`.
+- `apply` runs a local preflight gate first: `git diff --check`, `ruff check deploy/provision_rag_eng_stack.py deploy/deploy_rag_eng_ecs.py deploy/deployment_config.py rag_eng`, and the local `pytest` battery for the backend/deploy code. Use `--skip-preflight` or `RAG_ENG_SKIP_PREFLIGHT=1` only when you need an emergency bypass.
 
 ### Frontend static hosting
 

@@ -191,7 +191,7 @@ def test_run_retrieval_uses_registry_collection_name(monkeypatch) -> None:
         lambda dense_query, top_k, threshold: [],
     )
 
-    def fake_syllabus(week, *, collection_name):
+    def fake_syllabus(week, *, course=None, collection_name=None):
         captured["syllabus_collection"] = collection_name
         return SimpleNamespace()
 
@@ -199,7 +199,9 @@ def test_run_retrieval_uses_registry_collection_name(monkeypatch) -> None:
         captured["semantic_collection"] = collection_name
         return []
 
-    def fake_rules(dense_query, week, top_k=3, threshold=0.55, *, cumulative=False, collection_name):
+    def fake_rules(
+        dense_query, week, top_k=3, threshold=0.55, *, cumulative=False, collection_name
+    ):
         captured["rules_collection"] = collection_name
         return []
 
@@ -229,12 +231,12 @@ def test_run_retrieval_uses_registry_collection_name(monkeypatch) -> None:
             week=3,
             mode=AssistMode.HOMEWORK_ASSIST,
             course_id="mit14",
-            course_source=CourseSource.CS50,
+            course_source=CourseSource.MIT_14,
         )
     )
 
     assert result.formatted_context == "[ctx]"
-    assert captured["syllabus_collection"] == "mit14_course"
+    assert captured["syllabus_collection"] is None
     assert captured["semantic_collection"] == "mit14_course"
     assert captured["rules_collection"] == "mit14_course"
 
@@ -254,7 +256,7 @@ def test_run_retrieval_applies_rerank_strategy_controls(monkeypatch) -> None:
 
     monkeypatch.setattr("rag.pipeline.retrieve_guidelines", fake_guidelines)
 
-    def fake_syllabus(week, *, collection_name):
+    def fake_syllabus(week, *, course=None, collection_name=None):
         return SimpleNamespace()
 
     def fake_semantic(
@@ -307,9 +309,9 @@ def test_run_retrieval_applies_rerank_strategy_controls(monkeypatch) -> None:
 
     assert captured["final_k"] == 8
     assert captured["lambda_param"] == 0.7
-    assert captured["semantic_top_k"] == 32
-    assert captured["rules_top_k"] == 32
-    assert captured["guidelines_top_k"] == 3
+    assert captured["semantic_top_k"] == 5
+    assert captured["rules_top_k"] == 3
+    assert captured["guidelines_top_k"] == 5
 
 
 def test_run_retrieval_rejects_unknown_course_id(monkeypatch) -> None:

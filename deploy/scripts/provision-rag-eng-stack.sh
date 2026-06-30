@@ -40,6 +40,7 @@ provision-rag-eng-stack.sh
     rag_eng-specific settings live in rag_eng_ecs under deploy/deployment.yaml.
 
   Useful env vars:
+    RAG_ENG_SKIP_PREFLIGHT
     RAG_ENG_ECS_CLUSTER
     RAG_ENG_ECS_SERVICE_NAME
     RAG_ENG_ECS_TASK_FAMILY
@@ -54,6 +55,7 @@ provision-rag-eng-stack.sh
   Examples:
     ./deploy/scripts/provision-rag-eng-stack.sh describe
     ./deploy/scripts/provision-rag-eng-stack.sh apply
+    ./deploy/scripts/provision-rag-eng-stack.sh apply --skip-preflight
 EOF
 }
 

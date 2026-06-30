@@ -62,10 +62,9 @@ def test_connect_postgres_uses_reliable_retry_profile(monkeypatch):
 
     monkeypatch.setattr(
         "rag_eng.chat_log_export.connect_postgres_with_retry",
-        lambda database_url, **kwargs: captured.update(
-            {"database_url": database_url, **kwargs}
-        )
-        or object(),
+        lambda database_url, **kwargs: (
+            captured.update({"database_url": database_url, **kwargs}) or object()
+        ),
     )
 
     from rag_eng.chat_log_export import _connect_postgres
@@ -150,10 +149,10 @@ def test_export_turn_snapshots_groups_by_date_and_uploads_jsonl(monkeypatch):
     assert result[0]["record_count"] == 2
     assert result[1]["record_count"] == 1
     assert fake_client.put_objects[0]["Key"] == (
-        "eval/chat_logs/turn_logs/date=2026-06-23/turn_snapshots.jsonl"
+        "eval/chat_logs/turn_logs/course_id=unknown_course/date=2026-06-23/turn_snapshots.jsonl"
     )
     assert fake_client.put_objects[1]["Key"] == (
-        "eval/chat_logs/turn_logs/date=2026-06-24/turn_snapshots.jsonl"
+        "eval/chat_logs/turn_logs/course_id=unknown_course/date=2026-06-24/turn_snapshots.jsonl"
     )
 
     body_lines = fake_client.put_objects[0]["Body"].decode("utf-8").strip().splitlines()

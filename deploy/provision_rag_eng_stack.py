@@ -22,6 +22,7 @@ import argparse
 import base64
 import json
 import os
+import shutil
 import subprocess
 import sys
 from dataclasses import replace
@@ -62,6 +63,17 @@ TARGET_GROUP_NAME = "codingrabbit-rag-eng"
 LOG_GROUP_NAME = "/ecs/codingrabbit-rag-eng"
 DOCKER_IMAGE_TAG = "latest"
 DEFAULT_LISTENER_PORT = 80
+DEFAULT_PREFLIGHT_RUFF_TARGETS = (
+    "deploy/provision_rag_eng_stack.py",
+    "deploy/deploy_rag_eng_ecs.py",
+    "deploy/deployment_config.py",
+    "rag_eng",
+)
+DEFAULT_PREFLIGHT_TEST_EXCLUDES = {
+    "test_aurora_wakeup_benchmark.py",
+    "test_offline_eval_live_smoke.py",
+    "test_pipeline.py",
+}
 
 
 def _session(config: DeployConfig) -> boto3.Session:
@@ -541,6 +553,62 @@ def _build_image_and_push(
     return remote_tag
 
 
+def _preflight_disabled(skip_preflight: bool) -> bool:
+    if skip_preflight:
+        return True
+    return os.getenv("RAG_ENG_SKIP_PREFLIGHT", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def _python_runner_prefix() -> list[str]:
+    if shutil.which("uv"):
+        return ["uv", "run"]
+    return [sys.executable, "-m"]
+
+
+def _discover_preflight_test_targets() -> list[str]:
+    test_dir = REPO_ROOT / "test"
+    targets: list[str] = []
+    for path in sorted(test_dir.glob("test_*.py")):
+        if path.name in DEFAULT_PREFLIGHT_TEST_EXCLUDES:
+            continue
+        targets.append(str(path.relative_to(REPO_ROOT)))
+    return targets
+
+
+def _run_preflight_command(label: str, command: list[str]) -> None:
+    print(f"[preflight] {label}")
+    subprocess.run(command, cwd=REPO_ROOT, check=True)
+
+
+def run_preflight_checks(*, skip_preflight: bool = False) -> None:
+    if _preflight_disabled(skip_preflight):
+        print("==> Preflight checks skipped")
+        return
+
+    print("==> Preflight checks")
+    _run_preflight_command("git diff --check", ["git", "diff", "--check"])
+
+    python_runner = _python_runner_prefix()
+    _run_preflight_command(
+        "ruff check deploy rag_eng test",
+        [*python_runner, "ruff", "check", *DEFAULT_PREFLIGHT_RUFF_TARGETS],
+    )
+
+    pytest_targets = _discover_preflight_test_targets()
+    if not pytest_targets:
+        raise RuntimeError("No preflight pytest targets were discovered.")
+
+    _run_preflight_command(
+        "pytest -q",
+        [*python_runner, "pytest", "-q", *pytest_targets],
+    )
+
+
 def _create_secret_arns(config: DeployConfig) -> dict[str, str]:
     sm = _client(config, "secretsmanager")
     secret_arns: dict[str, str] = {}
@@ -718,6 +786,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=None,
         help="Path to deployment.yaml (default: deploy/deployment.yaml or DEPLOY_CONFIG)",
     )
+    parser.add_argument(
+        "--skip-preflight",
+        action="store_true",
+        help=(
+            "Skip the local preflight gate (git diff --check, ruff, pytest). "
+            "Also honored by RAG_ENG_SKIP_PREFLIGHT=1."
+        ),
+    )
     return parser
 
 
@@ -732,6 +808,7 @@ def main(argv: list[str] | None = None) -> int:
         print("\n".join(describe_config(config)))
         return 0
 
+    run_preflight_checks(skip_preflight=args.skip_preflight)
     result = provision_stack(config)
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0

@@ -162,3 +162,58 @@ def test_ensure_listener_updates_when_target_group_changes() -> None:
     assert client.modified_listeners[0]["DefaultActions"][0]["TargetGroupArn"] == (
         "arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/new/2222"
     )
+
+
+def test_run_preflight_checks_runs_local_gate(monkeypatch) -> None:
+    commands: list[list[str]] = []
+
+    monkeypatch.setattr(
+        provision.shutil, "which", lambda name: "/usr/bin/uv" if name == "uv" else None
+    )
+
+    def fake_run(command, *, cwd, check, **kwargs):
+        commands.append(list(command))
+        assert cwd == provision.REPO_ROOT
+        assert check is True
+        return None
+
+    monkeypatch.setattr(provision.subprocess, "run", fake_run)
+
+    provision.run_preflight_checks()
+
+    assert commands[0] == ["git", "diff", "--check"]
+    assert commands[1][:3] == ["uv", "run", "ruff"]
+    assert commands[1][3:] == [
+        "check",
+        "deploy/provision_rag_eng_stack.py",
+        "deploy/deploy_rag_eng_ecs.py",
+        "deploy/deployment_config.py",
+        "rag_eng",
+    ]
+    assert commands[2][:3] == ["uv", "run", "pytest"]
+    assert "test/test_rag_eng_api.py" in commands[2]
+    assert "test/test_pipeline.py" not in commands[2]
+    assert "test/test_offline_eval_live_smoke.py" not in commands[2]
+    assert "test/test_aurora_wakeup_benchmark.py" not in commands[2]
+
+
+def test_run_preflight_checks_can_be_skipped(monkeypatch) -> None:
+    called = []
+
+    monkeypatch.setenv("RAG_ENG_SKIP_PREFLIGHT", "1")
+    monkeypatch.setattr(
+        provision.subprocess,
+        "run",
+        lambda *args, **kwargs: called.append((args, kwargs)),
+    )
+
+    provision.run_preflight_checks()
+
+    assert called == []
+
+
+def test_build_arg_parser_accepts_skip_preflight_flag() -> None:
+    args = provision.build_arg_parser().parse_args(["apply", "--skip-preflight"])
+
+    assert args.action == "apply"
+    assert args.skip_preflight is True

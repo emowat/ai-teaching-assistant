@@ -260,7 +260,7 @@ def test_full_pipeline_turn_snapshot_can_be_exported(monkeypatch) -> None:
     )
 
     assert exported[0]["key"] == (
-        "eval/chat_logs/turn_logs/date=2026-06-23/turn_snapshots.jsonl"
+        "eval/chat_logs/turn_logs/course_id=mit14/date=2026-06-23/turn_snapshots.jsonl"
     )
     assert len(fake_s3.put_objects) == 1
     body_lines = fake_s3.put_objects[0]["Body"].decode("utf-8").strip().splitlines()

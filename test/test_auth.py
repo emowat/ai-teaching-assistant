@@ -46,7 +46,10 @@ def test_me_returns_student_profile(
             primary_role="student",
         )
 
-    monkeypatch.setattr("rag_eng.auth.dependencies.verify_cognito_access_token", _student)
+    monkeypatch.setattr(
+        "rag_eng.auth.dependencies.verify_cognito_access_token", _student
+    )
+    monkeypatch.setattr("rag_eng.api.sync_application_user", lambda _user: None)
 
     response = client.get("/me", headers={"Authorization": "Bearer valid-token"})
     assert response.status_code == 200
@@ -89,7 +92,9 @@ def test_require_role_blocks_student(
             primary_role="student",
         )
 
-    monkeypatch.setattr("rag_eng.auth.dependencies.verify_cognito_access_token", _student)
+    monkeypatch.setattr(
+        "rag_eng.auth.dependencies.verify_cognito_access_token", _student
+    )
 
     app = create_app()
 
