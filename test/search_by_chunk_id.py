@@ -118,7 +118,7 @@ def main() -> None:
             print(f"  content: {content_preview}...")
 
         if missing:
-            print(f"\n  [NOT FOUND]:")
+            print("\n  [NOT FOUND]:")
             for m in missing:
                 print(f"    {m}")
 

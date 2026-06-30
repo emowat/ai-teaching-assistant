@@ -54,7 +54,7 @@ try:
 except ImportError:
     gdown = None  # type: ignore[assignment]
 
-from deployment_config import DeployConfig, load_deploy_config
+from deployment_config import DeployConfig, load_deploy_config  # noqa: E402
 
 
 # ---------------------------------------------------------------------------

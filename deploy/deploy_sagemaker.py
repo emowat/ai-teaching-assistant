@@ -22,8 +22,8 @@ _DEPLOY_DIR = Path(__file__).resolve().parent
 if str(_DEPLOY_DIR) not in sys.path:
     sys.path.insert(0, str(_DEPLOY_DIR))
 
-from deployment_config import DeployConfig, load_deploy_config
-from sagemaker_io import build_async_payload, parse_async_response
+from deployment_config import DeployConfig, load_deploy_config  # noqa: E402
+from sagemaker_io import build_async_payload, parse_async_response  # noqa: E402
 
 
 def _get_session(cfg: DeployConfig) -> boto3.Session:
@@ -442,7 +442,7 @@ def deploy(cfg: DeployConfig, role_arn: str | None) -> None:
 
     print(f"\nEndpoint '{sm_cfg.endpoint_name}' is InService.")
     print("\nNext steps — add to .env and restart rag_eng:")
-    print(f"  USE_SAGEMAKER=true")
+    print("  USE_SAGEMAKER=true")
     print(f"  SAGEMAKER_ENDPOINT={sm_cfg.endpoint_name}")
     print(f"  MODEL_FAMILY={cfg.rag_eng.model_family}")
     print(f"  SAGEMAKER_INFERENCE_BACKEND={cfg.rag_eng.inference_backend}")
@@ -453,7 +453,7 @@ def deploy(cfg: DeployConfig, role_arn: str | None) -> None:
             f"{cfg.sagemaker.autoscaling.max_capacity} instances "
             "(0 when idle = no GPU charges)."
         )
-    print(f"\nTo test: python deploy/deploy_sagemaker.py invoke")
+    print("\nTo test: python deploy/deploy_sagemaker.py invoke")
 
 
 def invoke(cfg: DeployConfig, prompt: str) -> None:
