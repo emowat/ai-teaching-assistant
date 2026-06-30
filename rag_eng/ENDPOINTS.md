@@ -36,6 +36,23 @@ Recommended flags:
 - `-d @-` reads the request body from stdin, which makes multi-line payloads
   readable.
 
+## Shell smoke test
+
+If you want to run the full public-endpoint check in one command, use:
+
+```bash
+LIVE_PUBLIC_ENDPOINTS_BASE_URL="https://your-deployed-base-url" \
+  ./scripts/test_public_endpoints_smoke.sh
+```
+
+Environment overrides are documented in the script itself:
+
+- `LIVE_PUBLIC_ENDPOINTS_BASE_URL`
+- `LIVE_PUBLIC_ENDPOINTS_COURSE_ID`
+- `LIVE_PUBLIC_ENDPOINTS_COURSE_SOURCE`
+- `LIVE_PUBLIC_ENDPOINTS_MODEL`
+- `LIVE_PUBLIC_ENDPOINTS_CURL_TIMEOUT_SECONDS`
+
 ## Public endpoints
 
 | Method | Path | Purpose |

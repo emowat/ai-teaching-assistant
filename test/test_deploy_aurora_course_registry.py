@@ -65,7 +65,8 @@ def test_load_sql_statements_reads_repo_bootstrap_file() -> None:
     assert statements[17].startswith("INSERT INTO courses")
     assert statements[18].startswith("INSERT INTO course_aliases")
     assert "'course_knowledge'" in statements[17]
-    assert "'harvard_cs50'" in statements[17]
+    assert "'mit14_course_BAAI_bge_large_en_v1_5'" in statements[17]
+    assert "'harvard_cs50_BAAI_bge_large_en_v1_5'" in statements[17]
 
 
 class _ApplySchemaClient:
