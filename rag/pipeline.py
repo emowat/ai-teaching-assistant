@@ -132,22 +132,6 @@ def run_retrieval(query: QueryInput) -> RetrievalResult:
         threshold=params["guidelines_threshold"],
     )
 
-<<<<<<< Updated upstream
-    if route.course_source == CourseSource.CS50:
-        # Harvard CS50: no syllabus, use CS50-specific retrievers (notes + transcripts)
-        syllabus = None
-        semantic = retrieve_harvard(
-            dense_query,
-            query.week,
-            top_k=retrieval_top_k,
-            cumulative=params["cumulative"],
-            collection_name=route.collection_name,
-        )
-        rules = retrieve_harvard_rules(
-            dense_query,
-            query.week,
-            top_k=retrieval_top_k,
-=======
     if query.course_source == CourseSource.MIT_14:
         # MIT 6.0014 (default): syllabus + course material retrievers
         syllabus = retrieve_syllabus(query.week, course="mit14")
@@ -161,7 +145,6 @@ def run_retrieval(query: QueryInput) -> RetrievalResult:
             dense_query,
             query.week,
             top_k=params["rules_top_k"],
->>>>>>> Stashed changes
             threshold=params["rules_threshold"],
             cumulative=params["cumulative"],
             collection_name=route.collection_name,
@@ -183,16 +166,11 @@ def run_retrieval(query: QueryInput) -> RetrievalResult:
             cumulative=params["cumulative"],
         )
     else:
-<<<<<<< Updated upstream
         # MIT 6.0013 / 6.0014: syllabus + course material retrievers
         syllabus = retrieve_syllabus(
             query.week,
             collection_name=route.collection_name,
         )
-=======
-        # MIT 6.0013 (legacy): syllabus + course material retrievers
-        syllabus = retrieve_syllabus(query.week, course="mit13")
->>>>>>> Stashed changes
         semantic = retrieve_semantic(
             dense_query,
             query.week,
