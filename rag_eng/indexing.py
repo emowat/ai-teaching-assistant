@@ -10,7 +10,7 @@ from rag.runtime import create_qdrant_client
 from rag_eng.config import get_settings
 
 
-VECTOR_SIZE = 768
+VECTOR_SIZE = 1024
 
 
 @dataclass(frozen=True)

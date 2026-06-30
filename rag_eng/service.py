@@ -1119,12 +1119,27 @@ def _extract_chat_context(messages: list[dict]) -> dict:
     week = int(week_match.group(1)) if week_match else 1
     week = max(1, min(8, week))
 
+    likely_paste = "Likely_Paste_Detected: true" in content
+    clipboard_event = {"external_paste_detected": likely_paste, "pasted_char_count": 0} if likely_paste else None
+
+    def _extract_int(key: str) -> int:
+        m = re.search(rf"{key}:\s*(\d+)", content)
+        return int(m.group(1)) if m else 0
+
+    engagement_metrics = {
+        "active_editor_seconds": _extract_int("Active_Editor_Time_Sec"),
+        "active_shell_seconds": _extract_int("Active_Shell_Time_Sec"),
+        "active_chat_seconds": _extract_int("Active_Chat_Time_Sec"),
+    }
+
     return {
         "student_message": student_message or content,
         "code_raw": code_raw,
         "terminal_output": terminal_output,
         "mode": mode,
         "week": week,
+        "clipboard_event": clipboard_event,
+        "engagement_metrics": engagement_metrics,
     }
 
 
@@ -1151,6 +1166,8 @@ async def run_chat(
         "terminal_output": ctx["terminal_output"],
         "mode": ctx["mode"],
         "week": ctx["week"],
+        "clipboard_event": ctx["clipboard_event"],
+        "engagement_metrics": ctx["engagement_metrics"],
         "course_id": course_id,
         "session_id": session_id,
         "request_id": request_id,

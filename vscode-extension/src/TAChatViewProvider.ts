@@ -45,6 +45,11 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
     private _activeShellSeconds: number = 0;
     private _activeChatSeconds: number = 0;
     
+    // Delta trackers for backend telemetry (reset after every chat API call)
+    private _deltaEditorSeconds: number = 0;
+    private _deltaShellSeconds: number = 0;
+    private _deltaChatSeconds: number = 0;
+    
     private _lastActivityTime: number = Date.now();
     private _lastActivityType: 'editor' | 'shell' | 'chat' = 'editor';
     private _activityInterval: NodeJS.Timeout;
@@ -109,9 +114,16 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
             
             if (!shouldBePaused) {
                 // Increment specific bucket
-                if (this._lastActivityType === 'editor') this._activeEditorSeconds++;
-                else if (this._lastActivityType === 'shell') this._activeShellSeconds++;
-                else if (this._lastActivityType === 'chat') this._activeChatSeconds++;
+                if (this._lastActivityType === 'editor') {
+                    this._activeEditorSeconds++;
+                    this._deltaEditorSeconds++;
+                } else if (this._lastActivityType === 'shell') {
+                    this._activeShellSeconds++;
+                    this._deltaShellSeconds++;
+                } else if (this._lastActivityType === 'chat') {
+                    this._activeChatSeconds++;
+                    this._deltaChatSeconds++;
+                }
                 
                 this._totalElapsedSeconds = this._activeEditorSeconds + this._activeShellSeconds + this._activeChatSeconds;
                 
@@ -184,6 +196,11 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
                     break;
                 }
                 case 'feedback': {
+                    const reason = await vscode.window.showInputBox({
+                        prompt: `Optional reason for ${data.rating === 'up' ? 'positive' : 'negative'} feedback:`,
+                        placeHolder: "Tell us why..."
+                    });
+
                     const apiUrl = vscode.workspace.getConfiguration('codingRabbit').get('apiUrl') || 'http://host.docker.internal:8001/api/chat';
                     const feedbackUrl = apiUrl.toString().replace('/api/chat', '/api/feedback');
                     fetch(feedbackUrl, {
@@ -192,7 +209,7 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
                         body: JSON.stringify({
                             session_id: this._sessionId,
                             rating: data.rating,
-                            reason: data.reason || "",
+                            reason: reason || "",
                             message_index: data.messageIndex
                         })
                     }).catch(e => {
@@ -756,9 +773,14 @@ Mode: ${mode}
 ${likelyPasteDetected ? "Likely_Paste_Detected: true" : "Likely_Paste_Detected: false"}
 Session_Style_Nudged: ${this._hasGivenStyleNudge}
 Session_Adversarial_Warnings: ${this._adversarialWarningCount}
-Active_Editor_Time_Sec: ${this._activeEditorSeconds}
-Active_Shell_Time_Sec: ${this._activeShellSeconds}
-Active_Chat_Time_Sec: ${this._activeChatSeconds}`;
+Active_Editor_Time_Sec: ${this._deltaEditorSeconds}
+Active_Shell_Time_Sec: ${this._deltaShellSeconds}
+Active_Chat_Time_Sec: ${this._deltaChatSeconds}`;
+
+        // Reset delta timers immediately after capturing them for the payload
+        this._deltaEditorSeconds = 0;
+        this._deltaShellSeconds = 0;
+        this._deltaChatSeconds = 0;
 
         if (mode !== 'Study Assist') {
             dynamicContext += `\n\n[Code_Context]
@@ -1151,15 +1173,13 @@ ${terminalOutput}`;
             downBtn.title = 'Bad response';
             
             upBtn.onclick = () => {
-                const reason = prompt("Optional reason for positive feedback:");
-                vscode.postMessage({ type: 'feedback', rating: 'up', reason, messageIndex: msgIndex });
+                vscode.postMessage({ type: 'feedback', rating: 'up', messageIndex: msgIndex });
                 upBtn.style.background = 'var(--vscode-button-background)';
                 downBtn.style.background = 'transparent';
             };
             
             downBtn.onclick = () => {
-                const reason = prompt("Optional reason for negative feedback:");
-                vscode.postMessage({ type: 'feedback', rating: 'down', reason, messageIndex: msgIndex });
+                vscode.postMessage({ type: 'feedback', rating: 'down', messageIndex: msgIndex });
                 downBtn.style.background = 'var(--vscode-button-background)';
                 upBtn.style.background = 'transparent';
             };

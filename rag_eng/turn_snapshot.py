@@ -37,11 +37,11 @@ def _request_context(query: QueryInput) -> dict[str, Any]:
     }
 
 
-def _retrieved_chunk_ids(retrieval_result: RetrievalResult | None) -> list[str]:
+def _retrieved_rag_chunks(retrieval_result: RetrievalResult | None) -> list[dict[str, Any]]:
     if retrieval_result is None:
         return []
 
-    chunk_ids: list[str] = []
+    chunks: list[dict[str, Any]] = []
     seen: set[str] = set()
     for attr in ("syllabus", "strict_rules", "pedagogical", "supplementary", "guidelines", "harvard"):
         value = getattr(retrieval_result, attr, None)
@@ -50,14 +50,20 @@ def _retrieved_chunk_ids(retrieval_result: RetrievalResult | None) -> list[str]:
         docs = value if isinstance(value, list) else [value]
         for doc in docs:
             chunk_id = getattr(doc, "chunk_id", None)
-            if not chunk_id:
-                continue
-            chunk_id_text = str(chunk_id)
-            if chunk_id_text in seen:
-                continue
-            seen.add(chunk_id_text)
-            chunk_ids.append(chunk_id_text)
-    return chunk_ids
+            if chunk_id:
+                chunk_id_text = str(chunk_id)
+                if chunk_id_text in seen:
+                    continue
+                seen.add(chunk_id_text)
+            
+            chunk_data = {
+                "label": attr.title(),
+                "Source": str(getattr(doc, "source_type", "") or getattr(doc, "source_domain", "")),
+                "Content": getattr(doc, "content", ""),
+                "score": getattr(doc, "score", 0.0),
+            }
+            chunks.append(chunk_data)
+    return chunks
 
 
 def _retrieval_phase(
@@ -69,11 +75,12 @@ def _retrieval_phase(
     if retrieval_result is None:
         return None
 
+    chunks = _retrieved_rag_chunks(retrieval_result)
     return {
         "latency_ms": retrieval_latency_ms,
-        "doc_count": len(_retrieved_chunk_ids(retrieval_result)),
+        "doc_count": len(chunks),
         "rerank_strategy": rerank_strategy,
-        "retrieved_chunk_ids": _retrieved_chunk_ids(retrieval_result),
+        "retrieved_rag_chunks": chunks,
     }
 
 
@@ -96,12 +103,17 @@ def _student_phase(
     }
 
 
-def _output_guardrail_phase(
-    guardrail: dict[str, Any] | None,
-) -> dict[str, Any] | None:
-    if guardrail is None:
-        return None
-    return guardrail
+def _extract_cot_keys(raw_generation: str) -> dict[str, str]:
+    cot_dict = {}
+    if "<analysis>" in raw_generation and "</analysis>" in raw_generation:
+        cot_text = raw_generation.split("</analysis>")[0].replace("<analysis>", "").strip()
+        for line in cot_text.split('\n'):
+            line = line.strip()
+            if line.startswith('- '):
+                parts = line[2:].split(':', 1)
+                if len(parts) == 2:
+                    cot_dict[parts[0].strip()] = parts[1].strip()
+    return cot_dict
 
 
 def _orchestrator_phase(
@@ -212,6 +224,8 @@ def build_turn_snapshot(
             final_text = raw_generation or ""
 
     snapshot = {
+        "session_id": trace.session_id,
+        "turn_id": trace.turn_id,
         "schema_version": TURN_SNAPSHOT_SCHEMA_VERSION,
         "timestamp": _utc_now_iso(),
         "trace": {
@@ -230,9 +244,17 @@ def build_turn_snapshot(
             "course_source": trace.course_source,
             "section_id": trace.section_id,
         },
-        "request_context": _request_context(query),
+        "ide_context": {
+            "mode": str(query.mode.value),
+            "active_file": getattr(query, "active_file", None),
+            "ast_metadata": _model_dump(query.ast_features) if isinstance(_model_dump(query.ast_features), dict) else {},
+            "clipboard_event": _model_dump(query.clipboard_event) if query.clipboard_event else None,
+            "engagement_metrics": _model_dump(query.engagement_metrics) if query.engagement_metrics else None,
+            "raw_code_snippet": query.code_raw or "",
+            "terminal_context": f"Exit_Code: {query.exit_code}\nOutput: \"{query.terminal_output or ''}\"",
+        },
         "student_phase": _student_phase(query, input_guardrail),
-        "retrieval_phase": _retrieval_phase(
+        "backend_retrieval_phase": _retrieval_phase(
             retrieval_result,
             retrieval_latency_ms=retrieval_latency_ms,
             rerank_strategy=getattr(query, "rerank_strategy", None),
@@ -247,13 +269,20 @@ def build_turn_snapshot(
             None
             if raw_generation is None
             else {
-                "model_provider": model_provider,
-                "model_name": model_name,
-                "raw_generation": raw_generation,
-                "generation_latency_ms": llm_latency_ms,
+                "attempts_count": 1,
+                "generation_history": [
+                    {
+                        "attempt_id": 1,
+                        "model_provider": model_provider,
+                        "model_name": model_name,
+                        "generation_latency_ms": llm_latency_ms,
+                        "cot_keys": _extract_cot_keys(raw_generation),
+                        "raw_generation": raw_generation,
+                        "output_guardrail": guardrail,
+                    }
+                ]
             }
         ),
-        "output_guardrail_phase": _output_guardrail_phase(guardrail),
         "final_response": {
             "text": final_text,
             "source": _final_response_source(

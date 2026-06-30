@@ -140,6 +140,7 @@ def run_retrieval(query: QueryInput) -> RetrievalResult:
             query.week,
             top_k=params["semantic_top_k"],
             cumulative=params["cumulative"],
+            collection_name=route.collection_name,
         )
         rules = retrieve_strict_rules(
             dense_query,
@@ -169,7 +170,7 @@ def run_retrieval(query: QueryInput) -> RetrievalResult:
         # MIT 6.0013 / 6.0014: syllabus + course material retrievers
         syllabus = retrieve_syllabus(
             query.week,
-            collection_name=route.collection_name,
+            course="mit13",
         )
         semantic = retrieve_semantic(
             dense_query,

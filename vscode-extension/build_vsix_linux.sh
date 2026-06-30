@@ -29,6 +29,14 @@ if [ -n "$API_URL" ]; then
     echo "Injecting custom API URL into package.json: $API_URL"
     # Create backup and replace default API URL using | as delimiter
     sed -i.bak "s|\"default\": \"http://127.0.0.1:8001/api/chat\"|\"default\": \"$API_URL\"|g" "$EXTENSION_DIR/package.json"
+    
+    echo "Injecting custom API URL into .vscode/settings.json: $API_URL"
+    sed -i.bak "s|\"codingRabbit.apiUrl\": \".*\"|\"codingRabbit.apiUrl\": \"$API_URL\"|g" "$ASSIGNMENT_ROOT/.vscode/settings.json"
+    rm -f "$ASSIGNMENT_ROOT/.vscode/settings.json.bak"
+    
+    echo "Injecting custom API URL into devcontainer.json: $API_URL"
+    sed -i.bak "s|\"codingRabbit.apiUrl\": \".*\"|\"codingRabbit.apiUrl\": \"$API_URL\"|g" "$DEST_DIR/devcontainer.json"
+    rm -f "$DEST_DIR/devcontainer.json.bak"
 fi
 
 echo "Spawning headless Linux Docker container to cross-compile native dependencies and fetch WASM binaries..."

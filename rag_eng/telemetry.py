@@ -196,6 +196,9 @@ class TelemetryStore:
         if not self.database_url:
             return trace
 
+        paste_event_inc = 1 if (query.clipboard_event and query.clipboard_event.external_paste_detected) else 0
+        paste_char_inc = query.clipboard_event.pasted_char_count if paste_event_inc and query.clipboard_event else 0
+
         metadata = {
             "source": source,
             "mode": trace.mode,
@@ -203,6 +206,8 @@ class TelemetryStore:
             "course_id": trace.course_id,
             "course_source": trace.course_source,
             "section_id": trace.section_id,
+            "total_paste_events": paste_event_inc,
+            "total_paste_characters": paste_char_inc,
         }
 
         try:
@@ -233,7 +238,14 @@ class TelemetryStore:
                           last_seen_at = now(),
                           turn_count = tutor_sessions.turn_count + 1,
                           status = 'active',
-                          metadata = COALESCE(tutor_sessions.metadata, '{}'::jsonb) || COALESCE(EXCLUDED.metadata, '{}'::jsonb),
+                          metadata = (
+                              COALESCE(tutor_sessions.metadata, '{}'::jsonb) || 
+                              COALESCE(EXCLUDED.metadata, '{}'::jsonb) ||
+                              jsonb_build_object(
+                                  'total_paste_events', COALESCE((tutor_sessions.metadata->>'total_paste_events')::int, 0) + COALESCE((EXCLUDED.metadata->>'total_paste_events')::int, 0),
+                                  'total_paste_characters', COALESCE((tutor_sessions.metadata->>'total_paste_characters')::int, 0) + COALESCE((EXCLUDED.metadata->>'total_paste_characters')::int, 0)
+                              )
+                          ),
                           updated_at = now()
                         RETURNING turn_count
                         """,
@@ -539,6 +551,45 @@ class TelemetryStore:
                 trace.turn_id,
                 exc,
             )
+            return False
+
+    def record_feedback(
+        self,
+        session_id: str,
+        message_index: int,
+        rating: str,
+        reason: str | None
+    ) -> bool:
+        """Update the turn snapshot with user feedback."""
+        if not self.database_url or not session_id or not message_index:
+            return False
+
+        # Convert frontend message_index (2, 4, 6) to backend turn_index (1, 2, 3)
+        turn_index = message_index // 2
+        thumbs_up = "positive" if rating == "up" else "negative"
+
+        try:
+            with _connect_postgres(
+                self.database_url,
+                self.connect_timeout_seconds,
+            ) as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        UPDATE tutor_turn_snapshots
+                        SET snapshot = jsonb_set(
+                            snapshot,
+                            '{feedback}',
+                            jsonb_build_object('thumbs_up', %s, 'explanation', %s)
+                        )
+                        WHERE session_id = %s AND turn_index = %s
+                        """,
+                        (thumbs_up, reason, session_id, turn_index)
+                    )
+                connection.commit()
+            return True
+        except Exception as e:
+            logger.warning("Aurora telemetry feedback update failed: %s", e)
             return False
 
     def finish_turn(

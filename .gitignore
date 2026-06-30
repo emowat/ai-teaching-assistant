@@ -1,4 +1,7 @@
 archive_scripts/
+.agents/
+chat_logs/
+old-jsonl/
 .env
 
 # Local-only notes/docs (not shared via git)

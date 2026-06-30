@@ -86,6 +86,17 @@ class ASTFeatures(BaseModel):
     target_variables: list[str] = Field(default_factory=list)
 
 
+class ClipboardEvent(BaseModel):
+    external_paste_detected: bool = False
+    pasted_char_count: int = 0
+
+
+class EngagementMetrics(BaseModel):
+    active_editor_seconds: int = 0
+    active_shell_seconds: int = 0
+    active_chat_seconds: int = 0
+
+
 class QueryInput(BaseModel):
     """What the TA orchestration layer sends to the retrieval endpoint."""
     student_message: str
@@ -95,16 +106,14 @@ class QueryInput(BaseModel):
     week: int = Field(ge=0, le=8)
     mode: AssistMode = AssistMode.HOMEWORK_ASSIST
     ast_features: ASTFeatures = Field(default_factory=ASTFeatures)
-<<<<<<< Updated upstream
+    clipboard_event: Optional[ClipboardEvent] = None
+    engagement_metrics: Optional[EngagementMetrics] = None
     course_id: Optional[str] = None
-    course_source: CourseSource = CourseSource.CS50
+    course_source: CourseSource = CourseSource.MIT_14
     session_id: Optional[str] = None
     request_id: Optional[str] = None
     turn_id: Optional[str] = None
     section_id: Optional[str] = None
-=======
-    course_source: CourseSource = CourseSource.MIT_14
->>>>>>> Stashed changes
 
 
 # ---------------------------------------------------------------------------

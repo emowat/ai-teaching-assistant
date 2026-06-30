@@ -207,9 +207,10 @@ def export_turn_snapshots_to_s3(
     if not rows:
         return []
 
-    grouped: dict[date, list[dict[str, Any]]] = defaultdict(list)
+    grouped: dict[tuple[str, date], list[dict[str, Any]]] = defaultdict(list)
     for created_at, snapshot in rows:
-        grouped[created_at.date()].append(snapshot)
+        c_id = snapshot.get("course", {}).get("course_id") or "unknown_course"
+        grouped[(c_id, created_at.date())].append(snapshot)
 
     session_kwargs: dict[str, str] = {}
     if profile:
@@ -219,9 +220,9 @@ def export_turn_snapshots_to_s3(
     client = boto3.Session(**session_kwargs).client("s3")
 
     exported: list[dict[str, Any]] = []
-    for export_date in sorted(grouped):
-        records = grouped[export_date]
-        key = _build_export_key(prefix, export_date, course_id=course_id)
+    for (c_id, export_date) in sorted(grouped.keys()):
+        records = grouped[(c_id, export_date)]
+        key = _build_export_key(prefix, export_date, course_id=c_id)
         body = _build_jsonl(records)
         client.put_object(
             Bucket=bucket,

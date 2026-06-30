@@ -786,6 +786,7 @@ def create_app() -> FastAPI:
     async def feedback_endpoint(payload: FeedbackPayload):
         from datetime import datetime
         import json
+        from rag_eng.telemetry import TelemetryClient
         try:
             feedback_data = {
                 "timestamp": datetime.utcnow().isoformat() + "Z",
@@ -796,6 +797,16 @@ def create_app() -> FastAPI:
             }
             with open("telemetry.jsonl", "a") as f:
                 f.write(json.dumps(feedback_data) + "\n")
+                
+            if payload.session_id and payload.message_index:
+                telemetry = TelemetryClient()
+                telemetry.record_feedback(
+                    session_id=payload.session_id,
+                    message_index=payload.message_index,
+                    rating=payload.rating,
+                    reason=payload.reason
+                )
+            
             return {"status": "success"}
         except Exception as e:
             print(f"Error logging feedback: {str(e)}")
