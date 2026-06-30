@@ -7,6 +7,7 @@ import subprocess
 import uuid
 from pathlib import Path
 from urllib.parse import urlparse
+from typing import Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
 from fastapi import Request
@@ -267,6 +268,13 @@ def _app_registry_http_error(exc: Exception) -> HTTPException:
     return HTTPException(status_code=500, detail=str(exc))
 
 
+def _public_diagnostic_response(response: dict[str, Any]) -> dict[str, Any]:
+    """Mark a diagnostic payload as coming from the public curl surface."""
+    public_response = dict(response)
+    public_response["diagnostic_source"] = "public_diagnostic"
+    return public_response
+
+
 def create_app() -> FastAPI:
     """Create the FastAPI app for the RAG service."""
     settings = get_settings()
@@ -332,6 +340,78 @@ def create_app() -> FastAPI:
             return run_query(payload)
         except Exception as exc:
             raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    @app.post(
+        "/api/diagnostics/input-guardrail",
+        response_model=InputGuardrailDiagnosticResponse,
+    )
+    def public_diagnostic_input_guardrail(
+        payload: QueryPayload,
+    ) -> InputGuardrailDiagnosticResponse:
+        try:
+            return _public_diagnostic_response(
+                run_input_guardrail_diagnostic(payload)
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    @app.post(
+        "/api/diagnostics/rag",
+        response_model=RagDiagnosticResponse,
+    )
+    def public_diagnostic_rag(payload: QueryPayload) -> RagDiagnosticResponse:
+        try:
+            return _public_diagnostic_response(run_rag_diagnostic(payload))
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    @app.post(
+        "/api/diagnostics/output-guardrail",
+        response_model=OutputGuardrailDiagnosticResponse,
+    )
+    def public_diagnostic_output_guardrail(
+        payload: OutputGuardrailReviewRequest,
+    ) -> OutputGuardrailDiagnosticResponse:
+        try:
+            return _public_diagnostic_response(
+                run_output_guardrail_diagnostic(
+                    query=payload,
+                    draft_answer=payload.draft_answer,
+                    conversation_history=payload.conversation_history,
+                )
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    @app.post(
+        "/api/diagnostics/pipeline",
+        response_model=PipelineDiagnosticResponse,
+    )
+    async def public_diagnostic_pipeline(
+        payload: ChatRequest,
+        settings: Settings = Depends(get_settings),
+    ):
+        try:
+            result = await run_pipeline_diagnostic(
+                messages=payload.messages,
+                model_name=payload.model,
+                settings=settings,
+                stream=payload.stream,
+                course_id=payload.course_id,
+                session_id=payload.session_id,
+                request_id=payload.request_id,
+                turn_id=payload.turn_id,
+                section_id=payload.section_id,
+                result_count=payload.result_count,
+                rerank_strategy=payload.rerank_strategy,
+            )
+            if payload.stream:
+                return StreamingResponse(result, media_type="application/x-ndjson")
+            if isinstance(result, dict):
+                return _public_diagnostic_response(result)
+            return result
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=_error_detail(exc)) from exc
 
     @app.post(
         "/admin/diagnostics/input-guardrail",

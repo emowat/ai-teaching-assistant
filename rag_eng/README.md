@@ -12,6 +12,7 @@ FastAPI service layer for the codingrabbit.dev capstone. It owns:
 
 - OpenAPI docs: `http://localhost:8001/docs`
 - Human workflow guide: [docs/api_workflows.md](/home/user/MIDS/w210/capstone/docs/api_workflows.md)
+- Public endpoint reference: [ENDPOINTS.md](./ENDPOINTS.md)
 
 The OpenAPI page is useful for schemas. The workflow guide is the better source
 for copy-paste admin calls.
@@ -22,7 +23,7 @@ There are three auth patterns in the service today:
 
 | Surface | Auth model |
 |---|---|
-| `GET /health`, `POST /query`, `POST /api/chat` | currently unauthenticated |
+| `GET /health`, `POST /query`, `POST /api/chat`, `POST /api/diagnostics/*` | currently unauthenticated |
 | `GET /me`, `POST /run/compile` | Cognito bearer token |
 | most `/admin/*` routes | admin Cognito bearer token or `X-Admin-Token` |
 | `POST /admin/index/ensure`, `POST /admin/index/rebuild` | `X-Admin-Token` only |
@@ -65,6 +66,10 @@ routes accept either auth style.
 | `GET` | `/me` | bearer | current authenticated user / role |
 | `POST` | `/query` | none | RAG query with reranking |
 | `POST` | `/api/chat` | none | full pipeline chat / VS Code extension endpoint |
+| `POST` | `/api/diagnostics/input-guardrail` | none | public pre-RAG input-guardrail probe |
+| `POST` | `/api/diagnostics/rag` | none | public RAG-stage probe |
+| `POST` | `/api/diagnostics/output-guardrail` | none | public post-LLM guardrail probe |
+| `POST` | `/api/diagnostics/pipeline` | none | public end-to-end pipeline probe |
 | `POST` | `/run/compile` | bearer | compile + run C++ code |
 | `GET` | `/gradio` | browser | Gradio diagnostic console, including the Input Guardrail tab |
 | `GET` | `/admin/courses` | admin bearer or `X-Admin-Token` | list courses |
@@ -332,11 +337,39 @@ This is the full pipeline path:
 If the input guardrail blocks the request, the backend skips retrieval and
 inference and returns the safe redirect response immediately.
 
+### Public diagnostics
+
+The backend exposes non-persisting, unauthenticated probes for stage-by-stage
+inspection. These call the same service logic as the chat endpoint but do not
+write turn snapshots or session state.
+
+- `POST /api/diagnostics/input-guardrail`
+- `POST /api/diagnostics/rag`
+- `POST /api/diagnostics/output-guardrail`
+- `POST /api/diagnostics/pipeline`
+
+Example:
+
+```bash
+curl -s http://localhost:8001/api/diagnostics/pipeline \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model": "codingrabbit-ta",
+    "course_id": "mit14",
+    "messages": [
+      {"role": "user", "content": "Explain why this pointer crash is undefined behavior."}
+    ],
+    "stream": false
+  }'
+```
+
+Use these diagnostics for black-box checks in tests and operations. Keep `/health`
+focused on readiness and dependency reachability.
+
 ### Admin diagnostics
 
-The backend also exposes admin-only, non-persisting probes for stage-by-stage
-inspection. These call the same service logic as the public endpoints but do
-not write turn snapshots or session state.
+The same probes remain available on the admin surface for the Gradio console
+and operator workflows. These aliases require admin auth:
 
 - `POST /admin/diagnostics/input-guardrail`
 - `POST /admin/diagnostics/rag`
@@ -358,9 +391,6 @@ curl -s http://localhost:8001/admin/diagnostics/pipeline \
     "stream": false
   }'
 ```
-
-Use these diagnostics for black-box checks in tests and operations. Keep `/health`
-focused on readiness and dependency reachability.
 
 ## Admin workflows
 
