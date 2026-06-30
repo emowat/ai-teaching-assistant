@@ -5,9 +5,11 @@ from __future__ import annotations
 import os
 import subprocess
 import uuid
+import logging
 from pathlib import Path
 from urllib.parse import urlparse
 from typing import Any
+
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
 from fastapi import Request
@@ -103,6 +105,7 @@ from rag_eng.schemas import (
     RagDiagnosticResponse,
     RetrievalRerankStrategy,
     RestartResponse,
+    TelemetryPayload,
 )
 from rag_eng.ingestion_jobs import (
     get_ingestion_job,
@@ -123,6 +126,7 @@ from rag_eng.service import (
     run_query,
 )
 
+logger = logging.getLogger(__name__)
 
 class _ChatOptions(BaseModel):
     temperature: float = 0.7
@@ -876,8 +880,7 @@ def create_app() -> FastAPI:
                 "reason": payload.reason,
                 "message_index": payload.message_index
             }
-            with open("telemetry.jsonl", "a") as f:
-                f.write(json.dumps(feedback_data) + "\n")
+            logger.info(json.dumps(feedback_data))
                 
             if payload.session_id and payload.message_index:
                 telemetry = TelemetryClient()
@@ -889,9 +892,37 @@ def create_app() -> FastAPI:
                 )
             
             return {"status": "success"}
-        except Exception as e:
-            print(f"Error logging feedback: {str(e)}")
-            raise HTTPException(status_code=500, detail=str(e))
+        except Exception as exc:
+            logger.exception("Feedback logging failed")
+            raise HTTPException(status_code=500, detail=str(exc))
+
+    # Basic in-memory telemetry queue
+    @app.post("/api/telemetry")
+    async def telemetry_endpoint(payload: TelemetryPayload):
+        from datetime import datetime
+        import json
+        from rag_eng.telemetry import TelemetryClient
+        try:
+            telemetry_data = {
+                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "session_id": payload.session_id,
+                "mode": payload.mode,
+                "engagement_metrics": payload.engagement_metrics.model_dump()
+            }
+            logger.info(json.dumps(telemetry_data))
+                
+            if payload.session_id:
+                telemetry = TelemetryClient()
+                telemetry.record_out_of_band_telemetry(
+                    session_id=payload.session_id,
+                    mode=payload.mode,
+                    engagement_metrics=payload.engagement_metrics.model_dump()
+                )
+            
+            return {"status": "success"}
+        except Exception as exc:
+            logger.exception("Telemetry logging failed")
+            raise HTTPException(status_code=500, detail=str(exc))
 
     @app.post("/api/chat")
     async def chat(

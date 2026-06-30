@@ -45,10 +45,17 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
     private _activeShellSeconds: number = 0;
     private _activeChatSeconds: number = 0;
     
-    // Delta trackers for backend telemetry (reset after every chat API call)
-    private _deltaEditorSeconds: number = 0;
-    private _deltaShellSeconds: number = 0;
-    private _deltaChatSeconds: number = 0;
+    // Delta trackers for backend telemetry (Homework Assist)
+    private _homeworkDeltaEditorSeconds: number = 0;
+    private _homeworkDeltaShellSeconds: number = 0;
+    private _homeworkDeltaChatSeconds: number = 0;
+    
+    // Delta trackers for backend telemetry (Study Assist)
+    private _studyDeltaEditorSeconds: number = 0;
+    private _studyDeltaShellSeconds: number = 0;
+    private _studyDeltaChatSeconds: number = 0;
+    
+    private _currentMode: string = 'Homework Assist';
     
     private _lastActivityTime: number = Date.now();
     private _lastActivityType: 'editor' | 'shell' | 'chat' = 'editor';
@@ -76,7 +83,7 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
 
     constructor(
         private readonly _extensionUri: vscode.Uri,
-        private readonly _pasteStatusByUri: Map<string, boolean>,
+        private readonly _pasteStatusByUri: Map<string, number>,
         private readonly _context: vscode.ExtensionContext
     ) {
         // Activity listeners
@@ -96,7 +103,7 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
             if (pasteTimeout) clearTimeout(pasteTimeout);
             
             pasteTimeout = setTimeout(() => {
-                if (!this._hasProactivelyAskedAboutPaste && this._pasteStatusByUri.get(uri)) {
+                if (!this._hasProactivelyAskedAboutPaste && (this._pasteStatusByUri.get(uri) || 0) > 0) {
                     this._hasProactivelyAskedAboutPaste = true; // Ask exactly once per session
                     if (this._currentWebview) {
                         this._handleAskTA("[IDE_EVENT: The student just pasted a large block of external code. Proactively ask them what part of it they are focusing on, or if they understand what it does. Do not give them the solution.]", "Homework Assist", { webview: this._currentWebview } as any, true);
@@ -116,13 +123,16 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
                 // Increment specific bucket
                 if (this._lastActivityType === 'editor') {
                     this._activeEditorSeconds++;
-                    this._deltaEditorSeconds++;
+                    if (this._currentMode === 'Study Assist') this._studyDeltaEditorSeconds++;
+                    else this._homeworkDeltaEditorSeconds++;
                 } else if (this._lastActivityType === 'shell') {
                     this._activeShellSeconds++;
-                    this._deltaShellSeconds++;
+                    if (this._currentMode === 'Study Assist') this._studyDeltaShellSeconds++;
+                    else this._homeworkDeltaShellSeconds++;
                 } else if (this._lastActivityType === 'chat') {
                     this._activeChatSeconds++;
-                    this._deltaChatSeconds++;
+                    if (this._currentMode === 'Study Assist') this._studyDeltaChatSeconds++;
+                    else this._homeworkDeltaChatSeconds++;
                 }
                 
                 this._totalElapsedSeconds = this._activeEditorSeconds + this._activeShellSeconds + this._activeChatSeconds;
@@ -135,11 +145,69 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
                 if (!this._isStopwatchPaused) {
                     this._isStopwatchPaused = true;
                     this._notifyStopwatchState();
+                    this._flushTelemetry();
                 }
             }
         }, 1000);
+        
+        // Out-of-band telemetry sync loop (every 15 minutes)
+        setInterval(() => {
+            this._flushTelemetry();
+        }, 900000);
     }
     
+    private async _flushTelemetry() {
+        const hasHomeworkMetrics = this._homeworkDeltaEditorSeconds > 0 || this._homeworkDeltaShellSeconds > 0 || this._homeworkDeltaChatSeconds > 0;
+        const hasStudyMetrics = this._studyDeltaEditorSeconds > 0 || this._studyDeltaShellSeconds > 0 || this._studyDeltaChatSeconds > 0;
+        
+        if (!hasHomeworkMetrics && !hasStudyMetrics) return;
+
+        const apiUrl = vscode.workspace.getConfiguration('codingRabbit').get('apiUrl') || 'http://host.docker.internal:8001/api/chat';
+        const telemetryUrl = apiUrl.toString().replace('/api/chat', '/api/telemetry');
+
+        try {
+            if (hasHomeworkMetrics) {
+                await fetch(telemetryUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        session_id: this._sessionId,
+                        mode: "Homework Assist",
+                        engagement_metrics: {
+                            active_editor_seconds: this._homeworkDeltaEditorSeconds,
+                            active_shell_seconds: this._homeworkDeltaShellSeconds,
+                            active_chat_seconds: this._homeworkDeltaChatSeconds
+                        }
+                    })
+                });
+                this._homeworkDeltaEditorSeconds = 0;
+                this._homeworkDeltaShellSeconds = 0;
+                this._homeworkDeltaChatSeconds = 0;
+            }
+
+            if (hasStudyMetrics) {
+                await fetch(telemetryUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        session_id: this._sessionId,
+                        mode: "Study Assist",
+                        engagement_metrics: {
+                            active_editor_seconds: this._studyDeltaEditorSeconds,
+                            active_shell_seconds: this._studyDeltaShellSeconds,
+                            active_chat_seconds: this._studyDeltaChatSeconds
+                        }
+                    })
+                });
+                this._studyDeltaEditorSeconds = 0;
+                this._studyDeltaShellSeconds = 0;
+                this._studyDeltaChatSeconds = 0;
+            }
+        } catch (e) {
+            TAChatViewProvider.getOutputChannel().appendLine(`[Telemetry Error]: ${e}`);
+        }
+    }
+
     private _notifyStopwatchState() {
         if (this._currentWebview) {
             this._currentWebview.postMessage({ 
@@ -222,6 +290,7 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
                     break;
                 }
                 case 'modeChanged': {
+                    this._currentMode = data.mode;
                     if (data.mode === 'Study Assist') {
                         // Close the terminal/panel area
                         vscode.commands.executeCommand('workbench.action.closePanel');
@@ -413,6 +482,7 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
         let rawCode = '';
         let astMetadata = 'AST_Metadata: (Hidden for local inference)';
         let likelyPasteDetected = false;
+        let pastedCharCount = 0;
         
         // Hide code context in Study Assist mode to prevent the TA from aggressively pivoting back to debugging
         if (mode === 'Study Assist') {
@@ -435,10 +505,11 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
             
             if (startLine > 0) rawCode = `... (code truncated above)\n` + rawCode;
             if (endLine < lines.length) rawCode = rawCode + `\n... (code truncated below)`;
-            likelyPasteDetected = this._pasteStatusByUri.get(document.uri.toString()) || false;
+            pastedCharCount = this._pasteStatusByUri.get(document.uri.toString()) || 0;
+            likelyPasteDetected = pastedCharCount > 0;
             // Clear the paste status so the TA only interrogates them once per paste
             if (likelyPasteDetected) {
-                this._pasteStatusByUri.set(document.uri.toString(), false);
+                this._pasteStatusByUri.set(document.uri.toString(), 0);
             }
             
             try {
@@ -770,17 +841,23 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
 
         let dynamicContext = `[State_Tracking]
 Mode: ${mode}
-${likelyPasteDetected ? "Likely_Paste_Detected: true" : "Likely_Paste_Detected: false"}
+${likelyPasteDetected ? "Likely_Paste_Detected: true\nPasted_Char_Count: " + pastedCharCount : "Likely_Paste_Detected: false"}
 Session_Style_Nudged: ${this._hasGivenStyleNudge}
 Session_Adversarial_Warnings: ${this._adversarialWarningCount}
-Active_Editor_Time_Sec: ${this._deltaEditorSeconds}
-Active_Shell_Time_Sec: ${this._deltaShellSeconds}
-Active_Chat_Time_Sec: ${this._deltaChatSeconds}`;
+Active_Editor_Time_Sec: ${mode === 'Study Assist' ? this._studyDeltaEditorSeconds : this._homeworkDeltaEditorSeconds}
+Active_Shell_Time_Sec: ${mode === 'Study Assist' ? this._studyDeltaShellSeconds : this._homeworkDeltaShellSeconds}
+Active_Chat_Time_Sec: ${mode === 'Study Assist' ? this._studyDeltaChatSeconds : this._homeworkDeltaChatSeconds}`;
 
         // Reset delta timers immediately after capturing them for the payload
-        this._deltaEditorSeconds = 0;
-        this._deltaShellSeconds = 0;
-        this._deltaChatSeconds = 0;
+        if (mode === 'Study Assist') {
+            this._studyDeltaEditorSeconds = 0;
+            this._studyDeltaShellSeconds = 0;
+            this._studyDeltaChatSeconds = 0;
+        } else {
+            this._homeworkDeltaEditorSeconds = 0;
+            this._homeworkDeltaShellSeconds = 0;
+            this._homeworkDeltaChatSeconds = 0;
+        }
 
         if (mode !== 'Study Assist') {
             dynamicContext += `\n\n[Code_Context]
@@ -831,7 +908,7 @@ ${terminalOutput}`;
             outputChannel.appendLine(`\n--- NEW REQUEST (${new Date().toLocaleTimeString()}) ---`);
             outputChannel.appendLine(`[Code_Context]`);
             outputChannel.appendLine(`Mode: ${mode}`);
-            outputChannel.appendLine(`Likely_Paste_Detected: ${likelyPasteDetected}`);
+            outputChannel.appendLine(`Likely_Paste_Detected: ${likelyPasteDetected}, Char_Count: ${pastedCharCount}`);
             outputChannel.appendLine(`Raw_Code:\n${rawCode}`);
             outputChannel.appendLine(`${astMetadata}`);
             outputChannel.appendLine(`[Terminal_Context]\nExit_Code: ${exitCode}\nOutput:\n${terminalOutput}`);
@@ -1071,9 +1148,7 @@ ${terminalOutput}`;
         let thinkingElement = null;
 
         modeSelect.addEventListener('change', () => {
-            if (modeSelect.value === 'Study Assist') {
-                vscode.postMessage({ type: 'modeChanged', mode: 'Study Assist' });
-            }
+            vscode.postMessage({ type: 'modeChanged', mode: modeSelect.value });
         });
 
         terminalBtn.addEventListener('click', () => {

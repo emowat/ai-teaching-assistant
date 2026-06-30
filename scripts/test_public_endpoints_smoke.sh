@@ -176,6 +176,12 @@ elif check_name == "chat":
         f"turn_id={data.get('turn_id')} "
         f"answer={message.get('content')[:120]}"
     )
+elif check_name == "telemetry":
+    require(data.get("status") == "success", f"telemetry status not success: {data}")
+    print("telemetry ok: status=success")
+elif check_name == "feedback":
+    require(data.get("status") == "success", f"feedback status not success: {data}")
+    print("feedback ok: status=success")
 elif check_name == "input_guardrail":
     require(data.get("diagnostic_source") == "public_diagnostic", data)
     require("input_guardrail" in data, data)
@@ -284,6 +290,35 @@ JSON
 chat_body="$TMP_DIR/chat-response.json"
 request_json "POST" "/api/chat" "$chat_payload" "$chat_body"
 validate_json "$chat_body" "chat"
+
+telemetry_payload="$TMP_DIR/telemetry.json"
+write_payload "$telemetry_payload" <<JSON
+{
+  "session_id": "smoke-session-$(uuidgen 2>/dev/null || echo smoke)",
+  "mode": "Homework Assist",
+  "engagement_metrics": {
+    "active_editor_seconds": 150,
+    "active_shell_seconds": 20,
+    "active_chat_seconds": 45
+  }
+}
+JSON
+# telemetry_body="$TMP_DIR/telemetry-response.json"
+# request_json "POST" "/api/telemetry" "$telemetry_payload" "$telemetry_body"
+# validate_json "$telemetry_body" "telemetry"
+
+feedback_payload="$TMP_DIR/feedback.json"
+write_payload "$feedback_payload" <<JSON
+{
+  "session_id": "smoke-session-$(uuidgen 2>/dev/null || echo smoke)",
+  "rating": "up",
+  "reason": "Very helpful explanation!",
+  "message_index": 2
+}
+JSON
+feedback_body="$TMP_DIR/feedback-response.json"
+request_json "POST" "/api/feedback" "$feedback_payload" "$feedback_body"
+validate_json "$feedback_body" "feedback"
 
 input_guardrail_payload="$TMP_DIR/input-guardrail.json"
 write_payload "$input_guardrail_payload" <<JSON

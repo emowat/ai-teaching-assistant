@@ -553,6 +553,51 @@ class TelemetryStore:
             )
             return False
 
+    def record_out_of_band_telemetry(
+        self,
+        session_id: str,
+        mode: str,
+        engagement_metrics: dict[str, int]
+    ) -> bool:
+        """Persist out-of-band engagement metrics without needing a full chat turn."""
+        if not self.database_url or not session_id:
+            return False
+
+        try:
+            with _connect_postgres(
+                self.database_url,
+                self.connect_timeout_seconds,
+            ) as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        INSERT INTO telemetry_events (
+                          request_id,
+                          session_id,
+                          event_type,
+                          stage,
+                          status,
+                          metadata
+                        )
+                        VALUES (
+                          %s, %s, %s, %s, %s, %s
+                        )
+                        """,
+                        (
+                            uuid.uuid4().hex,
+                            session_id,
+                            "out_of_band_telemetry",
+                            mode,
+                            "success",
+                            _json_adapter(engagement_metrics)
+                        )
+                    )
+                connection.commit()
+            return True
+        except Exception as exc:
+            logger.warning("Failed to record out of band telemetry for %s: %s", session_id, exc)
+            return False
+
     def record_feedback(
         self,
         session_id: str,

@@ -1120,7 +1120,15 @@ def _extract_chat_context(messages: list[dict]) -> dict:
     week = max(1, min(8, week))
 
     likely_paste = "Likely_Paste_Detected: true" in content
-    clipboard_event = {"external_paste_detected": likely_paste, "pasted_char_count": 0} if likely_paste else None
+    
+    pasted_char_count = 0
+    if likely_paste:
+
+        match = re.search(r"Pasted_Char_Count:\s*(\d+)", content)
+        if match:
+            pasted_char_count = int(match.group(1))
+
+    clipboard_event = {"external_paste_detected": likely_paste, "pasted_char_count": pasted_char_count} if likely_paste else None
 
     def _extract_int(key: str) -> int:
         m = re.search(rf"{key}:\s*(\d+)", content)

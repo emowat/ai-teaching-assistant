@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from rag_eng.config import bedrock_inference_profile_id
 from rag_eng.config import is_deprecated_bedrock_model_id
-from rag.schemas import CourseSource as RagCourseSource, QueryInput, RetrievalResult
+from rag.schemas import CourseSource as RagCourseSource, QueryInput, RetrievalResult, EngagementMetrics
 
 RetrievalRerankStrategy = Literal["similarity", "mmr_0.5", "mmr_0.7", "mmr_0.9"]
 IngestionJobKind = Literal["parse", "chunk-index"]
@@ -78,6 +78,13 @@ class QueryPayload(QueryInput):
 
 class QueryRequest(QueryPayload):
     """Compatibility alias for callers that still import the old request name."""
+
+
+class TelemetryPayload(BaseModel):
+    """Payload for out-of-band telemetry from the VS Code extension."""
+    session_id: str
+    mode: str
+    engagement_metrics: EngagementMetrics
 
 
 class GuardrailResult(BaseModel):

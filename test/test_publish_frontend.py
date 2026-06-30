@@ -26,7 +26,7 @@ def _write_config(tmp_path: Path) -> Path:
         f"""
 aws:
   region: us-east-1
-  profile: codingrabbit-dev
+  profile: default
   s3_bucket: codingrabbit-data-dev
 frontend_web:
   enabled: true

@@ -4,7 +4,7 @@ import { trackTerminal } from './TerminalTracker';
 import { createPatch } from 'diff';
 import * as crypto from 'crypto';
 
-export const pasteStatusByUri = new Map<string, boolean>();
+export const pasteStatusByUri = new Map<string, number>();
 const previousTextByUri = new Map<string, string>();
 
 export function activate(context: vscode.ExtensionContext) {
@@ -52,6 +52,7 @@ export function activate(context: vscode.ExtensionContext) {
         const after = document.getText();
 
         let likelyPaste = false;
+        let pastedCharCount = 0;
 
         for (const change of event.contentChanges) {
             // 1. Record significant deletions (to detect cut-and-paste or vim 'dd' -> 'p')
@@ -83,15 +84,18 @@ export function activate(context: vscode.ExtensionContext) {
                 
                 if (!isInternalCopy && !isInternalCut) {
                     likelyPaste = true;
+                    pastedCharCount += change.text.length;
                 }
             } else if (change.rangeLength > 30 && change.text.trim().length === 0) {
                 // This is likely an Undo of a previous paste or a large deletion
-                pasteStatusByUri.set(uri, false);
+                // This is likely an Undo of a previous paste or a large deletion
+                pasteStatusByUri.set(uri, 0);
             }
         }
 
         if (likelyPaste) {
-            pasteStatusByUri.set(uri, true);
+            const currentCount = pasteStatusByUri.get(uri) || 0;
+            pasteStatusByUri.set(uri, currentCount + pastedCharCount);
             const patch = createPatch(document.fileName, before, after, "before", "after");
             output.appendLine("=".repeat(80));
             output.appendLine(`File: ${document.fileName}`);
