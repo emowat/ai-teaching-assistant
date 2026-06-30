@@ -102,6 +102,7 @@ routes accept either auth style.
 2. Fill in:
    - `QDRANT_URL`
    - `QDRANT_API_KEY`
+   - the Qdrant collection names used by your deployment
    - `COHERE_API_KEY`
    - Cognito variables
 3. If you use OpenAI routes, also fill in:
@@ -110,6 +111,25 @@ routes accept either auth style.
 4. If you use Bedrock, fill in:
    - `AWS_REGION`
    - optionally `AWS_PROFILE`
+
+### Qdrant collection routing
+
+The current cloud deployment uses `BAAI/bge-large-en-v1.5` embeddings
+(`1024` dimensions) for the active course and reference corpora. The canonical
+collection names are:
+
+- `QDRANT_COLLECTION_MIT14=mit14_course_BAAI_bge_large_en_v1_5`
+- `QDRANT_COLLECTION_CS50=harvard_cs50_BAAI_bge_large_en_v1_5`
+- `QDRANT_COLLECTION_GUIDELINES=cpp_guidelines_BAAI_bge_large_en_v1_5`
+
+`MIT13` remains a legacy bucket in this repository:
+
+- `QDRANT_COLLECTION_MIT13=course_knowledge`
+
+For the service-level env block, keep the collection-specific names in sync
+with `deploy/deployment.yaml`. The public Qdrant instance still contains older
+768-dim collections, but the live service should use the 1024-dim BAAI
+collections above.
 5. Install dependencies:
 
 ```bash
@@ -425,6 +445,16 @@ Build the runner image before using docker mode:
 | `ADMIN_TOKEN` | — | legacy admin token header value |
 | `OPENAI_API_KEY` | — | OpenAI API key |
 | `OPENAI_BASE_URL` | `https://api.openai.com/v1` | optional OpenAI-compatible base URL |
+| `QDRANT_URL` | — | Qdrant Cloud URL or empty for local on-disk Qdrant |
+| `QDRANT_API_KEY` | — | Qdrant Cloud API key |
+| `QDRANT_COLLECTION_NAME` | `mit14_course_BAAI_bge_large_en_v1_5` | primary course collection used by indexing helpers |
+| `QDRANT_GUIDELINES_COLLECTION_NAME` | `cpp_guidelines_BAAI_bge_large_en_v1_5` | C++ Core Guidelines / cppreference collection |
+| `QDRANT_HARVARD_COLLECTION_NAME` | `harvard_cs50_BAAI_bge_large_en_v1_5` | Harvard CS50 collection |
+| `QDRANT_COLLECTION_MIT13` | `course_knowledge` | legacy MIT13 collection |
+| `QDRANT_COLLECTION_MIT14` | `mit14_course_BAAI_bge_large_en_v1_5` | MIT14 collection |
+| `QDRANT_COLLECTION_CS50` | `harvard_cs50_BAAI_bge_large_en_v1_5` | CS50 collection |
+| `QDRANT_COLLECTION_GUIDELINES` | `cpp_guidelines_BAAI_bge_large_en_v1_5` | guidelines collection |
+| `EMBEDDING_MODEL` | `BAAI/bge-large-en-v1.5` | active embedding model for the cloud deployment |
 | `AWS_REGION` | `us-east-1` | AWS region for Bedrock and ECS helpers |
 | `AWS_PROFILE` | — | optional AWS profile |
 | `COURSE_REGISTRY_DATABASE_URL` | — | Aurora/PostgreSQL URL for course routing |

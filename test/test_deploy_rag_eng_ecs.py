@@ -70,13 +70,13 @@ rag_eng_ecs:
     GRADIO_PUBLIC_ORIGIN: "https://d26myplnp1msqn.cloudfront.net"
     OPENAI_BASE_URL: https://api.openai.com/v1
     QDRANT_URL: https://qdrant.example
-    QDRANT_COLLECTION_NAME: codingrabbit_rag_vectordb
-    QDRANT_GUIDELINES_COLLECTION_NAME: cpp_guidelines
-    QDRANT_HARVARD_COLLECTION_NAME: harvard_cs50
-    QDRANT_COLLECTION_MIT13: mit13_course
-    QDRANT_COLLECTION_MIT14: mit14_course
-    QDRANT_COLLECTION_CS50: harvard_cs50
-    QDRANT_COLLECTION_GUIDELINES: cpp_guidelines
+    QDRANT_COLLECTION_NAME: mit14_course_BAAI_bge_large_en_v1_5
+    QDRANT_GUIDELINES_COLLECTION_NAME: cpp_guidelines_BAAI_bge_large_en_v1_5
+    QDRANT_HARVARD_COLLECTION_NAME: harvard_cs50_BAAI_bge_large_en_v1_5
+    QDRANT_COLLECTION_MIT13: course_knowledge
+    QDRANT_COLLECTION_MIT14: mit14_course_BAAI_bge_large_en_v1_5
+    QDRANT_COLLECTION_CS50: harvard_cs50_BAAI_bge_large_en_v1_5
+    QDRANT_COLLECTION_GUIDELINES: cpp_guidelines_BAAI_bge_large_en_v1_5
     EMBEDDING_MODEL: sentence-transformers/multi-qa-mpnet-base-dot-v1
     INPUT_GUARDRAILS_ENABLED: "true"
     INPUT_GUARDRAILS_CODEBERT_S3_URI: s3://codingrabbit-data-dev/models/guardrails/input_codebert_v1/model.tar.gz

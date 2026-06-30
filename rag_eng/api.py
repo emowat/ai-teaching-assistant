@@ -145,6 +145,13 @@ class ChatRequest(BaseModel):
     options: _ChatOptions = _ChatOptions()
 
 
+class FeedbackPayload(BaseModel):
+    session_id: str | None = None
+    rating: str
+    reason: str | None = None
+    message_index: int | None = None
+
+
 def _error_detail(exc: Exception) -> str:
     """Return a non-empty HTTP error message (httpx timeouts often str() to '')."""
     detail = str(exc).strip()
@@ -775,12 +782,6 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
         except Exception as exc:
             raise HTTPException(status_code=500, detail=_error_detail(exc)) from exc
-
-    class FeedbackPayload(BaseModel):
-        session_id: str | None = None
-        rating: str
-        reason: str | None = None
-        message_index: int | None = None
 
     @app.post("/api/feedback")
     async def feedback_endpoint(payload: FeedbackPayload):

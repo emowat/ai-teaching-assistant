@@ -55,10 +55,13 @@ def _retrieved_rag_chunks(retrieval_result: RetrievalResult | None) -> list[dict
                 if chunk_id_text in seen:
                     continue
                 seen.add(chunk_id_text)
-            
+
             chunk_data = {
+                "chunk_id": chunk_id_text if chunk_id else None,
                 "label": attr.title(),
-                "Source": str(getattr(doc, "source_type", "") or getattr(doc, "source_domain", "")),
+                "Source": str(
+                    getattr(doc, "source_type", "") or getattr(doc, "source_domain", "")
+                ),
                 "Content": getattr(doc, "content", ""),
                 "score": getattr(doc, "score", 0.0),
             }
@@ -81,6 +84,26 @@ def _retrieval_phase(
         "doc_count": len(chunks),
         "rerank_strategy": rerank_strategy,
         "retrieved_rag_chunks": chunks,
+    }
+
+
+def _legacy_retrieval_phase(
+    retrieval_phase: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if retrieval_phase is None:
+        return None
+
+    retrieved_chunk_ids = [
+        str(chunk.get("chunk_id"))
+        for chunk in retrieval_phase.get("retrieved_rag_chunks", [])
+        if chunk.get("chunk_id")
+    ]
+    return {
+        "latency_ms": retrieval_phase.get("latency_ms"),
+        "doc_count": retrieval_phase.get("doc_count", 0),
+        "rerank_strategy": retrieval_phase.get("rerank_strategy"),
+        "retrieved_chunk_ids": retrieved_chunk_ids,
+        "retrieved_rag_chunks": retrieval_phase.get("retrieved_rag_chunks", []),
     }
 
 
@@ -114,6 +137,56 @@ def _extract_cot_keys(raw_generation: str) -> dict[str, str]:
                 if len(parts) == 2:
                     cot_dict[parts[0].strip()] = parts[1].strip()
     return cot_dict
+
+
+def _ta_generation_phase(
+    *,
+    raw_generation: str | None,
+    guardrail: dict[str, Any] | None,
+    model_provider: str | None,
+    model_name: str | None,
+    llm_latency_ms: int | None,
+) -> dict[str, Any] | None:
+    if raw_generation is None:
+        return None
+
+    generation_history = [
+        {
+            "attempt_id": 1,
+            "model_provider": model_provider,
+            "model_name": model_name,
+            "generation_latency_ms": llm_latency_ms,
+            "cot_keys": _extract_cot_keys(raw_generation),
+            "raw_generation": raw_generation,
+            "output_guardrail": guardrail,
+        }
+    ]
+    return {
+        "attempts_count": 1,
+        "generation_latency_ms": llm_latency_ms,
+        "raw_generation": raw_generation,
+        "output_guardrail": guardrail,
+        "generation_history": generation_history,
+    }
+
+
+def _legacy_output_guardrail_phase(
+    guardrail: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if guardrail is None:
+        return None
+    return {
+        "stage": guardrail.get("stage"),
+        "action": guardrail.get("action"),
+        "blocked": guardrail.get("blocked"),
+        "safe": guardrail.get("safe"),
+        "violation_type": guardrail.get("violation_type"),
+        "severity": guardrail.get("severity"),
+        "evidence": guardrail.get("evidence"),
+        "final_answer": guardrail.get("final_answer"),
+        "latency_ms": guardrail.get("latency_ms"),
+        "v2_score": guardrail.get("v2_score"),
+    }
 
 
 def _orchestrator_phase(
@@ -223,6 +296,20 @@ def build_turn_snapshot(
         else:
             final_text = raw_generation or ""
 
+    backend_retrieval_phase = _retrieval_phase(
+        retrieval_result,
+        retrieval_latency_ms=retrieval_latency_ms,
+        rerank_strategy=getattr(query, "rerank_strategy", None),
+    )
+    ta_generation_phase = _ta_generation_phase(
+        raw_generation=raw_generation,
+        guardrail=guardrail,
+        model_provider=model_provider,
+        model_name=model_name,
+        llm_latency_ms=llm_latency_ms,
+    )
+    output_guardrail_phase = _legacy_output_guardrail_phase(guardrail)
+
     snapshot = {
         "session_id": trace.session_id,
         "turn_id": trace.turn_id,
@@ -254,35 +341,16 @@ def build_turn_snapshot(
             "terminal_context": f"Exit_Code: {query.exit_code}\nOutput: \"{query.terminal_output or ''}\"",
         },
         "student_phase": _student_phase(query, input_guardrail),
-        "backend_retrieval_phase": _retrieval_phase(
-            retrieval_result,
-            retrieval_latency_ms=retrieval_latency_ms,
-            rerank_strategy=getattr(query, "rerank_strategy", None),
-        ),
+        "backend_retrieval_phase": backend_retrieval_phase,
+        "retrieval_phase": _legacy_retrieval_phase(backend_retrieval_phase),
         "orchestrator_phase": _orchestrator_phase(
             input_guardrail=input_guardrail,
             guardrail=guardrail,
             final_answer=final_text,
             orchestrator_context=orchestrator_context,
         ),
-        "ta_generation_phase": (
-            None
-            if raw_generation is None
-            else {
-                "attempts_count": 1,
-                "generation_history": [
-                    {
-                        "attempt_id": 1,
-                        "model_provider": model_provider,
-                        "model_name": model_name,
-                        "generation_latency_ms": llm_latency_ms,
-                        "cot_keys": _extract_cot_keys(raw_generation),
-                        "raw_generation": raw_generation,
-                        "output_guardrail": guardrail,
-                    }
-                ]
-            }
-        ),
+        "ta_generation_phase": ta_generation_phase,
+        "output_guardrail_phase": output_guardrail_phase,
         "final_response": {
             "text": final_text,
             "source": _final_response_source(
