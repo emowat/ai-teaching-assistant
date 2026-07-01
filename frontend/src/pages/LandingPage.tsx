@@ -3,7 +3,7 @@ import { useAuth } from "react-oidc-context";
 import { getRedirectOrigin, getRedirectUri, hasOriginMismatch } from "../auth/cognitoConfig";
 import { Btn, Card, Tag } from "../design/atoms";
 import { D, mono } from "../design/tokens";
-import rabbitMascot from "../assets/rabbit-mascot.svg";
+import rabbitMascot from "../assets/mascot.png";
 import type { AppView } from "../types/navigation";
 
 interface LandingPageProps {
