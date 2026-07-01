@@ -146,6 +146,20 @@ def test_update_distribution_uses_http_only_origin_policy(tmp_path) -> None:
                             },
                         ],
                     },
+                    "DefaultCacheBehavior": {
+                        "TargetOriginId": "frontend-s3",
+                        "ViewerProtocolPolicy": "redirect-to-https",
+                        "AllowedMethods": {
+                            "Quantity": 2,
+                            "Items": ["GET", "HEAD"],
+                            "CachedMethods": {
+                                "Quantity": 2,
+                                "Items": ["GET", "HEAD"],
+                            },
+                        },
+                        "Compress": True,
+                        "CachePolicyId": "cache-disabled",
+                    },
                 },
             }
 
@@ -181,6 +195,11 @@ def test_update_distribution_uses_http_only_origin_policy(tmp_path) -> None:
             "CustomOriginConfig"
         ]["OriginProtocolPolicy"]
         == "http-only"
+    )
+    assert cloudfront.update_kwargs["DistributionConfig"]["DefaultCacheBehavior"][
+        "FunctionAssociations"
+    ]["Items"][0]["FunctionARN"].endswith(
+        "codingrabbit-frontend-spa-rewrite"
     )
     assert result["id"] == "DIST123"
     assert result["status"] == "InProgress"

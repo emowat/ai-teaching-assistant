@@ -577,6 +577,12 @@ def _update_distribution(
             break
     else:
         raise RuntimeError("Unable to find rag-eng-alb origin in CloudFront config.")
+
+    default_behavior = distribution_config.get("DefaultCacheBehavior")
+    if not isinstance(default_behavior, dict):
+        raise RuntimeError("Unable to find default cache behavior in CloudFront config.")
+    default_behavior.update(_cloudfront_function_association(spa_function_arn))
+
     distribution_config["CallerReference"] = current["DistributionConfig"][
         "CallerReference"
     ]
