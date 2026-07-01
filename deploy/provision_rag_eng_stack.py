@@ -52,6 +52,13 @@ SECRET_ENV_KEYS: tuple[str, ...] = (
     "COURSE_REGISTRY_DATABASE_URL",
 )
 
+OPTIONAL_SECRET_ENV_KEYS: frozenset[str] = frozenset(
+    {"OPENAI_API_KEY", "COHERE_API_KEY"}
+)
+REQUIRED_SECRET_ENV_KEYS: frozenset[str] = frozenset(SECRET_ENV_KEYS).difference(
+    OPTIONAL_SECRET_ENV_KEYS
+)
+
 SECRET_NAMESPACE = "codingrabbit/rag_eng"
 ECR_REPOSITORY_NAME = "codingrabbit-rag-eng"
 ECS_CLUSTER_NAME = "codingrabbit-rag-eng"
@@ -609,9 +616,13 @@ def run_preflight_checks(*, skip_preflight: bool = False) -> None:
     )
 
 
-def _create_secret_arns(config: DeployConfig) -> dict[str, str]:
+def _resolve_secret_arns(config: DeployConfig) -> dict[str, str]:
     sm = _client(config, "secretsmanager")
-    secret_arns: dict[str, str] = {}
+    secret_arns: dict[str, str] = {
+        key: value
+        for key, value in config.rag_eng_ecs.secret_arn_map.items()
+        if value is not None and str(value).strip()
+    }
     descriptions = {
         "OPENAI_API_KEY": "OpenAI API key for rag_eng chat routes.",
         "COHERE_API_KEY": "Cohere API key for rag_eng retrieval/chat routes.",
@@ -619,12 +630,21 @@ def _create_secret_arns(config: DeployConfig) -> dict[str, str]:
         "COURSE_REGISTRY_DATABASE_URL": "Aurora/PostgreSQL URL for course routing and telemetry.",
     }
     for key in SECRET_ENV_KEYS:
-        secret_arns[key] = _ensure_secret(
-            sm,
-            name=_secret_name(key),
-            value=_require_env_value(key),
-            description=descriptions[key],
-        )
+        env_value = os.getenv(key, "").strip()
+        if env_value:
+            secret_arns[key] = _ensure_secret(
+                sm,
+                name=_secret_name(key),
+                value=env_value,
+                description=descriptions[key],
+            )
+            continue
+        if key in REQUIRED_SECRET_ENV_KEYS and not secret_arns.get(key):
+            raise RuntimeError(
+                f"{key} must be set before provisioning rag_eng or provided in deploy/deployment.yaml."
+            )
+        if key in OPTIONAL_SECRET_ENV_KEYS and not secret_arns.get(key):
+            secret_arns.pop(key, None)
     return secret_arns
 
 
@@ -662,7 +682,7 @@ def provision_stack(config: DeployConfig) -> dict[str, Any]:
     iam = _client(config, "iam")
 
     vpc_id = _pick_subnet_vpc_id(config)
-    secret_arns = _create_secret_arns(config)
+    secret_arns = _resolve_secret_arns(config)
     secret_arn_values = list(secret_arns.values())
 
     repository_uri = _ensure_ecr_repository(

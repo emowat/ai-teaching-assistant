@@ -1,8 +1,44 @@
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 
 from deploy import provision_rag_eng_stack as provision
+
+
+class _FakeSecretsManagerExceptions:
+    class ResourceNotFoundException(Exception):
+        pass
+
+
+class _FakeSecretsManagerClient:
+    def __init__(self, *, existing: dict[str, str] | None = None) -> None:
+        self.exceptions = _FakeSecretsManagerExceptions()
+        self._existing = dict(existing or {})
+        self.created_secrets: list[dict[str, str]] = []
+        self.updated_secrets: list[dict[str, str]] = []
+
+    def describe_secret(self, *, SecretId: str):
+        if SecretId not in self._existing:
+            raise self.exceptions.ResourceNotFoundException(SecretId)
+        return {"ARN": self._existing[SecretId]}
+
+    def put_secret_value(self, *, SecretId: str, SecretString: str):
+        self.updated_secrets.append(
+            {"SecretId": SecretId, "SecretString": SecretString}
+        )
+
+    def create_secret(self, *, Name: str, SecretString: str, Description: str):
+        arn = f"arn:aws:secretsmanager:us-east-1:123456789012:secret:{Name}"
+        self._existing[Name] = arn
+        self.created_secrets.append(
+            {
+                "Name": Name,
+                "SecretString": SecretString,
+                "Description": Description,
+            }
+        )
+        return {"ARN": arn}
 
 
 class _FakeIamExceptions:
@@ -142,6 +178,101 @@ def test_ensure_execution_role_grants_secret_access() -> None:
         "arn:aws:secretsmanager:us-east-1:123456789012:secret:openai",
         "arn:aws:secretsmanager:us-east-1:123456789012:secret:qdrant",
     ]
+
+
+def test_resolve_secret_arns_preserves_existing_optional_values_when_env_missing(
+    monkeypatch,
+) -> None:
+    fake_client = _FakeSecretsManagerClient()
+    config = SimpleNamespace(
+        rag_eng_ecs=SimpleNamespace(
+            secret_arn_map={
+                "OPENAI_API_KEY": "arn:aws:secretsmanager:us-east-1:123456789012:secret:openai",
+                "COHERE_API_KEY": "arn:aws:secretsmanager:us-east-1:123456789012:secret:cohere",
+                "QDRANT_API_KEY": "arn:aws:secretsmanager:us-east-1:123456789012:secret:qdrant",
+                "COURSE_REGISTRY_DATABASE_URL": "arn:aws:secretsmanager:us-east-1:123456789012:secret:course-registry",
+            }
+        )
+    )
+
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("COHERE_API_KEY", raising=False)
+    monkeypatch.delenv("QDRANT_API_KEY", raising=False)
+    monkeypatch.delenv("COURSE_REGISTRY_DATABASE_URL", raising=False)
+    monkeypatch.setattr(
+        provision,
+        "_client",
+        lambda *_args, **_kwargs: fake_client,
+    )
+
+    resolved = provision._resolve_secret_arns(config)
+
+    assert resolved == config.rag_eng_ecs.secret_arn_map
+    assert fake_client.created_secrets == []
+    assert fake_client.updated_secrets == []
+
+
+def test_resolve_secret_arns_loads_optional_values_when_env_present(
+    monkeypatch,
+) -> None:
+    fake_client = _FakeSecretsManagerClient(
+        existing={
+            "codingrabbit/rag_eng/OPENAI_API_KEY": (
+                "arn:aws:secretsmanager:us-east-1:123456789012:secret:openai"
+            ),
+            "codingrabbit/rag_eng/COHERE_API_KEY": (
+                "arn:aws:secretsmanager:us-east-1:123456789012:secret:cohere"
+            ),
+            "codingrabbit/rag_eng/QDRANT_API_KEY": (
+                "arn:aws:secretsmanager:us-east-1:123456789012:secret:qdrant"
+            ),
+            "codingrabbit/rag_eng/COURSE_REGISTRY_DATABASE_URL": (
+                "arn:aws:secretsmanager:us-east-1:123456789012:secret:course-registry"
+            ),
+        }
+    )
+    config = SimpleNamespace(
+        rag_eng_ecs=SimpleNamespace(
+            secret_arn_map={
+                "OPENAI_API_KEY": "arn:aws:secretsmanager:us-east-1:123456789012:secret:openai",
+                "COHERE_API_KEY": "arn:aws:secretsmanager:us-east-1:123456789012:secret:cohere",
+                "QDRANT_API_KEY": "arn:aws:secretsmanager:us-east-1:123456789012:secret:qdrant",
+                "COURSE_REGISTRY_DATABASE_URL": "arn:aws:secretsmanager:us-east-1:123456789012:secret:course-registry",
+            }
+        )
+    )
+
+    monkeypatch.setenv("OPENAI_API_KEY", "new-openai-secret")
+    monkeypatch.setenv("COHERE_API_KEY", "new-cohere-secret")
+    monkeypatch.delenv("QDRANT_API_KEY", raising=False)
+    monkeypatch.delenv("COURSE_REGISTRY_DATABASE_URL", raising=False)
+    monkeypatch.setattr(
+        provision,
+        "_client",
+        lambda *_args, **_kwargs: fake_client,
+    )
+
+    resolved = provision._resolve_secret_arns(config)
+
+    assert resolved["OPENAI_API_KEY"] == (
+        "arn:aws:secretsmanager:us-east-1:123456789012:secret:openai"
+    )
+    assert resolved["COHERE_API_KEY"] == (
+        "arn:aws:secretsmanager:us-east-1:123456789012:secret:cohere"
+    )
+    assert resolved["QDRANT_API_KEY"] == (
+        "arn:aws:secretsmanager:us-east-1:123456789012:secret:qdrant"
+    )
+    assert (
+        resolved["COURSE_REGISTRY_DATABASE_URL"]
+        == "arn:aws:secretsmanager:us-east-1:123456789012:secret:course-registry"
+    )
+    assert fake_client.created_secrets == []
+    assert len(fake_client.updated_secrets) == 2
+    assert {item["SecretId"] for item in fake_client.updated_secrets} == {
+        "codingrabbit/rag_eng/OPENAI_API_KEY",
+        "codingrabbit/rag_eng/COHERE_API_KEY",
+    }
 
 
 def test_ensure_listener_updates_when_target_group_changes() -> None:
