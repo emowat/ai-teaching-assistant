@@ -538,6 +538,8 @@ def _build_image_and_push(
         [
             "docker",
             "build",
+            "--platform",
+            "linux/amd64",
             "-t",
             image_tag,
             "-f",

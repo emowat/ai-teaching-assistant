@@ -6,7 +6,7 @@ set -e
 
 if [ "$#" -lt 2 ] || [ "$#" -gt 3 ]; then
     echo "Usage: $0 <EXTENSION_DIR> <DEST_DIR> [API_URL]"
-    echo "Example: $0 /path/to/vscode-extension /path/to/assignment5/.devcontainer http://host.docker.internal:8001/api/chat"
+    echo "Example: $0 /path/to/vscode-extension /path/to/assignment5/.devcontainer"
     exit 1
 fi
 
@@ -15,7 +15,23 @@ EXTENSION_DIR=$(cd "$1" && pwd)
 mkdir -p "$2"
 DEST_DIR=$(cd "$2" && pwd)
 ASSIGNMENT_ROOT=$(dirname "$DEST_DIR")
-API_URL=${3:-"http://host.docker.internal:8001/api/chat"}
+
+if [ -z "${3:-}" ]; then
+    echo "No API_URL supplied. Attempting to discover the AWS ELB URL automatically..."
+    if ! aws sts get-caller-identity >/dev/null 2>&1; then
+        echo "ERROR: Not connected to AWS. Please login via AWS SSO."
+        exit 1
+    fi
+    ELB_DNS=$(aws elbv2 describe-load-balancers --query 'LoadBalancers[?contains(LoadBalancerName, `codingrabbit-rag-eng`)].DNSName' --output text)
+    if [ -z "$ELB_DNS" ] || [ "$ELB_DNS" = "None" ]; then
+        echo "ERROR: Could not find the codingrabbit-rag-eng load balancer in AWS."
+        exit 1
+    fi
+    API_URL="http://${ELB_DNS}/api/chat"
+    echo "Found AWS ELB URL: $API_URL"
+else
+    API_URL="$3"
+fi
 
 # Automatically initialize assignment directory with templates if missing
 echo "Updating assignment directory with CodingRabbit templates..."

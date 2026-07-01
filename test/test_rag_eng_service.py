@@ -494,7 +494,7 @@ def test_run_query_uses_openai_rag_provider(monkeypatch) -> None:
     assert fake_telemetry.finished
     assert len(fake_telemetry.snapshots) == 1
     assert (
-        fake_telemetry.snapshots[0]["snapshot"]["ta_generation_phase"]["raw_generation"]
+        fake_telemetry.snapshots[0]["snapshot"]["ta_generation_phase"]["generation_history"][-1]["raw_generation"]
         == "openai answer"
     )
     assert fake_telemetry.snapshots[0]["snapshot"]["final_response"]["text"] == "openai answer"

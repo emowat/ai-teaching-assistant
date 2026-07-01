@@ -257,19 +257,19 @@ def convert_dataset(input_file, output_file):
                     }
                 
                 if is_adv:
+                    log_entry["input_guardrail_phase"] = {
+                        "safe": False,
+                        "blocked": True,
+                        "violation_type": "ERR_PROMPT_INJECTION",
+                        "severity": "high",
+                        "action": "block",
+                        "evidence": "",
+                        "final_answer": "[SYSTEM NOTIFICATION: I am a C++ teaching assistant. Please keep your questions focused on conceptual debugging or syntax help.]",
+                        "stage": "v1",
+                        "latency_ms": random.randint(15, 35)
+                    }
                     log_entry["student_phase"] = {
                         "raw_input": raw_input,
-                        "input_guardrail": {
-                            "safe": False,
-                            "blocked": True,
-                            "violation_type": "ERR_PROMPT_INJECTION",
-                            "severity": "high",
-                            "action": "block",
-                            "evidence": "",
-                            "final_answer": "[SYSTEM NOTIFICATION: I am a C++ teaching assistant. Please keep your questions focused on conceptual debugging or syntax help.]",
-                            "stage": "v1",
-                            "latency_ms": random.randint(15, 35)
-                        },
                         "processed_input": None
                     }
                     log_entry["orchestrator_phase"] = {
@@ -278,19 +278,19 @@ def convert_dataset(input_file, output_file):
                         "final_rendered_text": "[SYSTEM NOTIFICATION: I am a C++ teaching assistant. Please keep your questions focused on conceptual debugging or syntax help.]"
                     }
                 else:
+                    log_entry["input_guardrail_phase"] = {
+                        "safe": True,
+                        "blocked": False,
+                        "violation_type": "none",
+                        "severity": "",
+                        "action": "pass",
+                        "evidence": "",
+                        "final_answer": "",
+                        "stage": "v1",
+                        "latency_ms": random.randint(10, 25)
+                    }
                     log_entry["student_phase"] = {
                         "raw_input": raw_input,
-                        "input_guardrail": {
-                            "safe": True,
-                            "blocked": False,
-                            "violation_type": "none",
-                            "severity": "",
-                            "action": "pass",
-                            "evidence": "",
-                            "final_answer": "",
-                            "stage": "v1",
-                            "latency_ms": random.randint(10, 25)
-                        },
                         "processed_input": raw_input
                     }
                     log_entry["ta_generation_phase"] = {

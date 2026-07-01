@@ -235,7 +235,7 @@ def test_full_pipeline_turn_snapshot_can_be_exported(monkeypatch) -> None:
     snapshot = fake_telemetry.snapshots[0]["snapshot"]
     assert snapshot["trace"]["turn_id"] == "turn-1"
     assert snapshot["final_response"]["text"] == "openai chat answer"
-    assert snapshot["student_phase"]["input_guardrail"]["blocked"] is False
+    assert snapshot["input_guardrail_phase"]["blocked"] is False
 
     fake_s3 = _FakeS3Client(put_objects=[])
 

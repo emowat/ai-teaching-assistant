@@ -125,8 +125,13 @@ def main(argv: list[str] | None = None) -> None:
             parser.error(
                 "export-turn-snapshots requires --bucket or a configured S3 bucket"
             )
+        database_url = args.database_url or os.getenv("COURSE_REGISTRY_DATABASE_URL") or os.getenv("DATABASE_URL")
+        if not database_url:
+            parser.error(
+                "export-turn-snapshots requires --database-url or a configured Aurora URL"
+            )
         result = export_turn_snapshots_to_s3(
-            database_url=args.database_url,
+            database_url=database_url,
             bucket=bucket,
             prefix=args.prefix or DEFAULT_EXPORT_PREFIX,
             start_date=date.fromisoformat(args.start_date)

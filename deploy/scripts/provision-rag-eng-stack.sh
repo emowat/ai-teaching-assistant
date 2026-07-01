@@ -82,13 +82,10 @@ if [[ -z "${ACTION}" ]]; then
   exit 1
 fi
 
-if [[ -x "${REPO_ROOT}/.venv/bin/python" ]]; then
-  PYTHON="${REPO_ROOT}/.venv/bin/python"
-elif command -v python3 &>/dev/null; then
-  PYTHON="python3"
+if command -v uv >/dev/null 2>&1; then
+  PYTHON="uv run python"
 else
-  echo "ERROR: No Python found. Create a venv: uv venv && uv pip install -r requirements.txt"
-  exit 1
+  PYTHON="python"
 fi
 
 if [[ ! -f "${PYTHON_SCRIPT}" ]]; then
@@ -112,4 +109,4 @@ echo "    Service:  ${DEPLOY_RAG_ENG_ECS_SERVICE_NAME}"
 echo "    Target:   ${DEPLOY_RAG_ENG_ECS_TARGET_GROUP_ARN:-'(missing)'}"
 echo ""
 
-exec "${PYTHON}" "${PYTHON_SCRIPT}" "${ARGS[@]}"
+exec ${PYTHON} "${PYTHON_SCRIPT}" "${ARGS[@]}"

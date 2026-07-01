@@ -6,6 +6,14 @@ load_deploy_config() {
   local python_bin="$2"
   local config_helper="${repo_root}/deploy/deployment_config.py"
 
+  if [[ -z "${PYTHON_CMD:-}" ]]; then
+    if command -v uv >/dev/null 2>&1; then
+      PYTHON_CMD="uv run python"
+    else
+      PYTHON_CMD="python"
+    fi
+  fi
+
   if [[ ! -f "${config_helper}" ]]; then
     echo "ERROR: Missing ${config_helper}"
     exit 1
@@ -18,5 +26,5 @@ load_deploy_config() {
     set +a
   fi
 
-  eval "$("${python_bin}" "${config_helper}" shell-export)"
+  eval "$(${python_bin} "${config_helper}" shell-export)"
 }

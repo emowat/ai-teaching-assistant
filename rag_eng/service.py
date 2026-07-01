@@ -455,13 +455,9 @@ def _persist_turn_snapshot(
     source: str,
     input_guardrail: dict[str, Any] | None,
     retrieval_result: RetrievalResult | None = None,
-    guardrail: dict[str, Any] | None = None,
-    raw_generation: str | None = None,
+    generation_attempts: list[dict[str, Any]] | None = None,
     final_answer: str | None = None,
-    model_provider: str | None = None,
-    model_name: str | None = None,
     retrieval_latency_ms: int | None = None,
-    llm_latency_ms: int | None = None,
     policy_snapshot: dict[str, Any] | None = None,
     orchestrator_context: dict[str, Any] | None = None,
 ) -> None:
@@ -471,13 +467,9 @@ def _persist_turn_snapshot(
         source=source,
         input_guardrail=input_guardrail,
         retrieval_result=retrieval_result,
-        guardrail=guardrail,
-        raw_generation=raw_generation,
+        generation_attempts=generation_attempts,
         final_answer=final_answer,
-        model_provider=model_provider,
-        model_name=model_name,
         retrieval_latency_ms=retrieval_latency_ms,
-        llm_latency_ms=llm_latency_ms,
         policy_snapshot=policy_snapshot,
         orchestrator_context=orchestrator_context,
     )
@@ -527,10 +519,13 @@ def _apply_pipeline_guardrails(
             "conversation_turns": len(conversation_history),
         },
     )
+    import re
+    visible_answer = re.sub(r"<analysis>.*?</analysis>", "", answer, flags=re.DOTALL).strip()
+
     guardrail_started = time.perf_counter()
     try:
         guardrail = apply_all_guardrails(
-            answer,
+            visible_answer,
             user_query,
             student_code,
             conversation_history,
@@ -552,7 +547,13 @@ def _apply_pipeline_guardrails(
     else:
         guardrail_status = guardrail.get("action", "pass")
 
-    final_answer = guardrail.get("final_answer") or answer
+    # If the guardrail replaced the text, use its fallback. 
+    # Otherwise, return the original answer (which includes the CoT).
+    if guardrail_status in ("pass", "log_only"):
+        final_answer = answer
+        guardrail["final_answer"] = answer
+    else:
+        final_answer = guardrail.get("final_answer") or answer
     guardrail_latency_ms = int((time.perf_counter() - guardrail_started) * 1000)
     guardrail = {
         **guardrail,
@@ -748,8 +749,6 @@ def run_query(
             source="query",
             input_guardrail=input_guardrail,
             final_answer=answer,
-            model_provider="orchestrator",
-            model_name="input_guardrail_orchestrator",
             policy_snapshot=policy_snapshot,
             orchestrator_context=orchestration_result["orchestrator_context"],
         )
@@ -838,12 +837,15 @@ def run_query(
             source="query",
             input_guardrail=input_guardrail,
             retrieval_result=retrieval_result,
-            raw_generation=answer,
+            generation_attempts=[{
+                "model_provider": model_provider,
+                "model_name": model_name,
+                "llm_latency_ms": llm_latency_ms,
+                "raw_generation": answer,
+                "guardrail": None,
+            }],
             final_answer=answer,
-            model_provider=model_provider,
-            model_name=model_name,
             retrieval_latency_ms=retrieval_latency_ms,
-            llm_latency_ms=llm_latency_ms,
             policy_snapshot=policy_snapshot,
         )
         return QueryResponse(
@@ -1151,6 +1153,67 @@ def _extract_chat_context(messages: list[dict]) -> dict:
     }
 
 
+async def _generate_llm_response(
+    chat_route,
+    base_api_messages,
+    system_prompt,
+    rag_context,
+    ctx,
+    runtime,
+    settings,
+    stream,
+    model_name,
+) -> tuple[str, list[dict], Any | None]:
+    api_messages = list(base_api_messages)
+    
+    if chat_route.provider == "sagemaker":
+        from rag_eng.prompt_budget import assemble_sagemaker_messages
+        api_messages = assemble_sagemaker_messages(
+            system_prompt,
+            rag_context,
+            api_messages,
+            ctx["mode"],
+            runtime.sagemaker,
+        )
+        result = await run_inference(api_messages, model_name, settings, stream=stream)
+        if stream:
+            return "", api_messages, result
+        text = result["message"]["content"] if isinstance(result, dict) else str(result)
+        return text, api_messages, None
+
+    if chat_route.provider == "bedrock":
+        config = _build_bedrock_config(
+            model_id=chat_route.model,
+            settings=settings,
+            temperature=0.7,
+            top_p=0.9,
+            max_tokens=2048,
+        )
+        full_system = f"{system_prompt}\n{rag_context}"
+        api_messages.insert(0, {"role": "system", "content": full_system})
+        text = await ainvoke_bedrock_chat_completion(api_messages, config)
+        return text, api_messages, None
+
+    if chat_route.provider == "openai":
+        if not settings.openai_api_key:
+            raise ValueError("OPENAI_API_KEY is not configured.")
+        config = OpenAIChatConfig(
+            api_key=settings.openai_api_key,
+            base_url=settings.openai_base_url or runtime.openai_base_url,
+            model=chat_route.model,
+            timeout_seconds=120.0,
+            temperature=0.7,
+            top_p=0.9,
+        )
+        full_system = f"{system_prompt}\n{rag_context}"
+        api_messages.insert(0, {"role": "system", "content": full_system})
+        text = await ainvoke_openai_chat_completion(api_messages, config)
+        return text, api_messages, None
+
+        
+    raise ValueError(f"Unknown chat provider: {chat_route.provider}")
+
+
 async def run_chat(
     messages: list[dict],
     model_name: str,
@@ -1252,8 +1315,6 @@ async def run_chat(
             source="chat",
             input_guardrail=input_guardrail,
             final_answer=answer,
-            model_provider="orchestrator",
-            model_name="input_guardrail_orchestrator",
             policy_snapshot=policy_snapshot,
             orchestrator_context=orchestration_result["orchestrator_context"],
         )
@@ -1288,361 +1349,49 @@ async def run_chat(
         )
 
         rag_context = retrieval_result.formatted_context
-        api_messages = [m for m in messages if m.get("role") != "system"]
-        system_prompt = get_system_prompt(ctx["mode"])
-
-        if chat_route.provider == "sagemaker":
-            from rag_eng.prompt_budget import assemble_sagemaker_messages
-
-            api_messages = assemble_sagemaker_messages(
-                system_prompt,
+        generation_attempts = []
+        base_api_messages = [m for m in messages if m.get("role") != "system"]
+        max_attempts = 2
+        
+        for attempt_idx in range(max_attempts):
+            telemetry_store.record_event(
+                trace,
+                event_type="llm_started",
+                stage="llm_inference",
+                status="started",
+                model_provider=chat_route.provider,
+                model_name=telemetry_model_name,
+                metadata=retrieval_metadata,
+            )
+            llm_started = time.perf_counter()
+            
+            raw_text, _, stream_result = await _generate_llm_response(
+                chat_route,
+                base_api_messages,
+                get_system_prompt(ctx["mode"]),
                 rag_context,
-                api_messages,
-                ctx["mode"],
-                runtime.sagemaker,
+                ctx,
+                runtime,
+                settings,
+                stream,
+                telemetry_model_name,
             )
-            telemetry_store.record_event(
-                trace,
-                event_type="llm_started",
-                stage="llm_inference",
-                status="started",
-                model_provider="sagemaker",
-                model_name=telemetry_model_name,
-                metadata=retrieval_metadata,
-            )
-            llm_started = time.perf_counter()
-            result = await run_inference(api_messages, model_name, settings, stream=stream)
-            if stream:
-                raw_generation = await _collect_stream_answer(result)
-                answer, guardrail = _apply_pipeline_guardrails(
-                    trace=trace,
-                    telemetry_store=telemetry_store,
-                    answer=raw_generation,
-                    user_query=ctx["student_message"],
-                    student_code=ctx["code_raw"],
-                    conversation_history=conversation_history,
-                    retrieval_metadata=retrieval_metadata,
-                )
-                llm_latency_ms = int((time.perf_counter() - llm_started) * 1000)
-                telemetry_store.record_event(
-                    trace,
-                    event_type="llm_finished",
-                    stage="llm_inference",
-                    status="completed",
-                    latency_ms=llm_latency_ms,
-                    model_provider="sagemaker",
-                    model_name=telemetry_model_name,
-                    metadata={
-                        **retrieval_metadata,
-                        "answer_chars": len(answer),
-                        **_guardrail_summary(guardrail),
-                        **_input_guardrail_summary(input_guardrail),
-                    },
-                )
-                telemetry_store.finish_turn(
-                    trace,
-                    status="completed",
-                    latency_ms=int((time.perf_counter() - started_at) * 1000),
-                    model_provider="sagemaker",
-                    model_name=telemetry_model_name,
-                    answer_chars=len(answer),
-                    metadata={
-                        **retrieval_metadata,
-                        "retrieval_latency_ms": retrieval_latency_ms,
-                        "llm_latency_ms": llm_latency_ms,
-                        "answer_chars": len(answer),
-                        **_guardrail_summary(guardrail),
-                        **_input_guardrail_summary(input_guardrail),
-                    },
-                )
-                _persist_turn_snapshot(
-                    telemetry_store=telemetry_store,
-                    trace=trace,
-                    query=query,
-                    source="chat",
-                    input_guardrail=input_guardrail,
-                    retrieval_result=retrieval_result,
-                    guardrail=guardrail,
-                    raw_generation=raw_generation,
-                    final_answer=answer,
-                    model_provider="sagemaker",
-                    model_name=telemetry_model_name,
-                    retrieval_latency_ms=retrieval_latency_ms,
-                    llm_latency_ms=llm_latency_ms,
-                    policy_snapshot=policy_snapshot,
-                )
-                return chunk_text(answer, runtime.sagemaker.streaming_chunk_size)
-            raw_generation = (
-                result["message"]["content"] if isinstance(result, dict) else str(result)
-            )
+            
+            if stream and stream_result:
+                raw_text = await _collect_stream_answer(stream_result)
+                
             answer, guardrail = _apply_pipeline_guardrails(
                 trace=trace,
                 telemetry_store=telemetry_store,
-                answer=raw_generation,
+                answer=raw_text,
                 user_query=ctx["student_message"],
                 student_code=ctx["code_raw"],
                 conversation_history=conversation_history,
                 retrieval_metadata=retrieval_metadata,
             )
+            
             llm_latency_ms = int((time.perf_counter() - llm_started) * 1000)
-            telemetry_store.record_event(
-                trace,
-                event_type="llm_finished",
-                stage="llm_inference",
-                status="completed",
-                latency_ms=llm_latency_ms,
-                model_provider="sagemaker",
-                model_name=telemetry_model_name,
-                metadata={
-                    **retrieval_metadata,
-                    "answer_chars": len(answer),
-                    **_guardrail_summary(guardrail),
-                    **_input_guardrail_summary(input_guardrail),
-                },
-            )
-            telemetry_store.finish_turn(
-                trace,
-                status="completed",
-                latency_ms=int((time.perf_counter() - started_at) * 1000),
-                model_provider="sagemaker",
-                model_name=telemetry_model_name,
-                answer_chars=len(answer),
-                metadata={
-                    **retrieval_metadata,
-                    "retrieval_latency_ms": retrieval_latency_ms,
-                    "llm_latency_ms": llm_latency_ms,
-                    "answer_chars": len(answer),
-                    **_guardrail_summary(guardrail),
-                    **_input_guardrail_summary(input_guardrail),
-                },
-            )
-            _persist_turn_snapshot(
-                telemetry_store=telemetry_store,
-                trace=trace,
-                query=query,
-                source="chat",
-                input_guardrail=input_guardrail,
-                retrieval_result=retrieval_result,
-                guardrail=guardrail,
-                raw_generation=raw_generation,
-                final_answer=answer,
-                model_provider="sagemaker",
-                model_name=telemetry_model_name,
-                retrieval_latency_ms=retrieval_latency_ms,
-                llm_latency_ms=llm_latency_ms,
-                policy_snapshot=policy_snapshot,
-            )
-            return _chat_response_payload_with_guardrail(
-                answer,
-                trace,
-                guardrail,
-                input_guardrail=input_guardrail,
-            )
-
-        if chat_route.provider == "bedrock":
-            config = _build_bedrock_config(
-                model_id=chat_route.model,
-                settings=settings,
-                temperature=0.7,
-                top_p=0.9,
-                max_tokens=2048,
-            )
-            full_system = f"{system_prompt}\n{rag_context}"
-            api_messages.insert(0, {"role": "system", "content": full_system})
-            telemetry_store.record_event(
-                trace,
-                event_type="llm_started",
-                stage="llm_inference",
-                status="started",
-                model_provider="bedrock",
-                model_name=chat_route.model,
-                metadata=retrieval_metadata,
-            )
-            llm_started = time.perf_counter()
-            text = await ainvoke_bedrock_chat_completion(api_messages, config)
-            raw_generation = text
-            text, guardrail = _apply_pipeline_guardrails(
-                trace=trace,
-                telemetry_store=telemetry_store,
-                answer=raw_generation,
-                user_query=ctx["student_message"],
-                student_code=ctx["code_raw"],
-                conversation_history=conversation_history,
-                retrieval_metadata=retrieval_metadata,
-            )
-            llm_latency_ms = int((time.perf_counter() - llm_started) * 1000)
-            telemetry_store.record_event(
-                trace,
-                event_type="llm_finished",
-                stage="llm_inference",
-                status="completed",
-                latency_ms=llm_latency_ms,
-                model_provider="bedrock",
-                model_name=chat_route.model,
-                metadata={
-                    **retrieval_metadata,
-                    "answer_chars": len(text),
-                    **_guardrail_summary(guardrail),
-                    **_input_guardrail_summary(input_guardrail),
-                },
-            )
-            telemetry_store.finish_turn(
-                trace,
-                status="completed",
-                latency_ms=int((time.perf_counter() - started_at) * 1000),
-                model_provider="bedrock",
-                model_name=chat_route.model,
-                answer_chars=len(text),
-                metadata={
-                    **retrieval_metadata,
-                    "retrieval_latency_ms": retrieval_latency_ms,
-                    "llm_latency_ms": llm_latency_ms,
-                    "answer_chars": len(text),
-                    **_guardrail_summary(guardrail),
-                    **_input_guardrail_summary(input_guardrail),
-                },
-            )
-            _persist_turn_snapshot(
-                telemetry_store=telemetry_store,
-                trace=trace,
-                query=query,
-                source="chat",
-                input_guardrail=input_guardrail,
-                retrieval_result=retrieval_result,
-                guardrail=guardrail,
-                raw_generation=raw_generation,
-                final_answer=text,
-                model_provider="bedrock",
-                model_name=chat_route.model,
-                retrieval_latency_ms=retrieval_latency_ms,
-                llm_latency_ms=llm_latency_ms,
-                policy_snapshot=policy_snapshot,
-            )
-            if stream:
-                return chunk_text(text, runtime.sagemaker.streaming_chunk_size)
-            return _chat_response_payload_with_guardrail(
-                text,
-                trace,
-                guardrail,
-                input_guardrail=input_guardrail,
-            )
-
-        if chat_route.provider == "openai":
-            if not settings.openai_api_key:
-                raise ValueError("OPENAI_API_KEY is not configured.")
-            config = OpenAIChatConfig(
-                api_key=settings.openai_api_key,
-                base_url=settings.openai_base_url or runtime.openai_base_url,
-                model=chat_route.model,
-                timeout_seconds=120.0,
-                temperature=0.7,
-                top_p=0.9,
-            )
-            full_system = f"{system_prompt}\n{rag_context}"
-            api_messages.insert(0, {"role": "system", "content": full_system})
-            telemetry_store.record_event(
-                trace,
-                event_type="llm_started",
-                stage="llm_inference",
-                status="started",
-                model_provider="openai",
-                model_name=chat_route.model,
-                metadata=retrieval_metadata,
-            )
-            llm_started = time.perf_counter()
-            text = await ainvoke_openai_chat_completion(api_messages, config)
-            raw_generation = text
-            text, guardrail = _apply_pipeline_guardrails(
-                trace=trace,
-                telemetry_store=telemetry_store,
-                answer=raw_generation,
-                user_query=ctx["student_message"],
-                student_code=ctx["code_raw"],
-                conversation_history=conversation_history,
-                retrieval_metadata=retrieval_metadata,
-            )
-            llm_latency_ms = int((time.perf_counter() - llm_started) * 1000)
-            telemetry_store.record_event(
-                trace,
-                event_type="llm_finished",
-                stage="llm_inference",
-                status="completed",
-                latency_ms=llm_latency_ms,
-                model_provider="openai",
-                model_name=chat_route.model,
-                metadata={
-                    **retrieval_metadata,
-                    "answer_chars": len(text),
-                    **_guardrail_summary(guardrail),
-                    **_input_guardrail_summary(input_guardrail),
-                },
-            )
-            telemetry_store.finish_turn(
-                trace,
-                status="completed",
-                latency_ms=int((time.perf_counter() - started_at) * 1000),
-                model_provider="openai",
-                model_name=chat_route.model,
-                answer_chars=len(text),
-                metadata={
-                    **retrieval_metadata,
-                    "retrieval_latency_ms": retrieval_latency_ms,
-                    "llm_latency_ms": llm_latency_ms,
-                    "answer_chars": len(text),
-                    **_guardrail_summary(guardrail),
-                    **_input_guardrail_summary(input_guardrail),
-                },
-            )
-            _persist_turn_snapshot(
-                telemetry_store=telemetry_store,
-                trace=trace,
-                query=query,
-                source="chat",
-                input_guardrail=input_guardrail,
-                retrieval_result=retrieval_result,
-                guardrail=guardrail,
-                raw_generation=raw_generation,
-                final_answer=text,
-                model_provider="openai",
-                model_name=chat_route.model,
-                retrieval_latency_ms=retrieval_latency_ms,
-                llm_latency_ms=llm_latency_ms,
-                policy_snapshot=policy_snapshot,
-            )
-            if stream:
-                return chunk_text(text, runtime.sagemaker.streaming_chunk_size)
-            return _chat_response_payload_with_guardrail(
-                text,
-                trace,
-                guardrail,
-                input_guardrail=input_guardrail,
-            )
-
-        full_system = f"{system_prompt}\n{rag_context}"
-        api_messages.insert(0, {"role": "system", "content": full_system})
-        telemetry_store.record_event(
-            trace,
-            event_type="llm_started",
-            stage="llm_inference",
-            status="started",
-            model_provider=chat_route.provider,
-            model_name=telemetry_model_name,
-            metadata=retrieval_metadata,
-        )
-        llm_started = time.perf_counter()
-        result = await run_inference(api_messages, model_name, settings, stream=stream)
-        if stream:
-            raw_generation = await _collect_stream_answer(result)
-            answer, guardrail = _apply_pipeline_guardrails(
-                trace=trace,
-                telemetry_store=telemetry_store,
-                answer=raw_generation,
-                user_query=ctx["student_message"],
-                student_code=ctx["code_raw"],
-                conversation_history=conversation_history,
-                retrieval_metadata=retrieval_metadata,
-            )
-            llm_latency_ms = int((time.perf_counter() - llm_started) * 1000)
+            
             telemetry_store.record_event(
                 trace,
                 event_type="llm_finished",
@@ -1658,67 +1407,27 @@ async def run_chat(
                     **_input_guardrail_summary(input_guardrail),
                 },
             )
-            telemetry_store.finish_turn(
-                trace,
-                status="completed",
-                latency_ms=int((time.perf_counter() - started_at) * 1000),
-                model_provider=chat_route.provider,
-                model_name=telemetry_model_name,
-                answer_chars=len(answer),
-                metadata={
-                    **retrieval_metadata,
-                    "retrieval_latency_ms": retrieval_latency_ms,
-                    "llm_latency_ms": llm_latency_ms,
-                    "answer_chars": len(answer),
-                    **_guardrail_summary(guardrail),
-                    **_input_guardrail_summary(input_guardrail),
-                },
-            )
-            _persist_turn_snapshot(
-                telemetry_store=telemetry_store,
-                trace=trace,
-                query=query,
-                source="chat",
-                input_guardrail=input_guardrail,
-                retrieval_result=retrieval_result,
-                guardrail=guardrail,
-                raw_generation=raw_generation,
-                final_answer=answer,
-                model_provider=chat_route.provider,
-                model_name=telemetry_model_name,
-                retrieval_latency_ms=retrieval_latency_ms,
-                llm_latency_ms=llm_latency_ms,
-                policy_snapshot=policy_snapshot,
-            )
-            return chunk_text(answer, runtime.sagemaker.streaming_chunk_size)
-        raw_generation = (
-            result["message"]["content"] if isinstance(result, dict) else str(result)
-        )
-        answer, guardrail = _apply_pipeline_guardrails(
-            trace=trace,
-            telemetry_store=telemetry_store,
-            answer=raw_generation,
-            user_query=ctx["student_message"],
-            student_code=ctx["code_raw"],
-            conversation_history=conversation_history,
-            retrieval_metadata=retrieval_metadata,
-        )
-        llm_latency_ms = int((time.perf_counter() - llm_started) * 1000)
-        telemetry_store.record_event(
-            trace,
-            event_type="llm_finished",
-            stage="llm_inference",
-            status="completed",
-            latency_ms=llm_latency_ms,
-            model_provider=chat_route.provider,
-            model_name=telemetry_model_name,
-            metadata={
-                **retrieval_metadata,
-                "answer_chars": len(answer),
-                **_guardrail_summary(guardrail),
-                **_input_guardrail_summary(input_guardrail),
-            },
-        )
+            
+            generation_attempts.append({
+                "model_provider": chat_route.provider,
+                "model_name": telemetry_model_name,
+                "llm_latency_ms": llm_latency_ms,
+                "raw_generation": raw_text,
+                "guardrail": guardrail,
+            })
+            
+            if guardrail.get("action") == "replace" and guardrail.get("violation_type") == "code_leakage" and attempt_idx < max_attempts - 1:
+                # Self-correction prompt injected for the next iteration
+                base_api_messages.append({"role": "assistant", "content": raw_text})
+                base_api_messages.append({
+                    "role": "user", 
+                    "content": "Your previous response was rejected by safety guardrails due to code leakage. Please generate a new response that strictly adheres to the pedagogical rules, ensuring no direct code leakage."
+                })
+                continue
+            
+            # Break on success, or on hard fails (v2_unsafe, etc)
+            break
+            
         telemetry_store.finish_turn(
             trace,
             status="completed",
@@ -1735,6 +1444,7 @@ async def run_chat(
                 **_input_guardrail_summary(input_guardrail),
             },
         )
+        
         _persist_turn_snapshot(
             telemetry_store=telemetry_store,
             trace=trace,
@@ -1742,15 +1452,15 @@ async def run_chat(
             source="chat",
             input_guardrail=input_guardrail,
             retrieval_result=retrieval_result,
-            guardrail=guardrail,
-            raw_generation=raw_generation,
+            generation_attempts=generation_attempts,
             final_answer=answer,
-            model_provider=chat_route.provider,
-            model_name=telemetry_model_name,
             retrieval_latency_ms=retrieval_latency_ms,
-            llm_latency_ms=llm_latency_ms,
             policy_snapshot=policy_snapshot,
         )
+        
+        if stream:
+            return chunk_text(answer, runtime.sagemaker.streaming_chunk_size if chat_route.provider == "sagemaker" else 100)
+            
         return _chat_response_payload_with_guardrail(
             answer,
             trace,

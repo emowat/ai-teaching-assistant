@@ -122,7 +122,6 @@ def _student_phase(
     return {
         "raw_input": query.student_message or "",
         "processed_input": processed_input,
-        "input_guardrail": input_guardrail,
     }
 
 
@@ -141,32 +140,27 @@ def _extract_cot_keys(raw_generation: str) -> dict[str, str]:
 
 def _ta_generation_phase(
     *,
-    raw_generation: str | None,
-    guardrail: dict[str, Any] | None,
-    model_provider: str | None,
-    model_name: str | None,
-    llm_latency_ms: int | None,
+    generation_attempts: list[dict[str, Any]] | None,
 ) -> dict[str, Any] | None:
-    if raw_generation is None:
+    if not generation_attempts:
         return None
 
-    generation_history = [
-        {
-            "attempt_id": 1,
-            "model_provider": model_provider,
-            "model_name": model_name,
-            "generation_latency_ms": llm_latency_ms,
-            "cot_keys": _extract_cot_keys(raw_generation),
-            "raw_generation": raw_generation,
-            "output_guardrail": guardrail,
-        }
-    ]
+    history = []
+    for idx, attempt in enumerate(generation_attempts):
+        raw_gen = attempt.get("raw_generation") or ""
+        history.append({
+            "attempt_id": idx + 1,
+            "model_provider": attempt.get("model_provider"),
+            "model_name": attempt.get("model_name"),
+            "generation_latency_ms": attempt.get("llm_latency_ms"),
+            "cot_keys": _extract_cot_keys(raw_gen),
+            "raw_generation": raw_gen,
+            "output_guardrail": attempt.get("guardrail"),
+        })
+
     return {
-        "attempts_count": 1,
-        "generation_latency_ms": llm_latency_ms,
-        "raw_generation": raw_generation,
-        "output_guardrail": guardrail,
-        "generation_history": generation_history,
+        "attempts_count": len(generation_attempts),
+        "generation_history": history,
     }
 
 
@@ -276,16 +270,15 @@ def build_turn_snapshot(
     source: str,
     input_guardrail: dict[str, Any] | None,
     retrieval_result: RetrievalResult | None = None,
-    guardrail: dict[str, Any] | None = None,
-    raw_generation: str | None = None,
+    generation_attempts: list[dict[str, Any]] | None = None,
     final_answer: str | None = None,
-    model_provider: str | None = None,
-    model_name: str | None = None,
     retrieval_latency_ms: int | None = None,
-    llm_latency_ms: int | None = None,
     policy_snapshot: dict[str, Any] | None = None,
     orchestrator_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    guardrail = None
+    if generation_attempts:
+        guardrail = generation_attempts[-1].get("guardrail")
     """Build a versioned, eval-friendly snapshot for one tutoring turn."""
     final_text = final_answer
     if final_text is None:
@@ -293,8 +286,10 @@ def build_turn_snapshot(
             final_text = guardrail.get("final_answer") or ""
         elif input_guardrail and input_guardrail.get("blocked"):
             final_text = input_guardrail.get("final_answer") or ""
+        elif generation_attempts:
+            final_text = generation_attempts[-1].get("raw_generation") or ""
         else:
-            final_text = raw_generation or ""
+            final_text = ""
 
     backend_retrieval_phase = _retrieval_phase(
         retrieval_result,
@@ -302,11 +297,7 @@ def build_turn_snapshot(
         rerank_strategy=getattr(query, "rerank_strategy", None),
     )
     ta_generation_phase = _ta_generation_phase(
-        raw_generation=raw_generation,
-        guardrail=guardrail,
-        model_provider=model_provider,
-        model_name=model_name,
-        llm_latency_ms=llm_latency_ms,
+        generation_attempts=generation_attempts,
     )
     output_guardrail_phase = _legacy_output_guardrail_phase(guardrail)
 
@@ -341,6 +332,7 @@ def build_turn_snapshot(
             "terminal_context": f"Exit_Code: {query.exit_code}\nOutput: \"{query.terminal_output or ''}\"",
         },
         "student_phase": _student_phase(query, input_guardrail),
+        "input_guardrail_phase": input_guardrail,
         "backend_retrieval_phase": backend_retrieval_phase,
         "retrieval_phase": _legacy_retrieval_phase(backend_retrieval_phase),
         "orchestrator_phase": _orchestrator_phase(

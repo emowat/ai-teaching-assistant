@@ -139,13 +139,13 @@ def get_user_turn( record): #get code + terminal + question
           "\n[Student_Question]\n" +(record.get("student_phase", {}).get("raw_input") or  ""))
 
 def get_input_action( record): #get pass/block
-  return record["student_phase"]["input_guardrail"]["action"]
+  return record.get("input_guardrail_phase", {}).get("action")
 
 def get_extra_log_signals(record): #additional log signal that can help ground judge with eval metrics
   ide_context= record.get("ide_context", {})
   gen_hist= (record.get("ta_generation_phase") or {}).get("generation_history") or [] #get gen histroy
 
-  Input_g= record.get("student_phase", {}).get("input_guardrail", {})
+  Input_g= record.get("input_guardrail_phase", {})
   Output_g= (gen_hist[-1].get("output_guardrail") if gen_hist else {}) or {} #get output guardrail
   return ("AST: "+ str(ide_context.get("ast_metadata", {})) + #ast dict
           "\nSession_State: "+ str(record.get("orchestrator_state", {})) +   #adversarial warning+ style_nudged_count
@@ -345,7 +345,7 @@ def bucket_(sample):
   convo= sample["raw_convo"] #look at convo
   if isinstance(convo, list):
     for turn in convo:
-      if turn.get("student_phase" , {}).get("input_guardrail", {}).get("action")=="BLOCK": #check if any block then adversarial
+      if turn.get("input_guardrail_phase", {}).get("action")=="BLOCK": #check if any block then adversarial
         return "adversarial"
   else:
     meta= convo.get("metadata", {})
