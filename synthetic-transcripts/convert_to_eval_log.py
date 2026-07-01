@@ -181,6 +181,26 @@ def parse_ta_message(content):
         
     return cot_dict, text_response, is_adversarial
 
+def is_true_prompt_injection(raw_input: str, adv_text: str) -> bool:
+    """Determine if this should be caught by the stateless input guardrail."""
+    raw = raw_input.lower()
+    # Explicit prompt injections or clear off-topic requests that need no context
+    injection_phrases = [
+        "ignore previous", 
+        "switch gears", 
+        "stop being a ta", 
+        "tell me about",
+        "write the sql query for me",
+        "html form",
+        "direct answer",
+        "write this function in python"
+    ]
+    if any(p in raw for p in injection_phrases):
+        return True
+    if "jailbreak" in adv_text or "roleplay" in adv_text:
+        return True
+    return False
+
 def convert_dataset(input_file, output_file):
     print(f"Converting {input_file} to {output_file}...")
     
@@ -256,7 +276,13 @@ def convert_dataset(input_file, output_file):
                         "explanation": "Great hint!" if is_pos else "Still confusing."
                     }
                 
+                is_input_blocked = False
                 if is_adv:
+                    adv_text = str(cot_dict.get("Adversarial_Check", "")).lower()
+                    if is_true_prompt_injection(raw_input, adv_text):
+                        is_input_blocked = True
+                
+                if is_input_blocked:
                     log_entry["input_guardrail_phase"] = {
                         "safe": False,
                         "blocked": True,
@@ -293,6 +319,8 @@ def convert_dataset(input_file, output_file):
                         "raw_input": raw_input,
                         "processed_input": raw_input
                     }
+                    
+                    # If it passed the input guardrail but was caught by the TA model, log it in generation phase
                     log_entry["ta_generation_phase"] = {
                         "attempts_count": 1,
                         "generation_history": [
@@ -315,6 +343,14 @@ def convert_dataset(input_file, output_file):
                         ],
                         "final_rendered_text": text_resp
                     }
+                    
+                    if is_adv:
+                        # Orchestrator catches the [ADVERSARIAL_WARNING] emitted by TA
+                        log_entry["orchestrator_phase"] = {
+                            "violation_count": 1,
+                            "action_taken": "CANNED_WARNING",
+                            "final_rendered_text": "[SYSTEM NOTIFICATION: I am a C++ teaching assistant. Please keep your questions focused on conceptual debugging or syntax help.]"
+                        }
                 
                 logs.append(log_entry)
                 turn_id += 1
