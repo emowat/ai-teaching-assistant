@@ -317,9 +317,9 @@ frontend_web:
     # Empty string means same-origin API calls when the frontend is served from CloudFront.
     vite_api_base_url: ""
     vite_cognito_domain: "https://us-east-1z5dab8wni.auth.us-east-1.amazoncognito.com"
-    # Production frontend origin served through CloudFront.
-    vite_cognito_redirect_uri: "https://d26myplnp1msqn.cloudfront.net/auth/callback"
-    vite_cognito_logout_uri: "https://d26myplnp1msqn.cloudfront.net/logout"
+    # Production frontend origin served through the custom app domain.
+    vite_cognito_redirect_uri: "https://www.codingrabbit.dev/auth/callback"
+    vite_cognito_logout_uri: "https://www.codingrabbit.dev/logout"
     extra_env:
       VITE_HEALTH_POLL_INTERVAL_SECONDS: "15"
 
