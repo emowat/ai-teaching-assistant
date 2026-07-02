@@ -45,10 +45,13 @@ test/
 model_eval/
 codespaces_examples/
 backend/
-data_ingestion/
 ingestion_worker/
 runner/
 scripts/
+
+# Large generated outputs that should not enter Docker build contexts
+data_ingestion/cppreference_output/
+rag/experiments/outputs/
 
 # Orchestrator / local runtime logs
 *.log
