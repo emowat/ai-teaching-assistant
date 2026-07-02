@@ -10,6 +10,7 @@ from __future__ import annotations
 from .models import (
     ERR_FULL_SOLUTION_REQUEST,
     ERR_INAPPROPRIATE_CONTENT,
+    ERR_LANGUAGE_SWITCH,
     ERR_OFF_TOPIC,
     ERR_PROMPT_INJECTION,
 )
@@ -48,6 +49,14 @@ def full_solution_redirect_response() -> str:
     )
 
 
+def language_switch_response() -> str:
+    return (
+        "I can help with the current C++ task, but I can't switch to another language "
+        "or write the function for you in a different language. "
+        "What part of the current C++ concept are you trying to understand?"
+    )
+
+
 def inappropriate_response() -> str:
     return (
         "I can't help with that. I'm a C++ teaching assistant — let's get back "
@@ -61,6 +70,7 @@ def inappropriate_response() -> str:
 RESPONSE_BY_REASON = {
     ERR_PROMPT_INJECTION: first_warning_response,
     ERR_OFF_TOPIC: off_topic_response,
+    ERR_LANGUAGE_SWITCH: language_switch_response,
     ERR_FULL_SOLUTION_REQUEST: full_solution_redirect_response,
     ERR_INAPPROPRIATE_CONTENT: inappropriate_response,
 }

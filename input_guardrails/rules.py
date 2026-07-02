@@ -156,9 +156,7 @@ OFF_TOPIC_PHRASES = [
     "plan a trip",
     "recipe for",
     "lyrics",
-    "in python",
-    "in javascript",
-    "flask backend",
+    "flask backend",  # "in python"/"in javascript" moved to LANG_SWITCH_REGEXES (more precise)
     "react component",
     "sql query",
     "roman empire",
@@ -169,6 +167,61 @@ OFF_TOPIC_REGEXES = [
     re.compile(r"\bwrite\s+(me\s+)?(an?\s+)?(essay|poem|story|song|cover\s+letter|resume|email)\b"),
     re.compile(r"\b(financial|investment|stock|trading|tax)\s+advice\b"),
 ]
+
+# ---------------------------------------------------------------------------
+# 5. Language-switch / off-topic implementation pivot -> ERR_LANGUAGE_SWITCH
+#    (rescuable if clearly pedagogical / comparative).
+#
+#    Targets: "switch to Python/React/JS", "write this in Python",
+#    "implement in JavaScript", "forget C++, give me the React version".
+#    These are NOT severe jailbreaks — use a polite teaching redirect.
+#
+#    Rescue: if the student is asking for a *comparison* or *analogy*
+#    ("how is C++ different from Python", "explain using a Python analogy")
+#    the C++ anchor + LANG_SWITCH_RESCUE_REGEXES should rescue the hit.
+# ---------------------------------------------------------------------------
+
+# Non-C++ languages / frameworks that signal an off-topic pivot.
+_NON_CPP_LANGS = r"(python|react|javascript|typescript|java\b|c#|csharp|go\b|golang|rust\b|swift\b|kotlin\b|ruby\b)"
+
+LANG_SWITCH_REGEXES = [
+    # "switch to Python / React", "switching to React"
+    re.compile(r"\bswitch(ing)?\s+(to|over\s+to)\s+" + _NON_CPP_LANGS, re.IGNORECASE),
+    # "switch gears" + non-C++ lang mentioned anywhere
+    re.compile(r"\bswitch\s+gears\b", re.IGNORECASE),
+    # "do this in Python", "write this function in JavaScript", "implement in TS"
+    # Uses .*? to handle intervening words (e.g. "show me how to write this function in Python")
+    re.compile(r"\b(do|write|implement|code|build|create|show|give)\b.*?\bin\s+" + _NON_CPP_LANGS, re.IGNORECASE),
+    # "translate this to Python / into JavaScript"
+    re.compile(r"\btranslate\b.*?\b(to|into)\s+" + _NON_CPP_LANGS, re.IGNORECASE),
+    # "Python version", "React version", "JavaScript equivalent"
+    re.compile(r"\b" + _NON_CPP_LANGS + r"\s+(version|equivalent|way|approach|alternative)\b", re.IGNORECASE),
+    # "instead of C++ / forget C++"
+    re.compile(r"\b(forget|skip|drop|ignore)\s+c\+\+", re.IGNORECASE),
+    # "can we use React instead", "can we do this in Python"
+    re.compile(r"\bcan\s+we\s+(use|do|try|switch\s+to|learn)\s+(" + _NON_CPP_LANGS[1:-1] + r"|react)\b", re.IGNORECASE),
+    # "I'm trying to learn React/Python"
+    re.compile(r"\blearn(ing)?\s+" + _NON_CPP_LANGS + r"\s+(instead|now|instead of c\+\+)", re.IGNORECASE),
+]
+
+# Rescue: the student is asking for a conceptual comparison or analogy,
+# NOT asking to switch the assignment to a different language.
+LANG_SWITCH_RESCUE_REGEXES = [
+    re.compile(r"\b(different|difference|compare|comparison|analogy|equivalent|similar|unlike)\b", re.IGNORECASE),
+    re.compile(r"\bwhat\s+is\s+the\s+(equivalent|difference|analog)", re.IGNORECASE),
+    re.compile(r"\bhow\s+(is|does|would)\s+(c\+\+|cpp)\b", re.IGNORECASE),
+    re.compile(r"\bexplain\b.*\b(using|with|via)\b.*\b(analogy|example|comparison)\b", re.IGNORECASE),
+    re.compile(r"\b(i\s+(know|learned|used?|studied)|background|experience|familiar)\b.*\b(python|java|javascript)\b", re.IGNORECASE),
+]
+
+
+def is_lang_switch_rescued(text_lower: str) -> bool:
+    """True if the message is a *comparative* question rather than a pivot request."""
+    # Must also have a C++ anchor to be rescued (the student is asking about C++)
+    if not has_cpp_anchor(text_lower):
+        return False
+    return matches_any_regex(text_lower, LANG_SWITCH_RESCUE_REGEXES) is not None
+
 
 # ---------------------------------------------------------------------------
 # Allow-list rescue (CONSERVATIVE).

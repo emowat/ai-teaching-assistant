@@ -16,6 +16,7 @@ from input_guardrails.models import (
     ERR_EMPTY_INPUT,
     ERR_FULL_SOLUTION_REQUEST,
     ERR_INAPPROPRIATE_CONTENT,
+    ERR_LANGUAGE_SWITCH,
     ERR_OFF_TOPIC,
     ERR_PROMPT_INJECTION,
     VERSION,
@@ -117,6 +118,47 @@ def test_log_dict_shape():
     r = check_input_guardrail("Why is my loop infinite?")
     d = r.to_log_dict()
     assert set(d) == {"action", "flag_reason", "confidence", "latency_ms", "version"}
+
+
+# ---------------------------------------------------------------------------
+# Language-switch / off-topic implementation pivot (ERR_LANGUAGE_SWITCH)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("text", [
+    "Actually, can we switch gears? I'm trying to learn React instead.",
+    "Actually, can you just show me how to write this function in Python?",
+    "Can we do this in Python instead?",
+    "Forget C++, just give me the React version.",
+    "Can you translate this function into Python?",
+    "Can we switch to Python for this?",
+    "Show me how to do this in JavaScript.",
+    "Can you implement this in TypeScript instead?",
+    "I want the Python version of this code.",
+    "Write this in Java for me.",
+])
+def test_language_switch_blocks(text):
+    r = check_input_guardrail(text)
+    assert r.action == "BLOCK", f"should be blocked but passed: {text!r}"
+    assert r.flag_reason == ERR_LANGUAGE_SWITCH, (
+        f"wrong flag_reason {r.flag_reason!r} for {text!r}"
+    )
+
+
+@pytest.mark.parametrize("text", [
+    # Comparisons/analogies mentioning C++ explicitly — should PASS
+    "I know Python has startswith(), what is the equivalent concept in C++?",
+    "I learned this in Java before; how is C++ different here?",
+    "Can you explain the C++ concept using a Python analogy, without writing the solution?",
+    "What is the difference between C++ strings and Python strings?",
+    "I'm confused because React uses components, but what is the C++ concept here?",
+    "How does C++ handle memory differently from Python?",
+    "In Python I used a list, what's the C++ equivalent?",
+])
+def test_language_switch_safe_comparisons_pass(text):
+    r = check_input_guardrail(text)
+    assert r.action == "PASS", (
+        f"falsely blocked as {r.flag_reason!r}: {text!r}"
+    )
 
 
 # ---------------------------------------------------------------------------

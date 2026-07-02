@@ -18,6 +18,7 @@ from .models import (
     ERR_EMPTY_INPUT,
     ERR_FULL_SOLUTION_REQUEST,
     ERR_INAPPROPRIATE_CONTENT,
+    ERR_LANGUAGE_SWITCH,
     ERR_OFF_TOPIC,
     ERR_PROMPT_INJECTION,
     InputGuardrailResult,
@@ -29,9 +30,11 @@ from .rules import (
     INAPPROPRIATE_REGEXES,
     INJECTION_PHRASES,
     INJECTION_REGEXES,
+    LANG_SWITCH_REGEXES,
     OFF_TOPIC_PHRASES,
     OFF_TOPIC_REGEXES,
     has_cpp_anchor,
+    is_lang_switch_rescued,
     is_rescued,
     matches_any,
     matches_any_regex,
@@ -44,6 +47,7 @@ _CONF = {
     ERR_INAPPROPRIATE_CONTENT: 0.95,
     ERR_FULL_SOLUTION_REQUEST: 0.90,
     ERR_OFF_TOPIC: 0.85,
+    ERR_LANGUAGE_SWITCH: 0.85,
 }
 _PASS_CONF = 0.10
 
@@ -102,6 +106,12 @@ def check_input_guardrail(raw_input: str, ide_context: dict | None = None) -> In
     # 4. Off-topic (rescued by clear pedagogical-intent OR a C++ anchor).
     if _hit(text, OFF_TOPIC_PHRASES, OFF_TOPIC_REGEXES) and not (rescued or has_cpp_anchor(text)):
         return _result("BLOCK", ERR_OFF_TOPIC, None, _CONF[ERR_OFF_TOPIC])
+
+    # 5. Language-switch / off-topic implementation pivot.
+    #    Rescued if the message is a comparative/analogy question with a C++ anchor
+    #    (e.g. "how is C++ different from Python?", "explain using a Python analogy").
+    if matches_any_regex(text, LANG_SWITCH_REGEXES) and not is_lang_switch_rescued(text):
+        return _result("BLOCK", ERR_LANGUAGE_SWITCH, None, _CONF[ERR_LANGUAGE_SWITCH])
 
     # PASS — legitimate C++ learning/debugging question.
     return _result("PASS", None, raw_input, _PASS_CONF)
