@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from argparse import Namespace
 from pathlib import Path
+from types import SimpleNamespace
 
 from data_ingestion.chunking import (
     build_chunk_records_from_envelope,
@@ -74,17 +75,38 @@ def test_prepared_chunk_artifact_name_is_stable() -> None:
 
 
 class _FakeClient:
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        existing_collection_name: str | None = None,
+        existing_collection_size: int | None = None,
+    ) -> None:
         self.collections: list[dict[str, object]] = []
         self.payload_indexes: list[dict[str, object]] = []
         self.upserts: list[dict[str, object]] = []
         self.closed = False
+        self.collection_name: str | None = existing_collection_name
+        self.existing_collection_size = existing_collection_size
 
     def collection_exists(self, name: str) -> bool:
-        return bool(self.collections) and self.collections[0]["collection_name"] == name
+        return self.collection_name == name and self.existing_collection_size is not None
+
+    def get_collection(self, name: str):
+        if not self.collection_exists(name):
+            raise AssertionError(f"unexpected get_collection({name!r})")
+        return SimpleNamespace(
+            config=SimpleNamespace(
+                params=SimpleNamespace(
+                    vectors=SimpleNamespace(size=self.existing_collection_size),
+                ),
+            ),
+        )
 
     def create_collection(self, **kwargs) -> None:
         self.collections.append(kwargs)
+        self.collection_name = str(kwargs["collection_name"])
+        vector_config = kwargs["vectors_config"]
+        self.existing_collection_size = int(vector_config.size)
 
     def create_payload_index(self, **kwargs) -> None:
         self.payload_indexes.append(kwargs)
@@ -97,7 +119,10 @@ class _FakeClient:
 
 
 class _FakeModel:
-    def encode(self, text: str):
+    def get_sentence_embedding_dimension(self) -> int:
+        return 3
+
+    def encode(self, text: str, **kwargs):
         return [float(len(text)), 1.0, 2.0]
 
 
@@ -138,9 +163,49 @@ def test_run_chunk_index_indexes_local_envelopes(tmp_path: Path) -> None:
     assert summary.chunks_indexed == 2
     assert summary.created_collection is True
     assert summary.prepared_artifacts_written == 1
+    assert client.collections[0]["vectors_config"].size == 3
     assert client.upserts
     assert output_dir.exists()
     assert any(path.name.endswith("__chunks.json") for path in output_dir.iterdir())
+
+
+def test_run_chunk_index_rejects_wrong_collection_dimension(tmp_path: Path) -> None:
+    input_dir = tmp_path / "parsed"
+    input_dir.mkdir()
+
+    envelope = _sample_envelope()
+    (input_dir / "lecture_1__pdf.json").write_text(
+        json.dumps(envelope, indent=2),
+        encoding="utf-8",
+    )
+
+    args = Namespace(
+        bucket=None,
+        input_prefix=None,
+        profile=None,
+        region="us-east-1",
+        local_input_dir=str(input_dir),
+        course_id="cs50",
+        collection_name="cs50_course",
+        prepared_output_prefix=None,
+        local_output_dir=None,
+        embedding_model="fake-model",
+        dry_run=False,
+        recreate_collection=False,
+    )
+
+    client = _FakeClient(
+        existing_collection_name="cs50_course",
+        existing_collection_size=768,
+    )
+    model = _FakeModel()
+
+    try:
+        run_chunk_index(args, client=client, model=model)
+    except SystemExit as exc:
+        assert "expected dim=3" in str(exc)
+    else:
+        raise AssertionError("run_chunk_index() should reject the mismatched collection")
 
 
 def test_main_chunk_index_reports_completion(monkeypatch, tmp_path: Path) -> None:

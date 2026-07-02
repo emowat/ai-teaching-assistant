@@ -24,9 +24,6 @@ from rag_eng.ingestion_jobs import complete_ingestion_job
 from rag.runtime import create_qdrant_client, get_runtime_config
 
 
-VECTOR_SIZE = 768
-
-
 @dataclass(frozen=True)
 class ChunkIndexSummary:
     """Summary returned by the chunk/index worker."""
@@ -109,19 +106,74 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _ensure_collection(client, collection_name: str, *, recreate: bool) -> bool:
+def _embedding_dimension(model: SentenceTransformer) -> int:
+    """Return the model's output vector size."""
+    if hasattr(model, "get_sentence_embedding_dimension"):
+        dim = model.get_sentence_embedding_dimension()
+        if dim:
+            return int(dim)
+
+    probe = model.encode("dimension probe", show_progress_bar=False)
+    if hasattr(probe, "tolist"):
+        probe = probe.tolist()
+    if probe and isinstance(probe[0], (list, tuple)):
+        probe = probe[0]
+    if not probe:
+        raise RuntimeError("Unable to determine embedding dimension from model")
+    return len(probe)
+
+
+def _collection_vector_size(client, collection_name: str) -> int | None:
+    """Inspect the stored vector size for an existing Qdrant collection."""
+    info = client.get_collection(collection_name)
+    vectors = getattr(info.config.params, "vectors", None)
+    if vectors is None:
+        return None
+
+    size = getattr(vectors, "size", None)
+    if size is not None:
+        return int(size)
+
+    if isinstance(vectors, dict) and vectors:
+        first_vector = next(iter(vectors.values()))
+        size = getattr(first_vector, "size", None)
+        if size is not None:
+            return int(size)
+
+    return None
+
+
+def _ensure_collection(
+    client,
+    collection_name: str,
+    *,
+    recreate: bool,
+    vector_size: int,
+) -> bool:
     """Create the target collection if needed and add common payload indexes."""
     exists = client.collection_exists(collection_name)
-    if exists and recreate:
-        client.delete_collection(collection_name)
-        exists = False
+    if exists:
+        current_size = _collection_vector_size(client, collection_name)
+        if current_size is not None and current_size != vector_size:
+            if not recreate:
+                raise SystemExit(
+                    "ERROR: Qdrant collection "
+                    f"{collection_name!r} has dim={current_size}, "
+                    f"expected dim={vector_size}. "
+                    "Recreate the collection or rerun with --recreate-collection.",
+                )
+            client.delete_collection(collection_name)
+            exists = False
+        elif recreate:
+            client.delete_collection(collection_name)
+            exists = False
 
     if exists:
         return False
 
     client.create_collection(
         collection_name=collection_name,
-        vectors_config=VectorParams(size=VECTOR_SIZE, distance=Distance.DOT),
+        vectors_config=VectorParams(size=vector_size, distance=Distance.DOT),
     )
 
     index_specs = (
@@ -221,7 +273,11 @@ def _build_points(
 ) -> list[PointStruct]:
     points: list[PointStruct] = []
     for record in records:
-        vector = model.encode(record.chunk.content)
+        vector = model.encode(
+            record.chunk.content,
+            normalize_embeddings=True,
+            show_progress_bar=False,
+        )
         if hasattr(vector, "tolist"):
             vector = vector.tolist()
         else:
@@ -308,11 +364,13 @@ def run_chunk_index(
     embedding_model = model or SentenceTransformer(
         args.embedding_model or runtime.embedding_model,
     )
+    vector_size = _embedding_dimension(embedding_model)
 
     created_collection = _ensure_collection(
         qdrant_client,
         collection_name,
         recreate=bool(args.recreate_collection),
+        vector_size=vector_size,
     )
 
     envelopes_processed = 0

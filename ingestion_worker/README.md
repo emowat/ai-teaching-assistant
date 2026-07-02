@@ -87,6 +87,10 @@ image:
 - `QDRANT_COLLECTION_MIT13`
 - `QDRANT_COLLECTION_MIT14`
 - `QDRANT_COLLECTION_CS50`
+- `QDRANT_COLLECTION_GUIDELINES`
+
+The worker derives the Qdrant vector size from `EMBEDDING_MODEL` at runtime,
+so the collection definition stays aligned with the active embedding model.
 
 For S3 mode, pass:
 
