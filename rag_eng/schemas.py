@@ -373,6 +373,24 @@ class RestartResponse(BaseModel):
     message: str
 
 
+class ChatLogExportPartition(BaseModel):
+    """A single partition exported to S3."""
+
+    date: str
+    record_count: int
+    bucket: str
+    key: str
+    s3_uri: str
+
+
+class ChatLogExportResponse(BaseModel):
+    """Response returned by the admin chat log export endpoint."""
+
+    partitions: list[ChatLogExportPartition]
+    total_records: int
+    message: str
+
+
 class DiagnosticTrace(BaseModel):
     """Trace identifiers returned by the admin diagnostics endpoints."""
 

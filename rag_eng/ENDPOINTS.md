@@ -64,6 +64,7 @@ Environment overrides are documented in the script itself:
 | `POST` | `/api/diagnostics/rag` | RAG-stage probe |
 | `POST` | `/api/diagnostics/output-guardrail` | output guardrail probe |
 | `POST` | `/api/diagnostics/pipeline` | full pipeline probe |
+| `POST` | `/api/export-chat-logs` | trigger a log download to S3 use ?start_date="YYY-MM-DD" |
 
 ## Payload notes
 

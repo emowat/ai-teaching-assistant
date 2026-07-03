@@ -74,6 +74,7 @@ from rag_eng.schemas import (
     AdminLlmConfigUpdate,
     AdminCourse,
     AdminCourseAliasCreate,
+    ChatLogExportResponse,
     AdminCourseCreate,
     AdminCourseCorpusVersion,
     AdminCourseDocumentDeleteResponse,
@@ -983,6 +984,42 @@ def create_app() -> FastAPI:
             return result
         except Exception as exc:
             raise HTTPException(status_code=500, detail=_error_detail(exc)) from exc
+
+    @app.post(
+        "/api/export-chat-logs",
+        response_model=ChatLogExportResponse,
+    )
+    def export_chat_logs_unauthenticated(
+        start_date: str | None = Query(default=None, description="UTC start date (YYYY-MM-DD). Defaults to today."),
+        end_date: str | None = Query(default=None, description="UTC end date (YYYY-MM-DD). Defaults to start_date."),
+        course_id: str | None = Query(default=None, description="Optional course ID filter."),
+    ) -> ChatLogExportResponse:
+        from datetime import date as date_type, datetime, timezone
+        from rag_eng.chat_log_export import export_turn_snapshots_to_s3, _resolve_database_url
+
+        database_url = _resolve_database_url(None)
+        if not database_url:
+            raise HTTPException(status_code=500, detail="No database URL configured for chat log export.")
+
+        parsed_start = date_type.fromisoformat(start_date) if start_date else datetime.now(timezone.utc).date()
+        parsed_end = date_type.fromisoformat(end_date) if end_date else parsed_start
+
+        try:
+            partitions = export_turn_snapshots_to_s3(
+                database_url=database_url,
+                start_date=parsed_start,
+                end_date=parsed_end,
+                course_id=course_id,
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"Export failed: {exc}") from exc
+
+        total = sum(p["record_count"] for p in partitions)
+        return ChatLogExportResponse(
+            partitions=partitions,
+            total_records=total,
+            message=f"Exported {total} turn snapshots across {len(partitions)} partitions.",
+        )
 
     from rag_eng.ui import mount_gradio_consoles
 
