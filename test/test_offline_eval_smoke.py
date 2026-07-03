@@ -234,7 +234,7 @@ def test_full_pipeline_turn_snapshot_can_be_exported(monkeypatch) -> None:
     assert len(fake_telemetry.snapshots) == 1
     snapshot = fake_telemetry.snapshots[0]["snapshot"]
     assert snapshot["trace"]["turn_id"] == "turn-1"
-    assert snapshot["final_response"]["text"] == "openai chat answer"
+    assert snapshot["orchestrator_phase"]["final_rendered_text"] == "openai chat answer"
     assert snapshot["input_guardrail_phase"]["blocked"] is False
 
     fake_s3 = _FakeS3Client(put_objects=[])
@@ -266,4 +266,4 @@ def test_full_pipeline_turn_snapshot_can_be_exported(monkeypatch) -> None:
     body_lines = fake_s3.put_objects[0]["Body"].decode("utf-8").strip().splitlines()
     exported_lines = [json.loads(line) for line in body_lines]
     assert exported_lines[0]["trace"]["turn_id"] == "turn-1"
-    assert exported_lines[0]["final_response"]["text"] == "openai chat answer"
+    assert exported_lines[0]["orchestrator_phase"]["final_rendered_text"] == "openai chat answer"

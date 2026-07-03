@@ -335,7 +335,6 @@ def build_turn_snapshot(
         "student_phase": _student_phase(query, input_guardrail),
         "input_guardrail_phase": input_guardrail,
         "backend_retrieval_phase": backend_retrieval_phase,
-        "retrieval_phase": _legacy_retrieval_phase(backend_retrieval_phase),
         "orchestrator_phase": _orchestrator_phase(
             input_guardrail=input_guardrail,
             guardrail=guardrail,
@@ -344,14 +343,6 @@ def build_turn_snapshot(
         ),
         "ta_generation_phase": ta_generation_phase,
         "output_guardrail_phase": output_guardrail_phase,
-        "final_response": {
-            "text": final_text,
-            "source": _final_response_source(
-                input_guardrail=input_guardrail,
-                guardrail=guardrail,
-                orchestrator_context=orchestrator_context,
-            ),
-        },
     }
     if policy_snapshot is not None:
         snapshot["policy_snapshot"] = policy_snapshot

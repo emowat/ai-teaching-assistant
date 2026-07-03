@@ -137,8 +137,7 @@ def test_live_pipeline_chat_persists_snapshot_and_exports_to_s3() -> None:
     assert snapshot["trace"]["session_id"] == session_id
     assert snapshot["trace"]["request_id"] == request_id
     assert snapshot["student_phase"]["input_guardrail"]["blocked"] is False
-    assert snapshot["final_response"]["text"] == response["message"]["content"]
-    assert snapshot["final_response"]["source"] in {"model", "output_guardrail"}
+    assert snapshot["orchestrator_phase"]["final_rendered_text"] == response["message"]["content"]
 
     exported = export_turn_snapshots_to_s3(
         database_url=database_url,

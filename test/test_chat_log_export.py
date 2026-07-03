@@ -91,7 +91,7 @@ def test_export_turn_snapshots_groups_by_date_and_uploads_jsonl(monkeypatch):
                     "turn_index": 1,
                     "source": "chat",
                 },
-                "final_response": {"text": "one", "source": "model"},
+                "orchestrator_phase": {"final_rendered_text": "one"},
             },
         ),
         (
@@ -105,7 +105,7 @@ def test_export_turn_snapshots_groups_by_date_and_uploads_jsonl(monkeypatch):
                     "turn_index": 2,
                     "source": "chat",
                 },
-                "final_response": {"text": "two", "source": "model"},
+                "orchestrator_phase": {"final_rendered_text": "two"},
             },
         ),
         (
@@ -119,7 +119,7 @@ def test_export_turn_snapshots_groups_by_date_and_uploads_jsonl(monkeypatch):
                     "turn_index": 1,
                     "source": "chat",
                 },
-                "final_response": {"text": "three", "source": "input_guardrail"},
+                "orchestrator_phase": {"final_rendered_text": "three"},
             },
         ),
     ]
@@ -180,7 +180,7 @@ def test_export_turn_snapshots_uses_runtime_defaults_when_bucket_is_omitted(
                     "turn_index": 1,
                     "source": "chat",
                 },
-                "final_response": {"text": "one", "source": "model"},
+                "orchestrator_phase": {"final_rendered_text": "one"},
             },
         )
     ]
@@ -237,7 +237,7 @@ def test_export_turn_snapshots_adds_course_partition(monkeypatch):
                     "course_source": "mit14",
                     "section_id": "week-6",
                 },
-                "final_response": {"text": "one", "source": "model"},
+                "orchestrator_phase": {"final_rendered_text": "one"},
             },
         ),
     ]

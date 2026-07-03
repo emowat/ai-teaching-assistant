@@ -497,7 +497,7 @@ def test_run_query_uses_openai_rag_provider(monkeypatch) -> None:
         fake_telemetry.snapshots[0]["snapshot"]["ta_generation_phase"]["generation_history"][-1]["raw_generation"]
         == "openai answer"
     )
-    assert fake_telemetry.snapshots[0]["snapshot"]["final_response"]["text"] == "openai answer"
+    assert fake_telemetry.snapshots[0]["snapshot"]["orchestrator_phase"]["final_rendered_text"] == "openai answer"
 
 
 def test_run_query_uses_bedrock_rag_provider(monkeypatch) -> None:
@@ -735,7 +735,6 @@ def test_run_query_short_circuits_on_input_guardrail_block(monkeypatch) -> None:
     assert result.input_guardrail["blocked"] is True
     assert result.retrieval_result.formatted_context == ""
     assert len(fake_telemetry.snapshots) == 1
-    assert fake_telemetry.snapshots[0]["snapshot"]["final_response"]["source"] == "input_guardrail"
     assert fake_telemetry.session_states[result.session_id].adversarial_warnings == 1
     event_types = [event["event_type"] for event in fake_telemetry.events]
     assert "input_guardrail_started" in event_types
@@ -812,7 +811,6 @@ def test_run_chat_short_circuits_on_input_guardrail_block(monkeypatch) -> None:
     assert response["message"]["content"] == "Let's keep this focused on your C++ work."
     assert response["input_guardrail"]["blocked"] is True
     assert len(fake_telemetry.snapshots) == 1
-    assert fake_telemetry.snapshots[0]["snapshot"]["final_response"]["source"] == "input_guardrail"
     assert fake_telemetry.session_states["chat-session"].adversarial_warnings == 1
     event_types = [event["event_type"] for event in fake_telemetry.events]
     assert "input_guardrail_started" in event_types
@@ -896,7 +894,7 @@ def test_run_chat_escalates_repeat_block_to_end_chat(monkeypatch) -> None:
     assert fake_telemetry.snapshots[-1]["snapshot"]["orchestrator_phase"][
         "action_taken"
     ] == "CANNED_END_CHAT"
-    assert fake_telemetry.snapshots[-1]["snapshot"]["final_response"]["source"] == "orchestrator"
+
 
 
 def test_run_chat_ends_already_terminated_session(monkeypatch) -> None:
@@ -1004,7 +1002,7 @@ def test_run_chat_ends_already_terminated_session(monkeypatch) -> None:
     assert fake_telemetry.snapshots[-1]["snapshot"]["orchestrator_phase"][
         "short_circuit_stage"
     ] == "session_state"
-    assert fake_telemetry.snapshots[-1]["snapshot"]["final_response"]["source"] == "orchestrator"
+
 
 
 def test_run_chat_uses_openai_provider(monkeypatch) -> None:
@@ -1097,7 +1095,7 @@ def test_run_chat_uses_openai_provider(monkeypatch) -> None:
     assert fake_telemetry.started
     assert fake_telemetry.finished
     assert len(fake_telemetry.snapshots) == 1
-    assert fake_telemetry.snapshots[0]["snapshot"]["final_response"]["text"] == "openai chat answer"
+    assert fake_telemetry.snapshots[0]["snapshot"]["orchestrator_phase"]["final_rendered_text"] == "openai chat answer"
 
 
 def test_run_chat_uses_bedrock_provider(monkeypatch) -> None:

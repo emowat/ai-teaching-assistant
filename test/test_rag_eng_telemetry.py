@@ -92,9 +92,8 @@ def test_record_turn_snapshot_writes_aura_sql(monkeypatch) -> None:
             "turn_index": 3,
             "source": "chat",
         },
-        "final_response": {
-            "text": "hello",
-            "source": "model",
+        "orchestrator_phase": {
+            "final_rendered_text": "hello"
         },
     }
 
