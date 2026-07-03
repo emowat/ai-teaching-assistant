@@ -31,27 +31,15 @@ def apply_all_guardrails(
     answer: str,
     user_query: str,
     student_code: str,
-    conversation_history: list,
-) -> dict:
-    """Chained V1 + V2 guardrail. Returns the same dict shape both
-    layers produce; downstream code should look at `final_answer`.
-    """
+    conversation_history: list[dict],
+) -> dict[str, Any]:
+    """Apply output guardrails to the draft answer."""
+    # Run the V1 (regex/heuristics) guardrail
     v1 = apply_output_guardrails(answer, user_query, student_code, conversation_history)
     if v1["action"] == "replace":
         return {**v1, "stage": "v1"}
 
-    # V1 passed or log_only — give V2 a look.
-    v2 = predict_safety(answer, user_query, student_code, conversation_history)
-
-    if v2["action"] == "replace":
-        return {**v2, "stage": "v2"}
-    if v2["action"] == "log_only":
-        # Prefer V2's log signal over V1's pass when V2 is uncertain;
-        # but if V1 itself was log_only, keep that label too in evidence.
-        merged = dict(v2)
-        if v1["action"] == "log_only":
-            merged["evidence"] = f"{v1['evidence']} | {v2['evidence']}"
-        return {**merged, "stage": "v2"}
-
-    # Both layers passed.
-    return {**v1, "stage": "v1+v2"}
+    # Temporarily diable V2 for the output guardrail until the code stabilizes,
+    # relying on the frontier model for toxicity and V1 regex to enforce only a
+    # single statement at most from the LLM.
+    return {**v1, "stage": "v1"}

@@ -99,6 +99,7 @@ class GuardrailResult(BaseModel):
     evidence: str
     final_answer: str
     v2_score: float | None = None
+    evaluated_answer: str | None = None
 
 
 class QueryResult(BaseModel):

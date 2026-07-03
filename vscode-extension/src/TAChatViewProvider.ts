@@ -49,11 +49,15 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
     private _homeworkDeltaEditorSeconds: number = 0;
     private _homeworkDeltaShellSeconds: number = 0;
     private _homeworkDeltaChatSeconds: number = 0;
+    private _homeworkDeltaRewardsGiven: number = 0;
+    private _homeworkDeltaStyleNudges: number = 0;
     
     // Delta trackers for backend telemetry (Study Assist)
     private _studyDeltaEditorSeconds: number = 0;
     private _studyDeltaShellSeconds: number = 0;
     private _studyDeltaChatSeconds: number = 0;
+    private _studyDeltaRewardsGiven: number = 0;
+    private _studyDeltaStyleNudges: number = 0;
     
     private _currentMode: string = 'Homework Assist';
     
@@ -176,13 +180,17 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
                         engagement_metrics: {
                             active_editor_seconds: this._homeworkDeltaEditorSeconds,
                             active_shell_seconds: this._homeworkDeltaShellSeconds,
-                            active_chat_seconds: this._homeworkDeltaChatSeconds
+                            active_chat_seconds: this._homeworkDeltaChatSeconds,
+                            rewards_given: this._homeworkDeltaRewardsGiven,
+                            style_nudges: this._homeworkDeltaStyleNudges
                         }
                     })
                 });
                 this._homeworkDeltaEditorSeconds = 0;
                 this._homeworkDeltaShellSeconds = 0;
                 this._homeworkDeltaChatSeconds = 0;
+                this._homeworkDeltaRewardsGiven = 0;
+                this._homeworkDeltaStyleNudges = 0;
             }
 
             if (hasStudyMetrics) {
@@ -195,13 +203,17 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
                         engagement_metrics: {
                             active_editor_seconds: this._studyDeltaEditorSeconds,
                             active_shell_seconds: this._studyDeltaShellSeconds,
-                            active_chat_seconds: this._studyDeltaChatSeconds
+                            active_chat_seconds: this._studyDeltaChatSeconds,
+                            rewards_given: this._studyDeltaRewardsGiven,
+                            style_nudges: this._studyDeltaStyleNudges
                         }
                     })
                 });
                 this._studyDeltaEditorSeconds = 0;
                 this._studyDeltaShellSeconds = 0;
                 this._studyDeltaChatSeconds = 0;
+                this._studyDeltaRewardsGiven = 0;
+                this._studyDeltaStyleNudges = 0;
             }
         } catch (e) {
             TAChatViewProvider.getOutputChannel().appendLine(`[Telemetry Error]: ${e}`);
@@ -995,6 +1007,11 @@ ${terminalOutput}`;
             
             if (displayResponse.includes('[STYLE_NUDGE]')) {
                 this._hasGivenStyleNudge = true;
+                if (mode === 'Study Assist') {
+                    this._studyDeltaStyleNudges += 1;
+                } else {
+                    this._homeworkDeltaStyleNudges += 1;
+                }
                 displayResponse = displayResponse.replace(/\[STYLE_NUDGE\]/g, '').trim();
             }
 
@@ -1019,6 +1036,7 @@ ${terminalOutput}`;
                 if (displayResponse.includes('[DEBUG_IDEA_UNLOCKED]')) {
                     displayResponse = displayResponse.replace(/\[DEBUG_IDEA_UNLOCKED\]/g, '').trim();
                     if (mode !== 'Study Assist') {
+                        this._homeworkDeltaRewardsGiven += 1;
                         this._carrots -= 1;
                         if (this._carrots <= 0) {
                             displayResponse += `\n\n*(Coding Rabbit ate all the carrots and is full and needs a break - Check in with your Human TA if you have more questions before then. 🥕)*`;

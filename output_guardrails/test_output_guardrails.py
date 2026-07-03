@@ -331,6 +331,13 @@ def test_end_chat_inside_student_code_quote_does_not_trigger():
 # ---------------------------------------------------------------------------
 def test_check_code_leakage_unit():
     violated, _, _ = check_code_leakage("```cpp\nint x = 5;\n```", "")
+    assert violated is False
+
+    violated, _, _ = check_code_leakage("```cpp\nint x = 5; int y = 6;\n```", "")
+    assert violated is True
+
+    # Check python blocks are always blocked
+    violated, _, _ = check_code_leakage("```python\nx = 5\n```", "")
     assert violated is True
 
     violated, _, _ = check_code_leakage(

@@ -530,6 +530,7 @@ def _apply_pipeline_guardrails(
             student_code,
             conversation_history,
         )
+        guardrail["evaluated_answer"] = visible_answer
     except Exception as exc:  # pragma: no cover - defensive fallback
         logger.warning("Guardrail evaluation failed; returning draft answer: %s", exc)
         guardrail = {

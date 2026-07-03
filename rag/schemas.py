@@ -95,6 +95,8 @@ class EngagementMetrics(BaseModel):
     active_editor_seconds: int = 0
     active_shell_seconds: int = 0
     active_chat_seconds: int = 0
+    rewards_given: int = 0
+    style_nudges: int = 0
 
 
 class QueryInput(BaseModel):

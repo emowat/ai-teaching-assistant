@@ -180,6 +180,7 @@ def _legacy_output_guardrail_phase(
         "final_answer": guardrail.get("final_answer"),
         "latency_ms": guardrail.get("latency_ms"),
         "v2_score": guardrail.get("v2_score"),
+        "evaluated_answer": guardrail.get("evaluated_answer"),
     }
 
 

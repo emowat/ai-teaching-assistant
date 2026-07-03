@@ -1,3 +1,8 @@
+"""
+Set the STAGING_API_URL and run this against the evaluation log copied from S3:
+aws s3 cp s3://codingrabbit-data-dev/synthetic-transcripts/final_eval_log.jsonl synthetic-transcripts/
+STAGING_API_URL="http://codingrabbit-rag-eng-1327788709.us-east-1.elb.amazonaws.com" uv run pytest test/test_guardrail_eval.py
+"""
 import json
 import os
 from pathlib import Path
@@ -66,14 +71,8 @@ for i, data in EVAL_CASES:
         raw_gen = history[0].get("raw_generation", "")
         cot_keys = history[0].get("cot_keys", {})
         
-        # Reconstruct the original full draft answer (with CoT) for the test payload
-        full_draft = ""
-        if cot_keys:
-            full_draft += "<analysis>\n"
-            for k, v in cot_keys.items():
-                full_draft += f"- {k}: {v}\n"
-            full_draft += "</analysis>\n\n"
-        full_draft += raw_gen
+        # We only pass the actual TA generation to the output guardrail, not the CoT
+        full_draft = raw_gen
         
         if full_draft.strip():
             LEGITIMATE_OUTPUT_CASES.append((i, data, full_draft.strip()))
