@@ -882,7 +882,7 @@ def create_app() -> FastAPI:
                 "message_index": payload.message_index
             }
             logger.info(json.dumps(feedback_data))
-                
+
             if payload.session_id and payload.message_index:
                 telemetry = TelemetryClient()
                 telemetry.record_feedback(
@@ -891,7 +891,7 @@ def create_app() -> FastAPI:
                     rating=payload.rating,
                     reason=payload.reason
                 )
-            
+
             return {"status": "success"}
         except Exception as exc:
             logger.exception("Feedback logging failed")
@@ -911,7 +911,7 @@ def create_app() -> FastAPI:
                 "engagement_metrics": payload.engagement_metrics.model_dump()
             }
             logger.info(json.dumps(telemetry_data))
-                
+
             if payload.session_id:
                 telemetry = TelemetryClient()
                 telemetry.record_out_of_band_telemetry(
@@ -919,7 +919,7 @@ def create_app() -> FastAPI:
                     mode=payload.mode,
                     engagement_metrics=payload.engagement_metrics.model_dump()
                 )
-            
+
             return {"status": "success"}
         except Exception as exc:
             logger.exception("Telemetry logging failed")
@@ -986,22 +986,29 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=500, detail=_error_detail(exc)) from exc
 
     @app.post(
-        "/api/export-chat-logs",
+        "/api/admin/export-chat-logs",
         response_model=ChatLogExportResponse,
+        dependencies=[Depends(_require_admin_access)],
     )
-    def export_chat_logs_unauthenticated(
+    def export_chat_logs(
         start_date: str | None = Query(default=None, description="UTC start date (YYYY-MM-DD). Defaults to today."),
         end_date: str | None = Query(default=None, description="UTC end date (YYYY-MM-DD). Defaults to start_date."),
         course_id: str | None = Query(default=None, description="Optional course ID filter."),
+        tz: str = Query(default="America/Los_Angeles", description="Timezone to use for resolving 'today' defaults"),
     ) -> ChatLogExportResponse:
-        from datetime import date as date_type, datetime, timezone
+        from datetime import date as date_type, datetime
         from rag_eng.chat_log_export import export_turn_snapshots_to_s3, _resolve_database_url
 
         database_url = _resolve_database_url(None)
         if not database_url:
             raise HTTPException(status_code=500, detail="No database URL configured for chat log export.")
 
-        parsed_start = date_type.fromisoformat(start_date) if start_date else datetime.now(timezone.utc).date()
+        import pytz
+        if tz not in pytz.all_timezones:
+            raise HTTPException(status_code=400, detail="Invalid timezone")
+
+        pt_tz = pytz.timezone(tz)
+        parsed_start = date_type.fromisoformat(start_date) if start_date else datetime.now(pt_tz).date()
         parsed_end = date_type.fromisoformat(end_date) if end_date else parsed_start
 
         try:
@@ -1010,6 +1017,7 @@ def create_app() -> FastAPI:
                 start_date=parsed_start,
                 end_date=parsed_end,
                 course_id=course_id,
+                tz=tz,
             )
         except Exception as exc:
             raise HTTPException(status_code=500, detail=f"Export failed: {exc}") from exc
@@ -1020,6 +1028,407 @@ def create_app() -> FastAPI:
             total_records=total,
             message=f"Exported {total} turn snapshots across {len(partitions)} partitions.",
         )
+
+    @app.get(
+        "/api/admin/dashboard/stats",
+        dependencies=[Depends(_require_admin_access)],
+    )
+    def admin_dashboard_stats(course_id: str | None = None, tz: str = "America/Los_Angeles"):
+        import pytz
+        if tz not in pytz.all_timezones:
+            raise HTTPException(status_code=400, detail="Invalid timezone")
+
+        from rag_eng.telemetry import _connect_postgres
+        from rag_eng.chat_log_export import _resolve_database_url
+
+        database_url = _resolve_database_url(None)
+        if not database_url:
+            raise HTTPException(status_code=500, detail="No database URL configured for telemetry.")
+
+        try:
+            with _connect_postgres(database_url, 5) as connection:
+                with connection.cursor() as cursor:
+                    # 1. Daily Rewards, Nudges, & Engagement
+                    course_filter = "AND course_id = %s" if course_id else ""
+                    params = (course_id,) if course_id else ()
+                    params_double = (course_id, course_id) if course_id else ()
+
+                    cursor.execute(f'''
+                        WITH combined AS (
+                            SELECT
+                                metadata->>'rewards_given' as r,
+                                metadata->>'style_nudges' as n,
+                                metadata->>'active_chat_seconds' as c,
+                                metadata->>'active_editor_seconds' as e,
+                                metadata->>'active_shell_seconds' as s
+                            FROM telemetry_events
+                            WHERE event_type = 'out_of_band_telemetry'
+                            AND DATE((created_at AT TIME ZONE '{tz}')) = (CURRENT_TIMESTAMP AT TIME ZONE '{tz}')::DATE
+                            {course_filter}
+                            UNION ALL
+                            SELECT
+                                snapshot->'ide_context'->'engagement_metrics'->>'rewards_given' as r,
+                                COALESCE(snapshot->'ide_context'->'engagement_metrics'->>'style_nudges', snapshot->'orchestrator_state'->>'style_nudged_count') as n,
+                                snapshot->'ide_context'->'engagement_metrics'->>'active_chat_seconds' as c,
+                                snapshot->'ide_context'->'engagement_metrics'->>'active_editor_seconds' as e,
+                                snapshot->'ide_context'->'engagement_metrics'->>'active_shell_seconds' as s
+                            FROM tutor_turn_snapshots
+                            WHERE DATE((created_at AT TIME ZONE '{tz}')) = (CURRENT_TIMESTAMP AT TIME ZONE '{tz}')::DATE
+                            {course_filter}
+                        )
+                        SELECT
+                            SUM(COALESCE(CAST(r AS INTEGER), 0)) as total_rewards,
+                            SUM(COALESCE(CAST(n AS INTEGER), 0)) as total_style_nudges,
+                            SUM(COALESCE(CAST(c AS INTEGER), 0)) as chat_seconds,
+                            SUM(COALESCE(CAST(e AS INTEGER), 0)) as editor_seconds,
+                            SUM(COALESCE(CAST(s AS INTEGER), 0)) as terminal_seconds
+                        FROM combined
+                    ''', params_double)
+                    row = cursor.fetchone()
+                    total_rewards = row[0] if row and row[0] else 0
+                    total_style_nudges = row[1] if row and row[1] else 0
+                    chat_seconds = row[2] if row and row[2] else 0
+                    editor_seconds = row[3] if row and row[3] else 0
+                    terminal_seconds = row[4] if row and row[4] else 0
+
+                    # 2. Sessions Today
+                    cursor.execute(f'''
+                        SELECT
+                            COUNT(DISTINCT session_id),
+                            COUNT(*)
+                        FROM tutor_turn_snapshots
+                        WHERE DATE((created_at AT TIME ZONE '{tz}')) = (CURRENT_TIMESTAMP AT TIME ZONE '{tz}')::DATE
+                        {course_filter}
+                    ''', params)
+                    row = cursor.fetchone()
+                    sessions_today = row[0] if row else 0
+                    requests_today = row[1] if row else 0
+
+                    # 3. Request Volume (Last 7 days, by mode and pedagogical action)
+                    cursor.execute(f'''
+                        SELECT
+                            TO_CHAR((created_at AT TIME ZONE '{tz}'), 'Dy') as day,
+                            COALESCE(snapshot->'ide_context'->>'mode', 'unknown') as mode,
+                            COALESCE(INITCAP(REPLACE(SUBSTRING(snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Pedagogical_Action' FROM '\[(.*?)\]'), '_', ' ')), 'None') as category,
+                            COUNT(*) as count
+                        FROM tutor_turn_snapshots
+                        WHERE created_at >= (CURRENT_TIMESTAMP AT TIME ZONE '{tz}')::DATE - INTERVAL '6 days'
+                        {course_filter}
+                        GROUP BY DATE((created_at AT TIME ZONE '{tz}')), day, mode, category
+                        ORDER BY DATE((created_at AT TIME ZONE '{tz}')) ASC
+                    ''', params)
+                    volume_rows = cursor.fetchall()
+
+                    from datetime import datetime, timedelta
+                    import pytz
+                    pt_tz = pytz.timezone(tz)
+                    volume_data = {}
+                    for i in range(6, -1, -1):
+                        d = (datetime.now(pt_tz) - timedelta(days=i)).strftime('%a')
+                        volume_data[d] = {"day": d, "sessions": 0}
+
+                    normalized_rows = []
+                    for row in volume_rows:
+                        day, mode, cat, count = row
+
+                        # Normalize old/broken mode strings so they render in the UI
+                        mode_lower = str(mode).lower().replace("_", " ")
+                        if "study" in mode_lower:
+                            mode = "Study Assist"
+                        else:
+                            mode = "Homework Assist"  # Fallback
+
+                        normalized_rows.append((day, mode, cat, count))
+
+                        if day not in volume_data:
+                            volume_data[day] = {"day": day, "sessions": 0}
+                        volume_data[day]["sessions"] += count
+                        key = f"{mode}: {cat}"
+                        if key not in volume_data[day]:
+                            volume_data[day][key] = 0
+                        volume_data[day][key] += count
+                    session_data = list(volume_data.values())
+
+                    homework_keys = list(set([f"{r[1]}: {r[2]}" for r in normalized_rows if r[1] == "Homework Assist"]))
+                    study_keys = list(set([f"{r[1]}: {r[2]}" for r in normalized_rows if r[1] == "Study Assist"]))
+
+                    # 4. Guardrail Interventions (Input/Output blocks)
+                    cursor.execute(f'''
+                        SELECT
+                            COUNT(CASE WHEN snapshot->'input_guardrail_phase'->>'action' = 'block' THEN 1 END) as input_blocks,
+                            COUNT(CASE WHEN snapshot->'output_guardrail_phase'->>'action' IN ('block', 'replace') THEN 1 END) as output_blocks
+                        FROM tutor_turn_snapshots
+                        WHERE created_at >= (CURRENT_TIMESTAMP AT TIME ZONE '{tz}')::DATE - INTERVAL '6 days'
+                        {course_filter}
+                    ''', params)
+                    row = cursor.fetchone()
+                    input_blocks = row[0] if row else 0
+                    output_blocks = row[1] if row else 0
+
+                    # 5. Violation Types (Pie Chart)
+                    cursor.execute(f'''
+                        SELECT
+                            COALESCE(
+                                NULLIF(snapshot->'input_guardrail_phase'->>'violation_type', 'none'),
+                                snapshot->'output_guardrail_phase'->>'violation_type'
+                            ) as violation_type,
+                            COUNT(*) as count
+                        FROM tutor_turn_snapshots
+                        WHERE created_at >= (CURRENT_TIMESTAMP AT TIME ZONE '{tz}')::DATE - INTERVAL '6 days'
+                        {course_filter}
+                        AND (
+                            (snapshot->'input_guardrail_phase'->>'action' = 'block') OR
+                            (snapshot->'output_guardrail_phase'->>'action' IN ('block', 'replace'))
+                        )
+                        GROUP BY violation_type
+                    ''', params)
+                    violation_rows = cursor.fetchall()
+                    violation_types = [{"name": r[0] or "unknown", "value": r[1]} for r in violation_rows]
+
+                    # 6. Latency Metrics (P50, P90, P99)
+                    cursor.execute(f'''
+                        SELECT
+                            COALESCE(percentile_cont(0.5) WITHIN GROUP (ORDER BY (snapshot->'backend_retrieval_phase'->>'latency_ms')::numeric), 0) as rag_p50,
+                            COALESCE(percentile_cont(0.9) WITHIN GROUP (ORDER BY (snapshot->'backend_retrieval_phase'->>'latency_ms')::numeric), 0) as rag_p90,
+                            COALESCE(percentile_cont(0.99) WITHIN GROUP (ORDER BY (snapshot->'backend_retrieval_phase'->>'latency_ms')::numeric), 0) as rag_p99,
+                            COALESCE(percentile_cont(0.5) WITHIN GROUP (ORDER BY (snapshot->'ta_generation_phase'->'generation_history'->-1->>'generation_latency_ms')::numeric), 0) as llm_p50,
+                            COALESCE(percentile_cont(0.9) WITHIN GROUP (ORDER BY (snapshot->'ta_generation_phase'->'generation_history'->-1->>'generation_latency_ms')::numeric), 0) as llm_p90,
+                            COALESCE(percentile_cont(0.99) WITHIN GROUP (ORDER BY (snapshot->'ta_generation_phase'->'generation_history'->-1->>'generation_latency_ms')::numeric), 0) as llm_p99,
+                            COALESCE(percentile_cont(0.5) WITHIN GROUP (ORDER BY (snapshot->'input_guardrail_phase'->>'latency_ms')::numeric), 0) as input_p50,
+                            COALESCE(percentile_cont(0.9) WITHIN GROUP (ORDER BY (snapshot->'input_guardrail_phase'->>'latency_ms')::numeric), 0) as input_p90,
+                            COALESCE(percentile_cont(0.99) WITHIN GROUP (ORDER BY (snapshot->'input_guardrail_phase'->>'latency_ms')::numeric), 0) as input_p99,
+                            COALESCE(percentile_cont(0.5) WITHIN GROUP (ORDER BY (snapshot->'output_guardrail_phase'->>'latency_ms')::numeric), 0) as output_p50,
+                            COALESCE(percentile_cont(0.9) WITHIN GROUP (ORDER BY (snapshot->'output_guardrail_phase'->>'latency_ms')::numeric), 0) as output_p90,
+                            COALESCE(percentile_cont(0.99) WITHIN GROUP (ORDER BY (snapshot->'output_guardrail_phase'->>'latency_ms')::numeric), 0) as output_p99
+                        FROM tutor_turn_snapshots
+                        WHERE created_at >= (CURRENT_TIMESTAMP AT TIME ZONE '{tz}')::DATE - INTERVAL '6 days'
+                        {course_filter}
+                    ''', params)
+                    row = cursor.fetchone()
+                    latencies = {
+                        "rag": {"p50": int(row[0]), "p90": int(row[1]), "p99": int(row[2])} if row else {},
+                        "llm": {"p50": int(row[3]), "p90": int(row[4]), "p99": int(row[5])} if row else {},
+                        "input_guardrail": {"p50": int(row[6]), "p90": int(row[7]), "p99": int(row[8])} if row else {},
+                        "output_guardrail": {"p50": int(row[9]), "p90": int(row[10]), "p99": int(row[11])} if row else {}
+                    }
+
+                    # 7. Retry Loop Health & System Errors
+                    cursor.execute(f'''
+                        SELECT
+                            COUNT(*) as total_turns,
+                            COUNT(CASE WHEN (snapshot->'ta_generation_phase'->>'attempts_count')::int > 1 THEN 1 END) as retry_turns
+                        FROM tutor_turn_snapshots
+                        WHERE created_at >= (CURRENT_TIMESTAMP AT TIME ZONE '{tz}')::DATE - INTERVAL '6 days'
+                        {course_filter}
+                    ''', params)
+                    row = cursor.fetchone()
+                    total_turns = row[0] if row else 0
+                    retry_turns = row[1] if row else 0
+                    retry_health_pct = round((retry_turns / total_turns * 100), 1) if total_turns > 0 else 0.0
+
+                    cursor.execute(f'''
+                        SELECT COUNT(*)
+                        FROM tutor_turns
+                        WHERE status = 'failed'
+                        AND DATE((created_at AT TIME ZONE '{tz}')) = (CURRENT_TIMESTAMP AT TIME ZONE '{tz}')::DATE
+                        {course_filter}
+                    ''', params)
+                    row = cursor.fetchone()
+                    system_errors = row[0] if row else 0
+
+                    # 8. Models Used
+                    cursor.execute(f'''
+                        SELECT
+                            snapshot->'ta_generation_phase'->>'model_name' as model,
+                            COUNT(*) as count
+                        FROM tutor_turn_snapshots
+                        WHERE created_at >= (CURRENT_TIMESTAMP AT TIME ZONE '{tz}')::DATE - INTERVAL '6 days'
+                          AND snapshot->'ta_generation_phase'->>'model_name' IS NOT NULL
+                          {course_filter}
+                        GROUP BY model
+                    ''', params)
+                    model_rows = cursor.fetchall()
+                    model_share = [{"name": r[0] or "unknown", "value": r[1]} for r in model_rows]
+
+                    # 9. Weekly Rewards & Nudges
+                    cursor.execute(f'''
+                        WITH combined AS (
+                            SELECT
+                                created_at,
+                                metadata->>'rewards_given' as r,
+                                metadata->>'style_nudges' as n
+                            FROM telemetry_events
+                            WHERE event_type = 'out_of_band_telemetry'
+                            AND created_at >= (CURRENT_TIMESTAMP AT TIME ZONE '{tz}')::DATE - INTERVAL '6 days'
+                            {course_filter}
+                            UNION ALL
+                            SELECT
+                                created_at,
+                                snapshot->'ide_context'->'engagement_metrics'->>'rewards_given' as r,
+                                COALESCE(snapshot->'ide_context'->'engagement_metrics'->>'style_nudges', snapshot->'orchestrator_state'->>'style_nudged_count') as n
+                            FROM tutor_turn_snapshots
+                            WHERE created_at >= (CURRENT_TIMESTAMP AT TIME ZONE '{tz}')::DATE - INTERVAL '6 days'
+                            {course_filter}
+                        )
+                        SELECT
+                            TO_CHAR((created_at AT TIME ZONE '{tz}'), 'Dy') as day,
+                            SUM(COALESCE(CAST(r AS INTEGER), 0)) as total_rewards,
+                            SUM(COALESCE(CAST(n AS INTEGER), 0)) as total_style_nudges
+                        FROM combined
+                        GROUP BY DATE((created_at AT TIME ZONE '{tz}')), day
+                        ORDER BY DATE((created_at AT TIME ZONE '{tz}')) ASC
+                    ''', params_double)
+                    rewards_rows = cursor.fetchall()
+
+                    # 10. Weekly Engagement Metrics
+                    cursor.execute(f'''
+                        WITH combined AS (
+                            SELECT
+                                created_at,
+                                metadata->>'active_chat_seconds' as c,
+                                metadata->>'active_editor_seconds' as e,
+                                metadata->>'active_shell_seconds' as s
+                            FROM telemetry_events
+                            WHERE event_type = 'out_of_band_telemetry'
+                            AND created_at >= (CURRENT_TIMESTAMP AT TIME ZONE '{tz}')::DATE - INTERVAL '6 days'
+                            {course_filter}
+                            UNION ALL
+                            SELECT
+                                created_at,
+                                snapshot->'ide_context'->'engagement_metrics'->>'active_chat_seconds' as c,
+                                snapshot->'ide_context'->'engagement_metrics'->>'active_editor_seconds' as e,
+                                snapshot->'ide_context'->'engagement_metrics'->>'active_shell_seconds' as s
+                            FROM tutor_turn_snapshots
+                            WHERE created_at >= (CURRENT_TIMESTAMP AT TIME ZONE '{tz}')::DATE - INTERVAL '6 days'
+                            {course_filter}
+                        )
+                        SELECT
+                            TO_CHAR((created_at AT TIME ZONE '{tz}'), 'Dy') as day,
+                            SUM(COALESCE(CAST(c AS INTEGER), 0)) as chat_seconds,
+                            SUM(COALESCE(CAST(e AS INTEGER), 0)) as editor_seconds,
+                            SUM(COALESCE(CAST(s AS INTEGER), 0)) as terminal_seconds
+                        FROM combined
+                        GROUP BY DATE((created_at AT TIME ZONE '{tz}')), day
+                        ORDER BY DATE((created_at AT TIME ZONE '{tz}')) ASC
+                    ''', params_double)
+                    engagement_rows = cursor.fetchall()
+
+                    weekly_rewards = []
+                    weekly_engagement = []
+
+                    for i in range(6, -1, -1):
+                        d = (datetime.now(pt_tz) - timedelta(days=i)).strftime('%a')
+                        weekly_rewards.append({"day": d, "rewards_given": 0, "style_nudges": 0})
+                        weekly_engagement.append({"day": d, "chat_seconds": 0, "editor_seconds": 0, "terminal_seconds": 0})
+
+                    for row in rewards_rows:
+                        day, r, n = row
+                        for item in weekly_rewards:
+                            if item["day"] == day:
+                                item["rewards_given"] = r
+                                item["style_nudges"] = n
+
+                    for row in engagement_rows:
+                        day, c, e, s = row
+                        for item in weekly_engagement:
+                            if item["day"] == day:
+                                item["chat_seconds"] = c
+                                item["editor_seconds"] = e
+                                item["terminal_seconds"] = s
+
+            return {
+                "sessions_today": sessions_today,
+                "requests_today": requests_today,
+                "chat_seconds_today": chat_seconds,
+                "editor_seconds_today": editor_seconds,
+                "terminal_seconds_today": terminal_seconds,
+                "total_rewards_given": total_rewards,
+                "total_style_nudges": total_style_nudges,
+                "weekly_rewards": weekly_rewards,
+                "weekly_engagement": weekly_engagement,
+                "session_data": session_data,
+                "homework_keys": homework_keys,
+                "study_keys": study_keys,
+                "model_share": model_share,
+                "guardrails": {
+                    "input_blocks": input_blocks,
+                    "output_blocks": output_blocks,
+                    "violation_types": violation_types
+                },
+                "latencies": latencies,
+                "retry_health_pct": retry_health_pct,
+                "system_errors": system_errors,
+                "status": "ok"
+            }
+        except Exception as exc:
+            import traceback
+            traceback.print_exc()
+            raise HTTPException(status_code=500, detail=f"Database query failed: {exc}") from exc
+
+    @app.get(
+        "/api/admin/dashboard/feedback",
+        dependencies=[Depends(_require_admin_access)],
+    )
+    def admin_dashboard_feedback(course_id: str | None = None, limit: int = 50):
+        from rag_eng.telemetry import _connect_postgres
+        from rag_eng.chat_log_export import _resolve_database_url
+
+        database_url = _resolve_database_url(None)
+        if not database_url:
+            raise HTTPException(status_code=500, detail="No database URL configured.")
+
+        try:
+            with _connect_postgres(database_url, 5) as connection:
+                with connection.cursor() as cursor:
+                    course_filter = "AND course_id = %s" if course_id else ""
+                    params = (course_id, limit) if course_id else (limit,)
+
+                    cursor.execute(f'''
+                        SELECT
+                            session_id,
+                            turn_index,
+                            snapshot->'feedback'->>'thumbs_up' as rating,
+                            snapshot->'feedback'->>'explanation' as explanation,
+                            created_at,
+                            COALESCE(snapshot->'ide_context'->>'chat_history', '') as student_message,
+                            COALESCE(snapshot->'ta_generation_phase'->>'generation', '') as ai_message,
+                            snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys' as cot,
+                            snapshot->'backend_retrieval_phase'->'files' as rag_sources
+                        FROM tutor_turn_snapshots
+                        WHERE snapshot->'feedback' IS NOT NULL
+                        {course_filter}
+                        ORDER BY created_at DESC
+                        LIMIT %s
+                    ''', params)
+
+                    rows = cursor.fetchall()
+                    feedback_entries = []
+                    for row in rows:
+                        rag_files = row[8]
+                        unique_sources = []
+                        if rag_files and isinstance(rag_files, list):
+                            for f_data in rag_files:
+                                src = f_data.get('source')
+                                if src and src not in unique_sources:
+                                    unique_sources.append(src)
+
+                        feedback_entries.append({
+                            "session_id": row[0],
+                            "turn_index": row[1],
+                            "rating": row[2],
+                            "explanation": row[3],
+                            "created_at": row[4].isoformat() if row[4] else None,
+                            "student_message": row[5] if row[5] else None,
+                            "ai_message": row[6] if row[6] else None,
+                            "cot": row[7] if row[7] else {},
+                            "rag_sources": unique_sources
+                        })
+
+            return {"feedback": feedback_entries, "status": "ok"}
+        except Exception as exc:
+            import traceback
+            traceback.print_exc()
+            raise HTTPException(status_code=500, detail=f"Database query failed: {exc}") from exc
 
     from rag_eng.ui import mount_gradio_consoles
 

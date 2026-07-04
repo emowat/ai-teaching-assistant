@@ -177,6 +177,7 @@ def export_turn_snapshots_to_s3(
     profile: str | None = None,
     region: str | None = None,
     connect_timeout_seconds: int | None = None,
+    tz: str = "America/Los_Angeles",
 ) -> list[dict[str, Any]]:
     """Export one JSONL object per UTC date partition to S3."""
     if bucket is None:
@@ -188,15 +189,18 @@ def export_turn_snapshots_to_s3(
     if connect_timeout_seconds is None:
         connect_timeout_seconds = DEFAULT_EXPORT_CONNECT_TIMEOUT_SECONDS
 
+    import pytz
+    pt_tz = pytz.timezone(tz)
+
     if start_date is None:
-        start_date = datetime.now(timezone.utc).date()
+        start_date = datetime.now(pt_tz).date()
     if end_date is None:
         end_date = start_date
     if start_date > end_date:
         raise ValueError("start_date must be on or before end_date")
 
-    start_at = datetime.combine(start_date, time.min, tzinfo=timezone.utc)
-    end_at = datetime.combine(end_date + timedelta(days=1), time.min, tzinfo=timezone.utc)
+    start_at = datetime.combine(start_date, time.min, tzinfo=pt_tz)
+    end_at = datetime.combine(end_date + timedelta(days=1), time.min, tzinfo=pt_tz)
     rows = _query_turn_snapshots(
         database_url,
         start_at=start_at,
@@ -310,7 +314,9 @@ def main(argv: list[str] | None = None) -> int:
     if not bucket:
         parser.error("export-turn-snapshots requires --bucket or a configured S3 bucket")
 
-    start_date = _parse_date(args.start_date, default=datetime.now(timezone.utc).date())
+    import pytz
+    pt_tz = pytz.timezone('America/Los_Angeles')
+    start_date = _parse_date(args.start_date, default=datetime.now(pt_tz).date())
     end_date = _parse_date(args.end_date, default=start_date)
 
     exported = export_turn_snapshots_to_s3(

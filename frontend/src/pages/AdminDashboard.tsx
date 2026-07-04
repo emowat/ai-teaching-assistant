@@ -4,20 +4,18 @@ import {
   getAdminLlmConfig,
   restartBackend,
   saveAdminLlmConfig,
+  getAdminDashboardStats,
+  getAdminDashboardFeedback,
+  triggerChatLogExport,
+  type DashboardStats,
+  type FeedbackEntry,
   type AdminLlmConfig,
   type LlmProvider,
 } from "../api/adminLlmApi";
+import { listAdminCourses, type AdminCourse } from "../api/adminCoursesApi";
 import {
-  Area,
-  AreaChart,
-  CartesianGrid,
-  Cell,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
+  Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart,
+  ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 import { Btn, Card, Stat, Tag } from "../design/atoms";
 import { chartTooltipStyle, D, mono } from "../design/tokens";
@@ -36,22 +34,7 @@ interface AdminDashboardProps {
   accessToken: string;
 }
 
-// STUB — replace when analytics API is available
-const sessionData = [
-  { day: "Mon", sessions: 142, resolved: 104 },
-  { day: "Tue", sessions: 189, resolved: 137 },
-  { day: "Wed", sessions: 211, resolved: 150 },
-  { day: "Thu", sessions: 167, resolved: 123 },
-  { day: "Fri", sessions: 98, resolved: 69 },
-  { day: "Sat", sessions: 43, resolved: 32 },
-  { day: "Sun", sessions: 57, resolved: 42 },
-];
 
-const modelShare = [
-  { name: "Ollama", value: 58, color: D.orange },
-  { name: "SageMaker", value: 27, color: D.blue },
-  { name: "OpenAI", value: 15, color: D.green },
-];
 
 const CUSTOM_MODEL_VALUE = "__custom__";
 interface ModelOption {
@@ -202,6 +185,7 @@ const baseAdminTabs: SidebarTab[] = [
   { key: "courses", icon: "🎓", label: "Courses" },
   { key: "rag", icon: "📚", label: "RAG Docs" },
   { key: "stats", icon: "📊", label: "Evaluation" },
+  { key: "feedback", icon: "💬", label: "Feedback" },
   { key: "models", icon: "🤖", label: "AI Models" },
 ];
 
@@ -237,6 +221,14 @@ export function AdminDashboard({
   const [openaiApiKey, setOpenaiApiKey] = useState("");
   const [openaiBaseUrl, setOpenaiBaseUrl] = useState("https://api.openai.com/v1");
   const gradioUrl = getGradioUrl();
+
+  const [courses, setCourses] = useState<AdminCourse[]>([]);
+  const [courseFilter, setCourseFilter] = useState<string>("all");
+
+  useEffect(() => {
+    if (!accessToken) return;
+    void listAdminCourses(accessToken).then(setCourses).catch(console.error);
+  }, [accessToken]);
 
   useEffect(() => {
     const base = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8001";
@@ -369,7 +361,86 @@ export function AdminDashboard({
     return [...baseAdminTabs, backendConsoleTab];
   }, [gradioAvailable]);
 
-  const activeTab = tab;
+  const [timezoneFilter, setTimezoneFilter] = useState<string>("America/Los_Angeles");
+  const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
+  const [statsError, setStatsError] = useState<boolean>(false);
+  const [exportStartDate, setExportStartDate] = useState("");
+  const [exportEndDate, setExportEndDate] = useState("");
+  const [exporting, setExporting] = useState(false);
+  const [exportResult, setExportResult] = useState<string | null>(null);
+
+  const [feedbackData, setFeedbackData] = useState<FeedbackEntry[]>([]);
+  const [feedbackError, setFeedbackError] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (!accessToken) return;
+    let cancelled = false;
+
+    const fetchStats = () => {
+      getAdminDashboardStats(accessToken, courseFilter === "all" ? undefined : courseFilter, timezoneFilter)
+        .then((data) => {
+          if (!cancelled) {
+            setDashboardStats(data);
+            setStatsError(false);
+          }
+        })
+        .catch((err) => {
+          console.error("Failed to fetch dashboard stats", err);
+          if (!cancelled) setStatsError(true);
+        });
+    };
+
+    fetchStats();
+    const intervalId = window.setInterval(fetchStats, 60000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [accessToken, courseFilter, timezoneFilter]);
+
+  useEffect(() => {
+    if (!accessToken) return;
+    let cancelled = false;
+
+    const fetchFeedback = () => {
+      getAdminDashboardFeedback(accessToken, courseFilter === "all" ? undefined : courseFilter, 50)
+        .then((data) => {
+          if (!cancelled) {
+            setFeedbackData(data.feedback);
+            setFeedbackError(false);
+          }
+        })
+        .catch((err) => {
+          console.error("Failed to fetch feedback", err);
+          if (!cancelled) setFeedbackError(true);
+        });
+    };
+
+    fetchFeedback();
+    const intervalId = window.setInterval(fetchFeedback, 60000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [accessToken, courseFilter]);
+
+  const handleExport = async () => {
+    if (!accessToken) return;
+    setExporting(true);
+    setExportResult(null);
+    try {
+      const res = await triggerChatLogExport(accessToken, courseFilter, exportStartDate, exportEndDate, timezoneFilter);
+      setExportResult(`Success: ${res.message} (Total records: ${res.total_records})`);
+    } catch (err: any) {
+      setExportResult(`Error: ${err.message}`);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+    const activeTab = tab;
   const healthBadgeColor = healthState.loading || healthState.refreshing
     ? D.yellow
     : healthState.healthy
@@ -624,71 +695,309 @@ export function AdminDashboard({
             </div>
           )}
 
-          {activeTab === "stats" && (
+                    {activeTab === "stats" && (
             <div>
-              <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 18 }}>
-                Evaluation dashboard <Tag color={D.muted}>STUB</Tag>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
+                <div style={{ fontSize: 18, fontWeight: 600 }}>Live Operational Dashboard</div>
+                <div style={{ display: "flex", gap: 12 }}>
+                  <select
+                    value={timezoneFilter}
+                    onChange={(e) => setTimezoneFilter(e.target.value)}
+                    style={{ padding: "6px 12px", borderRadius: 6, border: `1px solid ${D.border}`, background: D.surface, color: D.text, fontSize: 13, cursor: "pointer" }}
+                  >
+                    <option value="America/Los_Angeles">US Pacific (PT)</option>
+                    <option value="America/Denver">US Mountain (MT)</option>
+                    <option value="America/Chicago">US Central (CT)</option>
+                    <option value="America/New_York">US Eastern (ET)</option>
+                    <option value="UTC">UTC</option>
+                  </select>
+                  <select
+                    value={courseFilter}
+                    onChange={(e) => setCourseFilter(e.target.value)}
+                    style={{ padding: "6px 12px", borderRadius: 6, border: `1px solid ${D.border}`, background: D.surface, color: D.text, fontSize: 13, cursor: "pointer" }}
+                  >
+                    <option value="all">All Courses</option>
+                    {courses.map(c => (
+                      <option key={c.course_id} value={c.course_id}>{c.course_id.toUpperCase()}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))",
-                  gap: 12,
-                  marginBottom: 18,
-                }}
-              >
-                <Stat label="// sessions.today" value="211" sub="+18% from yesterday" />
-                <Stat label="// hints.requested" value="61" sub="28.9% hint rate" color={D.yellow} />
-                <Stat label="// problems.solved" value="150" sub="71% resolution rate" color={D.green} />
-                <Stat label="// avg.session_min" value="24m" sub="↑ 3 min this week" color={D.blue} />
+
+              <div style={{ ...mono, fontSize: 11, color: D.muted, marginBottom: 8 }}>// Daily:</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12, marginBottom: 18 }}>
+                <Stat label="Sessions" value={dashboardStats?.sessions_today?.toString() ?? "..."} />
+                <Stat label="Requests" value={dashboardStats?.requests_today?.toString() ?? "..."} color={D.blue} />
+                <Stat label="Chat(secs)" value={dashboardStats?.chat_seconds_today !== undefined ? `${dashboardStats.chat_seconds_today}s` : "..."} color={D.purple} />
+                <Stat label="Editor(secs)" value={dashboardStats?.editor_seconds_today !== undefined ? `${dashboardStats.editor_seconds_today}s` : "..."} color={D.purple} />
+                <Stat label="Terminal(secs)" value={dashboardStats?.terminal_seconds_today !== undefined ? `${dashboardStats.terminal_seconds_today}s` : "..."} color={D.purple} />
+                <Stat label="Rewards" value={dashboardStats?.total_rewards_given?.toString() ?? "..."} color={D.green} />
+                <Stat label="Style Nudged" value={dashboardStats?.total_style_nudges?.toString() ?? "..."} color={D.orange} />
+                <Stat label="System Errors" value={statsError ? "ERR_FETCH" : dashboardStats?.system_errors?.toString() ?? "..."} color={D.red} />
               </div>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "minmax(0, 1.6fr) minmax(280px, 0.8fr)",
-                  gap: 14,
-                }}
-              >
-                <Card>
-                  <div style={{ ...mono, fontSize: 11, color: D.muted, marginBottom: 14 }}>
-                    // sessions_this_week
+
+              <Card style={{ marginBottom: 18 }}>
+                <div style={{ ...mono, fontSize: 11, color: D.muted, marginBottom: 14 }}>// export_chat_logs</div>
+                <div style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>
+                  <label style={{ display: "grid", gap: 6, flex: 1, minWidth: 150 }}>
+                    <span style={{ fontSize: 12, color: D.muted }}>Start Date (Optional)</span>
+                    <input type="date" value={exportStartDate} onChange={(e) => setExportStartDate(e.target.value)} style={{ padding: "6px 12px", borderRadius: 6, border: `1px solid ${D.border}`, background: D.surface, color: D.text, fontSize: 13 }} />
+                  </label>
+                  <label style={{ display: "grid", gap: 6, flex: 1, minWidth: 150 }}>
+                    <span style={{ fontSize: 12, color: D.muted }}>End Date (Optional)</span>
+                    <input type="date" value={exportEndDate} onChange={(e) => setExportEndDate(e.target.value)} style={{ padding: "6px 12px", borderRadius: 6, border: `1px solid ${D.border}`, background: D.surface, color: D.text, fontSize: 13 }} />
+                  </label>
+                  <Btn onClick={handleExport} disabled={exporting}>
+                    {exporting ? "Exporting..." : "Export to JSON"}
+                  </Btn>
+                </div>
+                {exportResult && (
+                  <div style={{ marginTop: 12, fontSize: 12, color: exportResult.startsWith("Error") ? D.red : D.green }}>
+                    {exportResult}
                   </div>
-                  <ResponsiveContainer width="100%" height={200}>
-                    <AreaChart data={sessionData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke={D.border} />
+                )}
+              </Card>
+
+              <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 14, marginBottom: 14 }}>
+                <Card>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                    <div style={{ ...mono, fontSize: 11, color: D.muted }}>// request_volume (7 days)</div>
+                    <div style={{ fontSize: 11, color: D.muted }}>
+                      <span style={{ color: D.blue }}>■</span> Homework Assist &nbsp;&nbsp;
+                      <span style={{ color: D.orange }}>■</span> Study Assist
+                    </div>
+                  </div>
+                  <ResponsiveContainer width="100%" height={220}>
+                    <BarChart data={dashboardStats?.session_data || []}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={D.border} vertical={false} />
                       <XAxis dataKey="day" stroke={D.muted} tick={{ fontSize: 11, fill: D.muted }} />
                       <YAxis stroke={D.muted} tick={{ fontSize: 11, fill: D.muted }} />
                       <Tooltip {...chartTooltipStyle} />
-                      <Area type="monotone" dataKey="sessions" stroke={D.orange} fill={`${D.orange}12`} strokeWidth={2} name="sessions" />
-                      <Area type="monotone" dataKey="resolved" stroke={D.green} fill={`${D.green}08`} strokeWidth={2} name="resolved" />
-                    </AreaChart>
+                      <Legend iconSize={8} wrapperStyle={{ fontSize: 11, color: D.muted }} />
+                      {dashboardStats?.homework_keys?.map((k, i) => (
+                        <Bar key={k} dataKey={k} name={k.split(": ")[1] || k} stackId="homework" fill={[D.blue, D.purple, "#0ea5e9"][i % 3]} />
+                      ))}
+                      {dashboardStats?.study_keys?.map((k, i) => (
+                        <Bar key={k} dataKey={k} name={k.split(": ")[1] || k} stackId="study" fill={[D.orange, D.yellow, D.red][i % 3]} />
+                      ))}
+                    </BarChart>
                   </ResponsiveContainer>
                 </Card>
+
                 <Card>
-                  <div style={{ ...mono, fontSize: 11, color: D.muted, marginBottom: 14 }}>
-                    // model_share
+                  <div style={{ ...mono, fontSize: 11, color: D.muted, marginBottom: 14 }}>// guardrail_interventions</div>
+                  <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
+                    <div style={{ flex: 1, padding: 12, background: `${D.red}10`, borderRadius: 6, border: `1px solid ${D.red}30` }}>
+                      <div style={{ fontSize: 24, fontWeight: 600, color: D.red }}>{dashboardStats?.guardrails?.input_blocks || 0}</div>
+                      <div style={{ fontSize: 11, color: D.dim, ...mono }}>Input Blocks</div>
+                    </div>
+                    <div style={{ flex: 1, padding: 12, background: `${D.orange}10`, borderRadius: 6, border: `1px solid ${D.orange}30` }}>
+                      <div style={{ fontSize: 24, fontWeight: 600, color: D.orange }}>{dashboardStats?.guardrails?.output_blocks || 0}</div>
+                      <div style={{ fontSize: 11, color: D.dim, ...mono }}>Output Blocks</div>
+                    </div>
                   </div>
-                  <ResponsiveContainer width="100%" height={130}>
+                  <ResponsiveContainer width="100%" height={120}>
                     <PieChart>
-                      <Pie data={modelShare} cx="50%" cy="50%" outerRadius={54} dataKey="value" strokeWidth={0}>
-                        {modelShare.map((m, i) => (
-                          <Cell key={i} fill={m.color} />
+                      <Pie
+                        data={dashboardStats?.guardrails?.violation_types || []}
+                        cx="50%" cy="50%"
+                        outerRadius={50}
+                        dataKey="value"
+                        nameKey="name"
+                        strokeWidth={0}
+                      >
+                        {(dashboardStats?.guardrails?.violation_types || []).map((_, i) => (
+                          <Cell key={i} fill={[D.red, D.orange, D.yellow, D.green, D.blue, D.purple][i % 6]} />
                         ))}
                       </Pie>
                       <Tooltip {...chartTooltipStyle} />
+                      <Legend iconSize={8} wrapperStyle={{ fontSize: 11, color: D.muted }} layout="vertical" verticalAlign="middle" align="right" />
                     </PieChart>
                   </ResponsiveContainer>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
-                    {modelShare.map((m) => (
-                      <div key={m.name} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
-                        <div style={{ width: 7, height: 7, borderRadius: "50%", background: m.color, flexShrink: 0 }} />
-                        <span style={{ color: D.dim, flex: 1 }}>{m.name}</span>
-                        <span style={{ color: D.text, ...mono }}>{m.value}%</span>
-                      </div>
-                    ))}
-                  </div>
+                </Card>
+                <Card>
+                  <div style={{ ...mono, fontSize: 11, color: D.muted, marginBottom: 14 }}>// rewards_and_nudges (7 days)</div>
+                  <ResponsiveContainer width="100%" height={220}>
+                    <BarChart data={dashboardStats?.weekly_rewards || []}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={D.border} vertical={false} />
+                      <XAxis dataKey="day" stroke={D.muted} tick={{ fontSize: 11, fill: D.muted }} />
+                      <YAxis stroke={D.muted} tick={{ fontSize: 11, fill: D.muted }} />
+                      <Tooltip {...chartTooltipStyle} />
+                      <Legend iconSize={8} wrapperStyle={{ fontSize: 11, color: D.muted }} />
+                      <Bar dataKey="rewards_given" name="Rewards" fill={D.green} />
+                      <Bar dataKey="style_nudges" name="Style Nudged" fill={D.orange} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </Card>
+
+                <Card>
+                  <div style={{ ...mono, fontSize: 11, color: D.muted, marginBottom: 14 }}>// engagement_time (7 days)</div>
+                  <ResponsiveContainer width="100%" height={220}>
+                    <BarChart data={dashboardStats?.weekly_engagement || []}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={D.border} vertical={false} />
+                      <XAxis dataKey="day" stroke={D.muted} tick={{ fontSize: 11, fill: D.muted }} />
+                      <YAxis stroke={D.muted} tick={{ fontSize: 11, fill: D.muted }} />
+                      <Tooltip {...chartTooltipStyle} />
+                      <Legend iconSize={8} wrapperStyle={{ fontSize: 11, color: D.muted }} />
+                      <Bar dataKey="chat_seconds" name="Chat (s)" fill={D.purple} />
+                      <Bar dataKey="editor_seconds" name="Editor (s)" fill={D.blue} />
+                      <Bar dataKey="terminal_seconds" name="Terminal (s)" fill={D.orange} />
+                    </BarChart>
+                  </ResponsiveContainer>
                 </Card>
               </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 14 }}>
+                <Card>
+                  <div style={{ ...mono, fontSize: 11, color: D.muted, marginBottom: 14 }}>// latency_metrics (ms)</div>
+                  <table style={{ width: "100%", fontSize: 13, textAlign: "left", borderCollapse: "collapse" }}>
+                    <thead>
+                      <tr style={{ borderBottom: `1px solid ${D.border}`, color: D.muted }}>
+                        <th style={{ padding: 8, fontWeight: 500 }}>Phase</th>
+                        <th style={{ padding: 8, fontWeight: 500 }}>P50</th>
+                        <th style={{ padding: 8, fontWeight: 500 }}>P90</th>
+                        <th style={{ padding: 8, fontWeight: 500 }}>P99</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr style={{ borderBottom: `1px solid ${D.border}` }}>
+                        <td style={{ padding: 8 }}>Input Guardrail</td>
+                        <td style={{ padding: 8, ...mono }}>{dashboardStats?.latencies?.input_guardrail?.p50 || 0}</td>
+                        <td style={{ padding: 8, ...mono }}>{dashboardStats?.latencies?.input_guardrail?.p90 || 0}</td>
+                        <td style={{ padding: 8, ...mono, color: (dashboardStats?.latencies?.input_guardrail?.p99 || 0) > 1000 ? D.red : D.text }}>{dashboardStats?.latencies?.input_guardrail?.p99 || 0}</td>
+                      </tr>
+                      <tr style={{ borderBottom: `1px solid ${D.border}` }}>
+                        <td style={{ padding: 8 }}>Retrieval (RAG)</td>
+                        <td style={{ padding: 8, ...mono }}>{dashboardStats?.latencies?.rag?.p50 || 0}</td>
+                        <td style={{ padding: 8, ...mono }}>{dashboardStats?.latencies?.rag?.p90 || 0}</td>
+                        <td style={{ padding: 8, ...mono, color: (dashboardStats?.latencies?.rag?.p99 || 0) > 2000 ? D.red : D.text }}>{dashboardStats?.latencies?.rag?.p99 || 0}</td>
+                      </tr>
+                      <tr style={{ borderBottom: `1px solid ${D.border}` }}>
+                        <td style={{ padding: 8 }}>LLM Generation</td>
+                        <td style={{ padding: 8, ...mono }}>{dashboardStats?.latencies?.llm?.p50 || 0}</td>
+                        <td style={{ padding: 8, ...mono }}>{dashboardStats?.latencies?.llm?.p90 || 0}</td>
+                        <td style={{ padding: 8, ...mono, color: (dashboardStats?.latencies?.llm?.p99 || 0) > 10000 ? D.red : D.text }}>{dashboardStats?.latencies?.llm?.p99 || 0}</td>
+                      </tr>
+                      <tr>
+                        <td style={{ padding: 8 }}>Output Guardrail</td>
+                        <td style={{ padding: 8, ...mono }}>{dashboardStats?.latencies?.output_guardrail?.p50 || 0}</td>
+                        <td style={{ padding: 8, ...mono }}>{dashboardStats?.latencies?.output_guardrail?.p90 || 0}</td>
+                        <td style={{ padding: 8, ...mono, color: (dashboardStats?.latencies?.output_guardrail?.p99 || 0) > 1000 ? D.red : D.text }}>{dashboardStats?.latencies?.output_guardrail?.p99 || 0}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </Card>
+                <Card>
+                  <div style={{ ...mono, fontSize: 11, color: D.muted, marginBottom: 14 }}>// model_share (7 days)</div>
+                  <ResponsiveContainer width="100%" height={130}>
+                    <PieChart>
+                      <Pie
+                        data={dashboardStats?.model_share || []}
+                        cx="50%" cy="50%"
+                        outerRadius={54}
+                        dataKey="value"
+                        nameKey="name"
+                        strokeWidth={0}
+                      >
+                        {(dashboardStats?.model_share || []).map((_, i) => (
+                          <Cell key={i} fill={[D.blue, D.orange, D.green, D.red, D.purple, D.yellow][i % 6]} />
+                        ))}
+                      </Pie>
+                      <Tooltip {...chartTooltipStyle} />
+                      <Legend iconSize={8} wrapperStyle={{ fontSize: 11, color: D.muted }} layout="vertical" verticalAlign="middle" align="right" />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </Card>
+              </div>
+            </div>
+          )}
+
+          {activeTab === "feedback" && (
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
+                <div style={{ fontSize: 18, fontWeight: 600 }}>Student Feedback</div>
+                <div style={{ display: "flex", gap: 12 }}>
+                  <select
+                    value={courseFilter}
+                    onChange={(e) => setCourseFilter(e.target.value)}
+                    style={{ padding: "6px 12px", borderRadius: 6, border: `1px solid ${D.border}`, background: D.surface, color: D.text, fontSize: 13 }}
+                  >
+                    <option value="all">All Courses</option>
+                    {courses.map(c => (
+                      <option key={c.course_id} value={c.course_id}>{c.course_id.toUpperCase()}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {feedbackError ? (
+                <div style={{ color: D.red, padding: 12, background: `${D.red}10`, borderRadius: 8 }}>
+                  Failed to load feedback data.
+                </div>
+              ) : feedbackData.length === 0 ? (
+                <div style={{ color: D.muted, padding: 24, textAlign: "center" }}>
+                  No Feedback Received
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                  {feedbackData.map((f, i) => (
+                    <Card key={i} style={{ display: "flex", flexDirection: "column", gap: 12, padding: 16 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ fontSize: 16 }}>{f.rating === "positive" ? "👍" : "👎"}</span>
+                          <span style={{ fontWeight: 600, color: f.rating === "positive" ? D.green : D.red }}>
+                            {f.rating === "positive" ? "Positive" : "Negative"}
+                          </span>
+                          {f.explanation && (
+                            <span style={{ fontSize: 14, color: D.text, marginLeft: 8 }}>"{f.explanation}"</span>
+                          )}
+                        </div>
+                        <div style={{ ...mono, fontSize: 11, color: D.muted }}>
+                          {f.created_at ? new Date(f.created_at).toLocaleString() : "Unknown date"} • Turn {f.turn_index}
+                        </div>
+                      </div>
+
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
+                        {f.rag_sources && f.rag_sources.length > 0 && (
+                          <>
+                            <div style={{ fontSize: 12, color: D.muted, ...mono }}>// rag_sources</div>
+                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                              {f.rag_sources.map(src => (
+                                <Tag key={src} color={D.orange}>{src}</Tag>
+                              ))}
+                            </div>
+                          </>
+                        )}
+
+                        <div style={{ fontSize: 12, color: D.muted, ...mono, marginTop: 4 }}>// student_message</div>
+                        <div style={{ background: `${D.blue}08`, padding: 12, borderRadius: 6, fontSize: 13, borderLeft: `3px solid ${D.blue}` }}>
+                          {f.student_message || <span style={{ color: D.muted, fontStyle: "italic" }}>No message text</span>}
+                        </div>
+
+                        {f.cot && Object.keys(f.cot).length > 0 && (
+                          <>
+                            <div style={{ fontSize: 12, color: D.muted, ...mono, marginTop: 4 }}>// chain_of_thought</div>
+                            <div style={{ background: D.surface, padding: 12, borderRadius: 6, fontSize: 12, border: `1px solid ${D.border}` }}>
+                              {Object.entries(f.cot).map(([key, val]) => (
+                                <div key={key} style={{ marginBottom: 4 }}>
+                                  <span style={{ fontWeight: 600, color: D.muted }}>{key}: </span>
+                                  <span style={{ color: D.text }}>{String(val)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </>
+                        )}
+
+                        <div style={{ fontSize: 12, color: D.muted, ...mono, marginTop: 4 }}>// ai_response</div>
+                        <div style={{ background: `${D.purple}08`, padding: 12, borderRadius: 6, fontSize: 13, borderLeft: `3px solid ${D.purple}`, whiteSpace: "pre-wrap" }}>
+                          {f.ai_message || <span style={{ color: D.muted, fontStyle: "italic" }}>No response text</span>}
+                        </div>
+                      </div>
+                      <div style={{ fontSize: 11, color: D.dim, ...mono, textAlign: "right", marginTop: 8 }}>Session ID: {f.session_id}</div>
+                    </Card>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 

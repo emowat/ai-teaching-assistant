@@ -69,3 +69,90 @@ export function restartBackend(accessToken: string): Promise<RestartResponse> {
     body: JSON.stringify({}),
   });
 }
+
+export interface DashboardStats {
+  sessions_today: number;
+  requests_today: number;
+  total_rewards_given: number;
+  total_style_nudges: number;
+  chat_seconds_today: number;
+  editor_seconds_today: number;
+  terminal_seconds_today: number;
+  weekly_rewards: { day: string; rewards_given: number; style_nudges: number }[];
+  weekly_engagement: { day: string; chat_seconds: number; editor_seconds: number; terminal_seconds: number }[];
+  session_data: { day: string; sessions: number; [key: string]: string | number }[];
+  homework_keys: string[];
+  study_keys: string[];
+  model_share: { name: string; value: number }[];
+  guardrails: {
+    input_blocks: number;
+    output_blocks: number;
+    violation_types: { name: string; value: number }[];
+  };
+  latencies: {
+    rag: { p50: number; p90: number; p99: number };
+    llm: { p50: number; p90: number; p99: number };
+    input_guardrail: { p50: number; p90: number; p99: number };
+    output_guardrail: { p50: number; p90: number; p99: number };
+  };
+  retry_health_pct: number;
+  system_errors: number;
+  status: string;
+}
+
+export function getAdminDashboardStats(accessToken: string, courseId?: string, tz?: string): Promise<DashboardStats> {
+  const params = new URLSearchParams();
+  if (courseId && courseId !== "all") params.append("course_id", courseId);
+  if (tz) params.append("tz", tz);
+  const qs = params.toString() ? `?${params.toString()}` : "";
+  return adminFetch<DashboardStats>(`/api/admin/dashboard/stats${qs}`, accessToken);
+}
+
+export interface ChatLogExportResponse {
+  partitions: Record<string, unknown>[];
+  total_records: number;
+  message: string;
+}
+
+export function triggerChatLogExport(
+  accessToken: string,
+  courseId?: string,
+  startDate?: string,
+  endDate?: string,
+  tz?: string
+): Promise<ChatLogExportResponse> {
+  const params = new URLSearchParams();
+  if (courseId && courseId !== "all") params.append("course_id", courseId);
+  if (startDate) params.append("start_date", startDate);
+  if (endDate) params.append("end_date", endDate);
+  if (tz) params.append("tz", tz);
+
+  const qs = params.toString() ? `?${params.toString()}` : "";
+  return adminFetch<ChatLogExportResponse>(`/api/admin/export-chat-logs${qs}`, accessToken, {
+    method: "POST"
+  });
+}
+
+export interface FeedbackEntry {
+  created_at: string;
+  session_id: string;
+  turn_index: number;
+  rating: "positive" | "negative";
+  explanation: string | null;
+  student_message: string | null;
+  ai_message: string | null;
+  cot: Record<string, string>;
+  rag_sources: string[];
+}
+
+export interface FeedbackResponse {
+  feedback: FeedbackEntry[];
+}
+
+export function getAdminDashboardFeedback(accessToken: string, courseId?: string, limit: number = 50): Promise<FeedbackResponse> {
+  const params = new URLSearchParams();
+  if (courseId && courseId !== "all") params.append("course_id", courseId);
+  params.append("limit", limit.toString());
+  const qs = `?${params.toString()}`;
+  return adminFetch<FeedbackResponse>(`/api/admin/dashboard/feedback${qs}`, accessToken);
+}

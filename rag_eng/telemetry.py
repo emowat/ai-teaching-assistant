@@ -569,23 +569,29 @@ class TelemetryStore:
                 self.connect_timeout_seconds,
             ) as connection:
                 with connection.cursor() as cursor:
+                    cursor.execute("SELECT course_id FROM tutor_sessions WHERE session_id = %s LIMIT 1", (session_id,))
+                    row = cursor.fetchone()
+                    course_id = row[0] if row else None
+
                     cursor.execute(
                         """
                         INSERT INTO telemetry_events (
                           request_id,
                           session_id,
+                          course_id,
                           event_type,
                           stage,
                           status,
                           metadata
                         )
                         VALUES (
-                          %s, %s, %s, %s, %s, %s
+                          %s, %s, %s, %s, %s, %s, %s
                         )
                         """,
                         (
                             uuid.uuid4().hex,
                             session_id,
+                            course_id,
                             "out_of_band_telemetry",
                             mode,
                             "success",
@@ -609,8 +615,8 @@ class TelemetryStore:
         if not self.database_url or not session_id or not message_index:
             return False
 
-        # Convert frontend message_index (2, 4, 6) to backend turn_index (1, 2, 3)
-        turn_index = message_index // 2
+        # Convert frontend message_index (0-indexed: 1, 3, 5) to backend turn_index (1-indexed: 1, 2, 3)
+        turn_index = (message_index + 1) // 2
         thumbs_up = "positive" if rating == "up" else "negative"
 
         try:
