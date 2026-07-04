@@ -258,7 +258,7 @@ rag_eng_ecs:
     INPUT_GUARDRAILS_CODEBERT_S3_URI: "s3://codingrabbit-data-dev/models/guardrails/input_codebert_v1/model.tar.gz"
     INPUT_GUARDRAILS_CODEBERT_CHECKPOINT_DIR: "input_guardrails/models/checkpoints/input_codebert_v1"
     INPUT_GUARDRAILS_CODEBERT_PASS_BELOW: "0.30"
-    INPUT_GUARDRAILS_CODEBERT_BLOCK_ABOVE: "0.70"
+    INPUT_GUARDRAILS_CODEBERT_BLOCK_ABOVE: "0.80"
     GUARDRAILS_CODEBERT_S3_URI: "s3://codingrabbit-data-dev/models/guardrails/codebert_v2_1/model.tar.gz"
     GUARDRAILS_CODEBERT_CHECKPOINT_DIR: "output_guardrails/models/checkpoints/codebert_v2_1"
     RUNTIME_CONFIG_S3_URI: "s3://codingrabbit-data-dev/config/rag_eng/runtime_config.yaml"

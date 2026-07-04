@@ -26,7 +26,8 @@ _DEFAULT_CHECKPOINT_DIR = (
 )
 
 _PASS_BELOW = float(os.getenv(_PASS_BELOW_ENV_VAR, "0.30"))
-_BLOCK_ABOVE = float(os.getenv(_BLOCK_ABOVE_ENV_VAR, "0.70"))
+# Input CodeBERT selected baseline deployment threshold. Can be overridden by INPUT_GUARDRAILS_CODEBERT_BLOCK_ABOVE.
+_BLOCK_ABOVE = float(os.getenv(_BLOCK_ABOVE_ENV_VAR, "0.80"))
 
 _model = None
 _tokenizer = None
