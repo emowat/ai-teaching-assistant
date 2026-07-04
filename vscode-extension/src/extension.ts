@@ -121,7 +121,7 @@ export function activate(context: vscode.ExtensionContext) {
     // The TA Console will simply be focused over them instead.
     
     // Automatically start it immediately
-    trackTerminal();
+    trackTerminal(() => provider.recordShellActivity());
 
     // Aggressively hunt down and uninstall Copilot programmatically to enforce Hard Mode
     setTimeout(() => {

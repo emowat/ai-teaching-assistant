@@ -25,7 +25,7 @@ function resolveChatApiUrl(): string {
 
 export class TAChatViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'coding-rabbit.chatView';
-    private _conversationHistory: {role: string, content: string}[] = [];
+    private _conversationHistory: {role: string, content: string, turnIndex?: number}[] = [];
     private static _outputChannel: vscode.OutputChannel;
     private _parser?: Parser;
     private _cppLanguage?: Parser.Language;
@@ -37,6 +37,7 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
     private _hasProactivelyAskedAboutPaste: boolean = false;
     private _adversarialWarningCount: number = 0;
     private _sessionId: string = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+    private _turnCount: number = 0;
     
     private _totalElapsedSeconds: number = 0;
     private _isStopwatchPaused: boolean = false;
@@ -60,6 +61,9 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
     private _studyDeltaStyleNudges: number = 0;
     
     private _currentMode: string = 'Homework Assist';
+    private _turnDeltaEditorSeconds: number = 0;
+    private _turnDeltaShellSeconds: number = 0;
+    private _turnDeltaChatSeconds: number = 0;
     
     private _lastActivityTime: number = Date.now();
     private _lastActivityType: 'editor' | 'shell' | 'chat' = 'editor';
@@ -127,14 +131,17 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
                 // Increment specific bucket
                 if (this._lastActivityType === 'editor') {
                     this._activeEditorSeconds++;
+                    this._turnDeltaEditorSeconds++;
                     if (this._currentMode === 'Study Assist') this._studyDeltaEditorSeconds++;
                     else this._homeworkDeltaEditorSeconds++;
                 } else if (this._lastActivityType === 'shell') {
                     this._activeShellSeconds++;
+                    this._turnDeltaShellSeconds++;
                     if (this._currentMode === 'Study Assist') this._studyDeltaShellSeconds++;
                     else this._homeworkDeltaShellSeconds++;
                 } else if (this._lastActivityType === 'chat') {
                     this._activeChatSeconds++;
+                    this._turnDeltaChatSeconds++;
                     if (this._currentMode === 'Study Assist') this._studyDeltaChatSeconds++;
                     else this._homeworkDeltaChatSeconds++;
                 }
@@ -235,6 +242,10 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
     private _recordActivity(type: 'editor' | 'shell' | 'chat') {
         this._lastActivityTime = Date.now();
         this._lastActivityType = type;
+    }
+
+    public recordShellActivity() {
+        this._recordActivity('shell');
     }
 
     private get _carrots(): number {
@@ -369,7 +380,7 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
                     if (stateMatch) {
                         content = content.replace(stateMatch[0], '').trim();
                     }
-                    webview.postMessage({ type: 'addResponse', text: content, isHtml: false, isThinking: false, isUser: true });
+                    webview.postMessage({ type: 'addResponse', text: content, isHtml: false, isThinking: false, isUser: true, turnIndex: msg.turnIndex });
                 } else {
                     const thinkMatch = content.match(/<think>[\s\S]*?<\/think>/);
                     if (thinkMatch) {
@@ -391,7 +402,7 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
                     }
                     
                     const htmlContent = await marked.parse(content);
-                    webview.postMessage({ type: 'addResponse', html: htmlContent, isHtml: true, isThinking: false });
+                    webview.postMessage({ type: 'addResponse', html: htmlContent, isHtml: true, isThinking: false, turnIndex: msg.turnIndex });
                 }
             }
         }
@@ -856,20 +867,14 @@ Mode: ${mode}
 ${likelyPasteDetected ? "Likely_Paste_Detected: true\nPasted_Char_Count: " + pastedCharCount : "Likely_Paste_Detected: false"}
 Session_Style_Nudged: ${this._hasGivenStyleNudge}
 Session_Adversarial_Warnings: ${this._adversarialWarningCount}
-Active_Editor_Time_Sec: ${mode === 'Study Assist' ? this._studyDeltaEditorSeconds : this._homeworkDeltaEditorSeconds}
-Active_Shell_Time_Sec: ${mode === 'Study Assist' ? this._studyDeltaShellSeconds : this._homeworkDeltaShellSeconds}
-Active_Chat_Time_Sec: ${mode === 'Study Assist' ? this._studyDeltaChatSeconds : this._homeworkDeltaChatSeconds}`;
+Active_Editor_Time_Sec: ${this._turnDeltaEditorSeconds}
+Active_Shell_Time_Sec: ${this._turnDeltaShellSeconds}
+Active_Chat_Time_Sec: ${this._turnDeltaChatSeconds}`;
 
-        // Reset delta timers immediately after capturing them for the payload
-        if (mode === 'Study Assist') {
-            this._studyDeltaEditorSeconds = 0;
-            this._studyDeltaShellSeconds = 0;
-            this._studyDeltaChatSeconds = 0;
-        } else {
-            this._homeworkDeltaEditorSeconds = 0;
-            this._homeworkDeltaShellSeconds = 0;
-            this._homeworkDeltaChatSeconds = 0;
-        }
+        // Reset turn deltas since they are now captured in the chat payload
+        this._turnDeltaEditorSeconds = 0;
+        this._turnDeltaShellSeconds = 0;
+        this._turnDeltaChatSeconds = 0;
 
         if (mode !== 'Study Assist') {
             dynamicContext += `\n\n[Code_Context]
@@ -883,10 +888,21 @@ ${terminalOutput}`;
         }
 
         // We should send the message to the webview that we're thinking
-        webviewView.webview.postMessage({ type: 'addResponse', text: "...", isThinking: true });
+        const loadingPhrases = [
+            "Hopping to it...",
+            "Nibble nibble...",
+            "Perking ears...",
+            "Digging for answers...",
+            "Sniffing out bugs...",
+            "Chewing on that..."
+        ];
+        const loadingText = loadingPhrases[Math.floor(Math.random() * loadingPhrases.length)];
+        this._turnCount += 1;
+        const currentTurnIndex = this._turnCount;
+        webviewView.webview.postMessage({ type: 'addResponse', text: 'Thinking...', isHtml: false, isThinking: true, turnIndex: currentTurnIndex });
 
         // Add pure user message to history
-        this._conversationHistory.push({ role: "user", content: userMessage });
+        this._conversationHistory.push({ role: "user", content: userMessage, turnIndex: currentTurnIndex });
         
         // 1. Sliding Window: Keep only the last 6 messages (3 user/assistant pairs)
         let windowedHistory = this._conversationHistory;
@@ -933,6 +949,7 @@ ${terminalOutput}`;
             
             const requestBody = {
                 model: modelName,
+                session_id: this._sessionId,
                 messages: apiMessages,
                 stream: false,
                 options: {
@@ -1031,7 +1048,7 @@ ${terminalOutput}`;
                     displayResponse += `\n\n*(Session ended.)*`;
                 }
                 const htmlContent = await marked.parse(displayResponse);
-                webviewView.webview.postMessage({ type: 'addResponse', html: htmlContent, isHtml: true, isThinking: false });
+                webviewView.webview.postMessage({ type: 'addResponse', html: htmlContent, isHtml: true, isThinking: false, turnIndex: currentTurnIndex });
             } else {
                 if (displayResponse.includes('[DEBUG_IDEA_UNLOCKED]')) {
                     displayResponse = displayResponse.replace(/\[DEBUG_IDEA_UNLOCKED\]/g, '').trim();
@@ -1048,7 +1065,7 @@ ${terminalOutput}`;
                 }
                 
                 // Add the RAW TA response (INCLUDING the <analysis> block) to history so the LLM retains its Chain of Thought across turns!
-                this._conversationHistory.push({ role: "assistant", content: rawTaResponse });
+                this._conversationHistory.push({ role: "assistant", content: rawTaResponse, turnIndex: currentTurnIndex });
                 if (this._conversationHistory.length > 10) {
                     this._conversationHistory = this._conversationHistory.slice(this._conversationHistory.length - 10);
                 }
@@ -1057,7 +1074,7 @@ ${terminalOutput}`;
                 const htmlContent = await marked.parse(displayResponse);
 
                 // Send the stripped HTML response to the UI
-                webviewView.webview.postMessage({ type: 'addResponse', html: htmlContent, isHtml: true, isThinking: false });
+                webviewView.webview.postMessage({ type: 'addResponse', html: htmlContent, isHtml: true, isThinking: false, turnIndex: currentTurnIndex });
             }
         } catch (err: any) {
             const outputChannel = TAChatViewProvider.getOutputChannel();
@@ -1216,7 +1233,7 @@ ${terminalOutput}`;
                     break;
                 case 'addResponse':
                     if (message.isThinking) {
-                        thinkingElement = addMessage(message.text, 'ta-message');
+                        thinkingElement = addMessage(message.text, 'ta-message', false, message.turnIndex);
                     } else {
                         const content = message.isHtml ? message.html : message.text;
                         const msgClass = message.isUser ? 'user-message' : 'ta-message';
@@ -1226,10 +1243,10 @@ ${terminalOutput}`;
                             } else {
                                 thinkingElement.innerText = content;
                             }
-                            appendFeedbackButtons(thinkingElement);
+                            appendFeedbackButtons(thinkingElement, message.turnIndex);
                             thinkingElement = null;
                         } else {
-                            addMessage(content, msgClass, message.isHtml);
+                            addMessage(content, msgClass, message.isHtml, message.turnIndex);
                         }
                     }
                     // Scroll to bottom
@@ -1242,8 +1259,9 @@ ${terminalOutput}`;
             }
         });
 
-        function appendFeedbackButtons(div) {
-            const msgIndex = document.querySelectorAll('.message').length;
+        function appendFeedbackButtons(div, turnIndex) {
+            if (turnIndex === undefined || turnIndex === null) return;
+            const msgIndex = turnIndex;
             const feedbackDiv = document.createElement('div');
             feedbackDiv.style.marginTop = '0px';
             feedbackDiv.style.display = 'flex';
@@ -1282,7 +1300,7 @@ ${terminalOutput}`;
             div.appendChild(feedbackDiv);
         }
 
-        function addMessage(content, className, isHtml = false) {
+        function addMessage(content, className, isHtml = false, turnIndex = null) {
             const div = document.createElement('div');
             div.className = 'message ' + className;
             if (isHtml) {
@@ -1293,7 +1311,7 @@ ${terminalOutput}`;
             messages.appendChild(div);
             
             if (className.includes('ta-message')) {
-                appendFeedbackButtons(div);
+                appendFeedbackButtons(div, turnIndex);
             }
             
             // Scroll to the bottom to ensure the user sees the latest response and carrot updates

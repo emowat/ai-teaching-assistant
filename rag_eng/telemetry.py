@@ -239,7 +239,7 @@ class TelemetryStore:
                           turn_count = tutor_sessions.turn_count + 1,
                           status = 'active',
                           metadata = (
-                              COALESCE(tutor_sessions.metadata, '{}'::jsonb) || 
+                              COALESCE(tutor_sessions.metadata, '{}'::jsonb) ||
                               COALESCE(EXCLUDED.metadata, '{}'::jsonb) ||
                               jsonb_build_object(
                                   'total_paste_events', COALESCE((tutor_sessions.metadata->>'total_paste_events')::int, 0) + COALESCE((EXCLUDED.metadata->>'total_paste_events')::int, 0),
@@ -569,15 +569,29 @@ class TelemetryStore:
                 self.connect_timeout_seconds,
             ) as connection:
                 with connection.cursor() as cursor:
-                    cursor.execute("SELECT course_id FROM tutor_sessions WHERE session_id = %s LIMIT 1", (session_id,))
+                    cursor.execute("""
+                        SELECT course_id FROM tutor_sessions WHERE session_id = %s LIMIT 1
+                    """, (session_id,))
                     row = cursor.fetchone()
                     course_id = row[0] if row else None
+
+                    cursor.execute("""
+                        SELECT turn_id, turn_index FROM tutor_turns
+                        WHERE session_id = %s ORDER BY turn_index DESC LIMIT 1
+                    """, (session_id,))
+                    turn_row = cursor.fetchone()
+                    if not turn_row:
+                        return False
+
+                    turn_id, turn_index = turn_row
 
                     cursor.execute(
                         """
                         INSERT INTO telemetry_events (
                           request_id,
                           session_id,
+                          turn_id,
+                          turn_index,
                           course_id,
                           event_type,
                           stage,
@@ -585,12 +599,14 @@ class TelemetryStore:
                           metadata
                         )
                         VALUES (
-                          %s, %s, %s, %s, %s, %s, %s
+                          %s, %s, %s, %s, %s, %s, %s, %s, %s
                         )
                         """,
                         (
                             uuid.uuid4().hex,
                             session_id,
+                            turn_id,
+                            turn_index,
                             course_id,
                             "out_of_band_telemetry",
                             mode,
@@ -615,8 +631,8 @@ class TelemetryStore:
         if not self.database_url or not session_id or not message_index:
             return False
 
-        # Convert frontend message_index (0-indexed: 1, 3, 5) to backend turn_index (1-indexed: 1, 2, 3)
-        turn_index = (message_index + 1) // 2
+        # The frontend now passes the exact turn_index directly as message_index!
+        turn_index = message_index
         thumbs_up = "positive" if rating == "up" else "negative"
 
         try:
@@ -631,7 +647,7 @@ class TelemetryStore:
                         SET snapshot = jsonb_set(
                             snapshot,
                             '{feedback}',
-                            jsonb_build_object('thumbs_up', %s, 'explanation', %s)
+                            jsonb_build_object('thumbs_up', %s::text, 'explanation', %s::text)
                         )
                         WHERE session_id = %s AND turn_index = %s
                         """,

@@ -4,7 +4,7 @@ import * as pty from 'node-pty';
 export let terminalBuffer: string[] = [];
 export let lastExitCode: number | null = null;
 
-export function trackTerminal() {
+export function trackTerminal(onActivity?: () => void) {
     const writeEmitter = new vscode.EventEmitter<string>();
     
     const customEnv = Object.assign({}, process.env as { [key: string]: string });
@@ -21,6 +21,7 @@ export function trackTerminal() {
     });
 
     bashProcess.onData((data) => {
+        if (onActivity) onActivity();
         // Intercept our custom invisible hook for the exit code
         const exitCodeMatch = data.match(/\x1b\]999;(\d+)\x07/);
         if (exitCodeMatch) {
@@ -55,6 +56,7 @@ export function trackTerminal() {
             bashProcess.kill();
         },
         handleInput: (data: string) => {
+            if (onActivity) onActivity();
             if (data === '\r') {
                 if (currentInput.trim() === 'clear') {
                     terminalBuffer.length = 0; // Wipe the LLM's terminal memory!
