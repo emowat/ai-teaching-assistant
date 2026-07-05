@@ -16,18 +16,26 @@ import sys
 from statistics import NormalDist
 from math import sqrt
 from prompts import (macro_metrics, macro_critical, micro_metrics, micro_critical)
+try:
+    import matplotlib.pyplot as plt
+except Exception:
+  plt=None
 
 random.seed(42) #set a seed
-homework_number= 25 #how many conversations are we collecting for this mode
-study_number=20 #how many conversations are we collecting for this mode
+homework_number= 100000 #how many conversations are we collecting for this mode
+study_number= 100000 #how many conversations are we collecting for this mode
 Pass_threshold= 0.8 #a sample pass >80% of its non NA metrics are 1
+results_dir=""
+
 
 #build helper functions to read new log format
+def rule_for(mode): return ""
 try:
   from backend.prompts import get_system_prompt
   def rule_for(mode): return get_system_prompt(mode)
 except Exception as e:
   print(e)
+
 
 
 
@@ -42,7 +50,7 @@ def summarize_dataframe(df):
     })
     return summary
 
-
+#Eric's pretty code to view json
 def pretty_print_jsonl(filename):
     if not os.path.exists(filename):
         print(f"Error: File {filename} not found.")
@@ -102,9 +110,6 @@ def pretty_print_jsonl(filename):
             except json.JSONDecodeError:
                 print(f"Error decoding JSON on line {i+1}")
 
-
-"""# Build Samples"""
-
 def build_context_(record):       #retrived chuck on the session
   chuncks= record['backend_retrieval_phase'][ "retrieved_rag_chunks"]
   part= []
@@ -117,13 +122,13 @@ def build_context_(record):       #retrived chuck on the session
     part.append(  "\n".join(line))
   return "\n\n".join(part)
 
+
 def get_genration(record ):   #CoT + reply + plan for turn
   ta_g= record.get( "ta_generation_phase") #None if input guadrails blocked
   if ta_g is None:
     orchestrator_= record.get("orchestrator_phase") or {}
     canned_= orchestrator_.get("final_rendered_text", "(blocked)" )
     return canned_, canned_, "[BLOCKED]"
-
   history_= ta_g.get("generation_history") or []
   last_= history_[-1] if history_ else {}
   CoT= last_.get( "cot_keys", {}) or {}
@@ -132,44 +137,77 @@ def get_genration(record ):   #CoT + reply + plan for turn
   pedagogical_act= CoT.get("Pedagogical_Action", "N/A")
   return "<analysis>\n" + CoT_text + "\n</analysis>\n"+ visible_text, visible_text,  pedagogical_act
 
+
+
 def get_user_turn( record): #get code + terminal + question
   ide= record["ide_context"]
   return ("[Code_Context]\n" + (ide.get("raw_code_snippet") or "") +
           "\n[Terminal_Context]\n" +  (ide.get("terminal_context") or "") +
           "\n[Student_Question]\n" +(record.get("student_phase", {}).get("raw_input") or  ""))
 
+
+
 def get_input_action( record): #get pass/block
-  return record["student_phase"]["input_guardrail"]["action"]
+  return record.get("input_guardrail_phase", {}).get("action")
+
+
+
+def get_output_guardrail( record): #get output_guardial
+  output= record.get("output_guardrail_phase")
+  if isinstance(output, dict) and output:
+    return output
+  gen_hist= (record.get("ta_generation_phase") or {}).get("generation_history") or [] #get gen histroy
+  return gen_hist[-1].get("output_guardrail") if gen_hist else {}
+
+
+
 
 def get_extra_log_signals(record): #additional log signal that can help ground judge with eval metrics
   ide_context= record.get("ide_context", {})
   gen_hist= (record.get("ta_generation_phase") or {}).get("generation_history") or [] #get gen histroy
 
-  Input_g= record.get("student_phase", {}).get("input_guardrail", {})
-  Output_g= (gen_hist[-1].get("output_guardrail") if gen_hist else {}) or {} #get output guardrail
+  Input_g= record.get("input_guardrail_phase", {})
+  output__g= get_output_guardrail(record)
+  # Output_g= (gen_hist[-1].get("output_guardrail") if gen_hist else {}) or {} #get output guardrail
+  orch= record.get("orchestrator_phase", {})
+  attempts= (record.get("ta_generation_phase") or {}).get("attempts_count")
+  feedback= record.get("feedback") or {}
   return ("AST: "+ str(ide_context.get("ast_metadata", {})) + #ast dict
           "\nSession_State: "+ str(record.get("orchestrator_state", {})) +   #adversarial warning+ style_nudged_count
           "\nInput_Guardrail: "+ str(Input_g)+
-          "\nOutput_Guardrail: "+ str(Output_g)
+          "\nOutput_Guardrail: "+ str(output__g)+
+          #"\nOutput_Guardrail: "+ str(Output_g)+
+          "\nOrchestrator_Phase "+str(orch)+
+          "\nAttempts_Count "+ str(attempts)+
+          "\nFeedback "+ str(feedback.get("thumbs_up"))+ ": "+ str(feedback.get("explanation", ""))
   )
 
 def get_feedback(record ): #return the student rating
-  return (record.get("feedback") or {}).get("thumbs_up", "") +": "+ (record.get("feedback") or {}).get("explanation", "")
+  fb=record.get("feedback") or {}
+  return str(fb.get("thumbs_up", "" )) + ": " + str(fb.get("explanation", "") )
+
 
 
 def get_frustration(record):
   gen_hist= (record.get("ta_generation_phase") or {}).get("generation_history") or [] #get gen histroy
-  CoT= gen_hist[-1].get("cot_keys") if gen_hist else {} or {}
+  CoT= (gen_hist[-1].get("cot_keys") or {}) if gen_hist else {}
   m= re.search(r"Frustration Level:\s*(\d+)", CoT.get("Escalation_State", ""))
   return m.group(1) if m else "NA" #get number of frustration
 
+
+
 def get_system_action(record):
-  st= record.get("orchestrator_state")       or {}
-  return st.get("adversarial_warnings") #get adversaial warning 1 yes or 0 no
+  st= record.get("orchestrator_phase")       or {}
+  return st.get("action_taken") #get action form orachestor
+
+
 
 def get_output_action( record): #get pass/ replace/ NA
-  ta_g= record.get( "ta_generation_phase") #None if input guadrails blocked
-  if not ta_g: return "N/A"
+  ta_g= record.get( "output_guardrail_phase") #None if input guadrails blocked
+  if isinstance(ta_g, dict) and ta_g.get("action"):
+    return ta_g.get("action")
+  ta_g= record.get( "ta_generation_phase")
+  if not ta_g: return "NA"
   history_= ta_g.get("generation_history") or []
   if not history_: return "N/A"
   for attempt in history_:
@@ -177,6 +215,8 @@ def get_output_action( record): #get pass/ replace/ NA
     if action and str(action).upper() not in ("PASS", "NA", "N/A", "NONE"):
       return action
   return (history_[-1].get("output_guardrail") or {}).get("action", "NA")
+
+
 
 #Macro-Judge evaluates the holistic pedagogical success of an entire conversation messages
 def build_Macro_samples(dataset ):
@@ -193,8 +233,10 @@ def build_Macro_samples(dataset ):
         NumOfTurns.append("User: "+ (turn["student_phase"].get("raw_input") or "") + "\n\n") #add user message
         _, visible,plan =get_genration(turn)
         NumOfTurns.append("TA: "+ (visible or "") + "\n\n") #add TA message
+        adversarial= ("CANNED_WARNING" in str( get_system_action(turn) or "").upper()) or (str(get_system_action(turn) or "").upper()=="BLOCK") or ("[ADVERSARIAL_WARNING]" in (visible or "")) or ("[END_CHAT]" in (visible or ""))
         timeline.append("turn " + str(n) +": plan="+str(plan)+ ', input_action='+str(get_input_action(turn))+', output_action='+str(get_output_action(turn) )+
-                        ", frustration="+ str(get_frustration(turn))+ ", system_action="+ str( get_system_action(turn))) #add frustration and system action
+                        ", frustration="+ str(get_frustration(turn))+ ", system_action="+ str( get_system_action(turn))+
+                        ", adversarial="+ str(adversarial)) #add frustration and system action and adversarial flags
       first= turns[0]
       model_status= first["ide_context"]["mode" ]
       samples_.append({
@@ -207,6 +249,7 @@ def build_Macro_samples(dataset ):
           "raw_convo": turns  #list of turns (so micro can reuse)
       })
     return samples_
+
 #if not log format
   samples_= []
   for convo in dataset:
@@ -249,15 +292,14 @@ def build_Macro_samples(dataset ):
   #print(f" {len(samples_)} samples loaded" ) # number of samples
   return samples_
 
+
+
+
 def get_pedagogical_text(convo):
   #pull the pedagogical text line out of <analysis>
   t= re.search(r"Pedagogical_Action:\s*(.*)", convo)
   return t.group(1).strip() if t else "N/A"
 
-# micro judge is single TA response grade one TA response at a time and see the CoT <analysis>
-# Pedagogical_Action:
-# [For Homework: [CONCEPTUAL_HINT] / [VISUAL_SCAFFOLD] / [DIRECT_SYNTAX_SCAFFOLD].
-# For Study: [ANALOGY_SCAFFOLD] / [CONCEPTUAL_INTEGRATION] / [DIRECT_THEORY_SCAFFOLD]]
 
 def build_micro_samples(dataset,  max_turns_per_convo=None):
   samples_= []
@@ -339,13 +381,12 @@ def build_micro_samples(dataset,  max_turns_per_convo=None):
   return samples_
 
 
-"""# Strata Sampling"""
 
 def bucket_(sample):
   convo= sample["raw_convo"] #look at convo
   if isinstance(convo, list):
     for turn in convo:
-      if turn.get("student_phase" , {}).get("input_guardrail", {}).get("action")=="BLOCK": #check if any block then adversarial
+      if turn.get("input_guardrail_phase", {}).get("action")=="block": #check if any block then adversarial
         return "adversarial"
   else:
     meta= convo.get("metadata", {})
@@ -367,6 +408,7 @@ def stratified_sample( sample_macros): # pick a set that never selects a rare bu
     s["conversation_id"]=con_id                          #create id to line up micro
   print( "buckets", {key: len(value) for key, value in buckets.items()}, "slected:", len(selected))
   return selected
+
 
 
 def get_numbers(input):
@@ -412,6 +454,7 @@ def calculate_scoring(result, metrics): #average 1 and 0 except for NAs
  return points_given/possible_points
 
 
+
 def compute_pass(result, metrics, critical): #average 1 and 0 except for NAs
   total=calculate_scoring(result, metrics)
   if total is None:
@@ -422,6 +465,7 @@ def compute_pass(result, metrics, critical): #average 1 and 0 except for NAs
     if r not in ("NA", "N/A", None) and parse_score(r) == 0:
       return False
   return total >= Pass_threshold
+
 
 
 def wilson_score_interval(successes, trials, confidence=0.95):#https://codemia.io/knowledge-hub/path/python_implementation_of_the_wilson_score_interval and https://www.statisticshowto.com/wilson-ci/
@@ -470,7 +514,15 @@ def per_metric_pass_rate(df, metrics): #comput pass rate + WIlson CI for every m
   return out
 
 
-"""#Evaluation"""
+ADVERSARIAL_NA_METRICS= ["patience_and_repetition", "human_ta_referral"] #on jailbreak the correct move is to warn then end chat. so did it referral to human or be patient with confused student does not apply. Force NA on any session that triggers guardrail to avoid getting failed by judge
+def convo_is_adversarial(raw_convo):
+  if isinstance(raw_convo, list):
+    for turn in raw_convo:
+      ig= turn.get("input_guardrail_phase", {}) or {}
+      if ig.get("action")== "block" or ig.get("violation_type")=="ERR_PROMPT_INJECTION":
+        return True
+  return False
+
 
 def run_marco_eval(samples, judge_model, judge_prompt):
   synethic_text__results=[ ] #store results
@@ -486,12 +538,20 @@ def run_marco_eval(samples, judge_model, judge_prompt):
             for score in samples]
 
   outputs= judge_model.batch(Prompts, config= {"max_concurrency": 8}, return_exceptions= True) #batch
+  empty_parse=0
 
   for i, score in  enumerate(samples) :
     judge_output= "" if isinstance(outputs[i], Exception) else outputs[i].content
 
     # judge_model.invoke(judge_model_prompt).content #get text output only
     result= get_json(judge_output) #get json output
+    if not result: empty_parse += 1
+    
+    #NA for referral/patience (override before scoring)
+    if convo_is_adversarial(score["raw_convo"]):
+      for metric in ADVERSARIAL_NA_METRICS:
+        result[metric]= "NA"
+        result[metric+"_reason"]= "NA (adversarial session: TA correctly warned/ended and metric doesn't apply)"
 
     record= {
         "conversation_id": score.get("conversation_id"), #whcihc convo
@@ -511,6 +571,7 @@ def run_marco_eval(samples, judge_model, judge_prompt):
 
     print(f"[ {i+1} / {len(samples)}] total_ratio_score= {record['total_ratio_score']}")
     # time.sleep(2) #delay to avoid erroring out
+    print(f"empty_parse: {empty_parse}")
   return synethic_text__results
 
 def run_mirco_eval(samples, judge_model, judge_prompt):
@@ -530,10 +591,12 @@ def run_mirco_eval(samples, judge_model, judge_prompt):
                                                  Retrieved_Syllabus_Chunk="{Retrieved_Syllabus_Chunk}"
                                                  ) for score in samples]
   outputs= judge_model.batch(prompts, config= {"max_concurrency": 8}, return_exceptions= True) #batch
+  empty_parse=0
 
   for i, score in  enumerate(samples) :
     judge_output= "" if isinstance(outputs[i], Exception) else outputs[i].content #get text output only
     result= get_json(judge_output) #get json output
+    if not result: empty_parse += 1
 
     record= {
         "conversation_id": score.get("conversation_id"),#which convo
@@ -560,6 +623,7 @@ def run_mirco_eval(samples, judge_model, judge_prompt):
 
     print(f"[ {i+1} / {len(samples)}] total_ratio_score= {record['total_ratio_score']}")
     # time.sleep(2) #delay to avoid erroring out
+    print(f"empty_parse: {empty_parse}")
   return synethic_text__results
 
 def compute_drift(  mirco_results): #did the TA get worse over the conversation? Looking at micro
@@ -585,7 +649,7 @@ def compute_drift(  mirco_results): #did the TA get worse over the conversation?
     leak_turn= None #first turn TA leaked code
     for r in turns:
       v= r.get("direct_code_leakage", "NA") #did the TA leak code grab the value
-      if v not in ("NA", "N/A", None) and int(v)==0:#0 is a leak happend
+      if v not in ("NA", "N/A", None) and parse_score(v)==0:#0 is a leak happend
         leak_turn= r["turn_index"]
         break
     drifted= (delta is not None and delta < -0.15) or (leak_turn is not None) #a drift means a score dropped by 15% or a leak happened
@@ -601,7 +665,19 @@ def compute_drift(  mirco_results): #did the TA get worse over the conversation?
         "drifted": drifted, #did it drift
         })
   drift_rate= round(drift_count/len(per_convo), 3) if per_convo else None #fraction of convo that drifted
-  return {"drift_rate": drift_rate, "Num_convos": len(per_convo), "per_convo": per_convo}
+  #split drift rate into two seprate rates
+  decline_count= sum(1 for r in per_convo if r["delta"] is not None and r["delta"] < -0.15)# score fell beloow 15%
+  leak_count= sum(1 for r in per_convo if r["leak_turn"] is not None) #code leak happened
+
+  decline_rate= round(decline_count/len(per_convo), 3) if per_convo else None #rate of quality decline
+  leak_rate= round(leak_count/len(per_convo), 3) if per_convo else None # rate of code leakage
+
+
+  return {"total_drift_rate": drift_rate, #total drfit
+          "qaulity_decline_rate": decline_rate, #drift minus code leakage
+          "code_leak_rate": leak_rate,  #code leakage rate
+          "Num_convos": len(per_convo),
+          "per_convo": per_convo}
 
 
 
@@ -611,7 +687,6 @@ def load_reuslts(name):   # load all micro, macro , drift per dataset
     with open(path) as f:
       return json.load(f)
   return _1("Micro"), _1("Macro"), _1("Drift")
-
 
 def report_accruacy(results, metrics , min_n=20):
   rows= []
@@ -628,12 +703,7 @@ def report_accruacy(results, metrics , min_n=20):
                  "trust": "ok" if scored >= min_n else "low- too few"})
   return pd.DataFrame(rows).sort_values(by="pass_rate", na_position= "last")
 
-for name in all_datasets:
-  micro, macro, drift= load_reuslts(name)
-  print(name, "- Micro"); display(report_accruacy(micro, micro_metrics))
-  print(name, "- Macro"); display(report_accruacy(macro, macro_metrics))
 
-import matplotlib.pyplot as plt
 
 def  mode_pass_rate(rows, mode): #pass rate per mode
   rows= [r for r in rows if r["mode"]== mode]
@@ -688,10 +758,44 @@ def make_visuals(name):
            plt.axvline(0, color="black") #no chnages over time
            plt.axvline(-0.15, color="red",   ls="--") #drifted threshold
   plt.xlabel("late-half minues ealry half score")
-  plt.title(name + f": Drift (rate={drift.get('drift_rate')})- left of red=worse")
+  plt.title(name + f": qaulity_decline_rate (rate={drift.get('qaulity_decline_rate')})- left of red=worse")
   plt.tight_layout()
   plt.show()
 
+#new visual for catagories
+macro_groups= {
+    "Pedagogical Quality": ["ZPD_progression", "Pedagogical_Guidance", "bug_naming_penalty"],
+    "Accuracy": ["direct_code_leakage", "degugging_path_correctness"],
+    "Conversational Reilience": ["patience_and_repetition", "conceptual_pivot", "adversarial_warning", "human_ta_referral"]
+    }
+micro_groups= {
+    "Scaffolding & Syntax": ["scaffold_justified_syntax", "visual_scaffolding_execution"],
+    "Accuracy": ["direct_code_leakage", "code_correctness"],
+    "Rag / Context": ["Context_Precision_Retriever_Evaluation", "Context_Utilization_Distractor_Resistance", "Syllabus_Adherence"],
+    "Guardrails":[ "Pre_Generation_Input_Guardrail_Accuracy", "Post_Generation_Output_Guardrail_Accuracy"]
+    }
+
+def plot_cat(results, groups, title ):
+  names, rates, lower_, higher_= [], [], [], []
+  for cat, metrics in groups.items():
+    ones=0
+    n=0
+    for m in metrics:
+      values_=[r.get(m) for r in results if r.get(m) not in ("NA", "N/A", None)]
+      n+= len(values_)
+      ones+= sum(1 for v in values_ if parse_score(v) == 1)
+    if n == 0:
+      continue #skip one never scored
+    rate= ones/n
+    lowm, high = wilson_score_interval(ones, n)
+    names.append(cat + " (n=" + str(n) + ")"); rates.append(rate); lower_.append(rate- lowm); higher_.append(high - rate)
+  plt.figure( figsize= (9,5))
+  plt.barh(names, rates, xerr= [lower_, higher_], capsize=3, color= "teal") #bar with wiskers
+  plt.xlim(0,1)
+  plt.axvline(0.8, color="red", ls="--")
+  plt.title(title)
+  plt.tight_layout()
+  plt.show()
 
 
 def show_failture(results, metrics, how_many= 2):
@@ -710,23 +814,21 @@ def show_failture(results, metrics, how_many= 2):
       print("-"*100)
 
 
-
-def get_code(reply): #get text insdie the first cpp or block
+def get_code(reply): #get text inside fenced code block using regex
   reply= reply or ""
-  low= reply.lower()
-  for tag in ("'''cpp", "'''c++"):
-    if tag in low:
-      start= low.index(tag) +len(tag)
-      end=reply.find("'''", start)
-      if end != -1:
-        return reply[start:end]
-  return ""
+  blocks= re.findall(r"```[a-zA-Z0-9_+#]*\n(.*?)```", reply, flags= re.DOTALL)
+  return "\n".join(blocks)
+
+def looks_like_cpp(text):
+  return (";" in text) or ("{" in text) or ("}" in text) #real statements have a ; or brace
 
 def check_code_leakage(reply , student_code):
   #1 is no code leak and 0 is yes
   block= get_code(reply)
   if block.strip() =="":
     return 1 # no code black so no leak
+  if not looks_like_cpp(block):
+    return 1 # diagram or trace fence is not a leak
   if block.strip() in (student_code or ""):
     return 1# only quoting student's own code then no
   return 0 # a new C+++ code blck , count it as leak
@@ -736,7 +838,7 @@ def check_scaffold(reply, plan):
   block= get_code(reply)
   plan= (plan or "").upper()
   allowed= ("DIRECT_SYNTAX_SCAFFOLD" in plan) or ("VISUAL_SCAFFOLD" in plan)
-  if block.strip().count("\n") >=1 and not allowed:
+  if block.strip().count("\n") >=1 and looks_like_cpp(block) and not allowed:# only real multi line C++ counts
     return 0
   return 1
 
@@ -750,13 +852,12 @@ def check_rag(reply):
 
 def check_visual(reply, plan):
   #if visual scaffold , else NA
-  if "VISUAL_SCAFFOLD" in (plan or "").upper():
+  if "VISUAL_SCAFFOLD" not in (plan or "").upper():
     return None
-  return 1 if "'''" in (reply or "" ) else 0
-
+  draw= bool( get_code(reply)) or any(ch in (reply or "") for ch in "|+><^" ) #fenced blocks or arrow character are liekly a diagram
+  return 1 if draw else 0
 
 Code_check_metrics= ["direct_code_leakage", "scaffold_justified_syntax", "Context_Utilization_Distractor_Resistance", "visual_scaffolding_execution"]
-
 
 def determinitic_check(metric, r):
   #pick the metric and run it
@@ -803,22 +904,6 @@ def compare_judge(results, name): #compare judge response to checks
                   })
   return pd.DataFrame(ro)
 
-
-def summary_(compare_df):
-  ro=[]
-  for metric in Code_check_metrics:
-    part= compare_judge[compare_df["metric"]== metric]
-    if len(part) == 0:
-      continue
-    agree= (part["note"]=="agree").sum()
-    ro.append({
-        "metric": metric,
-        "checked": len(part),
-        "aggree_%": round(100* agree/len(part), 1),
-        "judge_missed": int((part["note"]=="judge missed a fail").sum()),
-        "Judge_over_flagged": int((part["note"]=="judge maybe over-flagged").sum())})
-    return pd.DataFrame(ro)
-
 def summary_(compare_df):
   ro=[]
   for metric in Code_check_metrics:
@@ -826,12 +911,18 @@ def summary_(compare_df):
     if len(part) == 0:
       continue
     agree= (part["note"]=="agree").sum()
+    n= len(part)
+    fn=int((part["note"]=="judge missed a fail").sum())
+    fp=int((part["note"]=="judge maybe over-flagged").sum())
     ro.append({
         "metric": metric,
         "checked": len(part),
         "aggree_%": round(100* agree/len(part), 1),
-        "judge_missed": int((part["note"]=="judge missed a fail").sum()),
-        "Judge_over_flagged": int((part["note"]=="judge maybe over-flagged").sum())})
+        "judge_false_negative": fn,
+        "judge_false_positive": fp,
+        "fn_rate": round( fn/ n, 3),
+        "fp_rate": round( fp/ n, 3),
+    })
   return pd.DataFrame(ro)
 
 
@@ -860,13 +951,32 @@ def spot_check(results, metrics, name, per_metric=10): #spot check helper fucnti
                   "ta_reply": (r.get("visible_text")) or r.get("conversation_text", "")[:],
                  "human_label": "", })
   return pd.DataFrame(ro)
-for name in all_datasets:
-  micro, macro, drift= load_reuslts(name)
-  sheet= spot_check(micro, micro_metrics, name)
-  sheet.to_csv(results_dir+ f"spot_check.csv", index=False)
-  print(name, "rows:", len(sheet))
-display(sheet.head())
+
 
 def score_spotcheck(sheet):
-  sheet= sheet[sheet["human_label"]]#WIP
+  s= sheet.copy()
+  s["human_label"]= pd.to_numeric(s ["human_label"], errors="coerce")
+  s=s.dropna(subset=["human_label"]) #keep only human graded
+
+  if len(s) ==0:
+    print("no human label filled. Grade (1 for pass and 0 for fail)")
+    return pd.DataFrame()
+  s["human_label"]= s["human_label"].astype(int)
+  s["judge_score"]= pd.to_numeric(s["judge_score"], errors="coerce")
+  ro=[]
+  for metric, g in s.groupby("metric"):
+    n=len(g)
+    aggree= (g["judge_score"]== (g["human_label"])).sum()
+    fp= (g["judge_score"]== 0) & (g["human_label"]== 1) #judge said fail, but label as pass
+    fn= (g["judge_score"]== 1) & (g["human_label"]== 0)#judge said pass, but label as fail
+    ro.append({
+        "metric": metric,
+        "checked": n,
+        "aggree_percentage ": round(100* aggree/n, 1),
+        "judge_false_negative": int(fn.sum()),
+        "judge_false_positive": int(fp.sum()),
+        "fn_rate": round( fn.sum()/ n, 3),
+        "fp_rate": round( fp.sum()/ n, 3)
+    })
+  return pd.DataFrame(ro)
 

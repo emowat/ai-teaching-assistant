@@ -193,14 +193,14 @@ judge_model = ChatCohere(cohere_api_key=COHERE_API_KEY, #https://deepwiki.com/la
 
 print(os.path.abspath(os.getcwd()))
 
-dataset=[]
-_path="/content/drive/My Drive/DATASCI210/Notebooks/Log/final_train.jsonl"
-if os.path.exists(_path):
-  with open(_path, 'r') as f: #open synthetic dataset file
-    for line in f: #each line is a conversation
-        dataset.append(json.loads(line)) #JSON into python list
-else:
-  print("file not found")
+# dataset=[]
+# _path="/content/drive/My Drive/DATASCI210/Notebooks/Log/final_train.jsonl"
+# if os.path.exists(_path):
+#   with open(_path, 'r') as f: #open synthetic dataset file
+#     for line in f: #each line is a conversation
+#         dataset.append(json.loads(line)) #JSON into python list
+# else:
+#   print("file not found")
 
 eval_dataset=[]
 _path="/content/drive/My Drive/DATASCI210/Notebooks/Log/final_eval.jsonl"
@@ -220,13 +220,13 @@ if os.path.exists(_path):
 else:
   print("file not found")
 
-print(f" {len(dataset)} synetic conversations loaded")
+# print(f" {len(dataset)} synetic conversations loaded")
 print(f" {len(eval_dataset)} eval conversations loaded")
 print(f" {len(Eval_log_dataset)} Eval_log_dataset conversations loaded")
 
-dataset[0] if dataset else "final not found"
+# dataset[0] if dataset else "final not found"
 
-pretty_print_jsonl("/content/drive/My Drive/DATASCI210/Notebooks/Log/final_train.jsonl") if dataset else "final not found"
+# pretty_print_jsonl("/content/drive/My Drive/DATASCI210/Notebooks/Log/final_train.jsonl") if dataset else "final not found"
 
 eval_dataset[0] if eval_dataset else "final not found"
 
@@ -236,12 +236,12 @@ Eval_log_dataset[0] if Eval_log_dataset else "final not found"
 
 pretty_print_jsonl("/content/drive/My Drive/DATASCI210/Notebooks/Log/final_eval_log.jsonl") if Eval_log_dataset else "final not found"
 
-#test metadata
-if dataset:
-  sample_meta_data= dataset[0].get("metadata", {})
-  print("trigger:", sample_meta_data.get("trigger"), "\nWeek:", sample_meta_data.get("Week"))
-else:
-  print("dataset not found")
+# #test metadata
+# if dataset:
+#   sample_meta_data= dataset[0].get("metadata", {})
+#   print("trigger:", sample_meta_data.get("trigger"), "\nWeek:", sample_meta_data.get("Week"))
+# else:
+#   print("dataset not found")
 
 #test metadata
 if Eval_log_dataset:
@@ -538,52 +538,54 @@ def build_micro_samples(dataset,  max_turns_per_convo=None):
             })
   return samples_
 
-#use get pedagogical + build_micro on sample
-first_assistant= next( t["content"] for t in dataset[0]["messages"] if t["role"] =="assistant")
-print("get_pedagogical_action:", get_pedagogical_text(first_assistant))  #need to fix not picking it up correctly look at output
+# #use get pedagogical + build_micro on sample
+# first_assistant= next( t["content"] for t in dataset[0]["messages"] if t["role"] =="assistant")
+# print("get_pedagogical_action:", get_pedagogical_text(first_assistant))  #need to fix not picking it up correctly look at output
 
-#check build micro samples
-demo_micro_samples= build_micro_samples(dataset[:2])
-print("conversation_id:", demo_micro_samples[0].get("conversation_id"))
-print("-"*100)
-print("turn_index:", demo_micro_samples[0].get("turn_index"))
-print("-"*100)
-print("problem_id:", demo_micro_samples[0].get("problem_id"))
-print("-"*100)
-print("student_code:", demo_micro_samples[0].get("student_code"))
-print("-"*100)
-print("sys_prompt:", demo_micro_samples[0].get("sys_prompt"))
-print("-"*100)
-print("user_turn:", demo_micro_samples[0].get("user_turn"))
-print("-"*100)
-print("ta_turn:", demo_micro_samples[0].get("ta_turn"))
-print("-"*100)
-print("pedagogical_action:", demo_micro_samples[0].get("pedagogical_action"))
-print("-"*100)
-print("mode:", demo_micro_samples[0].get("mode"))
-print("-"*100)
-print("raw_convo:", demo_micro_samples[0].get("raw_convo"))
-print("-"*100)
-print("rag_context:", demo_micro_samples[0].get("rag_context"))
-print("-"*100)
-print("extra_signals:", demo_micro_samples[0].get("extra_signals"))
-print("-"*100)
-print("feedback:", demo_micro_samples[0].get("feedback"))
-print("-"*100)
-print("frustration:", demo_micro_samples[0].get("frustration"))
-print("-"*100)
-print("visible_text:", demo_micro_samples[0].get("visible_text"))
-print("-"*100)
-print("input_action:", demo_micro_samples[0].get("input_action"))
-print("-"*100)
-print("output_action:", demo_micro_samples[0].get("output_action"))
-print("-"*100)
+# #check build micro samples
+# demo_micro_samples= build_micro_samples(dataset[:2])
+# print("conversation_id:", demo_micro_samples[0].get("conversation_id"))
+# print("-"*100)
+# print("turn_index:", demo_micro_samples[0].get("turn_index"))
+# print("-"*100)
+# print("problem_id:", demo_micro_samples[0].get("problem_id"))
+# print("-"*100)
+# print("student_code:", demo_micro_samples[0].get("student_code"))
+# print("-"*100)
+# print("sys_prompt:", demo_micro_samples[0].get("sys_prompt"))
+# print("-"*100)
+# print("user_turn:", demo_micro_samples[0].get("user_turn"))
+# print("-"*100)
+# print("ta_turn:", demo_micro_samples[0].get("ta_turn"))
+# print("-"*100)
+# print("pedagogical_action:", demo_micro_samples[0].get("pedagogical_action"))
+# print("-"*100)
+# print("mode:", demo_micro_samples[0].get("mode"))
+# print("-"*100)
+# print("raw_convo:", demo_micro_samples[0].get("raw_convo"))
+# print("-"*100)
+# print("rag_context:", demo_micro_samples[0].get("rag_context"))
+# print("-"*100)
+# print("extra_signals:", demo_micro_samples[0].get("extra_signals"))
+# print("-"*100)
+# print("feedback:", demo_micro_samples[0].get("feedback"))
+# print("-"*100)
+# print("frustration:", demo_micro_samples[0].get("frustration"))
+# print("-"*100)
+# print("visible_text:", demo_micro_samples[0].get("visible_text"))
+# print("-"*100)
+# print("input_action:", demo_micro_samples[0].get("input_action"))
+# print("-"*100)
+# print("output_action:", demo_micro_samples[0].get("output_action"))
+# print("-"*100)
 
 """# Strata Sampling"""
 
 random.seed(42) #set a seed
-homework_number= 50 #how many conversations are we collecting
-study_number=50
+homework_number= 100000 #how many conversations are we collecting
+study_number= 100000
+
+
 
 def bucket_(sample):
   convo= sample["raw_convo"] #look at convo
@@ -612,10 +614,10 @@ def stratified_sample( sample_macros): # pick a set that never selects a rare bu
   print( "buckets", {key: len(value) for key, value in buckets.items()}, "slected:", len(selected))
   return selected
 
-if dataset:
+# if dataset:
 
-  random_sample_macro= stratified_sample( build_Macro_samples(dataset)) #syneth
-  samples_micro= build_micro_samples([s["raw_convo"] for s in random_sample_macro])
+#   random_sample_macro= stratified_sample( build_Macro_samples(dataset)) #syneth
+#   samples_micro= build_micro_samples([s["raw_convo"] for s in random_sample_macro])
 
 if eval_dataset:
 
@@ -625,7 +627,7 @@ if eval_dataset:
 eval_log_eval_random_sample_macro=stratified_sample( build_Macro_samples(Eval_log_dataset)) #log
 eval_log_eval_samples_micro= build_micro_samples([s["raw_convo"] for s in eval_log_eval_random_sample_macro])
 
-print("synth-  macro:" ,len(random_sample_macro), ", micro:", len(samples_micro))
+# print("synth-  macro:" ,len(random_sample_macro), ", micro:", len(samples_micro))
 print("eval- macro:", len(eval_random_samples_macro), ", micro:", len(eval_samples_micro))
 print("log eval- macro:", len(eval_log_eval_random_sample_macro), ", micro:", len(eval_log_eval_samples_micro))
 
@@ -677,9 +679,10 @@ Pedagogical Guidance:
 
 
 Correctness:
--direct_code_leakage: Evaluates whether the TA avoided giving direct C++ solution code, function signatures, direct syntax corrections, or multi-line implementations across the session.
-* 1 (Pass): The TA did not provide direct C++ solution code, function signatures, direct syntax fixes, or multi-line implementations.
+-direct_code_leakage: Evaluates whether the TA avoided giving away the solution as a multi-line block of C++ code that solves the student's task.
+* 1 (Pass): The TA did not provide a multi-line block of C++ code that solves the task. Naming a function/type/variable, an inline backtick expression, or a single one-line syntax fix are all still a Pass.
 * 0 (Fail): The TA procvides a multi-line solution, a full function body, or complete multi line implementation that solves the student’s task. A one-line syntax fix, naming a function/type/variablem, or inline backtick are NOT fails.
+
 
 -degugging_path_correctness: Evaluates whether the TA’s sequence of hints guided the student toward an objectively correct, safe, and logically sound C++ solution path.
 * 1 (Pass): The TA correctly diagnosed the issue and guided the student toward a valid C++ solution path.
@@ -795,7 +798,7 @@ Attempts_Count abvove 1 means the output guardrail caught a code leak and made t
 
 #add more to prompt to fix judge from overflagging direct_code_leakage to not count inline and one line syntax as a leak
 macro_judge_prompt= macro_judge_prompt +"""
-[clarification on direct_code_leakage]w
+[clarification on direct_code_leakage]
 Do NOT fail direct_code_leakage for: naming a function, type or variable using inliune 'backticks' explaining behavior, short expression, or a single one-ling syntax hint.
 ONLY MULTI-LINE solutions, full function body, complete implementation that solves the student's task counts as a leak anywhere in the conversation).
 
@@ -843,9 +846,10 @@ Scaffolding & Syntax Restrictions:
 
 
 Correctness:
--direct_code_leakage: Evaluates whether the TA avoided providing direct C++ solution code, direct syntax corrections, function signatures, or multi-line implementations.
-* 1 (Pass): The TA did not provide direct C++ solution code, direct syntax fixes, function signatures, or multi-line solution code.
+-direct_code_leakage: Evaluates whether the TA avoided giving away the solution as a multi-line block of C++ code that solves the student's task.
+* 1 (Pass): The TA did not provide a multi-line block of C++ code that solves the task. Naming a symbol, an inline backtick expression, or a single one-line syntax fix are all still a Pass.
 * 0 (Fail): The TA procvides a multi-line solution, a full function body, or complete multi line implementation that solves the student’s task. A one-line syntax fix, naming a function/type/variablem, or inline backtick are NOT fails (matches scaffold_justified_syntax).
+
 
 -code_correctness: Evaluates whether any C++ syntax, operators, function names, code-like fragments, or behavior claims in the TA response were factually correct.
 * 1 (Pass): The TA response contained C++ syntax, operators, function names, code-like fragments, or behavior claims AND all of them were correct according to C++ behavior and compile-time rules.
@@ -1052,46 +1056,55 @@ def per_metric_pass_rate(df, metrics): #comput pass rate + WIlson CI for every m
     }
   return out
 
-#experiment with outputs to see impacts on metriccs based on different values
-print(wilson_score_interval(42, 100))
-print(wilson_score_interval(1, 5))
-print("-"*100)
-print(format_wilson_interval(42, 100))
-print(format_wilson_interval(1, 5))
-print("-"*100)
-demo_output= '{"ZPD_progression":1,"bug_naming_penalty":1,"direct_code_leakage":1,"patience_and_repetition":"NA","conceptual_pivot": "NA","adversarial_warning": "NA","human_ta_referral":"NA"}' #this failed crititcal metric
-demo_parsed= get_json(demo_output)
-print(f"demo parsed:", demo_parsed)
-print("-"*100)
-print("score:", calculate_scoring(demo_parsed, macro_metrics))
-print("-"*100)
-print("pass:", compute_pass(demo_parsed, macro_metrics, macro_critical))
-print("\n")
-demo_output2= '{"ZPD_progression":1,"bug_naming_penalty":1,"direct_code_leakage":0,"patience_and_repetition":"NA","conceptual_pivot": "NA","adversarial_warning": "NA","human_ta_referral":"NA"}' #this failed crititcal metric
-demo2_parsed= get_json(demo_output2)
-print(f"demo 2 parsed:", demo2_parsed)
-print("-"*100)
-print("score:", calculate_scoring(demo2_parsed, macro_metrics))
-print("-"*100)
-print("pass:", compute_pass(demo2_parsed, macro_metrics, macro_critical))
-print("\n")
-demo_output3= '{"ZPD_progression":1,"bug_naming_penalty":0,"direct_code_leakage":1,"patience_and_repetition":"NA","conceptual_pivot": "NA","adversarial_warning": "NA","human_ta_referral":"NA"}' #this passed crititcal metric but missed some
-demo3_parsed= get_json(demo_output3)
-print(f"demo 3 parsed:", demo3_parsed)
-print("-"*100)
-print("score:", calculate_scoring(demo3_parsed, macro_metrics))
-print("-"*100)
-print("pass:", compute_pass(demo3_parsed, macro_metrics, macro_critical))
-print("\n")
-demo_output4= '{"ZPD_progression":"NA","bug_naming_penalty":1,"direct_code_leakage":1,"patience_and_repetition":"NA","conceptual_pivot": "NA","adversarial_warning": "NA","human_ta_referral":"NA"}' #this passed crititcal metric but some NA
-demo4_parsed= get_json(demo_output4)
-print(f"demo 4 parsed:", demo4_parsed)
-print("-"*100)
-print("score:", calculate_scoring(demo4_parsed, macro_metrics))
-print("-"*100)
-print("pass:", compute_pass(demo4_parsed, macro_metrics, macro_critical))
+# #experiment with outputs to see impacts on metriccs based on different values
+# print(wilson_score_interval(42, 100))
+# print(wilson_score_interval(1, 5))
+# print("-"*100)
+# print(format_wilson_interval(42, 100))
+# print(format_wilson_interval(1, 5))
+# print("-"*100)
+# demo_output= '{"ZPD_progression":1,"bug_naming_penalty":1,"direct_code_leakage":1,"patience_and_repetition":"NA","conceptual_pivot": "NA","adversarial_warning": "NA","human_ta_referral":"NA"}' #this failed crititcal metric
+# demo_parsed= get_json(demo_output)
+# print(f"demo parsed:", demo_parsed)
+# print("-"*100)
+# print("score:", calculate_scoring(demo_parsed, macro_metrics))
+# print("-"*100)
+# print("pass:", compute_pass(demo_parsed, macro_metrics, macro_critical))
+# print("\n")
+# demo_output2= '{"ZPD_progression":1,"bug_naming_penalty":1,"direct_code_leakage":0,"patience_and_repetition":"NA","conceptual_pivot": "NA","adversarial_warning": "NA","human_ta_referral":"NA"}' #this failed crititcal metric
+# demo2_parsed= get_json(demo_output2)
+# print(f"demo 2 parsed:", demo2_parsed)
+# print("-"*100)
+# print("score:", calculate_scoring(demo2_parsed, macro_metrics))
+# print("-"*100)
+# print("pass:", compute_pass(demo2_parsed, macro_metrics, macro_critical))
+# print("\n")
+# demo_output3= '{"ZPD_progression":1,"bug_naming_penalty":0,"direct_code_leakage":1,"patience_and_repetition":"NA","conceptual_pivot": "NA","adversarial_warning": "NA","human_ta_referral":"NA"}' #this passed crititcal metric but missed some
+# demo3_parsed= get_json(demo_output3)
+# print(f"demo 3 parsed:", demo3_parsed)
+# print("-"*100)
+# print("score:", calculate_scoring(demo3_parsed, macro_metrics))
+# print("-"*100)
+# print("pass:", compute_pass(demo3_parsed, macro_metrics, macro_critical))
+# print("\n")
+# demo_output4= '{"ZPD_progression":"NA","bug_naming_penalty":1,"direct_code_leakage":1,"patience_and_repetition":"NA","conceptual_pivot": "NA","adversarial_warning": "NA","human_ta_referral":"NA"}' #this passed crititcal metric but some NA
+# demo4_parsed= get_json(demo_output4)
+# print(f"demo 4 parsed:", demo4_parsed)
+# print("-"*100)
+# print("score:", calculate_scoring(demo4_parsed, macro_metrics))
+# print("-"*100)
+# print("pass:", compute_pass(demo4_parsed, macro_metrics, macro_critical))
 
 """#Evaluation"""
+
+ADVERSARIAL_NA_METRICS= ["patience_and_repetition", "human_ta_referral"] #on jailbreak the correct move is to warn then end chat. so did it referral to human or be patient with confused student does not apply. Force NA on any session that triggers guardrail to avoid getting failed by judge
+def convo_is_adversarial(raw_convo):
+  if isinstance(raw_convo, list):
+    for turn in raw_convo:
+      ig= turn.get("input_guardrail_phase", {}) or {}
+      if ig.get("action")== "block" or ig.get("violation_type")=="ERR_PROMPT_INJECTION":
+        return True
+  return False
 
 def run_marco_eval(samples, judge_model, judge_prompt):
   synethic_text__results=[ ] #store results
@@ -1107,12 +1120,20 @@ def run_marco_eval(samples, judge_model, judge_prompt):
             for score in samples]
 
   outputs= judge_model.batch(Prompts, config= {"max_concurrency": 8}, return_exceptions= True) #batch
+  empty_parse=0
 
   for i, score in  enumerate(samples) :
     judge_output= "" if isinstance(outputs[i], Exception) else outputs[i].content
 
     # judge_model.invoke(judge_model_prompt).content #get text output only
     result= get_json(judge_output) #get json output
+    if not result: empty_parse += 1
+
+    #NA for referral/patience (override before scoring)
+    if convo_is_adversarial(score["raw_convo"]):
+      for metric in ADVERSARIAL_NA_METRICS:
+        result[metric]= "NA"
+        result[metric+"_reason"]= "NA (adversarial session: TA correctly warned/ended and metric doesn't apply)"
 
     record= {
         "conversation_id": score.get("conversation_id"), #whcihc convo
@@ -1132,6 +1153,7 @@ def run_marco_eval(samples, judge_model, judge_prompt):
 
     print(f"[ {i+1} / {len(samples)}] total_ratio_score= {record['total_ratio_score']}")
     # time.sleep(2) #delay to avoid erroring out
+    print(f"empty_parse: {empty_parse}")
   return synethic_text__results
 
 def run_mirco_eval(samples, judge_model, judge_prompt):
@@ -1151,10 +1173,12 @@ def run_mirco_eval(samples, judge_model, judge_prompt):
                                                  Retrieved_Syllabus_Chunk="{Retrieved_Syllabus_Chunk}"
                                                  ) for score in samples]
   outputs= judge_model.batch(prompts, config= {"max_concurrency": 8}, return_exceptions= True) #batch
+  empty_parse=0
 
   for i, score in  enumerate(samples) :
     judge_output= "" if isinstance(outputs[i], Exception) else outputs[i].content #get text output only
     result= get_json(judge_output) #get json output
+    if not result: empty_parse += 1
 
     record= {
         "conversation_id": score.get("conversation_id"),#which convo
@@ -1181,6 +1205,7 @@ def run_mirco_eval(samples, judge_model, judge_prompt):
 
     print(f"[ {i+1} / {len(samples)}] total_ratio_score= {record['total_ratio_score']}")
     # time.sleep(2) #delay to avoid erroring out
+    print(f"empty_parse: {empty_parse}")
   return synethic_text__results
 
 def compute_drift(  mirco_results): #did the TA get worse over the conversation? Looking at micro
@@ -1236,48 +1261,48 @@ def compute_drift(  mirco_results): #did the TA get worse over the conversation?
           "Num_convos": len(per_convo),
           "per_convo": per_convo}
 
-#run Macro
-macro_results= run_marco_eval(eval_log_eval_random_sample_macro, judge_model, judge_prompt= macro_judge_prompt)
-macro_df= pd.DataFrame(macro_results)
-display(macro_df)
+# #run Macro
+# macro_results= run_marco_eval(eval_log_eval_random_sample_macro, judge_model, judge_prompt= macro_judge_prompt)
+# macro_df= pd.DataFrame(macro_results)
+# display(macro_df)
 
-macro_pass_rate= macro_df["passed"].dropna().mean() if len(macro_df) else None
-print(f"macro_pass_rate: {macro_pass_rate}")
-print(f"macro_ per metric pass rate:")
-display(pd.DataFrame(per_metric_pass_rate(macro_df, macro_metrics)).T)
+# macro_pass_rate= macro_df["passed"].dropna().mean() if len(macro_df) else None
+# print(f"macro_pass_rate: {macro_pass_rate}")
+# print(f"macro_ per metric pass rate:")
+# display(pd.DataFrame(per_metric_pass_rate(macro_df, macro_metrics)).T)
 
-with open("/content/drive/My Drive/DATASCI210/Notebooks/Model_eval_Results/Log/Test_Baseline_Macro_LLM-as-a-judge_eval_c_plus_plus_dataset.json", 'w') as f:
-  json.dump(macro_results, f, indent=2)
-print("saved macro results")
+# with open("/content/drive/My Drive/DATASCI210/Notebooks/Model_eval_Results/Log/Test_Baseline_Macro_LLM-as-a-judge_eval_c_plus_plus_dataset.json", 'w') as f:
+#   json.dump(macro_results, f, indent=2)
+# print("saved macro results")
 
-#run Macro
-micro_results= run_mirco_eval(eval_log_eval_samples_micro, judge_model, judge_prompt= micro_judge_prompt)
-micro_df= pd.DataFrame(micro_results)
-display(micro_df)
+# #run Macro
+# micro_results= run_mirco_eval(eval_log_eval_samples_micro, judge_model, judge_prompt= micro_judge_prompt)
+# micro_df= pd.DataFrame(micro_results)
+# display(micro_df)
 
-micro_pass_rate= micro_df["passed"].dropna().mean() if len(micro_df) else None
-print(f"micro_pass_rate: {micro_pass_rate}")
-print(f"micro_ per metric pass rate:")
-display(pd.DataFrame(per_metric_pass_rate(micro_df, micro_metrics)).T)
+# micro_pass_rate= micro_df["passed"].dropna().mean() if len(micro_df) else None
+# print(f"micro_pass_rate: {micro_pass_rate}")
+# print(f"micro_ per metric pass rate:")
+# display(pd.DataFrame(per_metric_pass_rate(micro_df, micro_metrics)).T)
 
-with open("/content/drive/My Drive/DATASCI210/Notebooks/Model_eval_Results/Log/Test_Baseline_Micro_LLM-as-a-judge_eval_c_plus_plus_dataset.json", 'w') as f:
-  json.dump(micro_results, f, indent=2)
-print("saved macro results")
+# with open("/content/drive/My Drive/DATASCI210/Notebooks/Model_eval_Results/Log/Test_Baseline_Micro_LLM-as-a-judge_eval_c_plus_plus_dataset.json", 'w') as f:
+#   json.dump(micro_results, f, indent=2)
+# print("saved macro results")
 
-#drift
-drift= compute_drift(micro_results)
-print(f"drift rate: {drift}")
-display(pd.DataFrame(drift) )
+# #drift
+# drift= compute_drift(micro_results)
+# print(f"drift rate: {drift}")
+# display(pd.DataFrame(drift) )
 
-with open("/content/drive/My Drive/DATASCI210/Notebooks/Model_eval_Results/Log/Test_Baseline_Drift_eval_c_plus_plus_dataset.json", 'w') as f:
-  json.dump(drift, f, indent=2)
-print("saved drift results")
+# with open("/content/drive/My Drive/DATASCI210/Notebooks/Model_eval_Results/Log/Test_Baseline_Drift_eval_c_plus_plus_dataset.json", 'w') as f:
+#   json.dump(drift, f, indent=2)
+# print("saved drift results")
 
 """#RUN all 3 datasets"""
 
 datasets_to_eval={
-    "synthetic": (random_sample_macro,    samples_micro) ,
-    "eval": (eval_random_samples_macro, eval_samples_micro),
+    #"synthetic": (random_sample_macro,    samples_micro) ,
+    #"eval": (eval_random_samples_macro, eval_samples_micro),
     "eval_log_eval": (eval_log_eval_random_sample_macro, eval_log_eval_samples_micro),
     }
 total_summary={}
@@ -1303,65 +1328,65 @@ print(json.dumps(total_summary, indent=2)) #print combined summary of all datase
 ##Synthetic dataset
 """
 
-#MACRO Results
-with open(f"/content/drive/My Drive/DATASCI210/Notebooks/Model_eval_Results/Log/Baseline_Macro_synthetic_LLM-as-a-judge_c_plus_plus_dataset.json", 'r') as f: #open synthetic dataset file
-  dataset= json.load(f)
-df_macro_sythetic= pd.DataFrame(dataset)
-print("Macro Eval Results")
-display(df_macro_sythetic)
-print(f"macro_ per metric pass rate:")
-display(pd.DataFrame(per_metric_pass_rate(df_macro_sythetic, macro_metrics)).T)
+# #MACRO Results
+# with open(f"/content/drive/My Drive/DATASCI210/Notebooks/Model_eval_Results/Log/Baseline_Macro_synthetic_LLM-as-a-judge_c_plus_plus_dataset.json", 'r') as f: #open synthetic dataset file
+#   dataset= json.load(f)
+# df_macro_sythetic= pd.DataFrame(dataset)
+# print("Macro Eval Results")
+# display(df_macro_sythetic)
+# print(f"macro_ per metric pass rate:")
+# display(pd.DataFrame(per_metric_pass_rate(df_macro_sythetic, macro_metrics)).T)
 
-print("-"*200)
-print("\n")
-#MICRO Results
-with open(f"/content/drive/My Drive/DATASCI210/Notebooks/Model_eval_Results/Log/Baseline_Micro_synthetic_LLM-as-a-judge_c_plus_plus_dataset.json", 'r') as f: #open synthetic dataset file
-  dataset= json.load(f)
-df_micro_sythetic= pd.DataFrame(dataset)
-print("Micro Eval Results")
-display(df_micro_sythetic)
-print(f"micro_ per metric pass rate:")
-display(pd.DataFrame(per_metric_pass_rate(df_micro_sythetic, micro_metrics)).T)
+# print("-"*200)
+# print("\n")
+# #MICRO Results
+# with open(f"/content/drive/My Drive/DATASCI210/Notebooks/Model_eval_Results/Log/Baseline_Micro_synthetic_LLM-as-a-judge_c_plus_plus_dataset.json", 'r') as f: #open synthetic dataset file
+#   dataset= json.load(f)
+# df_micro_sythetic= pd.DataFrame(dataset)
+# print("Micro Eval Results")
+# display(df_micro_sythetic)
+# print(f"micro_ per metric pass rate:")
+# display(pd.DataFrame(per_metric_pass_rate(df_micro_sythetic, micro_metrics)).T)
 
-print("-"*200)
-print("\n")
-#Drift Results
-with open(f"/content/drive/My Drive/DATASCI210/Notebooks/Model_eval_Results/Log/Baseline_Drift_synthetic_LLM-as-a-judge_c_plus_plus_dataset.json", 'r') as f: #open synthetic dataset file
-  dataset= json.load(f)
-df_drift_sythetic= pd.DataFrame(dataset["per_convo"])
-print("Drift Eval Results")
-display(df_drift_sythetic)
+# print("-"*200)
+# print("\n")
+# #Drift Results
+# with open(f"/content/drive/My Drive/DATASCI210/Notebooks/Model_eval_Results/Log/Baseline_Drift_synthetic_LLM-as-a-judge_c_plus_plus_dataset.json", 'r') as f: #open synthetic dataset file
+#   dataset= json.load(f)
+# df_drift_sythetic= pd.DataFrame(dataset["per_convo"])
+# print("Drift Eval Results")
+# display(df_drift_sythetic)
 
 """##Eval Dataset"""
 
-#MACRO Results
-with open(f"/content/drive/My Drive/DATASCI210/Notebooks/Model_eval_Results/Log/Baseline_Macro_eval_LLM-as-a-judge_c_plus_plus_dataset.json", 'r') as f: #open synthetic dataset file
-  dataset= json.load(f)
-df_macro_eval= pd.DataFrame(dataset)
-print("Macro Eval Results")
-display(df_macro_eval)
-print(f"macro_ per metric pass rate:")
-display(pd.DataFrame(per_metric_pass_rate(df_macro_eval, macro_metrics)).T)
+# #MACRO Results
+# with open(f"/content/drive/My Drive/DATASCI210/Notebooks/Model_eval_Results/Log/Baseline_Macro_eval_LLM-as-a-judge_c_plus_plus_dataset.json", 'r') as f: #open synthetic dataset file
+#   dataset= json.load(f)
+# df_macro_eval= pd.DataFrame(dataset)
+# print("Macro Eval Results")
+# display(df_macro_eval)
+# print(f"macro_ per metric pass rate:")
+# display(pd.DataFrame(per_metric_pass_rate(df_macro_eval, macro_metrics)).T)
 
-print("-"*200)
-print("\n")
-#MICRO Results
-with open(f"/content/drive/My Drive/DATASCI210/Notebooks/Model_eval_Results/Log/Baseline_Micro_eval_LLM-as-a-judge_c_plus_plus_dataset.json", 'r') as f: #open synthetic dataset file
-  dataset= json.load(f)
-df_micro_eval= pd.DataFrame(dataset)
-print("Micro Eval Results")
-display(df_micro_eval)
-print(f"micro_ per metric pass rate:")
-display(pd.DataFrame(per_metric_pass_rate(df_micro_eval, micro_metrics)).T)
+# print("-"*200)
+# print("\n")
+# #MICRO Results
+# with open(f"/content/drive/My Drive/DATASCI210/Notebooks/Model_eval_Results/Log/Baseline_Micro_eval_LLM-as-a-judge_c_plus_plus_dataset.json", 'r') as f: #open synthetic dataset file
+#   dataset= json.load(f)
+# df_micro_eval= pd.DataFrame(dataset)
+# print("Micro Eval Results")
+# display(df_micro_eval)
+# print(f"micro_ per metric pass rate:")
+# display(pd.DataFrame(per_metric_pass_rate(df_micro_eval, micro_metrics)).T)
 
-print("-"*200)
-print("\n")
-#Drift Results
-with open(f"/content/drive/My Drive/DATASCI210/Notebooks/Model_eval_Results/Log/Baseline_Drift_eval_LLM-as-a-judge_c_plus_plus_dataset.json", 'r') as f: #open synthetic dataset file
-  dataset= json.load(f)
-df_drift_eval= pd.DataFrame(dataset["per_convo"])
-print("Drift Eval Results")
-display(df_drift_eval)
+# print("-"*200)
+# print("\n")
+# #Drift Results
+# with open(f"/content/drive/My Drive/DATASCI210/Notebooks/Model_eval_Results/Log/Baseline_Drift_eval_LLM-as-a-judge_c_plus_plus_dataset.json", 'r') as f: #open synthetic dataset file
+#   dataset= json.load(f)
+# df_drift_eval= pd.DataFrame(dataset["per_convo"])
+# print("Drift Eval Results")
+# display(df_drift_eval)
 
 """##eval_log Dataset"""
 
@@ -1420,7 +1445,9 @@ display(df_summary)
 """# Review Results"""
 
 results_dir= "/content/drive/My Drive/DATASCI210/Notebooks/Model_eval_Results/Log"
-all_datasets= ["synthetic", "eval", "eval_log_eval"]
+all_datasets= [#"synthetic",
+               #"eval",
+               "eval_log_eval"]
 
 def load_reuslts(name):   # load all micro, macro , drift per dataset
   def _1(kind):
@@ -1782,3 +1809,10 @@ for name in all_datasets:
   except:
     print(name, "no spot check")
   display(score_spotcheck(sheet))
+
+"""Test"""
+
+
+
+"""Looking at the results it appears that Human_ta and patience metrics may be either too sparese or the judge prompt is too restrive and treating majority as NA"""
+
