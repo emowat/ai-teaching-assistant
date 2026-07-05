@@ -4,24 +4,9 @@ import * as Parser from 'web-tree-sitter';
 import * as marked from 'marked';
 import * as fs from 'fs';
 import * as path from 'path';
-
-function resolveChatApiUrl(): string {
-    // Codespaces should provide the deployed rag_eng URL through RAG_ENG_URL.
-    // Local development still falls back to the workspace setting or the old bridge URL.
-    const envUrl = process.env.RAG_ENG_URL?.trim();
-    const configuredUrl = vscode.workspace.getConfiguration('codingRabbit').get<string>('apiUrl')?.trim();
-    const candidate = envUrl || (configuredUrl && !configuredUrl.startsWith('${') ? configuredUrl : undefined);
-
-    if (!candidate) {
-        return 'http://host.docker.internal:8001/api/chat';
-    }
-
-    if (candidate.endsWith('/api/chat')) {
-        return candidate;
-    }
-
-    return `${candidate.replace(/\/$/, '')}/api/chat`;
-}
+import { CognitoAuthService } from './auth/CognitoAuthService';
+import type { CognitoAuthConfig, CognitoAuthSnapshot } from './auth/types';
+import { resolveApiBaseUrl, resolveChatApiUrl } from './extensionConfig';
 
 export class TAChatViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'coding-rabbit.chatView';
@@ -65,6 +50,7 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
     private _lastActivityType: 'editor' | 'shell' | 'chat' = 'editor';
     private _activityInterval: NodeJS.Timeout;
     private _currentWebview?: vscode.Webview;
+    private _authStateSubscription?: vscode.Disposable;
 
     private async getParser(): Promise<Parser> {
         if (this._parser && this._cppLanguage) {
@@ -88,8 +74,26 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
     constructor(
         private readonly _extensionUri: vscode.Uri,
         private readonly _pasteStatusByUri: Map<string, number>,
-        private readonly _context: vscode.ExtensionContext
+        private readonly _context: vscode.ExtensionContext,
+        private readonly _authService: CognitoAuthService
     ) {
+        this._authStateSubscription = this._authService.onDidChangeAuthState(() => {
+            if (this._currentWebview) {
+                void this._renderCurrentWebview();
+            }
+
+            const status = this._authService.snapshot.status;
+            if (status === 'signed_out' || status === 'unconfigured') {
+                this._conversationHistory = [];
+                this._hasGivenStyleNudge = false;
+                this._hasSentWakeup = false;
+                this._hasProactivelyAskedAboutPaste = false;
+                this._adversarialWarningCount = 0;
+                this._sessionId = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+            }
+        });
+        this._context.subscriptions.push(this._authStateSubscription);
+
         // Activity listeners
         vscode.window.onDidChangeTextEditorSelection((event) => {
             if (event.textEditor.document.uri.scheme === 'file') {
@@ -166,12 +170,11 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
         
         if (!hasHomeworkMetrics && !hasStudyMetrics) return;
 
-        const apiUrl = vscode.workspace.getConfiguration('codingRabbit').get('apiUrl') || 'http://host.docker.internal:8001/api/chat';
-        const telemetryUrl = apiUrl.toString().replace('/api/chat', '/api/telemetry');
+        const telemetryUrl = `${resolveApiBaseUrl()}/api/telemetry`;
 
         try {
             if (hasHomeworkMetrics) {
-                await fetch(telemetryUrl, {
+                await this._authService.fetch(telemetryUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -194,7 +197,7 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
             }
 
             if (hasStudyMetrics) {
-                await fetch(telemetryUrl, {
+                await this._authService.fetch(telemetryUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -254,6 +257,28 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
         }
     }
 
+    private async _renderCurrentWebview(): Promise<void> {
+        if (!this._currentWebview) {
+            return;
+        }
+
+        const snapshot = this._authService.snapshot;
+        const authConfig = this._authService.config;
+        const elapsed = this._totalElapsedSeconds;
+        if (snapshot.status === 'signed_in') {
+            this._currentWebview.html = this._getHtmlForWebview(
+                this._currentWebview,
+                this._carrots,
+                elapsed,
+                this._isStopwatchPaused,
+                snapshot,
+            );
+            return;
+        }
+
+        this._currentWebview.html = this._getSignedOutHtmlForWebview(snapshot, authConfig, this._currentWebview);
+    }
+
     public resolveWebviewView(
         webviewView: vscode.WebviewView,
         context: vscode.WebviewViewResolveContext,
@@ -264,13 +289,36 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
             localResourceRoots: [this._extensionUri]
         };
 
-        let elapsed = this._totalElapsedSeconds;
-        
         this._currentWebview = webviewView.webview;
-        webviewView.webview.html = this._getHtmlForWebview(webviewView.webview, this._carrots, elapsed, this._isStopwatchPaused);
+        void this._renderCurrentWebview();
 
         webviewView.webview.onDidReceiveMessage(async (data) => {
             switch (data.type) {
+                case 'authSignIn': {
+                    try {
+                        await this._authService.signIn();
+                    } catch (error) {
+                        TAChatViewProvider.getOutputChannel().appendLine(`[Auth Sign-In Error]: ${error}`);
+                    }
+                    break;
+                }
+                case 'authSignOut': {
+                    try {
+                        await this._authService.signOutEverywhere();
+                    } catch (error) {
+                        TAChatViewProvider.getOutputChannel().appendLine(`[Auth Sign-Out Error]: ${error}`);
+                    }
+                    break;
+                }
+                case 'authReset': {
+                    try {
+                        await this._authService.signOutEverywhere();
+                        await this._authService.signIn();
+                    } catch (error) {
+                        TAChatViewProvider.getOutputChannel().appendLine(`[Auth Reset Error]: ${error}`);
+                    }
+                    break;
+                }
                 case 'askTA': {
                     await this._handleAskTA(data.text, data.mode, webviewView);
                     break;
@@ -281,9 +329,8 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
                         placeHolder: "Tell us why..."
                     });
 
-                    const apiUrl = vscode.workspace.getConfiguration('codingRabbit').get('apiUrl') || 'http://host.docker.internal:8001/api/chat';
-                    const feedbackUrl = apiUrl.toString().replace('/api/chat', '/api/feedback');
-                    fetch(feedbackUrl, {
+                    const feedbackUrl = `${resolveApiBaseUrl()}/api/feedback`;
+                    await this._authService.fetch(feedbackUrl, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -340,7 +387,7 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
             TAChatViewProvider.getOutputChannel().appendLine("[Telemetry] Sending background wakeup ping to pre-warm SageMaker instance...");
             
             // Fire and forget - we don't care about the response, we just want to wake up the instance
-            fetch(apiUrl as string, {
+            void this._authService.fetch(apiUrl as string, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -945,7 +992,7 @@ ${terminalOutput}`;
 
             // Using dynamic import for fetch since node-fetch isn't bundled
             // VSCode extensions in Node 18+ have global fetch
-            const response = await fetch(apiUrl as string, {
+            const response = await this._authService.fetch(apiUrl as string, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(requestBody)
@@ -1078,7 +1125,225 @@ ${terminalOutput}`;
         }
     }
 
-    private _getHtmlForWebview(webview: vscode.Webview, carrots: number, elapsed: number, isPaused: boolean) {
+    private _escapeHtml(value: string): string {
+        return value
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    private _getSignedOutHtmlForWebview(
+        snapshot: CognitoAuthSnapshot,
+        authConfig: CognitoAuthConfig | null,
+        webview: vscode.Webview,
+    ) {
+        const titleByStatus: Record<CognitoAuthSnapshot['status'], string> = {
+            unconfigured: 'CodingRabbit sign-in is not configured',
+            signed_out: 'Sign in to CodingRabbit',
+            signing_in: 'Waiting for Cognito to finish',
+            signed_in: 'Signed in',
+            refreshing: 'Refreshing your session',
+            error: 'Sign-in error',
+        };
+
+        const messageByStatus: Record<CognitoAuthSnapshot['status'], string> = {
+            unconfigured: 'Set the Cognito auth settings in your VS Code workspace before signing in.',
+            signed_out: 'Open the same Cognito login page the web app uses. Your browser will open externally and return you to VS Code.',
+            signing_in: 'Finish signing in in your browser. This panel updates automatically when the callback returns.',
+            signed_in: 'You are authenticated. Reopen the chat view if it does not refresh automatically.',
+            refreshing: 'Wrapping up your session. If the browser callback already landed, this panel should update shortly.',
+            error: snapshot.message || 'Cognito sign-in failed. Try again or inspect the output channel for details.',
+        };
+
+        const buttonLabelByStatus: Record<CognitoAuthSnapshot['status'], string> = {
+            unconfigured: 'Configure Cognito',
+            signed_out: 'Sign in with CodingRabbit',
+            signing_in: 'Open login page again',
+            signed_in: 'Continue',
+            refreshing: 'Keep waiting',
+            error: 'Try sign-in again',
+        };
+
+        const actionTypeByStatus: Record<CognitoAuthSnapshot['status'], string> = {
+            unconfigured: 'authSignIn',
+            signed_out: 'authSignIn',
+            signing_in: 'authSignIn',
+            signed_in: 'authSignIn',
+            refreshing: 'authSignIn',
+            error: 'authSignIn',
+        };
+
+        const title = this._escapeHtml(titleByStatus[snapshot.status]);
+        const message = this._escapeHtml(messageByStatus[snapshot.status]);
+        const redirectUri = authConfig ? this._escapeHtml(authConfig.redirectUri) : '';
+        const logoutUri = authConfig ? this._escapeHtml(authConfig.logoutUri) : '';
+        const showConfigDetails = Boolean(authConfig);
+        const mascotUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'mascot.png')).toString();
+
+        return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CodingRabbit Sign In</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+            min-height: 100vh;
+            font-family: var(--vscode-font-family);
+            color: var(--vscode-editor-foreground);
+            background:
+                radial-gradient(circle at top left, rgba(255, 170, 0, 0.14), transparent 36%),
+                radial-gradient(circle at bottom right, rgba(0, 150, 255, 0.12), transparent 28%),
+                var(--vscode-editor-background);
+        }
+        .shell {
+            max-width: 560px;
+            margin: 0 auto;
+            padding: 24px;
+            border: 1px solid var(--vscode-widget-border);
+            border-radius: 18px;
+            background: var(--vscode-sideBar-background);
+            box-shadow: 0 18px 48px rgba(0, 0, 0, 0.16);
+        }
+        .hero {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+        .mascot {
+            width: 112px;
+            max-width: 40vw;
+            height: auto;
+            display: block;
+            image-rendering: auto;
+            filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.14));
+        }
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 10px;
+            border-radius: 999px;
+            background: var(--vscode-button-secondaryBackground);
+            color: var(--vscode-button-secondaryForeground);
+            font-size: 12px;
+            margin-bottom: 14px;
+        }
+        h1 {
+            margin: 0 0 10px;
+            font-size: 28px;
+            line-height: 1.1;
+        }
+        p {
+            margin: 0 0 18px;
+            line-height: 1.5;
+            color: var(--vscode-descriptionForeground);
+        }
+        button {
+            width: 100%;
+            padding: 12px 14px;
+            border: none;
+            border-radius: 12px;
+            background: var(--vscode-button-background);
+            color: var(--vscode-button-foreground);
+            font-weight: 600;
+            cursor: pointer;
+        }
+        button.secondary {
+            background: var(--vscode-button-secondaryBackground);
+            color: var(--vscode-button-secondaryForeground);
+        }
+        button:hover {
+            background: var(--vscode-button-hoverBackground);
+        }
+        .small {
+            margin-top: 12px;
+            font-size: 12px;
+            color: var(--vscode-descriptionForeground);
+        }
+        details {
+            margin-top: 12px;
+        }
+        summary {
+            cursor: pointer;
+            color: var(--vscode-descriptionForeground);
+            font-size: 12px;
+        }
+        .muted {
+            margin-top: 10px;
+            font-size: 12px;
+            color: var(--vscode-descriptionForeground);
+            opacity: 0.9;
+        }
+        .waiting {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            margin: 8px 0 18px;
+            padding: 10px 12px;
+            border-radius: 12px;
+            background: color-mix(in srgb, var(--vscode-button-background) 12%, transparent);
+            border: 1px solid var(--vscode-widget-border);
+            color: var(--vscode-descriptionForeground);
+        }
+        .spinner {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            border: 2px solid var(--vscode-descriptionForeground);
+            border-top-color: transparent;
+            animation: spin 0.9s linear infinite;
+        }
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        code {
+            font-family: var(--vscode-editor-font-family);
+        }
+    </style>
+</head>
+<body>
+    <div class="shell">
+        <div class="hero">
+            <img class="mascot" src="${mascotUri}" alt="CodingRabbit mascot" />
+            <div class="badge">CodingRabbit Auth</div>
+        </div>
+        <h1>${title}</h1>
+        ${snapshot.status === 'signing_in' ? '<div class="waiting"><span class="spinner"></span><span>Waiting for the browser callback from Cognito...</span></div>' : ''}
+        <p>${message}</p>
+        <button id="authBtn" class="${snapshot.status === 'signing_in' ? 'secondary' : ''}">${buttonLabelByStatus[snapshot.status]}</button>
+        ${showConfigDetails ? `
+        <details>
+            <summary>Advanced connection details</summary>
+            <div class="muted">
+                Callback URI: <code>${redirectUri}</code><br />
+                Logout URI: <code>${logoutUri}</code>
+            </div>
+        </details>` : ''}
+        <div class="small">
+            The extension uses the same branded Cognito Hosted UI as the web app.
+        </div>
+    </div>
+    <script>
+        const vscode = acquireVsCodeApi();
+        const btn = document.getElementById('authBtn');
+        btn.addEventListener('click', () => {
+            vscode.postMessage({ type: '${actionTypeByStatus[snapshot.status]}' });
+        });
+    </script>
+</body>
+</html>`;
+    }
+
+    private _getHtmlForWebview(webview: vscode.Webview, carrots: number, elapsed: number, isPaused: boolean, authState: CognitoAuthSnapshot) {
         return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1104,6 +1369,8 @@ ${terminalOutput}`;
     <div class="chat-container">
         <div style="font-weight: bold; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--vscode-widget-border);">
             Coding Rabbit: TA Chat
+            <button id="signOutBtn" title="Sign out locally from this extension" style="float: right; margin-left: 8px; width: auto;">Sign out</button>
+            <span id="authStatus" style="float: right; margin-left: 8px;">${authState.status === 'refreshing' ? 'Refreshing session...' : 'Signed in'}</span>
             <span id="carrotCount" style="float: right;">🥕 ${carrots} Carrots</span>
         </div>
         <div class="messages" id="messages">
@@ -1129,6 +1396,7 @@ ${terminalOutput}`;
         const terminalBtn = document.getElementById('terminalBtn');
         const exportBtn = document.getElementById('exportBtn');
         const stopwatchBtn = document.getElementById('stopwatchBtn');
+        const signOutBtn = document.getElementById('signOutBtn');
         const messages = document.getElementById('messages');
         
         let isPaused = ${isPaused};
@@ -1171,6 +1439,10 @@ ${terminalOutput}`;
 
         terminalBtn.addEventListener('click', () => {
             vscode.postMessage({ type: 'startTerminal' });
+        });
+
+        signOutBtn.addEventListener('click', () => {
+            vscode.postMessage({ type: 'authSignOut' });
         });
         
         exportBtn.addEventListener('click', () => {

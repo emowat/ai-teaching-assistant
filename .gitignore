@@ -32,6 +32,7 @@ raw_courses/
 synthetic-transcripts/*.jsonl
 synthetic-transcripts/*.txt
 synthetic-transcripts/*.npy
+test/test_nvidia_guardrail_eval.py
 
 # macOS
 .DS_Store

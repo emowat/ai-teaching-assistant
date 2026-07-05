@@ -3,16 +3,37 @@ import { TAChatViewProvider } from './TAChatViewProvider';
 import { trackTerminal } from './TerminalTracker';
 import { createPatch } from 'diff';
 import * as crypto from 'crypto';
+import { CognitoAuthService } from './auth/CognitoAuthService';
 
 export const pasteStatusByUri = new Map<string, number>();
 const previousTextByUri = new Map<string, string>();
 
-export function activate(context: vscode.ExtensionContext) {
+export async function activate(context: vscode.ExtensionContext) {
     console.log('CodingRabbit extension activated.');
 
-    const provider = new TAChatViewProvider(context.extensionUri, pasteStatusByUri, context);
+    const authService = new CognitoAuthService(context);
+    await authService.initialize();
+
+    const uriHandler = vscode.window.registerUriHandler({
+        handleUri: async (uri: vscode.Uri) => {
+            await authService.handleUri(uri);
+        },
+    });
+
+    const provider = new TAChatViewProvider(context.extensionUri, pasteStatusByUri, context, authService);
     context.subscriptions.push(
-        vscode.window.registerWebviewViewProvider(TAChatViewProvider.viewType, provider)
+        vscode.window.registerWebviewViewProvider(TAChatViewProvider.viewType, provider),
+        uriHandler,
+        vscode.commands.registerCommand('coding-rabbit.signIn', async () => {
+            await authService.signIn();
+        }),
+        vscode.commands.registerCommand('coding-rabbit.signOut', async () => {
+            await authService.signOutEverywhere();
+        }),
+        vscode.commands.registerCommand('coding-rabbit.resetAuth', async () => {
+            await authService.signOutEverywhere();
+            await authService.signIn();
+        })
     );
 
     const output = vscode.window.createOutputChannel("TA Anti-Cheat Logs");

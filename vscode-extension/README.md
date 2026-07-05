@@ -4,6 +4,7 @@ This extension provides an interactive CodingRabbit Teaching Assistant directly 
 
 ## Features
 - **CodingRabbit Chat UI**: A sidebar webview that interacts with the student. Now supports `Enter` to send and `Shift+Enter` for multiline formatting.
+- **Cognito Sign-In**: The extension opens the same Cognito Hosted UI used by the web app in the external browser, then returns to VS Code through the OAuth callback.
 - **Study Assist Mode**: A specialized mode that aggressively closes all active editors and terminal panels (`closeAllEditors` / `closePanel`), visually hiding code context so students can focus purely on conceptual questions. Dynamically overrides the LLM's CodingRabbit rules to allow direct explanations.
 - **Context Injection**: Automatically grabs the student's active C++ code (`[Code_Context]`) and the output of their latest terminal run (`[Terminal_Context]`) to feed to the LLM.
 - **Anti-Cheat Tracking (MD5 Hashing)**: Detects large copy/paste events while smartly ignoring internal file restructuring via MD5 block hashing. It logs the unified diff to a local Output Channel ("TA Anti-Cheat Logs") and injects a `Likely_Paste_Detected: true` flag into the prompt so the TA can interrogate the student about pasted code.
@@ -23,7 +24,7 @@ When migrating to a cloud-based AWS infrastructure for production, the following
 
 ### 2. Implement Authentication & Rate Limiting
 **Why:** To prevent abuse of the cloud infrastructure and token billing.
-**Action:** The extension needs to retrieve an auth token (e.g., via OAuth or a Berkeley student portal login) and attach it to the `Authorization` header of the `fetch` request. The AWS API Gateway should enforce rate limits per student.
+**Action:** The extension now opens the Cognito Hosted UI externally and stores the resulting tokens in the VS Code secret store. It should attach the access token to the `Authorization` header of backend requests. The AWS API Gateway should enforce rate limits per student.
 
 ### 3. Update the API Endpoint
 **Why:** The extension must work inside Codespaces and on local workstations without depending on localhost or Docker bridge addresses.
@@ -36,6 +37,20 @@ When migrating to a cloud-based AWS infrastructure for production, the following
 ### 5. Centralize Anti-Cheat Telemetry
 **Why:** The copy/paste diff patches currently log to a local VS Code Output Channel, which instructors cannot see.
 **Action:** Modify the `PasteTracker` logic in `extension.ts` to push the unified diffs to a secure AWS telemetry/logging endpoint (e.g., CloudWatch or a DynamoDB table) so TAs and instructors can review flagged students asynchronously.
+
+### Auth Settings
+
+The extension reads these settings from the workspace or environment:
+
+- `codingRabbit.auth.enabled`
+- `codingRabbit.cognitoDomain`
+- `codingRabbit.cognitoRegion`
+- `codingRabbit.cognitoUserPoolId`
+- `codingRabbit.cognitoClientId`
+- `codingRabbit.cognitoScopes`
+- `codingRabbit.apiBaseUrl`
+
+For Codespaces and the assignment template, the extension defaults are injected through `assignment_template/.vscode/settings.json`.
 
 ## Testing & Deployment (For Teammates)
 

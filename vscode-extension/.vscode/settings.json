@@ -1,20 +1,4 @@
 {
-    "github.copilot.enable": {
-        "*": false
-    },
-    "github.copilot.chat.enable": false,
-    "chat.commandCenter.enabled": false,
-    "chat.editor.enable": false,
-    "inlineChat.enable": false,
-    "window.commandCenter": false,
-    "C_Cpp.intelliSenseEngine": "disabled",
-    "editor.suggest.showSnippets": false,
-    "editor.lightbulb.enabled": "off",
-    "editor.quickSuggestions": {
-        "other": "off",
-        "comments": "off",
-        "strings": "off"
-    },
     "codingRabbit.apiBaseUrl": "http://codingrabbit-rag-eng-1327788709.us-east-1.elb.amazonaws.com",
     "codingRabbit.apiUrl": "http://codingrabbit-rag-eng-1327788709.us-east-1.elb.amazonaws.com/api/chat",
     "codingRabbit.auth.enabled": true,

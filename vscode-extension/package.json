@@ -19,10 +19,55 @@
     "configuration": {
       "title": "CodingRabbit",
       "properties": {
+        "codingRabbit.apiBaseUrl": {
+          "type": "string",
+          "default": "http://codingrabbit-rag-eng-1327788709.us-east-1.elb.amazonaws.com",
+          "description": "The base URL of the CodingRabbit backend API"
+        },
         "codingRabbit.apiUrl": {
           "type": "string",
-          "default": "http://127.0.0.1:8001/api/chat",
+          "default": "http://codingrabbit-rag-eng-1327788709.us-east-1.elb.amazonaws.com/api/chat",
           "description": "The URL of the CodingRabbit backend API"
+        },
+        "codingRabbit.auth.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Cognito authentication in the extension"
+        },
+        "codingRabbit.cognitoDomain": {
+          "type": "string",
+          "default": "https://us-east-1z5dab8wni.auth.us-east-1.amazoncognito.com",
+          "description": "Cognito Hosted UI domain for the extension"
+        },
+        "codingRabbit.cognitoRegion": {
+          "type": "string",
+          "default": "us-east-1",
+          "description": "Cognito region used to build the user-pool issuer"
+        },
+        "codingRabbit.cognitoUserPoolId": {
+          "type": "string",
+          "default": "us-east-1_Z5DAb8wni",
+          "description": "Cognito user pool ID"
+        },
+        "codingRabbit.cognitoClientId": {
+          "type": "string",
+          "default": "5k11ek5do9l3p6vhpev3aifh0f",
+          "description": "Cognito app client ID"
+        },
+        "codingRabbit.cognitoScopes": {
+          "type": "string",
+          "default": "openid email profile",
+          "description": "Space-separated Cognito OIDC scopes"
+        },
+        "codingRabbit.cognitoRedirectUri": {
+          "type": "string",
+          "default": "",
+          "description": "Optional Cognito redirect URI override for the extension"
+        },
+        "codingRabbit.cognitoLogoutUri": {
+          "type": "string",
+          "default": "",
+          "description": "Optional Cognito logout URI override for the extension"
         },
         "codingRabbit.modelName": {
           "type": "string",
@@ -55,6 +100,18 @@
         "title": "CodingRabbit: Open TA Chat"
       },
       {
+        "command": "coding-rabbit.signIn",
+        "title": "CodingRabbit: Sign In"
+      },
+      {
+        "command": "coding-rabbit.signOut",
+        "title": "CodingRabbit: Sign Out"
+      },
+      {
+        "command": "coding-rabbit.resetAuth",
+        "title": "CodingRabbit: Reset Auth Session"
+      },
+      {
         "command": "coding-rabbit.startTerminal",
         "title": "CodingRabbit: Start Tracked Terminal"
       }
@@ -63,7 +120,8 @@
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./"
+    "watch": "tsc -watch -p ./",
+    "test:auth": "npm run compile && node --test test/auth.test.js"
   },
   "dependencies": {
     "diff": "^9.0.0",
