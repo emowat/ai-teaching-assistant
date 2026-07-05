@@ -1,0 +1,4 @@
+.env
+test_results/.
+__pycache__
+*.pyc
