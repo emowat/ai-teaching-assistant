@@ -608,15 +608,15 @@ def get_settings() -> Settings:
         qdrant_api_key=os.getenv("QDRANT_API_KEY"),
         qdrant_collection_name=os.getenv(
             "QDRANT_COLLECTION_NAME",
-            "course_knowledge",
+            "course_knowledge_BAAI_bge_large_en_v1_5",
         ),
         qdrant_guidelines_collection_name=os.getenv(
             "QDRANT_GUIDELINES_COLLECTION_NAME",
-            "cpp_guidelines",
+            "cpp_guidelines_BAAI_bge_large_en_v1_5",
         ),
         qdrant_harvard_collection_name=os.getenv(
             "QDRANT_HARVARD_COLLECTION_NAME",
-            "harvard_cs50",
+            "harvard_cs50_BAAI_bge_large_en_v1_5",
         ),
         cohere_api_key=os.getenv("COHERE_API_KEY"),
         openai_api_key=os.getenv("OPENAI_API_KEY"),
