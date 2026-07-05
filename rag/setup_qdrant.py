@@ -61,19 +61,19 @@ VECTOR_SIZE = 1024
 # Cloud support — set these env vars to use Qdrant Cloud instead of local
 QDRANT_URL = os.environ.get("QDRANT_URL", "")
 QDRANT_API_KEY = os.environ.get("QDRANT_API_KEY", "")
-# Optional prefix for all collection names on cloud (e.g. "codingrabbit_rag_vectordb")
-QDRANT_COLLECTION_PREFIX = os.environ.get("QDRANT_COLLECTION_NAME", "")
+# Optional suffix for all collection names on cloud (e.g. "BAAI_bge_large_en_v1_5")
+QDRANT_COLLECTION_SUFFIX = os.environ.get("QDRANT_COLLECTION_NAME", "")
 
 COLLECTIONS = {
     "mit14": "mit14_course",
     "cs50": "harvard_cs50",
 }
-CPP_KNOWLEDGE_COLLECTION = "cpp_knowledge"  # guidelines + cppreference combined
+CPP_KNOWLEDGE_COLLECTION = "cpp_guidelines"  # guidelines + cppreference combined
 
-# Apply prefix for cloud collections
-if QDRANT_COLLECTION_PREFIX:
-    COLLECTIONS = {k: f"{QDRANT_COLLECTION_PREFIX}_{v}" for k, v in COLLECTIONS.items()}
-    CPP_KNOWLEDGE_COLLECTION = f"{QDRANT_COLLECTION_PREFIX}_{CPP_KNOWLEDGE_COLLECTION}"
+# Apply suffix for cloud collections
+if QDRANT_COLLECTION_SUFFIX:
+    COLLECTIONS = {k: f"{v}_{QDRANT_COLLECTION_SUFFIX}" for k, v in COLLECTIONS.items()}
+    CPP_KNOWLEDGE_COLLECTION = f"{CPP_KNOWLEDGE_COLLECTION}_{QDRANT_COLLECTION_SUFFIX}"
 
 STANDARD_PAYLOAD_INDEXES = ["week", "category", "priority", "source_domain"]
 GUIDELINES_PAYLOAD_INDEXES = ["source_domain"]
@@ -83,10 +83,11 @@ GUIDELINES_PAYLOAD_INDEXES = ["source_domain"]
 # Collection helpers
 # ---------------------------------------------------------------------------
 
-def _ensure_collection(client: QdrantClient, name: str, indexes: list[str]) -> None:
+def _ensure_collection(client: QdrantClient, name: str, indexes: list[str]) -> bool:
+    """Create collection if missing. Returns True if newly created, False if already existed."""
     if client.collection_exists(name):
-        print(f"Collection '{name}' already exists. Recreating...")
-        client.delete_collection(name)
+        print(f"Collection '{name}' already exists, skipping.")
+        return False
 
     client.create_collection(
         collection_name=name,
@@ -98,6 +99,7 @@ def _ensure_collection(client: QdrantClient, name: str, indexes: list[str]) -> N
         client.create_payload_index(collection_name=name, field_name=field, field_schema=schema)
 
     print(f"Collection '{name}' created ({VECTOR_SIZE}-dim DOT) with indexes {indexes}.")
+    return True
 
 
 def _chunk_to_point(chunk) -> PointStruct:
@@ -153,7 +155,8 @@ def _embed_and_upsert(
 
 def index_cs50(client: QdrantClient, model: SentenceTransformer) -> int:
     collection = COLLECTIONS["cs50"]
-    _ensure_collection(client, collection, STANDARD_PAYLOAD_INDEXES)
+    if not _ensure_collection(client, collection, STANDARD_PAYLOAD_INDEXES):
+        return 0
 
     # Lecture notes
     notes = HarvardNotesLoader(RAW_DATA_PATH).load_all()
@@ -169,7 +172,8 @@ def index_cs50(client: QdrantClient, model: SentenceTransformer) -> int:
 
 def index_mit14(client: QdrantClient, model: SentenceTransformer) -> int:
     collection = COLLECTIONS["mit14"]
-    _ensure_collection(client, collection, STANDARD_PAYLOAD_INDEXES)
+    if not _ensure_collection(client, collection, STANDARD_PAYLOAD_INDEXES):
+        return 0
 
     chunks = MIT14Loader(RAW_DATA_PATH).load_all()
     total = _embed_and_upsert(client, model, collection, chunks, "MIT 2014")
@@ -180,7 +184,8 @@ def index_mit14(client: QdrantClient, model: SentenceTransformer) -> int:
 
 def index_cpp_knowledge(client: QdrantClient, model: SentenceTransformer) -> int:
     """Combined C++ knowledge: guidelines + cppreference in one collection."""
-    _ensure_collection(client, CPP_KNOWLEDGE_COLLECTION, GUIDELINES_PAYLOAD_INDEXES)
+    if not _ensure_collection(client, CPP_KNOWLEDGE_COLLECTION, GUIDELINES_PAYLOAD_INDEXES):
+        return 0
 
     total = 0
     chunks = CppGuidelinesLoader(RAW_DATA_PATH).load_all()
@@ -207,8 +212,8 @@ def main():
     if QDRANT_URL:
         client = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
         print(f"Qdrant Cloud mode active. Endpoint: {QDRANT_URL}")
-        if QDRANT_COLLECTION_PREFIX:
-            print(f"Collection prefix: {QDRANT_COLLECTION_PREFIX}_")
+        if QDRANT_COLLECTION_SUFFIX:
+            print(f"Collection suffix: _{QDRANT_COLLECTION_SUFFIX}")
     else:
         client = QdrantClient(path=QDRANT_PATH)
         print(f"Qdrant local mode active. Data path: {QDRANT_PATH}")

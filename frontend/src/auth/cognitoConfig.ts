@@ -29,7 +29,7 @@ export function createCognitoAuthConfig(): UserManagerSettings {
     post_logout_redirect_uri: getLogoutUri(),
     response_type: "code",
     scope: "openid email profile",
-    automaticSilentRenew: false,
+    automaticSilentRenew: true,
     userStore: storage,
     stateStore: storage,
   };

@@ -247,7 +247,7 @@ rag_eng_ecs:
     QDRANT_COLLECTION_NAME: "mit14_course_BAAI_bge_large_en_v1_5"
     QDRANT_GUIDELINES_COLLECTION_NAME: "cpp_guidelines_BAAI_bge_large_en_v1_5"
     QDRANT_HARVARD_COLLECTION_NAME: "harvard_cs50_BAAI_bge_large_en_v1_5"
-    QDRANT_COLLECTION_MIT13: "course_knowledge"
+    QDRANT_COLLECTION_MIT13: "mit13_course_BAAI_bge_large_en_v1_5"
     QDRANT_COLLECTION_MIT14: "mit14_course_BAAI_bge_large_en_v1_5"
     QDRANT_COLLECTION_CS50: "harvard_cs50_BAAI_bge_large_en_v1_5"
     QDRANT_COLLECTION_GUIDELINES: "cpp_guidelines_BAAI_bge_large_en_v1_5"

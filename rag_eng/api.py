@@ -209,14 +209,28 @@ def _require_admin_access(
     if settings.admin_token and x_admin_token == settings.admin_token:
         return
 
+    # Allow the static admin token to be passed as a Bearer token (for transitional frontend compatibility)
+    if settings.admin_token and credentials and credentials.scheme.lower() == "bearer":
+        if credentials.credentials == settings.admin_token:
+            return
+
     if credentials is None or credentials.scheme.lower() != "bearer":
+        logger.error(f"Missing admin credentials. credentials={credentials}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing admin credentials.",
         )
 
-    current_user = verify_cognito_access_token(credentials.credentials, settings)
+    try:
+        current_user = verify_cognito_access_token(credentials.credentials, settings)
+    except Exception:
+        import traceback
+        error_msg = traceback.format_exc()
+        logger.error(f"Failed to verify cognito access token! Token was: {credentials.credentials[:20]}...\nException trace:\n{error_msg}")
+        raise
+
     if current_user.primary_role != "admin":
+        logger.error(f"Insufficient role. Primary role: {current_user.primary_role}")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Insufficient role for this operation.",
@@ -872,7 +886,7 @@ def create_app() -> FastAPI:
     async def feedback_endpoint(payload: FeedbackPayload):
         from datetime import datetime
         import json
-        from rag_eng.telemetry import TelemetryClient
+        from rag_eng.telemetry import TelemetryStore
         try:
             feedback_data = {
                 "timestamp": datetime.utcnow().isoformat() + "Z",
@@ -881,10 +895,10 @@ def create_app() -> FastAPI:
                 "reason": payload.reason,
                 "message_index": payload.message_index
             }
-            logger.info(json.dumps(feedback_data))
+            logger.warning("Feedback received: " + json.dumps(feedback_data))
 
             if payload.session_id and payload.message_index:
-                telemetry = TelemetryClient()
+                telemetry = TelemetryStore.from_env()
                 telemetry.record_feedback(
                     session_id=payload.session_id,
                     message_index=payload.message_index,
@@ -902,7 +916,7 @@ def create_app() -> FastAPI:
     async def telemetry_endpoint(payload: TelemetryPayload):
         from datetime import datetime
         import json
-        from rag_eng.telemetry import TelemetryClient
+        from rag_eng.telemetry import TelemetryStore
         try:
             telemetry_data = {
                 "timestamp": datetime.utcnow().isoformat() + "Z",
@@ -913,7 +927,7 @@ def create_app() -> FastAPI:
             logger.info(json.dumps(telemetry_data))
 
             if payload.session_id:
-                telemetry = TelemetryClient()
+                telemetry = TelemetryStore.from_env()
                 telemetry.record_out_of_band_telemetry(
                     session_id=payload.session_id,
                     mode=payload.mode,
@@ -1051,7 +1065,6 @@ def create_app() -> FastAPI:
                     # 1. Daily Rewards, Nudges, & Engagement
                     course_filter = "AND course_id = %s" if course_id else ""
                     params = (course_id,) if course_id else ()
-                    params_double = (course_id, course_id) if course_id else ()
 
                     cursor.execute(f'''
                         WITH combined AS (
@@ -1065,16 +1078,6 @@ def create_app() -> FastAPI:
                             WHERE event_type = 'out_of_band_telemetry'
                             AND DATE((created_at AT TIME ZONE '{tz}')) = (CURRENT_TIMESTAMP AT TIME ZONE '{tz}')::DATE
                             {course_filter}
-                            UNION ALL
-                            SELECT
-                                snapshot->'ide_context'->'engagement_metrics'->>'rewards_given' as r,
-                                COALESCE(snapshot->'ide_context'->'engagement_metrics'->>'style_nudges', snapshot->'orchestrator_state'->>'style_nudged_count') as n,
-                                snapshot->'ide_context'->'engagement_metrics'->>'active_chat_seconds' as c,
-                                snapshot->'ide_context'->'engagement_metrics'->>'active_editor_seconds' as e,
-                                snapshot->'ide_context'->'engagement_metrics'->>'active_shell_seconds' as s
-                            FROM tutor_turn_snapshots
-                            WHERE DATE((created_at AT TIME ZONE '{tz}')) = (CURRENT_TIMESTAMP AT TIME ZONE '{tz}')::DATE
-                            {course_filter}
                         )
                         SELECT
                             SUM(COALESCE(CAST(r AS INTEGER), 0)) as total_rewards,
@@ -1083,7 +1086,7 @@ def create_app() -> FastAPI:
                             SUM(COALESCE(CAST(e AS INTEGER), 0)) as editor_seconds,
                             SUM(COALESCE(CAST(s AS INTEGER), 0)) as terminal_seconds
                         FROM combined
-                    ''', params_double)
+                    ''', params)
                     row = cursor.fetchone()
                     total_rewards = row[0] if row and row[0] else 0
                     total_style_nudges = row[1] if row and row[1] else 0
@@ -1261,14 +1264,6 @@ def create_app() -> FastAPI:
                             WHERE event_type = 'out_of_band_telemetry'
                             AND created_at >= (CURRENT_TIMESTAMP AT TIME ZONE '{tz}')::DATE - INTERVAL '6 days'
                             {course_filter}
-                            UNION ALL
-                            SELECT
-                                created_at,
-                                snapshot->'ide_context'->'engagement_metrics'->>'rewards_given' as r,
-                                COALESCE(snapshot->'ide_context'->'engagement_metrics'->>'style_nudges', snapshot->'orchestrator_state'->>'style_nudged_count') as n
-                            FROM tutor_turn_snapshots
-                            WHERE created_at >= (CURRENT_TIMESTAMP AT TIME ZONE '{tz}')::DATE - INTERVAL '6 days'
-                            {course_filter}
                         )
                         SELECT
                             TO_CHAR((created_at AT TIME ZONE '{tz}'), 'Dy') as day,
@@ -1277,7 +1272,7 @@ def create_app() -> FastAPI:
                         FROM combined
                         GROUP BY DATE((created_at AT TIME ZONE '{tz}')), day
                         ORDER BY DATE((created_at AT TIME ZONE '{tz}')) ASC
-                    ''', params_double)
+                    ''', params)
                     rewards_rows = cursor.fetchall()
 
                     # 10. Weekly Engagement Metrics
@@ -1292,15 +1287,6 @@ def create_app() -> FastAPI:
                             WHERE event_type = 'out_of_band_telemetry'
                             AND created_at >= (CURRENT_TIMESTAMP AT TIME ZONE '{tz}')::DATE - INTERVAL '6 days'
                             {course_filter}
-                            UNION ALL
-                            SELECT
-                                created_at,
-                                snapshot->'ide_context'->'engagement_metrics'->>'active_chat_seconds' as c,
-                                snapshot->'ide_context'->'engagement_metrics'->>'active_editor_seconds' as e,
-                                snapshot->'ide_context'->'engagement_metrics'->>'active_shell_seconds' as s
-                            FROM tutor_turn_snapshots
-                            WHERE created_at >= (CURRENT_TIMESTAMP AT TIME ZONE '{tz}')::DATE - INTERVAL '6 days'
-                            {course_filter}
                         )
                         SELECT
                             TO_CHAR((created_at AT TIME ZONE '{tz}'), 'Dy') as day,
@@ -1310,7 +1296,7 @@ def create_app() -> FastAPI:
                         FROM combined
                         GROUP BY DATE((created_at AT TIME ZONE '{tz}')), day
                         ORDER BY DATE((created_at AT TIME ZONE '{tz}')) ASC
-                    ''', params_double)
+                    ''', params)
                     engagement_rows = cursor.fetchall()
 
                     weekly_rewards = []
@@ -1369,7 +1355,13 @@ def create_app() -> FastAPI:
         "/api/admin/dashboard/feedback",
         dependencies=[Depends(_require_admin_access)],
     )
-    def admin_dashboard_feedback(course_id: str | None = None, limit: int = 50):
+    def admin_dashboard_feedback(
+        course_id: str | None = None,
+        limit: int = 50,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        tz: str = "America/Los_Angeles"
+    ):
         from rag_eng.telemetry import _connect_postgres
         from rag_eng.chat_log_export import _resolve_database_url
 
@@ -1381,7 +1373,19 @@ def create_app() -> FastAPI:
             with _connect_postgres(database_url, 5) as connection:
                 with connection.cursor() as cursor:
                     course_filter = "AND course_id = %s" if course_id else ""
-                    params = (course_id, limit) if course_id else (limit,)
+                    date_filter = ""
+                    params_list = []
+                    if course_id:
+                        params_list.append(course_id)
+                    if start_date:
+                        date_filter += f" AND DATE((created_at AT TIME ZONE '{tz}')) >= %s"
+                        params_list.append(start_date)
+                    if end_date:
+                        date_filter += f" AND DATE((created_at AT TIME ZONE '{tz}')) <= %s"
+                        params_list.append(end_date)
+
+                    params_list.append(limit)
+                    params = tuple(params_list)
 
                     cursor.execute(f'''
                         SELECT
@@ -1390,13 +1394,21 @@ def create_app() -> FastAPI:
                             snapshot->'feedback'->>'thumbs_up' as rating,
                             snapshot->'feedback'->>'explanation' as explanation,
                             created_at,
-                            COALESCE(snapshot->'ide_context'->>'chat_history', '') as student_message,
-                            COALESCE(snapshot->'ta_generation_phase'->>'generation', '') as ai_message,
+                            COALESCE(snapshot->'student_phase'->>'raw_input', '') as student_message,
+                            CASE
+                                WHEN (snapshot->'ta_generation_phase'->'output_guardrail'->>'blocked')::boolean = true THEN
+                                    '[BLOCKED: ' || COALESCE(snapshot->'ta_generation_phase'->'output_guardrail'->>'final_answer', '') || ']
+
+' || COALESCE(snapshot->'ta_generation_phase'->'generation_history'->-1->>'raw_generation', '')
+                                ELSE
+                                    COALESCE(snapshot->'ta_generation_phase'->'generation_history'->-1->>'raw_generation', '')
+                            END as ai_message,
                             snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys' as cot,
-                            snapshot->'backend_retrieval_phase'->'files' as rag_sources
+                            snapshot->'backend_retrieval_phase'->'retrieved_rag_chunks' as rag_sources
                         FROM tutor_turn_snapshots
                         WHERE snapshot->'feedback' IS NOT NULL
                         {course_filter}
+                        {date_filter}
                         ORDER BY created_at DESC
                         LIMIT %s
                     ''', params)
@@ -1408,9 +1420,13 @@ def create_app() -> FastAPI:
                         unique_sources = []
                         if rag_files and isinstance(rag_files, list):
                             for f_data in rag_files:
-                                src = f_data.get('source')
+                                src = f_data.get('Source', f_data.get('source'))
                                 if src and src not in unique_sources:
                                     unique_sources.append(src)
+
+                        import re
+                        raw_ai_message = row[6] if row[6] else ""
+                        clean_ai_message = re.sub(r'<analysis>.*?</analysis>', '', raw_ai_message, flags=re.DOTALL).strip()
 
                         feedback_entries.append({
                             "session_id": row[0],
@@ -1419,7 +1435,7 @@ def create_app() -> FastAPI:
                             "explanation": row[3],
                             "created_at": row[4].isoformat() if row[4] else None,
                             "student_message": row[5] if row[5] else None,
-                            "ai_message": row[6] if row[6] else None,
+                            "ai_message": clean_ai_message if clean_ai_message else None,
                             "cot": row[7] if row[7] else {},
                             "rag_sources": unique_sources
                         })

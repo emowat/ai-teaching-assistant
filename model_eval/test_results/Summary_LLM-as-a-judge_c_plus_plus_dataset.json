@@ -1,0 +1,9 @@
+{
+  "eval_log": {
+    "macro_pass_rate": 0.3116883116883117,
+    "micro_pass_rate": 0.2804141501294219,
+    "total_drift_rate": 0.669,
+    "qaulity_decline_rate": 0.172,
+    "code_leak_rate": 0.61
+  }
+}

@@ -136,7 +136,7 @@ def test_publish_frontend_syncs_dist_and_invalidates_cloudfront(
     assert run_calls[1][0] == ["npm", "run", "build"]
     assert run_calls[0][1]["VITE_API_BASE_URL"] == ""
     assert run_calls[0][1]["VITE_APP_VARIANT"] == "production"
-    assert run_calls[0][1]["npm_config_production"] == "false"
+    assert "npm_config_production" not in run_calls[0][1]
     assert "NODE_ENV" not in run_calls[0][1]
     assert run_calls[1][1]["NODE_ENV"] == "production"
 

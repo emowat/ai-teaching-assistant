@@ -189,3 +189,15 @@ See `best results → s3://codingrabbit-data-dev/prepared/rag/experiments/output
 ## Next steps
 - rules_threshold and guidelines_threshold
 - add overlap=1
+
+V2
+Switch to frontier mode: Claude Sonnet 4.6 for evaluation
+- Increase top_k_values to [10, 15], increase rules_top_k=[8]
+- Use same embedding, rerank=['similarity']
+- Remove cpp guidelines and reference from corpus
+- weight_presets=['current'] while removing DocCategory.GUIDELINE: 0.3 and DocCategory.SUPPLEMENTARY: 0.3
+
+mean recal:
+important mean recall:
+study_assit recall:
+homework assit recall:

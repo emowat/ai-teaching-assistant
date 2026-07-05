@@ -70,7 +70,7 @@ def _frontend_env(config: DeployConfig, *, production: bool) -> dict[str, str]:
         env["NODE_ENV"] = "production"
     else:
         env.pop("NODE_ENV", None)
-        env["npm_config_production"] = "false"
+        env.pop("npm_config_production", None)
     return env
 
 

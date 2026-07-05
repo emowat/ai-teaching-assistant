@@ -149,10 +149,20 @@ export interface FeedbackResponse {
   feedback: FeedbackEntry[];
 }
 
-export function getAdminDashboardFeedback(accessToken: string, courseId?: string, limit: number = 50): Promise<FeedbackResponse> {
+export function getAdminDashboardFeedback(
+  accessToken: string, 
+  courseId?: string, 
+  limit: number = 50,
+  startDate?: string,
+  endDate?: string,
+  tz: string = Intl.DateTimeFormat().resolvedOptions().timeZone
+): Promise<FeedbackResponse> {
   const params = new URLSearchParams();
   if (courseId && courseId !== "all") params.append("course_id", courseId);
   params.append("limit", limit.toString());
+  if (startDate) params.append("start_date", startDate);
+  if (endDate) params.append("end_date", endDate);
+  if (tz) params.append("tz", tz);
   const qs = `?${params.toString()}`;
   return adminFetch<FeedbackResponse>(`/api/admin/dashboard/feedback${qs}`, accessToken);
 }

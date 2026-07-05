@@ -371,6 +371,8 @@ export function AdminDashboard({
 
   const [feedbackData, setFeedbackData] = useState<FeedbackEntry[]>([]);
   const [feedbackError, setFeedbackError] = useState<boolean>(false);
+  const [feedbackStartDate, setFeedbackStartDate] = useState("");
+  const [feedbackEndDate, setFeedbackEndDate] = useState("");
 
   useEffect(() => {
     if (!accessToken) return;
@@ -404,7 +406,14 @@ export function AdminDashboard({
     let cancelled = false;
 
     const fetchFeedback = () => {
-      getAdminDashboardFeedback(accessToken, courseFilter === "all" ? undefined : courseFilter, 50)
+      getAdminDashboardFeedback(
+        accessToken, 
+        courseFilter === "all" ? undefined : courseFilter, 
+        50,
+        feedbackStartDate ? feedbackStartDate : undefined,
+        feedbackEndDate ? feedbackEndDate : undefined,
+        timezoneFilter
+      )
         .then((data) => {
           if (!cancelled) {
             setFeedbackData(data.feedback);
@@ -424,7 +433,7 @@ export function AdminDashboard({
       cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, [accessToken, courseFilter]);
+  }, [accessToken, courseFilter, timezoneFilter, feedbackStartDate, feedbackEndDate]);
 
   const handleExport = async () => {
     if (!accessToken) return;
@@ -610,6 +619,43 @@ export function AdminDashboard({
     );
   };
 
+  const formatTime = (seconds: any): string => {
+    const s = Number(seconds);
+    if (isNaN(s)) return "...";
+    if (s < 60) return `${s}s`;
+    if (s < 3600) return `${(s / 60).toFixed(1)}m`;
+    return `${(s / 3600).toFixed(1)}h`;
+  };
+
+  const { scaledEngagementData, engagementUnit } = useMemo(() => {
+    if (!dashboardStats?.weekly_engagement) return { scaledEngagementData: [], engagementUnit: "seconds" };
+    let maxSecs = 0;
+    for (const d of dashboardStats.weekly_engagement) {
+      if (d.chat_seconds > maxSecs) maxSecs = d.chat_seconds;
+      if (d.editor_seconds > maxSecs) maxSecs = d.editor_seconds;
+      if (d.terminal_seconds > maxSecs) maxSecs = d.terminal_seconds;
+    }
+    
+    let divisor = 1;
+    let unit = "seconds";
+    if (maxSecs > 3600) {
+      divisor = 3600;
+      unit = "hours";
+    } else if (maxSecs > 60) {
+      divisor = 60;
+      unit = "minutes";
+    }
+    
+    const scaled = dashboardStats.weekly_engagement.map(d => ({
+      ...d,
+      chat_seconds: Number((d.chat_seconds / divisor).toFixed(1)),
+      editor_seconds: Number((d.editor_seconds / divisor).toFixed(1)),
+      terminal_seconds: Number((d.terminal_seconds / divisor).toFixed(1)),
+    }));
+    
+    return { scaledEngagementData: scaled, engagementUnit: unit };
+  }, [dashboardStats?.weekly_engagement]);
+
   return (
     <div
       style={{
@@ -728,9 +774,9 @@ export function AdminDashboard({
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12, marginBottom: 18 }}>
                 <Stat label="Sessions" value={dashboardStats?.sessions_today?.toString() ?? "..."} />
                 <Stat label="Requests" value={dashboardStats?.requests_today?.toString() ?? "..."} color={D.blue} />
-                <Stat label="Chat(secs)" value={dashboardStats?.chat_seconds_today !== undefined ? `${dashboardStats.chat_seconds_today}s` : "..."} color={D.purple} />
-                <Stat label="Editor(secs)" value={dashboardStats?.editor_seconds_today !== undefined ? `${dashboardStats.editor_seconds_today}s` : "..."} color={D.purple} />
-                <Stat label="Terminal(secs)" value={dashboardStats?.terminal_seconds_today !== undefined ? `${dashboardStats.terminal_seconds_today}s` : "..."} color={D.purple} />
+                <Stat label="Chat" value={dashboardStats?.chat_seconds_today !== undefined ? formatTime(dashboardStats.chat_seconds_today) : "..."} color={D.purple} />
+                <Stat label="Editor" value={dashboardStats?.editor_seconds_today !== undefined ? formatTime(dashboardStats.editor_seconds_today) : "..."} color={D.purple} />
+                <Stat label="Terminal" value={dashboardStats?.terminal_seconds_today !== undefined ? formatTime(dashboardStats.terminal_seconds_today) : "..."} color={D.purple} />
                 <Stat label="Rewards" value={dashboardStats?.total_rewards_given?.toString() ?? "..."} color={D.green} />
                 <Stat label="Style Nudged" value={dashboardStats?.total_style_nudges?.toString() ?? "..."} color={D.orange} />
                 <Stat label="System Errors" value={statsError ? "ERR_FETCH" : dashboardStats?.system_errors?.toString() ?? "..."} color={D.red} />
@@ -831,17 +877,17 @@ export function AdminDashboard({
                 </Card>
 
                 <Card>
-                  <div style={{ ...mono, fontSize: 11, color: D.muted, marginBottom: 14 }}>// engagement_time (7 days)</div>
+                  <div style={{ ...mono, fontSize: 11, color: D.muted, marginBottom: 14 }}>// engagement_time (7 days, in {engagementUnit})</div>
                   <ResponsiveContainer width="100%" height={220}>
-                    <BarChart data={dashboardStats?.weekly_engagement || []}>
+                    <BarChart data={scaledEngagementData}>
                       <CartesianGrid strokeDasharray="3 3" stroke={D.border} vertical={false} />
                       <XAxis dataKey="day" stroke={D.muted} tick={{ fontSize: 11, fill: D.muted }} />
                       <YAxis stroke={D.muted} tick={{ fontSize: 11, fill: D.muted }} />
-                      <Tooltip {...chartTooltipStyle} />
+                      <Tooltip {...chartTooltipStyle} formatter={(val: any) => [`${val} ${engagementUnit}`, undefined]} />
                       <Legend iconSize={8} wrapperStyle={{ fontSize: 11, color: D.muted }} />
-                      <Bar dataKey="chat_seconds" name="Chat (s)" fill={D.purple} />
-                      <Bar dataKey="editor_seconds" name="Editor (s)" fill={D.blue} />
-                      <Bar dataKey="terminal_seconds" name="Terminal (s)" fill={D.orange} />
+                      <Bar dataKey="chat_seconds" name="Chat" fill={D.purple} />
+                      <Bar dataKey="editor_seconds" name="Editor" fill={D.blue} />
+                      <Bar dataKey="terminal_seconds" name="Terminal" fill={D.orange} />
                     </BarChart>
                   </ResponsiveContainer>
                 </Card>
@@ -917,6 +963,19 @@ export function AdminDashboard({
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
                 <div style={{ fontSize: 18, fontWeight: 600 }}>Student Feedback</div>
                 <div style={{ display: "flex", gap: 12 }}>
+                  <input 
+                    type="date"
+                    value={feedbackStartDate}
+                    onChange={(e) => setFeedbackStartDate(e.target.value)}
+                    style={{ padding: "6px 12px", borderRadius: 6, border: `1px solid ${D.border}`, background: D.surface, color: D.text, fontSize: 13 }}
+                  />
+                  <span style={{ alignSelf: "center", color: D.muted }}>to</span>
+                  <input 
+                    type="date"
+                    value={feedbackEndDate}
+                    onChange={(e) => setFeedbackEndDate(e.target.value)}
+                    style={{ padding: "6px 12px", borderRadius: 6, border: `1px solid ${D.border}`, background: D.surface, color: D.text, fontSize: 13 }}
+                  />
                   <select
                     value={courseFilter}
                     onChange={(e) => setCourseFilter(e.target.value)}
@@ -974,23 +1033,9 @@ export function AdminDashboard({
                           {f.student_message || <span style={{ color: D.muted, fontStyle: "italic" }}>No message text</span>}
                         </div>
 
-                        {f.cot && Object.keys(f.cot).length > 0 && (
-                          <>
-                            <div style={{ fontSize: 12, color: D.muted, ...mono, marginTop: 4 }}>// chain_of_thought</div>
-                            <div style={{ background: D.surface, padding: 12, borderRadius: 6, fontSize: 12, border: `1px solid ${D.border}` }}>
-                              {Object.entries(f.cot).map(([key, val]) => (
-                                <div key={key} style={{ marginBottom: 4 }}>
-                                  <span style={{ fontWeight: 600, color: D.muted }}>{key}: </span>
-                                  <span style={{ color: D.text }}>{String(val)}</span>
-                                </div>
-                              ))}
-                            </div>
-                          </>
-                        )}
-
                         <div style={{ fontSize: 12, color: D.muted, ...mono, marginTop: 4 }}>// ai_response</div>
                         <div style={{ background: `${D.purple}08`, padding: 12, borderRadius: 6, fontSize: 13, borderLeft: `3px solid ${D.purple}`, whiteSpace: "pre-wrap" }}>
-                          {f.ai_message || <span style={{ color: D.muted, fontStyle: "italic" }}>No response text</span>}
+                          {f.ai_message ? f.ai_message.replace(/<think>[\s\S]*?<\/think>/g, '').replace(/<analysis>[\s\S]*?<\/analysis>/g, '').trim() : <span style={{ color: D.muted, fontStyle: "italic" }}>No response text</span>}
                         </div>
                       </div>
                       <div style={{ fontSize: 11, color: D.dim, ...mono, textAlign: "right", marginTop: 8 }}>Session ID: {f.session_id}</div>
