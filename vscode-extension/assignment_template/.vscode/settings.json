@@ -16,7 +16,6 @@
         "strings": "off"
     },
     "codingRabbit.apiBaseUrl": "http://codingrabbit-rag-eng-1327788709.us-east-1.elb.amazonaws.com",
-    "codingRabbit.apiUrl": "http://codingrabbit-rag-eng-1327788709.us-east-1.elb.amazonaws.com/api/chat",
     "codingRabbit.auth.enabled": true,
     "codingRabbit.cognitoDomain": "https://us-east-1z5dab8wni.auth.us-east-1.amazoncognito.com",
     "codingRabbit.cognitoRegion": "us-east-1",

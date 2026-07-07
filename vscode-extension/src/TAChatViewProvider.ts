@@ -18,7 +18,6 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
     private _chatRequestsSinceLastEdit: number = 0;
     private _lastDocumentVersion: number = -1;
     private _hasGivenStyleNudge: boolean = false;
-    private _hasSentWakeup: boolean = false;
     private _hasProactivelyAskedAboutPaste: boolean = false;
     private _adversarialWarningCount: number = 0;
     private _sessionId: string = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
@@ -90,7 +89,6 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
             if (status === 'signed_out' || status === 'unconfigured') {
                 this._conversationHistory = [];
                 this._hasGivenStyleNudge = false;
-                this._hasSentWakeup = false;
                 this._hasProactivelyAskedAboutPaste = false;
                 this._adversarialWarningCount = 0;
                 this._sessionId = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
@@ -381,36 +379,10 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
                 }
                 case 'webviewReady': {
                     this._restoreChatHistory(webviewView.webview);
-                    this._prewarmModel();
                     break;
                 }
             }
         });
-    }
-
-    private async _prewarmModel() {
-        if (this._hasSentWakeup) return;
-        this._hasSentWakeup = true;
-        try {
-            const apiUrl = resolveChatApiUrl();
-            const modelName = vscode.workspace.getConfiguration('codingRabbit').get('modelName') || 'codingrabbit-ta';
-            
-            TAChatViewProvider.getOutputChannel().appendLine("[Telemetry] Sending background wakeup ping to pre-warm SageMaker instance...");
-            
-            // Fire and forget - we don't care about the response, we just want to wake up the instance
-            void this._authService.fetch(apiUrl as string, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    model: modelName,
-                    messages: [{ role: "user", content: "[SYSTEM_EVENT: Wakeup SageMaker Instance]" }],
-                    stream: false,
-                    options: { num_predict: 2 } // Keep it extremely short
-                })
-            }).catch(() => { /* ignore network errors on prewarm */ });
-        } catch (e) {
-            TAChatViewProvider.getOutputChannel().appendLine(`[Telemetry] Pre-warm failed: ${e}`);
-        }
     }
 
     private async _restoreChatHistory(webview: vscode.Webview) {

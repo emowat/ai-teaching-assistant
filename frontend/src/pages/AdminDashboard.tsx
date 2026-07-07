@@ -841,6 +841,14 @@ export function AdminDashboard({
                       <div style={{ fontSize: 24, fontWeight: 600, color: D.orange }}>{dashboardStats?.guardrails?.output_blocks || 0}</div>
                       <div style={{ fontSize: 11, color: D.dim, ...mono }}>Output Blocks</div>
                     </div>
+                    <div style={{ flex: 1, padding: 12, background: `${D.yellow}10`, borderRadius: 6, border: `1px solid ${D.yellow}30` }}>
+                      <div style={{ fontSize: 24, fontWeight: 600, color: D.yellow }}>{dashboardStats?.guardrails?.input_dry_runs || 0}</div>
+                      <div style={{ fontSize: 11, color: D.dim, ...mono }}>Input Dry-Runs</div>
+                    </div>
+                    <div style={{ flex: 1, padding: 12, background: `${D.yellow}10`, borderRadius: 6, border: `1px solid ${D.yellow}30` }}>
+                      <div style={{ fontSize: 24, fontWeight: 600, color: D.yellow }}>{dashboardStats?.guardrails?.output_dry_runs || 0}</div>
+                      <div style={{ fontSize: 11, color: D.dim, ...mono }}>Output Dry-Runs</div>
+                    </div>
                   </div>
                   <ResponsiveContainer width="100%" height={120}>
                     <PieChart>

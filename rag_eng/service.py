@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import json
+import os
 import re
 import time
 from dataclasses import asdict, replace
@@ -144,6 +145,7 @@ def _guardrail_summary(guardrail_result: dict[str, Any]) -> dict[str, Any]:
     summary = {
         "guardrail_stage": guardrail_result.get("stage"),
         "guardrail_action": guardrail_result.get("action"),
+        "guardrail_would_block": guardrail_result.get("wouldBlock"),
         "guardrail_violation_type": guardrail_result.get("violation_type"),
         "guardrail_severity": guardrail_result.get("severity"),
         "guardrail_evidence": guardrail_result.get("evidence"),
@@ -160,6 +162,7 @@ def _input_guardrail_summary(input_guardrail_result: dict[str, Any]) -> dict[str
         "input_guardrail_action": input_guardrail_result.get("action"),
         "input_guardrail_safe": input_guardrail_result.get("safe"),
         "input_guardrail_blocked": input_guardrail_result.get("blocked"),
+        "input_guardrail_would_block": input_guardrail_result.get("wouldBlock"),
         "input_guardrail_violation_type": input_guardrail_result.get("violation_type"),
         "input_guardrail_severity": input_guardrail_result.get("severity"),
         "input_guardrail_evidence": input_guardrail_result.get("evidence"),
@@ -395,6 +398,13 @@ def _run_input_guardrail(
                 None,
             ),
         )
+        
+        is_log_only = os.environ.get("GUARDRAILS_LOG_ONLY", "false").lower() == "true"
+        if is_log_only:
+            result["wouldBlock"] = result.get("blocked", False)
+            result["blocked"] = False
+            if result.get("action") == "block":
+                result["action"] = "log_only"
     except Exception as exc:  # pragma: no cover - defensive fallback
         logger.warning("Input guardrail evaluation failed; continuing to RAG: %s", exc)
         result = {
@@ -530,6 +540,14 @@ def _apply_pipeline_guardrails(
             student_code,
             conversation_history,
         )
+        
+        is_log_only = os.environ.get("GUARDRAILS_LOG_ONLY", "false").lower() == "true"
+        if is_log_only:
+            guardrail["wouldBlock"] = guardrail.get("blocked", False)
+            guardrail["blocked"] = False
+            if guardrail.get("action") == "block":
+                guardrail["action"] = "log_only"
+                
         guardrail["evaluated_answer"] = visible_answer
     except Exception as exc:  # pragma: no cover - defensive fallback
         logger.warning("Guardrail evaluation failed; returning draft answer: %s", exc)

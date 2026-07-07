@@ -173,6 +173,7 @@ def _legacy_output_guardrail_phase(
         "stage": guardrail.get("stage"),
         "action": guardrail.get("action"),
         "blocked": guardrail.get("blocked"),
+        "wouldBlock": guardrail.get("wouldBlock"),
         "safe": guardrail.get("safe"),
         "violation_type": guardrail.get("violation_type"),
         "severity": guardrail.get("severity"),

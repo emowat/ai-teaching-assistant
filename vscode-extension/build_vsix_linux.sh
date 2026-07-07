@@ -27,10 +27,10 @@ if [ -z "${3:-}" ]; then
         echo "ERROR: Could not find the codingrabbit-rag-eng load balancer in AWS."
         exit 1
     fi
-    API_URL="http://${ELB_DNS}/api/chat"
-    echo "Found AWS ELB URL: $API_URL"
+    API_BASE_URL="http://${ELB_DNS}"
+    echo "Found AWS ELB URL: $API_BASE_URL"
 else
-    API_URL="$3"
+    API_BASE_URL="$3"
 fi
 
 # Automatically initialize assignment directory with templates if missing
@@ -41,17 +41,17 @@ cp "$EXTENSION_DIR/assignment_template/.devcontainer/Dockerfile" "$DEST_DIR/"
 cp "$EXTENSION_DIR/assignment_template/.vscode/extensions.json" "$ASSIGNMENT_ROOT/.vscode/"
 cp "$EXTENSION_DIR/assignment_template/.vscode/settings.json" "$ASSIGNMENT_ROOT/.vscode/"
 
-if [ -n "$API_URL" ]; then
-    echo "Injecting custom API URL into package.json: $API_URL"
+if [ -n "$API_BASE_URL" ]; then
+    echo "Injecting custom API URL into package.json: $API_BASE_URL"
     # Create backup and replace default API URL using | as delimiter
-    sed -i.bak "s|\"default\": \"http://127.0.0.1:8001/api/chat\"|\"default\": \"$API_URL\"|g" "$EXTENSION_DIR/package.json"
+    sed -i.bak "s|\"default\": \"http://127.0.0.1:8001\"|\"default\": \"$API_BASE_URL\"|g" "$EXTENSION_DIR/package.json"
     
-    echo "Injecting custom API URL into .vscode/settings.json: $API_URL"
-    sed -i.bak "s|\"codingRabbit.apiUrl\": \".*\"|\"codingRabbit.apiUrl\": \"$API_URL\"|g" "$ASSIGNMENT_ROOT/.vscode/settings.json"
+    echo "Injecting custom API URL into .vscode/settings.json: $API_BASE_URL"
+    sed -i.bak "s|\"codingRabbit.apiBaseUrl\": \".*\"|\"codingRabbit.apiBaseUrl\": \"$API_BASE_URL\"|g" "$ASSIGNMENT_ROOT/.vscode/settings.json"
     rm -f "$ASSIGNMENT_ROOT/.vscode/settings.json.bak"
     
-    echo "Injecting custom API URL into devcontainer.json: $API_URL"
-    sed -i.bak "s|\"codingRabbit.apiUrl\": \".*\"|\"codingRabbit.apiUrl\": \"$API_URL\"|g" "$DEST_DIR/devcontainer.json"
+    echo "Injecting custom API URL into devcontainer.json: $API_BASE_URL"
+    sed -i.bak "s|\"codingRabbit.apiBaseUrl\": \".*\"|\"codingRabbit.apiBaseUrl\": \"$API_BASE_URL\"|g" "$DEST_DIR/devcontainer.json"
     rm -f "$DEST_DIR/devcontainer.json.bak"
 fi
 
@@ -66,7 +66,7 @@ echo "Packaging .vsix..."
 rm -f coding-rabbit-*.vsix
 npx vsce package --allow-missing-repository --allow-star-activation
 
-if [ -n "$API_URL" ]; then
+if [ -n "$API_BASE_URL" ]; then
     echo "Restoring original package.json..."
     mv "$EXTENSION_DIR/package.json.bak" "$EXTENSION_DIR/package.json"
 fi
