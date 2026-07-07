@@ -324,6 +324,7 @@ def test_chat_endpoint_accepts_simple_message(monkeypatch, client: TestClient) -
         session_id=None,
         request_id=None,
         turn_id=None,
+        turn_index=None,
         section_id=None,
         result_count=None,
         rerank_strategy=None,

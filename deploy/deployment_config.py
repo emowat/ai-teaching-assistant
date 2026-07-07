@@ -58,6 +58,7 @@ ENV_OVERRIDES: dict[str, str] = {
     "RAG_ENG_ECS_LOG_GROUP": "rag_eng_ecs.log_group",
     "RAG_ENG_ECS_LOG_STREAM_PREFIX": "rag_eng_ecs.log_stream_prefix",
     "RAG_ENG_ECS_TARGET_GROUP_ARN": "rag_eng_ecs.target_group_arn",
+    "GUARDRAILS_LOG_ONLY": "rag_eng_ecs.environment.GUARDRAILS_LOG_ONLY",
     "RAG_ENG_ECS_ENV_JSON": "rag_eng_ecs.environment",
     "RAG_ENG_ECS_SECRET_ARNS_JSON": "rag_eng_ecs.secret_arn_map",
     "FRONTEND_ENABLED": "frontend_web.enabled",

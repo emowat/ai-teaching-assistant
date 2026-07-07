@@ -841,6 +841,14 @@ export function AdminDashboard({
                       <div style={{ fontSize: 24, fontWeight: 600, color: D.orange }}>{dashboardStats?.guardrails?.output_blocks || 0}</div>
                       <div style={{ fontSize: 11, color: D.dim, ...mono }}>Output Blocks</div>
                     </div>
+                    <div style={{ flex: 1, padding: 12, background: `${D.yellow}10`, borderRadius: 6, border: `1px solid ${D.yellow}30` }}>
+                      <div style={{ fontSize: 24, fontWeight: 600, color: D.yellow }}>{dashboardStats?.guardrails?.input_dry_runs || 0}</div>
+                      <div style={{ fontSize: 11, color: D.dim, ...mono }}>Input Dry-Runs</div>
+                    </div>
+                    <div style={{ flex: 1, padding: 12, background: `${D.yellow}10`, borderRadius: 6, border: `1px solid ${D.yellow}30` }}>
+                      <div style={{ fontSize: 24, fontWeight: 600, color: D.yellow }}>{dashboardStats?.guardrails?.output_dry_runs || 0}</div>
+                      <div style={{ fontSize: 11, color: D.dim, ...mono }}>Output Dry-Runs</div>
+                    </div>
                   </div>
                   <ResponsiveContainer width="100%" height={120}>
                     <PieChart>
@@ -1032,6 +1040,20 @@ export function AdminDashboard({
                         <div style={{ background: `${D.blue}08`, padding: 12, borderRadius: 6, fontSize: 13, borderLeft: `3px solid ${D.blue}` }}>
                           {f.student_message || <span style={{ color: D.muted, fontStyle: "italic" }}>No message text</span>}
                         </div>
+
+                        {f.cot && Object.keys(f.cot).length > 0 && (
+                          <>
+                            <div style={{ fontSize: 12, color: D.muted, ...mono, marginTop: 4 }}>// chain_of_thought</div>
+                            <div style={{ background: D.surface, padding: 12, borderRadius: 6, fontSize: 12, border: `1px solid ${D.border}` }}>
+                              {Object.entries(f.cot).map(([key, val]) => (
+                                <div key={key} style={{ marginBottom: 4 }}>
+                                  <span style={{ fontWeight: 600, color: D.muted }}>{key}: </span>
+                                  <span style={{ color: D.text }}>{String(val)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </>
+                        )}
 
                         <div style={{ fontSize: 12, color: D.muted, ...mono, marginTop: 4 }}>// ai_response</div>
                         <div style={{ background: `${D.purple}08`, padding: 12, borderRadius: 6, fontSize: 13, borderLeft: `3px solid ${D.purple}`, whiteSpace: "pre-wrap" }}>

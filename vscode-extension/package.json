@@ -2,7 +2,7 @@
   "name": "coding-rabbit",
   "displayName": "CodingRabbit",
   "description": "C++ CodingRabbit Teaching Assistant via the remote rag_eng backend",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "berkeley",
   "repository": "https://github.com/berkeley/coding-rabbit",
   "engines": {
@@ -23,11 +23,6 @@
           "type": "string",
           "default": "http://codingrabbit-rag-eng-1327788709.us-east-1.elb.amazonaws.com",
           "description": "The base URL of the CodingRabbit backend API"
-        },
-        "codingRabbit.apiUrl": {
-          "type": "string",
-          "default": "http://codingrabbit-rag-eng-1327788709.us-east-1.elb.amazonaws.com/api/chat",
-          "description": "The URL of the CodingRabbit backend API"
         },
         "codingRabbit.auth.enabled": {
           "type": "boolean",

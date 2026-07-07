@@ -259,7 +259,7 @@ class TelemetryStore:
                             _json_adapter(metadata),
                         ),
                     )
-                    turn_index = int(cursor.fetchone()[0] or 1)
+                    turn_index = getattr(query, "turn_index", None) or int(cursor.fetchone()[0] or 1)
                     trace = replace(trace, turn_index=turn_index, persisted=True)
                     cursor.execute(
                         """

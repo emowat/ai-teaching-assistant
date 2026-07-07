@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import os
 import pytest
+
+os.environ["GUARDRAILS_LOG_ONLY"] = "false"
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:

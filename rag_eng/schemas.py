@@ -72,8 +72,9 @@ class QueryPayload(QueryInput):
     )
     rerank_strategy: RetrievalRerankStrategy = Field(
         default="similarity",
-        description="Reranking strategy used to diversify retrieved context.",
+        description="Strategy for reranking the initial vector search results.",
     )
+    turn_index: int | None = None
 
 
 class QueryRequest(QueryPayload):

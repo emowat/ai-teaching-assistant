@@ -963,6 +963,7 @@ def create_app() -> FastAPI:
                 session_id=payload.session_id,
                 request_id=payload.request_id,
                 turn_id=payload.turn_id,
+                turn_index=payload.turn_index,
                 section_id=payload.section_id,
                 result_count=payload.result_count,
                 rerank_strategy=payload.rerank_strategy,
@@ -1162,7 +1163,9 @@ def create_app() -> FastAPI:
                     cursor.execute(f'''
                         SELECT
                             COUNT(CASE WHEN snapshot->'input_guardrail_phase'->>'action' = 'block' THEN 1 END) as input_blocks,
-                            COUNT(CASE WHEN snapshot->'output_guardrail_phase'->>'action' IN ('block', 'replace') THEN 1 END) as output_blocks
+                            COUNT(CASE WHEN snapshot->'output_guardrail_phase'->>'action' IN ('block', 'replace') THEN 1 END) as output_blocks,
+                            COUNT(CASE WHEN snapshot->'input_guardrail_phase'->>'wouldBlock' = 'true' THEN 1 END) as input_dry_runs,
+                            COUNT(CASE WHEN snapshot->'output_guardrail_phase'->>'wouldBlock' = 'true' THEN 1 END) as output_dry_runs
                         FROM tutor_turn_snapshots
                         WHERE created_at >= (CURRENT_TIMESTAMP AT TIME ZONE '{tz}')::DATE - INTERVAL '6 days'
                         {course_filter}
@@ -1170,6 +1173,8 @@ def create_app() -> FastAPI:
                     row = cursor.fetchone()
                     input_blocks = row[0] if row else 0
                     output_blocks = row[1] if row else 0
+                    input_dry_runs = row[2] if row else 0
+                    output_dry_runs = row[3] if row else 0
 
                     # 5. Violation Types (Pie Chart)
                     cursor.execute(f'''
@@ -1183,8 +1188,8 @@ def create_app() -> FastAPI:
                         WHERE created_at >= (CURRENT_TIMESTAMP AT TIME ZONE '{tz}')::DATE - INTERVAL '6 days'
                         {course_filter}
                         AND (
-                            (snapshot->'input_guardrail_phase'->>'action' = 'block') OR
-                            (snapshot->'output_guardrail_phase'->>'action' IN ('block', 'replace'))
+                            (snapshot->'input_guardrail_phase'->>'action' IN ('block', 'log_only')) OR
+                            (snapshot->'output_guardrail_phase'->>'action' IN ('block', 'replace', 'log_only'))
                         )
                         GROUP BY violation_type
                     ''', params)
@@ -1342,6 +1347,8 @@ def create_app() -> FastAPI:
                 "guardrails": {
                     "input_blocks": input_blocks,
                     "output_blocks": output_blocks,
+                    "input_dry_runs": input_dry_runs,
+                    "output_dry_runs": output_dry_runs,
                     "violation_types": violation_types
                 },
                 "latencies": latencies,

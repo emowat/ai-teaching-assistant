@@ -87,6 +87,8 @@ export interface DashboardStats {
   guardrails: {
     input_blocks: number;
     output_blocks: number;
+    input_dry_runs: number;
+    output_dry_runs: number;
     violation_types: { name: string; value: number }[];
   };
   latencies: {
