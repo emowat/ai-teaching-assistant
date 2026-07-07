@@ -83,7 +83,11 @@ class ASTFeatures(BaseModel):
     has_malloc: bool = False
     has_free: bool = False
     has_recursion: bool = False
+    has_stl_algorithm: bool = False
+    has_smart_pointer: bool = False
+    has_iterator: bool = False
     target_variables: list[str] = Field(default_factory=list)
+    near_cursor_stl: list[str] = Field(default_factory=list)
 
 
 class ClipboardEvent(BaseModel):
@@ -144,6 +148,7 @@ class RetrievalResult(BaseModel):
     supplementary: list[RetrievedDoc] = Field(default_factory=list)
     guidelines: list[RetrievedDoc] = Field(default_factory=list)
     harvard: list[RetrievedDoc] = Field(default_factory=list)
+    query_string: str = ""
 
     # Pre-formatted context block ready for TA prompt injection
     formatted_context: str = ""

@@ -89,6 +89,7 @@ def build_retrieval_result(
     query_week: int = 1,
     syllabus_matrix: str | None = None,
     style_guide: str | None = None,
+    query_string: str = "",
 ) -> RetrievalResult:
     """Build the complete RetrievalResult including formatted context."""
     return RetrievalResult(
@@ -97,6 +98,7 @@ def build_retrieval_result(
         pedagogical=pedagogical,
         supplementary=supplementary,
         guidelines=guidelines or [],
+        query_string=query_string,
         formatted_context=assemble_context(
             syllabus=syllabus,
             rules=rules,

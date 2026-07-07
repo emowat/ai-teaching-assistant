@@ -70,9 +70,9 @@ class _FakeConnection:
 def test_load_database_routes_uses_canonical_rows_and_aliases(monkeypatch) -> None:
     fake_connection = _FakeConnection(
         [
-            ("mit13", "mit13", "mit13_course_db"),
-            ("mit14", "mit14", "mit14_course_db"),
-            ("cs50", "cs50", "cs50_course_db"),
+            ("mit13", "mit13", "mit13_course_db", None, None),
+            ("mit14", "mit14", "mit14_course_db", None, None),
+            ("cs50", "cs50", "cs50_course_db", None, None),
         ],
         [
             ("mit-13", "mit13"),
@@ -84,7 +84,7 @@ def test_load_database_routes_uses_canonical_rows_and_aliases(monkeypatch) -> No
         lambda database_url: fake_connection,
     )
 
-    routes = _load_database_routes("postgresql://example")
+    routes, defs = _load_database_routes("postgresql://example")
 
     assert routes["mit13"].collection_name == "mit13_course_db"
     assert routes["mit14"].collection_name == "mit14_course_db"
@@ -92,15 +92,17 @@ def test_load_database_routes_uses_canonical_rows_and_aliases(monkeypatch) -> No
 
 
 def test_course_registry_overlays_database_routes(monkeypatch) -> None:
+    fake_route = CourseRoute(
+        course_id="mit14",
+        course_source=CourseSource.MIT_14,
+        collection_name="mit14_course_db",
+    )
     monkeypatch.setattr(
         "rag.course_registry._load_database_routes",
-        lambda database_url: {
-            "mit14": CourseRoute(
-                course_id="mit14",
-                course_source=CourseSource.MIT_14,
-                collection_name="mit14_course_db",
-            )
-        },
+        lambda database_url: (
+            {"mit14": fake_route},
+            {},
+        ),
     )
 
     registry = CourseRegistry(
@@ -185,7 +187,8 @@ def test_run_retrieval_uses_registry_collection_name(monkeypatch) -> None:
         "rag.course_registry.get_course_registry",
         lambda: _stub_registry(),
     )
-    monkeypatch.setattr("rag.pipeline.build_query", lambda query: "dense query")
+    monkeypatch.setattr("rag.pipeline.build_course_query", lambda query: "dense query")
+    monkeypatch.setattr("rag.pipeline.build_cpp_query", lambda query: "")
     monkeypatch.setattr(
         "rag.pipeline.retrieve_guidelines",
         lambda dense_query, top_k, threshold: [],
@@ -240,7 +243,8 @@ def test_run_retrieval_applies_rerank_strategy_controls(monkeypatch) -> None:
         "rag.course_registry.get_course_registry",
         lambda: _stub_registry(),
     )
-    monkeypatch.setattr("rag.pipeline.build_query", lambda query: "dense query")
+    monkeypatch.setattr("rag.pipeline.build_course_query", lambda query: "dense query")
+    monkeypatch.setattr("rag.pipeline.build_cpp_query", lambda query: "cpp hints")
 
     def fake_guidelines(dense_query, top_k, threshold):
         captured["guidelines_top_k"] = top_k

@@ -185,6 +185,7 @@ def test_chat_endpoint_forwards_course_id(monkeypatch, client: TestClient) -> No
         settings,
         stream=False,
         course_id=None,
+        week_override=None,
         session_id=None,
         request_id=None,
         turn_id=None,

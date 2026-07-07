@@ -141,6 +141,7 @@ class ChatRequest(BaseModel):
     """Ollama-compatible chat request (sent by the VS Code extension)."""
     model: str = "codingrabbit-ta"
     course_id: str | None = None
+    week: int | None = Field(default=None, ge=1, le=8)
     session_id: str | None = None
     request_id: str | None = None
     turn_id: str | None = None
@@ -981,6 +982,7 @@ def create_app() -> FastAPI:
                 settings=settings,
                 stream=payload.stream,
                 course_id=payload.course_id,
+                week_override=payload.week,
                 session_id=payload.session_id,
                 request_id=payload.request_id,
                 turn_id=payload.turn_id,
