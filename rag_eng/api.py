@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import uuid
 import logging
@@ -143,6 +144,7 @@ class ChatRequest(BaseModel):
     session_id: str | None = None
     request_id: str | None = None
     turn_id: str | None = None
+    turn_index: int | None = None
     section_id: str | None = None
     result_count: int = Field(default=8, ge=1, le=20)
     rerank_strategy: RetrievalRerankStrategy = "similarity"
@@ -420,6 +422,7 @@ def create_app() -> FastAPI:
                 session_id=payload.session_id,
                 request_id=payload.request_id,
                 turn_id=payload.turn_id,
+                turn_index=payload.turn_index,
                 section_id=payload.section_id,
                 result_count=payload.result_count,
                 rerank_strategy=payload.rerank_strategy,
@@ -1112,7 +1115,7 @@ def create_app() -> FastAPI:
                         SELECT
                             TO_CHAR((created_at AT TIME ZONE '{tz}'), 'Dy') as day,
                             COALESCE(snapshot->'ide_context'->>'mode', 'unknown') as mode,
-                            COALESCE(INITCAP(REPLACE(SUBSTRING(snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Pedagogical_Action' FROM '\[(.*?)\]'), '_', ' ')), 'None') as category,
+                            COALESCE(INITCAP(REPLACE(SUBSTRING(snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Pedagogical_Action' FROM '\\[(.*?)\\]'), '_', ' ')), 'None') as category,
                             COUNT(*) as count
                         FROM tutor_turn_snapshots
                         WHERE created_at >= (CURRENT_TIMESTAMP AT TIME ZONE '{tz}')::DATE - INTERVAL '6 days'
@@ -1424,9 +1427,10 @@ def create_app() -> FastAPI:
                                 if src and src not in unique_sources:
                                     unique_sources.append(src)
 
-                        import re
                         raw_ai_message = row[6] if row[6] else ""
                         clean_ai_message = re.sub(r'<analysis>.*?</analysis>', '', raw_ai_message, flags=re.DOTALL).strip()
+
+                        extracted_cot = row[7] if row[7] and isinstance(row[7], dict) else {}
 
                         feedback_entries.append({
                             "session_id": row[0],
@@ -1436,7 +1440,7 @@ def create_app() -> FastAPI:
                             "created_at": row[4].isoformat() if row[4] else None,
                             "student_message": row[5] if row[5] else None,
                             "ai_message": clean_ai_message if clean_ai_message else None,
-                            "cot": row[7] if row[7] else {},
+                            "cot": extracted_cot,
                             "rag_sources": unique_sources
                         })
 

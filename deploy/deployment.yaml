@@ -241,7 +241,7 @@ rag_eng_ecs:
     COGNITO_JWKS_URL: "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_Z5DAb8wni/.well-known/jwks.json"
     LOG_LEVEL: "INFO"
     GRADIO_ROOT_PATH: "/gradio"
-    GRADIO_PUBLIC_ORIGIN: "https://d26myplnp1msqn.cloudfront.net"
+    GRADIO_PUBLIC_ORIGIN: "https://www.codingrabbit.dev"
     OPENAI_BASE_URL: "https://api.openai.com/v1"
     QDRANT_URL: "https://ccc1cf4f-26c6-441c-ab70-a2a8f2da9464.us-east-1-1.aws.cloud.qdrant.io:6333"
     QDRANT_COLLECTION_NAME: "mit14_course_BAAI_bge_large_en_v1_5"
@@ -255,6 +255,7 @@ rag_eng_ecs:
     # Guardrail checkpoints are restored from S3 at startup; only the small
     # app image is baked into the ECS container.
     INPUT_GUARDRAILS_ENABLED: "true"
+    GUARDRAILS_LOG_ONLY: "false"
     INPUT_GUARDRAILS_CODEBERT_S3_URI: "s3://codingrabbit-data-dev/models/guardrails/input_codebert_v1/model.tar.gz"
     INPUT_GUARDRAILS_CODEBERT_CHECKPOINT_DIR: "input_guardrails/models/checkpoints/input_codebert_v1"
     INPUT_GUARDRAILS_CODEBERT_PASS_BELOW: "0.30"

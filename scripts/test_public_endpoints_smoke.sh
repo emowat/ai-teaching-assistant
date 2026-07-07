@@ -353,8 +353,8 @@ validate_json "$input_guardrail_body" "input_guardrail"
 rag_payload="$TMP_DIR/rag.json"
 write_payload "$rag_payload" <<JSON
 {
-  "student_message": "How does std::vector grow?",
-  "code_raw": "#include <vector>",
+  "student_message": "Why should I call std::vector::reserve(100) before pushing many elements?",
+  "code_raw": "#include <vector>\nint main() {\n    std::vector<int> values;\n    values.reserve(100);\n    values.push_back(1);\n    return 0;\n}",
   "terminal_output": "",
   "exit_code": 0,
   "week": 2,
