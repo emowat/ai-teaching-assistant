@@ -86,6 +86,7 @@ def _retrieval_phase(
         "doc_count": len(chunks),
         "rerank_strategy": rerank_strategy,
         "query_string": getattr(retrieval_result, "query_string", ""),
+        "cpp_query_string": getattr(retrieval_result, "cpp_query_string", ""),
         "has_style_guide": bool(getattr(query, "style_guide", None)) if query else None,
         "has_syllabus_matrix": bool(getattr(query, "syllabus_matrix", None)) if query else None,
         "retrieved_rag_chunks": chunks,

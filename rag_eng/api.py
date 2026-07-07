@@ -168,6 +168,7 @@ class FeedbackPayload(BaseModel):
     rating: str
     reason: str | None = None
     message_index: int | None = None
+    turn_id: str | None = None
 
 
 def _missing_payload_fields(payload: BaseModel, field_names: list[str]) -> list[str]:
@@ -959,7 +960,8 @@ def create_app() -> FastAPI:
                     session_id=payload.session_id,
                     message_index=payload.message_index,
                     rating=payload.rating,
-                    reason=payload.reason
+                    reason=payload.reason,
+                    turn_id=payload.turn_id,
                 )
 
             return {"status": "success"}

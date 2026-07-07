@@ -1168,6 +1168,26 @@ def _extract_chat_context(messages: list[dict]) -> dict:
             return [x.strip().strip("'\"") for x in items if x.strip()]
         return []
 
+    def _extract_variable_types() -> list[str]:
+        """Extract type strings from Target_Variables.
+
+        The extension sends a JSON object {varName: typeStr}, e.g.
+        {"t": "std::vector<int>", "v": "int*"}.  We want the values
+        (the types) for CPP reference lookup, not the variable names.
+        Falls back to the plain array format for callers that send a list.
+        """
+        import json as _json
+        m = re.search(r"Target_Variables:\s*(\{[^}]*\})", content, re.IGNORECASE)
+        if m:
+            try:
+                obj = _json.loads(m.group(1))
+                if isinstance(obj, dict):
+                    return [v for v in obj.values() if isinstance(v, str) and v]
+            except (_json.JSONDecodeError, ValueError):
+                pass
+        # Fall back: array format ["std::vector<int>", ...]
+        return _extract_list("Target_Variables")
+
     ast_features = {
         "has_pointer": _extract_bool("Has_Pointer"),
         "has_reference": _extract_bool("Has_Reference"),
@@ -1180,7 +1200,7 @@ def _extract_chat_context(messages: list[dict]) -> dict:
         "has_stl_algorithm": _extract_bool("Has_STL_Algorithm"),
         "has_smart_pointer": _extract_bool("Has_Smart_Pointer"),
         "has_iterator": _extract_bool("Has_Iterator"),
-        "target_variables": _extract_list("Target_Variables"),
+        "target_variables": _extract_variable_types(),
         "near_cursor_stl": _extract_list("Near_Cursor_STL"),
     }
 

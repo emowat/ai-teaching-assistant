@@ -230,6 +230,7 @@ def run_retrieval(query: QueryInput) -> RetrievalResult:
         syllabus_matrix=query.syllabus_matrix,
         style_guide=query.style_guide,
         query_string=course_query,
+        cpp_query_string=cpp_query,
     )
 
 

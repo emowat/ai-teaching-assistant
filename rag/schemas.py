@@ -148,7 +148,9 @@ class RetrievalResult(BaseModel):
     supplementary: list[RetrievedDoc] = Field(default_factory=list)
     guidelines: list[RetrievedDoc] = Field(default_factory=list)
     harvard: list[RetrievedDoc] = Field(default_factory=list)
-    query_string: str = ""
+    query_string: str = ""        # course content query (student NL question)
+    cpp_query_string: str = ""     # CPP reference query (AST keyword hints)
+
 
     # Pre-formatted context block ready for TA prompt injection
     formatted_context: str = ""

@@ -960,8 +960,28 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
                 
                 for (const match of typeMatches) {
                     const node = match.captures[0].node;
-                    const typeNode = node.childForFieldName('type');
-                    const declNode = node.childForFieldName('declarator');
+                    let typeNode = node.childForFieldName('type');
+                    let declNode = node.childForFieldName('declarator');
+                    
+                    // Fallback for missing field names in some WASM tree-sitter versions
+                    if (!typeNode && node.childCount > 0) {
+                        for (let i = 0; i < node.childCount; i++) {
+                            const c = node.child(i);
+                            if (c && (c.type.includes('type') || c.type === 'primitive_type' || c.type === 'qualified_identifier')) {
+                                typeNode = c;
+                                break;
+                            }
+                        }
+                    }
+                    if (!declNode && typeNode) {
+                        for (let i = 0; i < node.childCount; i++) {
+                            const c = node.child(i);
+                            if (c && c !== typeNode && c.isNamed && c.type !== 'storage_class_specifier' && c.type !== 'type_qualifier') {
+                                declNode = c;
+                                break;
+                            }
+                        }
+                    }
                     
                     if (typeNode && declNode) {
                         let typeStr = typeNode.text;
@@ -969,18 +989,20 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
                         let curr: any = declNode;
                         let varName = "";
                         while (curr) {
+                            const nextCurr = curr.childForFieldName('declarator');
+                            
                             if (curr.type === 'pointer_declarator') {
                                 typeStr += '*';
-                                curr = curr.childForFieldName('declarator');
+                                curr = nextCurr;
                             } else if (curr.type === 'array_declarator') {
                                 const sizeNode = curr.childForFieldName('size');
                                 typeStr += '[' + (sizeNode ? sizeNode.text : '') + ']';
-                                curr = curr.childForFieldName('declarator');
+                                curr = nextCurr;
                             } else if (curr.type === 'init_declarator') {
-                                curr = curr.childForFieldName('declarator');
+                                curr = nextCurr;
                             } else if (curr.type === 'reference_declarator') {
                                 typeStr += '&';
-                                curr = curr.childForFieldName('declarator');
+                                curr = nextCurr;
                             } else if (curr.type === 'identifier' || curr.type === 'field_identifier') {
                                 varName = curr.text;
                                 break;
@@ -998,6 +1020,21 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
                                 if (idNode) {
                                     varName = idNode.text;
                                 }
+                                break;
+                            }
+                            // If childForFieldName returned null we cannot safely continue
+                            if (!nextCurr && curr !== null) {
+                                // Try to recover the identifier via findId on current node
+                                const findId = (n: any): any => {
+                                    if (n.type === 'identifier' || n.type === 'field_identifier') return n;
+                                    for (let i = 0; i < n.childCount; i++) {
+                                        const res = findId(n.child(i));
+                                        if (res) return res;
+                                    }
+                                    return null;
+                                };
+                                const idNode = curr ? findId(curr) : null;
+                                if (idNode) { varName = idNode.text; }
                                 break;
                             }
                         }

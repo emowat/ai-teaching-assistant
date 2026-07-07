@@ -65,14 +65,26 @@ def _ast_hints(ast: ASTFeatures) -> str:
     if ast.has_recursion:
         hints.append("recursion base case stack overflow")
 
-    # Near-cursor STL variables are the strongest signal for reference lookup
+    # Near-cursor STL function/type calls are the strongest signal.
+    # The extension strips "std::" when building near_cursor_stl (it captures
+    # only the part after std::), so we re-add it here for clarity.
+    seen: set[str] = set()
     if ast.near_cursor_stl:
-        hints.append(" ".join(ast.near_cursor_stl))
-    elif ast.target_variables:
-        stl_vars = [v for v in ast.target_variables
-                    if v.startswith("std::") and v not in ("std::cout", "std::cin")]
-        if stl_vars:
-            hints.append(" ".join(stl_vars))
+        for name in ast.near_cursor_stl:
+            term = f"std::{name}"
+            if term not in seen:
+                seen.add(term)
+                hints.append(term)
+
+    # target_variables covers the full function scope — always include STL
+    # types from it, not just as a fallback when near_cursor_stl is empty.
+    # e.g. "std::vector<Item>" → "std::vector", "std::thread" → "std::thread"
+    if ast.target_variables:
+        for v in ast.target_variables:
+            base = v.split("<")[0].strip()
+            if base.startswith("std::") and base not in ("std::cout", "std::cin") and base not in seen:
+                seen.add(base)
+                hints.append(base)
 
     return " ".join(hints)
 

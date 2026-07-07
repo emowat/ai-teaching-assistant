@@ -295,7 +295,7 @@ class TelemetryStore:
                           metadata
                         )
                         VALUES (
-                          %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                          %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                           'started', '', '', 0, 0, %s
                         )
                         """,
@@ -331,7 +331,7 @@ class TelemetryStore:
                           status,
                           metadata
                         )
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         """,
                         (
                             trace.request_id,
@@ -400,7 +400,7 @@ class TelemetryStore:
                           metadata
                         )
                         VALUES (
-                          %s, %s, %s, %s, %s, %s, %s, %s,
+                          %s, %s, %s, %s, %s, %s, %s, %s, %s,
                           %s, %s, %s, %s, %s, %s, %s
                         )
                         """,
@@ -733,8 +733,8 @@ class TelemetryStore:
                                 jsonb_build_object('thumbs_up', %s::text, 'explanation', %s::text)
                             )
                             WHERE turn_id = %s
-                              AND (%s IS NULL OR user_sub = %s)
-                              AND (%s IS NULL OR app_user_id = %s)
+                              AND (%s::text IS NULL OR user_sub = %s::text)
+                              AND (%s::text IS NULL OR app_user_id::text = %s::text)
                             """,
                             (
                                 thumbs_up,
@@ -757,8 +757,8 @@ class TelemetryStore:
                             )
                             WHERE session_id = %s
                               AND turn_index = %s
-                              AND (%s IS NULL OR user_sub = %s)
-                              AND (%s IS NULL OR app_user_id = %s)
+                              AND (%s::text IS NULL OR user_sub = %s::text)
+                              AND (%s::text IS NULL OR app_user_id::text = %s::text)
                             """,
                             (
                                 thumbs_up,
