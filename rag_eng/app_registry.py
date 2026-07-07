@@ -22,6 +22,10 @@ from rag_eng.schemas import (
     AdminUser,
     AdminUserCreate,
     AdminUserUpdate,
+    StudentBootstrapEndpoints,
+    StudentBootstrapResponse,
+    StudentBootstrapSection,
+    StudentBootstrapUser,
     ProfessorSectionStudent,
     ProfessorSectionSummary,
     SectionMembershipSummary,
@@ -247,6 +251,30 @@ def _student_row_from_tuple(row: tuple[Any, ...]) -> dict[str, Any]:
         "session_count": int(session_count or 0),
         "last_session_at": _format_timestamp(last_session_at),
     }
+
+
+def _student_section_from_row(row: tuple[Any, ...]) -> StudentBootstrapSection:
+    (
+        section_id,
+        course_id,
+        course_display_name,
+        display_name,
+        term,
+        is_active,
+        membership_status,
+        _created_at,
+        _updated_at,
+    ) = row[:9]
+    return StudentBootstrapSection(
+        section_id=_clean_text(section_id),
+        course_id=_clean_text(course_id),
+        course_display_name=_clean_text(course_display_name),
+        display_name=_clean_text(display_name),
+        term=_clean_text(term),
+        is_active=bool(is_active),
+        membership_status=_clean_text(membership_status),
+        launch_configs=[],
+    )
 
 
 def _fetch_one_row(connection, query: str, params: tuple[Any, ...]) -> tuple[Any, ...] | None:
@@ -610,6 +638,51 @@ def _load_student_rows_for_section(connection, section_id: str) -> list[tuple[An
         """,
         (section_id, section_id),
     )
+
+
+def _load_student_section_rows(connection, user_id: str) -> list[tuple[Any, ...]]:
+    return _fetch_all_rows(
+        connection,
+        """
+        SELECT
+          s.section_id,
+          s.course_id,
+          c.display_name,
+          s.display_name,
+          s.term,
+          s.is_active,
+          sm.status,
+          s.created_at,
+          s.updated_at
+        FROM section_memberships AS sm
+        INNER JOIN sections AS s ON s.section_id = sm.section_id
+        INNER JOIN courses AS c ON c.course_id = s.course_id
+        WHERE sm.user_id = %s
+          AND sm.role_in_section = 'student'
+          AND sm.status = 'active'
+          AND s.is_active = TRUE
+        ORDER BY s.section_id ASC
+        """,
+        (user_id,),
+    )
+
+
+def _load_most_recent_student_section_id(connection, user_sub: str) -> str | None:
+    row = _fetch_one_row(
+        connection,
+        """
+        SELECT section_id
+        FROM tutor_sessions
+        WHERE user_sub = %s
+          AND section_id IS NOT NULL
+        ORDER BY last_seen_at DESC, updated_at DESC
+        LIMIT 1
+        """,
+        (user_sub,),
+    )
+    if row is None:
+        return None
+    return _clean_text(row[0]) or None
 
 
 def resolve_application_user(
@@ -1154,3 +1227,50 @@ def list_professor_section_students(
         rows = _load_student_rows_for_section(connection, section_id)
 
     return [ProfessorSectionStudent.model_validate(_student_row_from_tuple(row)) for row in rows]
+
+
+def get_student_bootstrap(
+    current_user: CurrentUser,
+    *,
+    runtime: AppRegistryRuntimeConfig | None = None,
+) -> StudentBootstrapResponse:
+    """Resolve the student app user, sections, and default launch context."""
+    runtime = runtime or load_app_registry_runtime_config()
+    database_url = _require_database_url(runtime)
+    app_user = sync_application_user(current_user, runtime=runtime)
+    if not app_user:
+        raise AppUserNotProvisionedError("No provisioned application user is available for this identity.")
+
+    with _connect_postgres(database_url, runtime.connect_timeout_seconds) as connection:
+        section_rows = _load_student_section_rows(connection, app_user["user_id"])
+        if not section_rows:
+            raise MembershipAccessDeniedError(
+                "No active student memberships are assigned to this user."
+            )
+        section_ids = [_clean_text(row[0]) for row in section_rows]
+        default_section_id = section_ids[0]
+        if len(section_ids) > 1:
+            recent_section_id = _load_most_recent_student_section_id(
+                connection,
+                _clean_text(app_user.get("cognito_sub")),
+            )
+            if recent_section_id in section_ids:
+                default_section_id = recent_section_id
+
+    return StudentBootstrapResponse(
+        user=StudentBootstrapUser(
+            app_user_id=_clean_text(app_user["user_id"]),
+            cognito_sub=_clean_text(app_user.get("cognito_sub")) or None,
+            email=_clean_text(app_user["email"]),
+            display_name=_clean_text(app_user.get("display_name")),
+            primary_role=_clean_text(app_user["primary_role"]),
+            status=_clean_text(app_user["status"]),
+        ),
+        sections=[_student_section_from_row(row) for row in section_rows],
+        default_section_id=default_section_id,
+        endpoints=StudentBootstrapEndpoints(
+            chat="/api/student/chat",
+            telemetry="/api/student/telemetry",
+            feedback="/api/student/feedback",
+        ),
+    )

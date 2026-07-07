@@ -20,7 +20,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
 
 from rag_eng.auth.cognito import verify_cognito_access_token
-from rag_eng.auth.dependencies import require_authenticated_user
+from rag_eng.auth.dependencies import require_authenticated_user, require_role
 from rag_eng.auth.models import MeResponse
 from rag_eng.app_registry import (
     AppUserConflictError,
@@ -32,6 +32,7 @@ from rag_eng.app_registry import (
     MembershipNotFoundError,
     SectionConflictError,
     SectionNotFoundError,
+    get_student_bootstrap,
     create_admin_section,
     create_admin_user,
     create_section_membership,
@@ -39,6 +40,7 @@ from rag_eng.app_registry import (
     list_admin_users,
     list_professor_section_students,
     list_professor_sections,
+    require_section_membership,
     sync_application_user,
     update_admin_section,
     update_admin_user,
@@ -107,6 +109,7 @@ from rag_eng.schemas import (
     RagDiagnosticResponse,
     RetrievalRerankStrategy,
     RestartResponse,
+    StudentBootstrapResponse,
     TelemetryPayload,
 )
 from rag_eng.ingestion_jobs import (
@@ -354,6 +357,18 @@ def create_app() -> FastAPI:
             except Exception as exc:
                 raise _app_registry_http_error(exc) from exc
         return MeResponse.from_current_user(current_user)
+
+    @app.get(
+        "/api/student/bootstrap",
+        response_model=StudentBootstrapResponse,
+    )
+    def student_bootstrap(
+        current_user=Depends(require_role("student")),
+    ) -> StudentBootstrapResponse:
+        try:
+            return get_student_bootstrap(current_user)
+        except Exception as exc:
+            raise _app_registry_http_error(exc) from exc
 
     @app.post("/query", response_model=QueryResult)
     def query(payload: QueryPayload) -> QueryResult:
@@ -967,6 +982,61 @@ def create_app() -> FastAPI:
                 section_id=payload.section_id,
                 result_count=payload.result_count,
                 rerank_strategy=payload.rerank_strategy,
+            )
+            if payload.stream:
+                return StreamingResponse(result, media_type="application/x-ndjson")
+            return result
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=_error_detail(exc)) from exc
+
+    @app.post("/api/student/chat")
+    async def student_chat(
+        payload: ChatRequest,
+        settings: Settings = Depends(get_settings),
+        current_user=Depends(require_role("student")),
+    ):
+        """Authenticated student chat endpoint backed by Aurora membership."""
+        required_fields = {
+            "section_id": payload.section_id,
+            "request_id": payload.request_id,
+            "turn_id": payload.turn_id,
+            "turn_index": payload.turn_index,
+        }
+        missing_fields = [name for name, value in required_fields.items() if value in {None, ""}]
+        if missing_fields:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "/api/student/chat requires "
+                    + ", ".join(missing_fields)
+                    + "."
+                ),
+            )
+
+        try:
+            require_section_membership(
+                current_user,
+                payload.section_id,
+                allowed_roles={"student"},
+            )
+        except Exception as exc:
+            raise _app_registry_http_error(exc) from exc
+
+        try:
+            result = await run_chat(
+                messages=payload.messages,
+                model_name=payload.model,
+                settings=settings,
+                stream=payload.stream,
+                course_id=payload.course_id,
+                session_id=payload.session_id,
+                request_id=payload.request_id,
+                turn_id=payload.turn_id,
+                turn_index=payload.turn_index,
+                section_id=payload.section_id,
+                result_count=payload.result_count,
+                rerank_strategy=payload.rerank_strategy,
+                user_sub=current_user.cognito_sub,
             )
             if payload.stream:
                 return StreamingResponse(result, media_type="application/x-ndjson")

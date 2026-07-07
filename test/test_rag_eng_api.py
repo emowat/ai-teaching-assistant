@@ -19,6 +19,10 @@ from rag_eng.schemas import (
     ProfessorSectionStudent,
     ProfessorSectionSummary,
     QueryResponse,
+    StudentBootstrapEndpoints,
+    StudentBootstrapResponse,
+    StudentBootstrapSection,
+    StudentBootstrapUser,
 )
 
 
@@ -570,6 +574,128 @@ def test_me_endpoint_syncs_application_user_for_professor(
     assert response.status_code == 200
     assert called["count"] == 1
     assert response.json()["primary_role"] == "professor"
+
+
+def test_student_bootstrap_endpoint_returns_sections(
+    monkeypatch, client: TestClient
+) -> None:
+    client.app.dependency_overrides[require_authenticated_user] = lambda: CurrentUser(
+        cognito_sub="student-sub",
+        email="student@example.edu",
+        primary_role="student",
+    )
+    monkeypatch.setattr(
+        "rag_eng.api.get_student_bootstrap",
+        lambda current_user: StudentBootstrapResponse(
+            user=StudentBootstrapUser(
+                app_user_id="user-1",
+                cognito_sub=current_user.cognito_sub,
+                email=current_user.email or "",
+                display_name="Student",
+                primary_role="student",
+                status="active",
+            ),
+            sections=[
+                StudentBootstrapSection(
+                    section_id="mit14-fall-001",
+                    course_id="mit14",
+                    course_display_name="MIT 6.0014",
+                    display_name="MIT 6.0014 Section A",
+                    term="Fall 2026",
+                    is_active=True,
+                    membership_status="active",
+                    launch_configs=[],
+                )
+            ],
+            default_section_id="mit14-fall-001",
+            endpoints=StudentBootstrapEndpoints(
+                chat="/api/student/chat",
+                telemetry="/api/student/telemetry",
+                feedback="/api/student/feedback",
+            ),
+        ),
+    )
+
+    try:
+        response = client.get("/api/student/bootstrap")
+    finally:
+        client.app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["user"]["app_user_id"] == "user-1"
+    assert body["sections"][0]["section_id"] == "mit14-fall-001"
+    assert body["default_section_id"] == "mit14-fall-001"
+    assert body["endpoints"]["chat"] == "/api/student/chat"
+
+
+def test_student_chat_endpoint_stamps_student_identity(
+    monkeypatch, client: TestClient
+) -> None:
+    client.app.dependency_overrides[require_authenticated_user] = lambda: CurrentUser(
+        cognito_sub="student-sub",
+        email="student@example.edu",
+        primary_role="student",
+    )
+
+    captured: dict[str, object] = {}
+
+    def fake_require_section_membership(
+        current_user,
+        section_id,
+        allowed_roles=None,
+        runtime=None,
+    ):
+        captured["section_id"] = section_id
+        captured["allowed_roles"] = allowed_roles
+        return {"user_id": "user-1"}
+
+    async def fake_run_chat(
+        messages,
+        model_name,
+        settings,
+        stream=False,
+        course_id=None,
+        session_id=None,
+        request_id=None,
+        turn_id=None,
+        turn_index=None,
+        section_id=None,
+        result_count=None,
+        rerank_strategy=None,
+        user_sub=None,
+        telemetry_store=None,
+    ):
+        captured["user_sub"] = user_sub
+        captured["section_id_from_chat"] = section_id
+        captured["request_id"] = request_id
+        return {"message": {"content": "student response"}}
+
+    monkeypatch.setattr("rag_eng.api.require_section_membership", fake_require_section_membership)
+    monkeypatch.setattr("rag_eng.api.run_chat", fake_run_chat)
+
+    try:
+        response = client.post(
+            "/api/student/chat",
+            json={
+                "model": "codingrabbit-ta",
+                "course_id": "mit14",
+                "section_id": "mit14-fall-001",
+                "session_id": "sess-1",
+                "request_id": "req-1",
+                "turn_id": "turn-1",
+                "turn_index": 1,
+                "messages": [{"role": "user", "content": "Why does this crash?"}],
+            },
+        )
+    finally:
+        client.app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert captured["section_id"] == "mit14-fall-001"
+    assert captured["allowed_roles"] == {"student"}
+    assert captured["user_sub"] == "student-sub"
+    assert captured["section_id_from_chat"] == "mit14-fall-001"
 
 
 def test_admin_users_and_sections_routes_allow_authorized_requests(

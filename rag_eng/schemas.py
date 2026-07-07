@@ -304,6 +304,59 @@ class ProfessorSectionStudent(BaseModel):
     last_session_at: str = ""
 
 
+class StudentLaunchConfig(BaseModel):
+    """Student-facing launch routing metadata for one section launch option."""
+
+    launch_id: str
+    label: str
+    repo_url: str = ""
+    template_url: str = ""
+    default_branch: str = "main"
+    enabled: bool = False
+    sort_order: int = 0
+
+
+class StudentBootstrapSection(BaseModel):
+    """Student-facing section summary returned by the bootstrap endpoint."""
+
+    section_id: str
+    course_id: str
+    course_display_name: str = ""
+    display_name: str
+    term: str = ""
+    is_active: bool = True
+    membership_status: SectionMembershipStatus
+    launch_configs: list[StudentLaunchConfig] = Field(default_factory=list)
+
+
+class StudentBootstrapUser(BaseModel):
+    """Resolved Aurora application user returned by the bootstrap endpoint."""
+
+    app_user_id: str
+    cognito_sub: str | None = None
+    email: str
+    display_name: str = ""
+    primary_role: AppPrimaryRole
+    status: UserStatus
+
+
+class StudentBootstrapEndpoints(BaseModel):
+    """Student-facing API endpoints returned by the bootstrap endpoint."""
+
+    chat: str
+    telemetry: str
+    feedback: str
+
+
+class StudentBootstrapResponse(BaseModel):
+    """Bootstrap payload used by the VS Code extension and student web UI."""
+
+    user: StudentBootstrapUser
+    sections: list[StudentBootstrapSection] = Field(default_factory=list)
+    default_section_id: str | None = None
+    endpoints: StudentBootstrapEndpoints
+
+
 class IndexEnsureResponse(BaseModel):
     """Response for the idempotent ensure-index flow."""
 

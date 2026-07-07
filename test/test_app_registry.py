@@ -15,6 +15,7 @@ from rag_eng.schemas import (
     AdminSectionMembershipUpdate,
     AdminSectionUpdate,
     AdminUserCreate,
+    StudentBootstrapResponse,
 )
 
 
@@ -127,6 +128,24 @@ class _FakeCursor:
             membership["role_in_section"],
             len(sessions),
             last_session_at,
+        )
+
+    def _student_section_row(
+        self,
+        membership: dict[str, object],
+    ) -> tuple[object, ...]:
+        section = self.state.sections[str(membership["section_id"])]
+        course = self.state.courses[str(section["course_id"])]
+        return (
+            section["section_id"],
+            section["course_id"],
+            course["display_name"],
+            section["display_name"],
+            section.get("term", ""),
+            section.get("is_active", True),
+            membership["status"],
+            section["created_at"],
+            section["updated_at"],
         )
 
     def execute(self, query: str, params: tuple[object, ...] | None = None) -> None:
@@ -336,6 +355,42 @@ class _FakeCursor:
                 and str(membership["status"]) == "active"
             ]
             self._rows = rows
+            return
+
+        if sql.startswith(
+            "SELECT s.section_id, s.course_id, c.display_name, s.display_name, s.term, s.is_active, sm.status, s.created_at, s.updated_at FROM section_memberships AS sm INNER JOIN sections AS s ON s.section_id = sm.section_id INNER JOIN courses AS c ON c.course_id = s.course_id WHERE sm.user_id = %s AND sm.role_in_section = 'student' AND sm.status = 'active' AND s.is_active = TRUE ORDER BY s.section_id ASC"
+        ):
+            user_id = str(params[0])
+            rows = [
+                self._student_section_row(membership)
+                for membership in self.state.memberships.values()
+                if str(membership["user_id"]) == user_id
+                and str(membership["role_in_section"]) == "student"
+                and str(membership["status"]) == "active"
+                and bool(self.state.sections[str(membership["section_id"])]["is_active"])
+            ]
+            self._rows = sorted(rows, key=lambda row: str(row[0]))
+            return
+
+        if sql.startswith(
+            "SELECT section_id FROM tutor_sessions WHERE user_sub = %s AND section_id IS NOT NULL ORDER BY last_seen_at DESC, updated_at DESC LIMIT 1"
+        ):
+            user_sub = str(params[0])
+            sessions = [
+                session
+                for session in self.state.tutor_sessions
+                if str(session.get("user_sub", "")) == user_sub
+                and session.get("section_id") is not None
+            ]
+            if sessions:
+                latest = max(
+                    sessions,
+                    key=lambda row: (
+                        row.get("last_seen_at"),
+                        row.get("updated_at", row.get("last_seen_at")),
+                    ),
+                )
+                self._rows = [(latest["section_id"],)]
             return
 
         if sql.startswith("SELECT course_id FROM courses WHERE course_id = %s"):
@@ -627,6 +682,92 @@ def test_resolve_application_user_rejects_disabled_user(
             CurrentUser(
                 cognito_sub="sub-3",
                 email="disabled@example.edu",
+                primary_role="student",
+            ),
+            runtime=_runtime(),
+        )
+
+
+def test_get_student_bootstrap_returns_sections_and_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _state()
+    state.users["student-1"] = _user(
+        user_id="student-1",
+        email="student@example.edu",
+        display_name="Student",
+        primary_role="student",
+        status="active",
+        cognito_sub="sub-student",
+    )
+    state.sections["mit14-fall-001"] = _section(
+        section_id="mit14-fall-001",
+        display_name="MIT 6.0014 Section A",
+    )
+    state.sections["mit14-fall-002"] = _section(
+        section_id="mit14-fall-002",
+        display_name="MIT 6.0014 Section B",
+    )
+    state.memberships[("mit14-fall-001", "student-1")] = _membership(
+        section_id="mit14-fall-001",
+        user_id="student-1",
+        role_in_section="student",
+    )
+    state.memberships[("mit14-fall-002", "student-1")] = _membership(
+        section_id="mit14-fall-002",
+        user_id="student-1",
+        role_in_section="student",
+    )
+    state.tutor_sessions.append(
+        {
+            "session_id": "sess-1",
+            "user_sub": "sub-student",
+            "section_id": "mit14-fall-002",
+            "last_seen_at": NOW,
+            "updated_at": NOW,
+        }
+    )
+    _patch_connection(monkeypatch, state)
+
+    response = app_registry.get_student_bootstrap(
+        CurrentUser(
+            cognito_sub="sub-student",
+            email="student@example.edu",
+            primary_role="student",
+        ),
+        runtime=_runtime(),
+    )
+
+    assert isinstance(response, StudentBootstrapResponse)
+    assert response.user.app_user_id == "student-1"
+    assert [section.section_id for section in response.sections] == [
+        "mit14-fall-001",
+        "mit14-fall-002",
+    ]
+    assert response.default_section_id == "mit14-fall-002"
+    assert response.endpoints.chat == "/api/student/chat"
+    assert response.sections[0].launch_configs == []
+
+
+def test_get_student_bootstrap_requires_active_membership(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _state()
+    state.users["student-1"] = _user(
+        user_id="student-1",
+        email="student@example.edu",
+        display_name="Student",
+        primary_role="student",
+        status="active",
+        cognito_sub="sub-student",
+    )
+    _patch_connection(monkeypatch, state)
+
+    with pytest.raises(app_registry.MembershipAccessDeniedError):
+        app_registry.get_student_bootstrap(
+            CurrentUser(
+                cognito_sub="sub-student",
+                email="student@example.edu",
                 primary_role="student",
             ),
             runtime=_runtime(),

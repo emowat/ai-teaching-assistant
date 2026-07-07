@@ -66,6 +66,51 @@ Environment overrides are documented in the script itself:
 | `POST` | `/api/diagnostics/pipeline` | full pipeline probe |
 | `POST` | `/api/export-chat-logs` | trigger a log download to S3 use ?start_date="YYY-MM-DD" |
 
+## Authenticated student endpoints
+
+These routes require a Cognito access token in the `Authorization` header.
+They are the preferred surface for the VS Code extension after sign-in.
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/api/student/bootstrap` | resolve the authenticated app user, sections, and default section |
+| `POST` | `/api/student/chat` | section-gated student chat route |
+
+Example bootstrap call:
+
+```bash
+curl -sS "$BASE_URL/api/student/bootstrap" \
+  -H "Authorization: Bearer $COGNITO_ACCESS_TOKEN" | jq .
+```
+
+Example student chat call:
+
+```bash
+curl -sS "$BASE_URL/api/student/chat" \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $COGNITO_ACCESS_TOKEN" \
+  -d @- <<'JSON' | jq .
+{
+  "model": "codingrabbit-ta",
+  "course_id": "mit14",
+  "section_id": "mit14-fall-001",
+  "session_id": "demo-session-001",
+  "request_id": "demo-request-001",
+  "turn_id": "demo-turn-001",
+  "turn_index": 1,
+  "result_count": 8,
+  "rerank_strategy": "similarity",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Why does this pointer crash after free?"
+    }
+  ],
+  "stream": false
+}
+JSON
+```
+
 ## Payload notes
 
 The public diagnostic routes reuse the same request models as the chat/query

@@ -66,6 +66,8 @@ routes accept either auth style.
 | `GET` | `/me` | bearer | current authenticated user / role |
 | `POST` | `/query` | none | RAG query with reranking |
 | `POST` | `/api/chat` | none | full pipeline chat / VS Code extension endpoint |
+| `GET` | `/api/student/bootstrap` | bearer | resolve the authenticated student app user and active sections |
+| `POST` | `/api/student/chat` | bearer | section-gated student tutoring pipeline |
 | `POST` | `/api/diagnostics/input-guardrail` | none | public pre-RAG input-guardrail probe |
 | `POST` | `/api/diagnostics/rag` | none | public RAG-stage probe |
 | `POST` | `/api/diagnostics/output-guardrail` | none | public post-LLM guardrail probe |
