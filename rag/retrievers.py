@@ -180,42 +180,6 @@ def _rules_filter(week: int, *, cumulative: bool = False) -> Filter:
     ])
 
 
-# ---------------------------------------------------------------------------
-# Retriever A: Syllabus (exact lookup, no vector search)
-# ---------------------------------------------------------------------------
-
-def retrieve_syllabus(week: int, *, course: str = "mit13") -> RetrievedDoc | None:
-    """Exact lookup of the syllabus document for a given week and course.
-
-    The *course* parameter selects the Qdrant collection via runtime config
-    (``"mit13"``, ``"mit14"``, ``"cs50"``).
-    """
-    client = _get_client()
-    collection = get_runtime_config().collection_for(course)
-    records, _ = client.scroll(
-        collection_name=collection,
-        scroll_filter=_syllabus_filter(week),
-        limit=1,
-    )
-
-    if not records:
-        return None
-
-    r = records[0]
-    p = r.payload or {}
-    return RetrievedDoc(
-        chunk_id=p.get("chunk_id", ""),
-        content=p.get("content", ""),
-        category=DocCategory.SYLLABUS,
-        week=week,
-        priority=1,
-        score=1.0,
-        source_domain=_coerce_source_domain(
-            p.get("source_domain"),
-            default=SourceDomain.MIT_OCW_SYLLABUS,
-        ),
-        source_type=p.get("source_type", ""),
-    )
 
 
 # ---------------------------------------------------------------------------

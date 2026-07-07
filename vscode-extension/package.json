@@ -68,6 +68,18 @@
           "type": "string",
           "default": "codingrabbit-ta",
           "description": "The name of the Ollama model to use."
+        },
+        "codingRabbit.courseId": {
+          "type": "string",
+          "default": "",
+          "description": "Course ID to send with each request (e.g. 'mit14', 'cs50'). Controls which syllabus and style rules the TA applies."
+        },
+        "codingRabbit.currentWeek": {
+          "type": "number",
+          "default": 1,
+          "minimum": 1,
+          "maximum": 10,
+          "description": "Current week of the course (1-10). The professor advances this each week via workspace settings.json. Controls which syllabus topics are allowed/forbidden."
         }
       }
     },

@@ -14,7 +14,8 @@ from typing import Any, AsyncIterator
 from rag import build_prompt, generate_response_from_result, run_retrieval
 from rag.runtime import create_qdrant_client
 
-from rag.course_registry import get_course_registry_status
+from rag.course_registry import get_course_registry_status, get_course_registry
+
 from rag_eng.config import Settings, get_inference_config, get_settings
 from rag_eng.config import get_runtime_policy_config
 from rag_eng.indexing import ensure_index, rebuild_index
@@ -718,6 +719,16 @@ def run_query(
     telemetry_store: TelemetryStore | None = None,
 ) -> QueryResponse:
     """Execute retrieval once, then generate the TA answer from that result."""
+    if query.course_id:
+        try:
+            registry = get_course_registry()
+            course_def = registry.get_course(query.course_id)
+            if course_def:
+                query.syllabus_matrix = course_def.syllabus_matrix
+                query.style_guide = course_def.style_guide
+        except Exception:
+            pass
+
     telemetry_store = telemetry_store or get_telemetry_store()
     trace = telemetry_store.start_turn(query=query, source="query")
     runtime = get_inference_config()
@@ -1266,6 +1277,17 @@ async def run_chat(
         "turn_index": turn_index,
         "section_id": section_id,
     }
+
+    if course_id:
+        try:
+            registry = get_course_registry()
+            course_def = registry.get_course(course_id)
+            if course_def:
+                query_kwargs["syllabus_matrix"] = course_def.syllabus_matrix
+                query_kwargs["style_guide"] = course_def.style_guide
+        except Exception:
+            pass
+
     if result_count is not None:
         query_kwargs["result_count"] = result_count
     if rerank_strategy is not None:

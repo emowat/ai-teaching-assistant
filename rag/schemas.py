@@ -116,6 +116,8 @@ class QueryInput(BaseModel):
     request_id: Optional[str] = None
     turn_id: Optional[str] = None
     section_id: Optional[str] = None
+    syllabus_matrix: Optional[str] = None
+    style_guide: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------

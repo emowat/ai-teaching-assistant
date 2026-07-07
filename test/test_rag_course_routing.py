@@ -191,10 +191,6 @@ def test_run_retrieval_uses_registry_collection_name(monkeypatch) -> None:
         lambda dense_query, top_k, threshold: [],
     )
 
-    def fake_syllabus(week, *, course=None, collection_name=None):
-        captured["syllabus_collection"] = collection_name
-        return SimpleNamespace()
-
     def fake_semantic(dense_query, week, top_k=5, *, cumulative=False, collection_name):
         captured["semantic_collection"] = collection_name
         return []
@@ -203,9 +199,6 @@ def test_run_retrieval_uses_registry_collection_name(monkeypatch) -> None:
         dense_query, week, top_k=3, threshold=0.55, *, cumulative=False, collection_name
     ):
         captured["rules_collection"] = collection_name
-        return []
-
-    monkeypatch.setattr("rag.pipeline.retrieve_syllabus", fake_syllabus)
     monkeypatch.setattr("rag.pipeline.retrieve_semantic", fake_semantic)
     monkeypatch.setattr("rag.pipeline.retrieve_strict_rules", fake_rules)
     monkeypatch.setattr(
@@ -236,7 +229,6 @@ def test_run_retrieval_uses_registry_collection_name(monkeypatch) -> None:
     )
 
     assert result.formatted_context == "[ctx]"
-    assert captured["syllabus_collection"] is None
     assert captured["semantic_collection"] == "mit14_course"
     assert captured["rules_collection"] == "mit14_course"
 
@@ -255,9 +247,6 @@ def test_run_retrieval_applies_rerank_strategy_controls(monkeypatch) -> None:
         return []
 
     monkeypatch.setattr("rag.pipeline.retrieve_guidelines", fake_guidelines)
-
-    def fake_syllabus(week, *, course=None, collection_name=None):
-        return SimpleNamespace()
 
     def fake_semantic(
         dense_query,
@@ -287,7 +276,6 @@ def test_run_retrieval_applies_rerank_strategy_controls(monkeypatch) -> None:
         captured["lambda_param"] = kwargs["lambda_param"]
         return (None, [], [], [], [])
 
-    monkeypatch.setattr("rag.pipeline.retrieve_syllabus", fake_syllabus)
     monkeypatch.setattr("rag.pipeline.retrieve_semantic", fake_semantic)
     monkeypatch.setattr("rag.pipeline.retrieve_strict_rules", fake_rules)
     monkeypatch.setattr("rag.pipeline.merge_and_rerank", fake_merge_and_rerank)

@@ -881,8 +881,11 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
    - Turn 2: Use [CONCEPTUAL_INTEGRATION]. Bridge the analogy to a previously mastered C++ concept.
    - Turn 3+: Use a [DIRECT_THEORY_SCAFFOLD]. Provide the formal, rigorous definition using the [Vector_Database_Results] with markdown citations.`;
 
+        const currentWeek = vscode.workspace.getConfiguration('codingRabbit').get<number>('currentWeek') || 1;
+
         let dynamicContext = `[State_Tracking]
 Mode: ${mode}
+Week: ${currentWeek}
 ${likelyPasteDetected ? "Likely_Paste_Detected: true\nPasted_Char_Count: " + pastedCharCount : "Likely_Paste_Detected: false"}
 Session_Style_Nudged: ${this._hasGivenStyleNudge}
 Session_Adversarial_Warnings: ${this._adversarialWarningCount}
@@ -966,7 +969,7 @@ ${terminalOutput}`;
             
             outputChannel.appendLine(`Model Requested: ${modelName}`);
             
-            const requestBody = {
+            const requestBody: Record<string, unknown> = {
                 model: modelName,
                 session_id: this._sessionId,
                 turn_index: currentTurnIndex,
@@ -979,6 +982,12 @@ ${terminalOutput}`;
                     num_predict: 2048
                 }
             };
+
+            const courseId = vscode.workspace.getConfiguration('codingRabbit').get<string>('courseId') || '';
+            if (courseId) {
+                requestBody['course_id'] = courseId;
+            }
+            requestBody['week'] = currentWeek;
 
             // Using dynamic import for fetch since node-fetch isn't bundled
             // VSCode extensions in Node 18+ have global fetch

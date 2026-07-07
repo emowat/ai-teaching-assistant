@@ -55,6 +55,17 @@ class CourseRoute:
 
 
 @dataclass(frozen=True)
+class CourseDef:
+    """Full course definition including content policy fields."""
+
+    course_id: str
+    course_source: CourseSource
+    collection_name: str
+    syllabus_matrix: str | None = None
+    style_guide: str | None = None
+
+
+@dataclass(frozen=True)
 class CourseRegistryStatus:
     """Health information for the Aurora-backed course registry."""
 
@@ -74,9 +85,10 @@ class CourseRegistry:
     ):
         self._runtime = runtime or get_runtime_config()
         self._routes = self._build_routes(self._runtime)
+        self._course_defs: dict[str, CourseDef] = {}
         if database_url:
             try:
-                database_routes = _load_database_routes(database_url)
+                database_routes, database_defs = _load_database_routes(database_url)
             except Exception as exc:
                 logger.warning(
                     "Aurora course registry unavailable; using static fallback: %s",
@@ -85,6 +97,7 @@ class CourseRegistry:
             else:
                 if database_routes:
                     self._routes.update(database_routes)
+                    self._course_defs.update(database_defs)
                 else:
                     logger.warning(
                         "Aurora course registry returned no rows; using static fallback."
@@ -149,16 +162,45 @@ class CourseRegistry:
 
         raise ValueError(f"Unsupported course_source: {course_source}")
 
+    def get_course(self, course_id: str) -> CourseDef | None:
+        """Return the full course definition including style_guide and syllabus_matrix.
 
-def _load_database_routes(database_url: str) -> dict[str, CourseRoute]:
-    """Load canonical course routes and aliases from Aurora/PostgreSQL."""
+        Loaded once at startup from the DB — no per-request DB connections.
+        """
+        normalized = _normalize_course_id(course_id)
+        # Return the full CourseDef if we loaded it from the DB at startup
+        if normalized in self._course_defs:
+            return self._course_defs[normalized]
+        # Fall back to route-only (no policy fields) if DB wasn't available
+        route = self._routes.get(normalized)
+        if route is None:
+            return None
+        return CourseDef(
+            course_id=route.course_id,
+            course_source=route.course_source,
+            collection_name=route.collection_name,
+        )
+
+
+
+def _load_database_routes(
+    database_url: str,
+) -> tuple[dict[str, CourseRoute], dict[str, CourseDef]]:
+    """Load canonical course routes, aliases, and policy fields from Aurora/PostgreSQL.
+
+    Returns two dicts keyed by normalized course_id:
+    - routes: CourseRoute (collection routing only)
+    - defs:   CourseDef  (full definition including style_guide + syllabus_matrix)
+    """
     routes: dict[str, CourseRoute] = {}
+    defs: dict[str, CourseDef] = {}
 
     with _connect_postgres(database_url) as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT course_id, course_source, collection_name
+                SELECT course_id, course_source, collection_name,
+                       syllabus_matrix, style_guide
                 FROM courses
                 WHERE is_active = TRUE
                 ORDER BY course_id
@@ -176,17 +218,34 @@ def _load_database_routes(database_url: str) -> dict[str, CourseRoute]:
             alias_rows = cursor.fetchall()
 
     for row in course_rows:
-        course_id, course_source, collection_name = row[:3]
+        course_id, course_source, collection_name, syllabus_matrix, style_guide = row[:5]
+        course_id = str(course_id)
         route = CourseRoute(
-            course_id=str(course_id),
+            course_id=course_id,
             course_source=_parse_course_source(course_source),
             collection_name=str(collection_name),
         )
-        routes[_normalize_course_id(route.course_id)] = route
+        definition = CourseDef(
+            course_id=course_id,
+            course_source=route.course_source,
+            collection_name=route.collection_name,
+            syllabus_matrix=str(syllabus_matrix) if syllabus_matrix else None,
+            style_guide=str(style_guide) if style_guide else None,
+        )
+        key = _normalize_course_id(course_id)
+        routes[key] = route
+        defs[key] = definition
+        logger.debug(
+            "Loaded course %s: style_guide=%s, syllabus_matrix=%s",
+            course_id,
+            "present" if style_guide else "missing",
+            "present" if syllabus_matrix else "missing",
+        )
 
     for row in alias_rows:
         alias, canonical_course_id = row[:2]
-        canonical_route = routes.get(_normalize_course_id(str(canonical_course_id)))
+        canonical_key = _normalize_course_id(str(canonical_course_id))
+        canonical_route = routes.get(canonical_key)
         if canonical_route is None:
             logger.warning(
                 "Skipping course alias %s because canonical course %s was not loaded.",
@@ -194,9 +253,12 @@ def _load_database_routes(database_url: str) -> dict[str, CourseRoute]:
                 canonical_course_id,
             )
             continue
-        routes[_normalize_course_id(str(alias))] = canonical_route
+        alias_key = _normalize_course_id(str(alias))
+        routes[alias_key] = canonical_route
+        if canonical_key in defs:
+            defs[alias_key] = defs[canonical_key]
 
-    return routes
+    return routes, defs
 
 
 def get_course_registry_status(

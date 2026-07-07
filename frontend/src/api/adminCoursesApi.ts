@@ -10,6 +10,8 @@ export interface AdminCourse {
   is_active: boolean;
   has_ingestion_history: boolean;
   aliases: string[];
+  syllabus_matrix?: string;
+  style_guide?: string;
   created_at: string;
   updated_at: string;
 }
@@ -21,6 +23,8 @@ export interface AdminCourseCreatePayload {
   collection_name: string;
   is_active?: boolean;
   aliases?: string[];
+  syllabus_matrix?: string;
+  style_guide?: string;
 }
 
 export interface AdminCourseUpdatePayload {
@@ -28,6 +32,8 @@ export interface AdminCourseUpdatePayload {
   course_source?: AdminCourseSource;
   collection_name?: string;
   is_active?: boolean;
+  syllabus_matrix?: string;
+  style_guide?: string;
 }
 
 export interface AdminCourseAliasCreatePayload {

@@ -464,6 +464,8 @@ class AdminCourse(BaseModel):
     is_active: bool
     has_ingestion_history: bool = False
     aliases: list[str] = Field(default_factory=list)
+    syllabus_matrix: str | None = None
+    style_guide: str | None = None
     created_at: str = ""
     updated_at: str = ""
 
@@ -477,6 +479,8 @@ class AdminCourseCreate(BaseModel):
     collection_name: str = Field(min_length=1)
     is_active: bool = True
     aliases: list[str] = Field(default_factory=list)
+    syllabus_matrix: str | None = None
+    style_guide: str | None = None
 
 
 class AdminCourseUpdate(BaseModel):
@@ -486,6 +490,8 @@ class AdminCourseUpdate(BaseModel):
     course_source: RagCourseSource | None = None
     collection_name: str | None = None
     is_active: bool | None = None
+    syllabus_matrix: str | None = None
+    style_guide: str | None = None
 
     @model_validator(mode="after")
     def _validate_non_empty_update(self) -> "AdminCourseUpdate":
@@ -494,6 +500,8 @@ class AdminCourseUpdate(BaseModel):
             and self.course_source is None
             and self.collection_name is None
             and self.is_active is None
+            and self.syllabus_matrix is None
+            and self.style_guide is None
         ):
             raise ValueError("At least one course field must be provided.")
         return self
