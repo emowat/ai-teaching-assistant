@@ -88,6 +88,28 @@ class TelemetryPayload(BaseModel):
     engagement_metrics: EngagementMetrics
 
 
+class StudentTelemetryPayload(TelemetryPayload):
+    """Authenticated telemetry payload for the student-only surface."""
+
+    section_id: str
+    request_id: str
+    turn_id: str
+    turn_index: int
+    course_id: str | None = None
+
+
+class StudentFeedbackPayload(BaseModel):
+    """Authenticated feedback payload for the student-only surface."""
+
+    session_id: str
+    section_id: str
+    request_id: str
+    turn_id: str
+    turn_index: int
+    rating: Literal["up", "down"]
+    reason: str | None = None
+
+
 class GuardrailResult(BaseModel):
     """Structured guardrail outcome returned alongside pipeline answers."""
 

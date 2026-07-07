@@ -75,6 +75,8 @@ They are the preferred surface for the VS Code extension after sign-in.
 |---|---|---|
 | `GET` | `/api/student/bootstrap` | resolve the authenticated app user, sections, and default section |
 | `POST` | `/api/student/chat` | section-gated student chat route |
+| `POST` | `/api/student/telemetry` | authenticated student telemetry surface that persists Aurora identity |
+| `POST` | `/api/student/feedback` | authenticated student feedback surface that persists Aurora identity |
 
 Example bootstrap call:
 
@@ -107,6 +109,50 @@ curl -sS "$BASE_URL/api/student/chat" \
     }
   ],
   "stream": false
+}
+JSON
+```
+
+Example student telemetry call:
+
+```bash
+curl -sS "$BASE_URL/api/student/telemetry" \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $COGNITO_ACCESS_TOKEN" \
+  -d @- <<'JSON' | jq .
+{
+  "session_id": "demo-session-001",
+  "mode": "Homework Assist",
+  "section_id": "mit14-fall-001",
+  "request_id": "demo-request-001",
+  "turn_id": "demo-turn-001",
+  "turn_index": 1,
+  "course_id": "mit14",
+  "engagement_metrics": {
+    "paste_count": 1,
+    "run_count": 0,
+    "hint_count": 2,
+    "telemetry_version": "v1"
+  }
+}
+JSON
+```
+
+Example student feedback call:
+
+```bash
+curl -sS "$BASE_URL/api/student/feedback" \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $COGNITO_ACCESS_TOKEN" \
+  -d @- <<'JSON' | jq .
+{
+  "session_id": "demo-session-001",
+  "section_id": "mit14-fall-001",
+  "request_id": "demo-request-001",
+  "turn_id": "demo-turn-001",
+  "turn_index": 1,
+  "rating": "up",
+  "reason": "The hint helped me find the bug."
 }
 JSON
 ```

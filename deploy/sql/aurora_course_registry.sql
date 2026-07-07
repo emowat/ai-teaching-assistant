@@ -70,6 +70,20 @@ CREATE TABLE IF NOT EXISTS section_memberships (
   PRIMARY KEY (section_id, user_id)
 );
 
+CREATE TABLE IF NOT EXISTS section_launch_configs (
+  section_id text NOT NULL REFERENCES sections(section_id) ON DELETE CASCADE,
+  launch_id text NOT NULL,
+  label text NOT NULL,
+  repo_url text NOT NULL DEFAULT '',
+  template_url text NOT NULL DEFAULT '',
+  default_branch text NOT NULL DEFAULT 'main',
+  enabled boolean NOT NULL DEFAULT FALSE,
+  sort_order integer NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (section_id, launch_id)
+);
+
 CREATE INDEX IF NOT EXISTS users_email_idx
   ON users (email);
 
@@ -84,6 +98,9 @@ CREATE INDEX IF NOT EXISTS section_memberships_user_id_status_idx
 
 CREATE INDEX IF NOT EXISTS section_memberships_section_id_role_status_idx
   ON section_memberships (section_id, role_in_section, status);
+
+CREATE INDEX IF NOT EXISTS section_launch_configs_section_id_enabled_sort_idx
+  ON section_launch_configs (section_id, enabled, sort_order, launch_id);
 
 CREATE TABLE IF NOT EXISTS ingestion_jobs (
   job_id text PRIMARY KEY,
@@ -113,6 +130,7 @@ CREATE TABLE IF NOT EXISTS ingestion_jobs (
 CREATE TABLE IF NOT EXISTS tutor_sessions (
   session_id text PRIMARY KEY,
   user_sub text,
+  app_user_id uuid,
   course_id text NOT NULL DEFAULT '',
   course_source text NOT NULL DEFAULT '',
   section_id text,
@@ -132,6 +150,7 @@ CREATE TABLE IF NOT EXISTS tutor_turns (
   request_id text NOT NULL,
   turn_index integer NOT NULL,
   user_sub text,
+  app_user_id uuid,
   course_id text NOT NULL DEFAULT '',
   course_source text NOT NULL DEFAULT '',
   section_id text,
@@ -155,6 +174,7 @@ CREATE TABLE IF NOT EXISTS tutor_turn_snapshots (
   request_id text NOT NULL,
   turn_index integer NOT NULL,
   user_sub text,
+  app_user_id uuid,
   course_id text NOT NULL DEFAULT '',
   course_source text NOT NULL DEFAULT '',
   section_id text,
@@ -171,6 +191,7 @@ CREATE TABLE IF NOT EXISTS telemetry_events (
   turn_id text NOT NULL REFERENCES tutor_turns(turn_id) ON DELETE CASCADE,
   turn_index integer NOT NULL,
   user_sub text,
+  app_user_id uuid,
   course_id text NOT NULL DEFAULT '',
   course_source text NOT NULL DEFAULT '',
   section_id text,
@@ -183,6 +204,18 @@ CREATE TABLE IF NOT EXISTS telemetry_events (
   metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
   created_at timestamptz NOT NULL DEFAULT now()
 );
+
+ALTER TABLE tutor_sessions
+  ADD COLUMN IF NOT EXISTS app_user_id uuid;
+
+ALTER TABLE tutor_turns
+  ADD COLUMN IF NOT EXISTS app_user_id uuid;
+
+ALTER TABLE tutor_turn_snapshots
+  ADD COLUMN IF NOT EXISTS app_user_id uuid;
+
+ALTER TABLE telemetry_events
+  ADD COLUMN IF NOT EXISTS app_user_id uuid;
 
 INSERT INTO courses (course_id, course_source, collection_name, display_name, is_active)
 VALUES

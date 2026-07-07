@@ -25,6 +25,7 @@ There are three auth patterns in the service today:
 |---|---|
 | `GET /health`, `POST /query`, `POST /api/chat`, `POST /api/diagnostics/*` | currently unauthenticated |
 | `GET /me`, `POST /run/compile` | Cognito bearer token |
+| `GET /api/student/bootstrap`, `POST /api/student/chat`, `POST /api/student/telemetry`, `POST /api/student/feedback` | Cognito bearer token + active Aurora section membership |
 | most `/admin/*` routes | admin Cognito bearer token or `X-Admin-Token` |
 | `POST /admin/index/ensure`, `POST /admin/index/rebuild` | `X-Admin-Token` only |
 
@@ -68,6 +69,8 @@ routes accept either auth style.
 | `POST` | `/api/chat` | none | full pipeline chat / VS Code extension endpoint |
 | `GET` | `/api/student/bootstrap` | bearer | resolve the authenticated student app user and active sections |
 | `POST` | `/api/student/chat` | bearer | section-gated student tutoring pipeline |
+| `POST` | `/api/student/telemetry` | bearer | record authenticated student telemetry with Aurora identity |
+| `POST` | `/api/student/feedback` | bearer | record authenticated student feedback with Aurora identity |
 | `POST` | `/api/diagnostics/input-guardrail` | none | public pre-RAG input-guardrail probe |
 | `POST` | `/api/diagnostics/rag` | none | public RAG-stage probe |
 | `POST` | `/api/diagnostics/output-guardrail` | none | public post-LLM guardrail probe |

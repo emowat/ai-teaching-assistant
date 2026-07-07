@@ -315,9 +315,11 @@ def build_turn_snapshot(
             "turn_id": trace.turn_id,
             "turn_index": trace.turn_index,
             "source": source,
+            "app_user_id": trace.app_user_id,
         },
         "student": {
             "user_sub": trace.user_sub,
+            "app_user_id": trace.app_user_id,
             "role": "student",
         },
         "course": {

@@ -664,9 +664,11 @@ def test_student_chat_endpoint_stamps_student_identity(
         result_count=None,
         rerank_strategy=None,
         user_sub=None,
+        app_user_id=None,
         telemetry_store=None,
     ):
         captured["user_sub"] = user_sub
+        captured["app_user_id"] = app_user_id
         captured["section_id_from_chat"] = section_id
         captured["request_id"] = request_id
         return {"message": {"content": "student response"}}
@@ -696,6 +698,123 @@ def test_student_chat_endpoint_stamps_student_identity(
     assert captured["allowed_roles"] == {"student"}
     assert captured["user_sub"] == "student-sub"
     assert captured["section_id_from_chat"] == "mit14-fall-001"
+    assert captured["app_user_id"] == "user-1"
+
+
+def test_student_telemetry_endpoint_records_aurora_identity(
+    monkeypatch, client: TestClient
+) -> None:
+    client.app.dependency_overrides[require_authenticated_user] = lambda: CurrentUser(
+        cognito_sub="student-sub",
+        email="student@example.edu",
+        primary_role="student",
+    )
+
+    captured: dict[str, object] = {}
+
+    class _FakeTelemetryStore:
+        def record_out_of_band_telemetry(self, **kwargs):
+            captured.update(kwargs)
+            return True
+
+    def fake_require_section_membership(
+        current_user,
+        section_id,
+        allowed_roles=None,
+        runtime=None,
+    ):
+        captured["section_id"] = section_id
+        captured["allowed_roles"] = allowed_roles
+        return {"user_id": "user-1"}
+
+    monkeypatch.setattr("rag_eng.api.TelemetryStore.from_env", lambda: _FakeTelemetryStore())
+    monkeypatch.setattr("rag_eng.api.require_section_membership", fake_require_section_membership)
+
+    try:
+        response = client.post(
+            "/api/student/telemetry",
+            json={
+                "session_id": "sess-1",
+                "mode": "Homework Assist",
+                "section_id": "mit14-fall-001",
+                "request_id": "req-1",
+                "turn_id": "turn-1",
+                "turn_index": 1,
+                "engagement_metrics": {
+                    "paste_count": 1,
+                    "run_count": 0,
+                    "hint_count": 2,
+                    "telemetry_version": "v1",
+                },
+            },
+        )
+    finally:
+        client.app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert captured["section_id"] == "mit14-fall-001"
+    assert captured["allowed_roles"] == {"student"}
+    assert captured["session_id"] == "sess-1"
+    assert captured["request_id"] == "req-1"
+    assert captured["turn_id"] == "turn-1"
+    assert captured["turn_index"] == 1
+    assert captured["user_sub"] == "student-sub"
+    assert captured["app_user_id"] == "user-1"
+
+
+def test_student_feedback_endpoint_records_aurora_identity(
+    monkeypatch, client: TestClient
+) -> None:
+    client.app.dependency_overrides[require_authenticated_user] = lambda: CurrentUser(
+        cognito_sub="student-sub",
+        email="student@example.edu",
+        primary_role="student",
+    )
+
+    captured: dict[str, object] = {}
+
+    class _FakeTelemetryStore:
+        def record_feedback(self, **kwargs):
+            captured.update(kwargs)
+            return True
+
+    def fake_require_section_membership(
+        current_user,
+        section_id,
+        allowed_roles=None,
+        runtime=None,
+    ):
+        captured["section_id"] = section_id
+        captured["allowed_roles"] = allowed_roles
+        return {"user_id": "user-1"}
+
+    monkeypatch.setattr("rag_eng.api.TelemetryStore.from_env", lambda: _FakeTelemetryStore())
+    monkeypatch.setattr("rag_eng.api.require_section_membership", fake_require_section_membership)
+
+    try:
+        response = client.post(
+            "/api/student/feedback",
+            json={
+                "session_id": "sess-1",
+                "section_id": "mit14-fall-001",
+                "request_id": "req-1",
+                "turn_id": "turn-1",
+                "turn_index": 1,
+                "rating": "up",
+                "reason": "helpful hint",
+            },
+        )
+    finally:
+        client.app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert captured["section_id"] == "mit14-fall-001"
+    assert captured["allowed_roles"] == {"student"}
+    assert captured["session_id"] == "sess-1"
+    assert captured["message_index"] == 1
+    assert captured["turn_id"] == "turn-1"
+    assert captured["user_sub"] == "student-sub"
+    assert captured["app_user_id"] == "user-1"
 
 
 def test_admin_users_and_sections_routes_allow_authorized_requests(

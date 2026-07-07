@@ -25,6 +25,7 @@ from rag_eng.schemas import (
     StudentBootstrapEndpoints,
     StudentBootstrapResponse,
     StudentBootstrapSection,
+    StudentLaunchConfig,
     StudentBootstrapUser,
     ProfessorSectionStudent,
     ProfessorSectionSummary,
@@ -253,7 +254,11 @@ def _student_row_from_tuple(row: tuple[Any, ...]) -> dict[str, Any]:
     }
 
 
-def _student_section_from_row(row: tuple[Any, ...]) -> StudentBootstrapSection:
+def _student_section_from_row(
+    row: tuple[Any, ...],
+    *,
+    launch_configs: list[StudentLaunchConfig] | None = None,
+) -> StudentBootstrapSection:
     (
         section_id,
         course_id,
@@ -273,7 +278,7 @@ def _student_section_from_row(row: tuple[Any, ...]) -> StudentBootstrapSection:
         term=_clean_text(term),
         is_active=bool(is_active),
         membership_status=_clean_text(membership_status),
-        launch_configs=[],
+        launch_configs=launch_configs or [],
     )
 
 
@@ -664,6 +669,30 @@ def _load_student_section_rows(connection, user_id: str) -> list[tuple[Any, ...]
         ORDER BY s.section_id ASC
         """,
         (user_id,),
+    )
+
+
+def _load_section_launch_config_rows(
+    connection,
+    section_id: str,
+) -> list[tuple[Any, ...]]:
+    return _fetch_all_rows(
+        connection,
+        """
+        SELECT
+          section_id,
+          launch_id,
+          label,
+          repo_url,
+          template_url,
+          default_branch,
+          enabled,
+          sort_order
+        FROM section_launch_configs
+        WHERE section_id = %s
+        ORDER BY sort_order ASC, launch_id ASC
+        """,
+        (section_id,),
     )
 
 
@@ -1256,6 +1285,20 @@ def get_student_bootstrap(
             )
             if recent_section_id in section_ids:
                 default_section_id = recent_section_id
+        launch_configs_by_section: dict[str, list[StudentLaunchConfig]] = {}
+        for section_id in section_ids:
+            launch_configs_by_section[section_id] = [
+                StudentLaunchConfig(
+                    launch_id=_clean_text(row[1]),
+                    label=_clean_text(row[2]),
+                    repo_url=_clean_text(row[3]),
+                    template_url=_clean_text(row[4]),
+                    default_branch=_clean_text(row[5]) or "main",
+                    enabled=bool(row[6]),
+                    sort_order=int(row[7] or 0),
+                )
+                for row in _load_section_launch_config_rows(connection, section_id)
+            ]
 
     return StudentBootstrapResponse(
         user=StudentBootstrapUser(
@@ -1266,7 +1309,13 @@ def get_student_bootstrap(
             primary_role=_clean_text(app_user["primary_role"]),
             status=_clean_text(app_user["status"]),
         ),
-        sections=[_student_section_from_row(row) for row in section_rows],
+        sections=[
+            _student_section_from_row(
+                row,
+                launch_configs=launch_configs_by_section.get(_clean_text(row[0]), []),
+            )
+            for row in section_rows
+        ],
         default_section_id=default_section_id,
         endpoints=StudentBootstrapEndpoints(
             chat="/api/student/chat",

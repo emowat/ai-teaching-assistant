@@ -35,7 +35,14 @@ class _FakeTelemetryStore:
     finished: list[dict[str, object]]
     snapshots: list[dict[str, object]]
 
-    def start_turn(self, *, query, source: str, user_sub: str | None = None):
+    def start_turn(
+        self,
+        *,
+        query,
+        source: str,
+        user_sub: str | None = None,
+        app_user_id: str | None = None,
+    ):
         trace = TraceContext(
             request_id=query.request_id or f"{source}-request",
             session_id=query.session_id or f"{source}-session",
@@ -46,6 +53,7 @@ class _FakeTelemetryStore:
             course_source=query.course_source.value,
             section_id=query.section_id,
             user_sub=user_sub,
+            app_user_id=app_user_id,
             mode=str(query.mode.value),
             week=query.week,
             persisted=True,

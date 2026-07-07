@@ -1247,6 +1247,7 @@ async def run_chat(
     result_count: int | None = None,
     rerank_strategy: str | None = None,
     user_sub: str | None = None,
+    app_user_id: str | None = None,
     telemetry_store: TelemetryStore | None = None,
 ) -> dict | AsyncIterator[bytes]:
     """Full chat pipeline: context extraction -> RAG -> prompt assembly -> inference."""
@@ -1275,7 +1276,12 @@ async def run_chat(
     query = QueryPayload(**query_kwargs)
 
     telemetry_store = telemetry_store or get_telemetry_store()
-    trace = telemetry_store.start_turn(query=query, source="chat", user_sub=user_sub)
+    trace = telemetry_store.start_turn(
+        query=query,
+        source="chat",
+        user_sub=user_sub,
+        app_user_id=app_user_id,
+    )
     runtime = get_inference_config()
     chat_route = runtime.chat
     telemetry_model_name = (

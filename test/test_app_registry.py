@@ -28,6 +28,7 @@ class _State:
     users: dict[str, dict[str, object]]
     sections: dict[str, dict[str, object]]
     memberships: dict[tuple[str, str], dict[str, object]]
+    launch_configs: dict[str, list[dict[str, object]]]
     tutor_sessions: list[dict[str, object]]
 
 
@@ -146,6 +147,18 @@ class _FakeCursor:
             membership["status"],
             section["created_at"],
             section["updated_at"],
+        )
+
+    def _launch_config_row(self, record: dict[str, object]) -> tuple[object, ...]:
+        return (
+            record["section_id"],
+            record["launch_id"],
+            record["label"],
+            record.get("repo_url", ""),
+            record.get("template_url", ""),
+            record.get("default_branch", "main"),
+            record.get("enabled", False),
+            record.get("sort_order", 0),
         )
 
     def execute(self, query: str, params: tuple[object, ...] | None = None) -> None:
@@ -373,6 +386,17 @@ class _FakeCursor:
             return
 
         if sql.startswith(
+            "SELECT section_id, launch_id, label, repo_url, template_url, default_branch, enabled, sort_order FROM section_launch_configs WHERE section_id = %s ORDER BY sort_order ASC, launch_id ASC"
+        ):
+            section_id = str(params[0])
+            rows = [
+                self._launch_config_row(record)
+                for record in self.state.launch_configs.get(section_id, [])
+            ]
+            self._rows = rows
+            return
+
+        if sql.startswith(
             "SELECT section_id FROM tutor_sessions WHERE user_sub = %s AND section_id IS NOT NULL ORDER BY last_seen_at DESC, updated_at DESC LIMIT 1"
         ):
             user_sub = str(params[0])
@@ -533,6 +557,7 @@ def _state() -> _State:
         users={},
         sections={},
         memberships={},
+        launch_configs={},
         tutor_sessions=[],
     )
 
@@ -747,6 +772,54 @@ def test_get_student_bootstrap_returns_sections_and_default(
     assert response.default_section_id == "mit14-fall-002"
     assert response.endpoints.chat == "/api/student/chat"
     assert response.sections[0].launch_configs == []
+
+
+def test_get_student_bootstrap_includes_launch_configs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _state()
+    state.users["student-1"] = _user(
+        user_id="student-1",
+        email="student@example.edu",
+        display_name="Student",
+        primary_role="student",
+        status="active",
+        cognito_sub="sub-student",
+    )
+    state.sections["mit14-fall-001"] = _section(
+        section_id="mit14-fall-001",
+        display_name="MIT 6.0014 Section A",
+    )
+    state.memberships[("mit14-fall-001", "student-1")] = _membership(
+        section_id="mit14-fall-001",
+        user_id="student-1",
+        role_in_section="student",
+    )
+    state.launch_configs["mit14-fall-001"] = [
+        {
+            "section_id": "mit14-fall-001",
+            "launch_id": "codespaces",
+            "label": "Codespaces",
+            "repo_url": "https://github.com/example/repo",
+            "template_url": "https://github.com/example/template",
+            "default_branch": "main",
+            "enabled": True,
+            "sort_order": 1,
+        }
+    ]
+    _patch_connection(monkeypatch, state)
+
+    response = app_registry.get_student_bootstrap(
+        CurrentUser(
+            cognito_sub="sub-student",
+            email="student@example.edu",
+            primary_role="student",
+        ),
+        runtime=_runtime(),
+    )
+
+    assert response.sections[0].launch_configs[0].launch_id == "codespaces"
+    assert response.sections[0].launch_configs[0].enabled is True
 
 
 def test_get_student_bootstrap_requires_active_membership(

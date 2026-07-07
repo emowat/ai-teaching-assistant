@@ -109,7 +109,9 @@ from rag_eng.schemas import (
     RagDiagnosticResponse,
     RetrievalRerankStrategy,
     RestartResponse,
+    StudentFeedbackPayload,
     StudentBootstrapResponse,
+    StudentTelemetryPayload,
     TelemetryPayload,
 )
 from rag_eng.ingestion_jobs import (
@@ -130,6 +132,7 @@ from rag_eng.service import (
     run_rag_diagnostic,
     run_query,
 )
+from rag_eng.telemetry import TelemetryStore
 
 logger = logging.getLogger(__name__)
 
@@ -161,6 +164,16 @@ class FeedbackPayload(BaseModel):
     rating: str
     reason: str | None = None
     message_index: int | None = None
+
+
+def _missing_payload_fields(payload: BaseModel, field_names: list[str]) -> list[str]:
+    """Return the names of any required payload fields that are missing."""
+    missing: list[str] = []
+    for field_name in field_names:
+        value = getattr(payload, field_name, None)
+        if value in {None, ""}:
+            missing.append(field_name)
+    return missing
 
 
 def _error_detail(exc: Exception) -> str:
@@ -996,13 +1009,10 @@ def create_app() -> FastAPI:
         current_user=Depends(require_role("student")),
     ):
         """Authenticated student chat endpoint backed by Aurora membership."""
-        required_fields = {
-            "section_id": payload.section_id,
-            "request_id": payload.request_id,
-            "turn_id": payload.turn_id,
-            "turn_index": payload.turn_index,
-        }
-        missing_fields = [name for name, value in required_fields.items() if value in {None, ""}]
+        missing_fields = _missing_payload_fields(
+            payload,
+            ["section_id", "request_id", "turn_id", "turn_index"],
+        )
         if missing_fields:
             raise HTTPException(
                 status_code=400,
@@ -1014,7 +1024,7 @@ def create_app() -> FastAPI:
             )
 
         try:
-            require_section_membership(
+            app_user = require_section_membership(
                 current_user,
                 payload.section_id,
                 allowed_roles={"student"},
@@ -1037,12 +1047,106 @@ def create_app() -> FastAPI:
                 result_count=payload.result_count,
                 rerank_strategy=payload.rerank_strategy,
                 user_sub=current_user.cognito_sub,
+                app_user_id=app_user["user_id"],
             )
             if payload.stream:
                 return StreamingResponse(result, media_type="application/x-ndjson")
             return result
         except Exception as exc:
             raise HTTPException(status_code=500, detail=_error_detail(exc)) from exc
+
+    @app.post("/api/student/telemetry")
+    async def student_telemetry(
+        payload: StudentTelemetryPayload,
+        current_user=Depends(require_role("student")),
+    ):
+        """Authenticated student telemetry routed through Aurora."""
+        missing_fields = _missing_payload_fields(
+            payload,
+            ["session_id", "section_id", "request_id", "turn_id", "turn_index"],
+        )
+        if missing_fields:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "/api/student/telemetry requires "
+                    + ", ".join(missing_fields)
+                    + "."
+                ),
+            )
+
+        try:
+            app_user = require_section_membership(
+                current_user,
+                payload.section_id,
+                allowed_roles={"student"},
+            )
+        except Exception as exc:
+            raise _app_registry_http_error(exc) from exc
+
+        try:
+            telemetry = TelemetryStore.from_env()
+            telemetry.record_out_of_band_telemetry(
+                session_id=payload.session_id,
+                mode=payload.mode,
+                engagement_metrics=payload.engagement_metrics.model_dump(),
+                request_id=payload.request_id,
+                turn_id=payload.turn_id,
+                turn_index=payload.turn_index,
+                section_id=payload.section_id,
+                user_sub=current_user.cognito_sub,
+                app_user_id=app_user["user_id"],
+                course_id=payload.course_id,
+            )
+            return {"status": "success"}
+        except Exception as exc:
+            logger.exception("Student telemetry logging failed")
+            raise HTTPException(status_code=500, detail=str(exc))
+
+    @app.post("/api/student/feedback")
+    async def student_feedback(
+        payload: StudentFeedbackPayload,
+        current_user=Depends(require_role("student")),
+    ):
+        """Authenticated student feedback routed through Aurora."""
+        missing_fields = _missing_payload_fields(
+            payload,
+            ["session_id", "section_id", "request_id", "turn_id", "turn_index"],
+        )
+        if missing_fields:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "/api/student/feedback requires "
+                    + ", ".join(missing_fields)
+                    + "."
+                ),
+            )
+
+        try:
+            app_user = require_section_membership(
+                current_user,
+                payload.section_id,
+                allowed_roles={"student"},
+            )
+        except Exception as exc:
+            raise _app_registry_http_error(exc) from exc
+
+        try:
+            telemetry = TelemetryStore.from_env()
+            telemetry.record_feedback(
+                session_id=payload.session_id,
+                message_index=payload.turn_index,
+                rating=payload.rating,
+                reason=payload.reason,
+                turn_id=payload.turn_id,
+                user_sub=current_user.cognito_sub,
+                app_user_id=app_user["user_id"],
+            )
+            return {"status": "success"}
+        except Exception as exc:
+            logger.exception("Student feedback logging failed")
+            raise HTTPException(status_code=500, detail=str(exc))
 
     @app.post(
         "/admin/diagnostics/pipeline",

@@ -60,6 +60,7 @@ class TraceContext:
     course_source: str
     section_id: str | None = None
     user_sub: str | None = None
+    app_user_id: str | None = None
     mode: str = ""
     week: int = 0
     persisted: bool = False
@@ -163,6 +164,7 @@ class TelemetryStore:
         query: QueryInput,
         source: str,
         user_sub: str | None = None,
+        app_user_id: str | None = None,
     ) -> TraceContext:
         course_id = _normalize_course_key(query.course_id or query.course_source.value)
         course_source = (
@@ -180,6 +182,7 @@ class TelemetryStore:
             course_source=course_source,
             section_id=query.section_id,
             user_sub=user_sub,
+            app_user_id=app_user_id,
             mode=str(query.mode.value),
             week=query.week,
         )
@@ -190,9 +193,15 @@ class TelemetryStore:
         query: QueryInput,
         source: str,
         user_sub: str | None = None,
+        app_user_id: str | None = None,
     ) -> TraceContext:
         """Create or update the session/turn rows and log request start."""
-        trace = self._trace_context(query=query, source=source, user_sub=user_sub)
+        trace = self._trace_context(
+            query=query,
+            source=source,
+            user_sub=user_sub,
+            app_user_id=app_user_id,
+        )
         if not self.database_url:
             return trace
 
@@ -221,6 +230,7 @@ class TelemetryStore:
                         INSERT INTO tutor_sessions (
                           session_id,
                           user_sub,
+                          app_user_id,
                           course_id,
                           section_id,
                           first_request_id,
@@ -229,9 +239,10 @@ class TelemetryStore:
                           status,
                           metadata
                         )
-                        VALUES (%s, %s, %s, %s, %s, %s, 1, 'active', %s)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, 1, 'active', %s)
                         ON CONFLICT (session_id) DO UPDATE SET
                           user_sub = COALESCE(tutor_sessions.user_sub, EXCLUDED.user_sub),
+                          app_user_id = COALESCE(tutor_sessions.app_user_id, EXCLUDED.app_user_id),
                           course_id = COALESCE(EXCLUDED.course_id, tutor_sessions.course_id),
                           section_id = COALESCE(EXCLUDED.section_id, tutor_sessions.section_id),
                           last_request_id = EXCLUDED.last_request_id,
@@ -252,6 +263,7 @@ class TelemetryStore:
                         (
                             trace.session_id,
                             trace.user_sub,
+                            trace.app_user_id,
                             trace.course_id,
                             trace.section_id,
                             trace.request_id,
@@ -269,6 +281,7 @@ class TelemetryStore:
                           request_id,
                           turn_index,
                           user_sub,
+                          app_user_id,
                           course_id,
                           section_id,
                           course_source,
@@ -292,6 +305,7 @@ class TelemetryStore:
                             trace.request_id,
                             trace.turn_index,
                             trace.user_sub,
+                            trace.app_user_id,
                             trace.course_id,
                             trace.section_id,
                             trace.course_source,
@@ -308,6 +322,7 @@ class TelemetryStore:
                           turn_id,
                           turn_index,
                           user_sub,
+                          app_user_id,
                           course_id,
                           section_id,
                           course_source,
@@ -324,6 +339,7 @@ class TelemetryStore:
                             trace.turn_id,
                             trace.turn_index,
                             trace.user_sub,
+                            trace.app_user_id,
                             trace.course_id,
                             trace.section_id,
                             trace.course_source,
@@ -371,6 +387,7 @@ class TelemetryStore:
                           turn_id,
                           turn_index,
                           user_sub,
+                          app_user_id,
                           course_id,
                           section_id,
                           course_source,
@@ -393,6 +410,7 @@ class TelemetryStore:
                             trace.turn_id,
                             trace.turn_index,
                             trace.user_sub,
+                            trace.app_user_id,
                             trace.course_id,
                             trace.section_id,
                             trace.course_source,
@@ -511,6 +529,7 @@ class TelemetryStore:
                           request_id,
                           turn_index,
                           user_sub,
+                          app_user_id,
                           course_id,
                           course_source,
                           section_id,
@@ -523,6 +542,7 @@ class TelemetryStore:
                           request_id = EXCLUDED.request_id,
                           turn_index = EXCLUDED.turn_index,
                           user_sub = EXCLUDED.user_sub,
+                          app_user_id = EXCLUDED.app_user_id,
                           course_id = EXCLUDED.course_id,
                           course_source = EXCLUDED.course_source,
                           section_id = EXCLUDED.section_id,
@@ -536,6 +556,7 @@ class TelemetryStore:
                             trace.request_id,
                             trace.turn_index,
                             trace.user_sub,
+                            trace.app_user_id,
                             trace.course_id,
                             trace.course_source,
                             trace.section_id,
@@ -557,7 +578,16 @@ class TelemetryStore:
         self,
         session_id: str,
         mode: str,
-        engagement_metrics: dict[str, int]
+        engagement_metrics: dict[str, int],
+        *,
+        request_id: str | None = None,
+        turn_id: str | None = None,
+        turn_index: int | None = None,
+        section_id: str | None = None,
+        user_sub: str | None = None,
+        app_user_id: str | None = None,
+        course_id: str | None = None,
+        course_source: str | None = None,
     ) -> bool:
         """Persist out-of-band engagement metrics without needing a full chat turn."""
         if not self.database_url or not session_id:
@@ -569,21 +599,57 @@ class TelemetryStore:
                 self.connect_timeout_seconds,
             ) as connection:
                 with connection.cursor() as cursor:
-                    cursor.execute("""
-                        SELECT course_id FROM tutor_sessions WHERE session_id = %s LIMIT 1
-                    """, (session_id,))
-                    row = cursor.fetchone()
-                    course_id = row[0] if row else None
+                    if (
+                        course_id is None
+                        or course_source is None
+                        or section_id is None
+                        or user_sub is None
+                        or app_user_id is None
+                        or turn_id is None
+                        or turn_index is None
+                    ):
+                        cursor.execute(
+                            """
+                            SELECT
+                              ts.course_id,
+                              ts.section_id,
+                              ts.user_sub,
+                              ts.app_user_id,
+                              tt.turn_id,
+                              tt.turn_index,
+                              tt.course_source
+                            FROM tutor_sessions AS ts
+                            LEFT JOIN tutor_turns AS tt
+                              ON tt.session_id = ts.session_id
+                            WHERE ts.session_id = %s
+                            ORDER BY tt.turn_index DESC NULLS LAST, tt.updated_at DESC NULLS LAST
+                            LIMIT 1
+                            """,
+                            (session_id,),
+                        )
+                        row = cursor.fetchone()
+                        if row is None:
+                            return False
 
-                    cursor.execute("""
-                        SELECT turn_id, turn_index FROM tutor_turns
-                        WHERE session_id = %s ORDER BY turn_index DESC LIMIT 1
-                    """, (session_id,))
-                    turn_row = cursor.fetchone()
-                    if not turn_row:
+                        (
+                            db_course_id,
+                            db_section_id,
+                            db_user_sub,
+                            db_app_user_id,
+                            db_turn_id,
+                            db_turn_index,
+                            db_course_source,
+                        ) = row[:7]
+                        course_id = course_id or db_course_id
+                        section_id = section_id or db_section_id
+                        user_sub = user_sub or db_user_sub
+                        app_user_id = app_user_id or db_app_user_id
+                        turn_id = turn_id or db_turn_id
+                        turn_index = turn_index or db_turn_index
+                        course_source = course_source or db_course_source
+
+                    if turn_id is None or turn_index is None:
                         return False
-
-                    turn_id, turn_index = turn_row
 
                     cursor.execute(
                         """
@@ -592,32 +658,44 @@ class TelemetryStore:
                           session_id,
                           turn_id,
                           turn_index,
+                          user_sub,
+                          app_user_id,
                           course_id,
+                          course_source,
+                          section_id,
                           event_type,
                           stage,
                           status,
                           metadata
                         )
                         VALUES (
-                          %s, %s, %s, %s, %s, %s, %s, %s, %s
+                          %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
                         )
                         """,
                         (
-                            uuid.uuid4().hex,
+                            request_id or uuid.uuid4().hex,
                             session_id,
                             turn_id,
                             turn_index,
-                            course_id,
+                            user_sub,
+                            app_user_id,
+                            course_id or "",
+                            course_source or "",
+                            section_id,
                             "out_of_band_telemetry",
                             mode,
                             "success",
-                            _json_adapter(engagement_metrics)
-                        )
+                            _json_adapter(engagement_metrics),
+                        ),
                     )
                 connection.commit()
             return True
         except Exception as exc:
-            logger.warning("Failed to record out of band telemetry for %s: %s", session_id, exc)
+            logger.warning(
+                "Failed to record out of band telemetry for %s: %s",
+                session_id,
+                exc,
+            )
             return False
 
     def record_feedback(
@@ -625,7 +703,11 @@ class TelemetryStore:
         session_id: str,
         message_index: int,
         rating: str,
-        reason: str | None
+        reason: str | None,
+        *,
+        turn_id: str | None = None,
+        user_sub: str | None = None,
+        app_user_id: str | None = None,
     ) -> bool:
         """Update the turn snapshot with user feedback."""
         if not self.database_url or not session_id or not message_index:
@@ -641,18 +723,54 @@ class TelemetryStore:
                 self.connect_timeout_seconds,
             ) as connection:
                 with connection.cursor() as cursor:
-                    cursor.execute(
-                        """
-                        UPDATE tutor_turn_snapshots
-                        SET snapshot = jsonb_set(
-                            snapshot,
-                            '{feedback}',
-                            jsonb_build_object('thumbs_up', %s::text, 'explanation', %s::text)
+                    if turn_id:
+                        cursor.execute(
+                            """
+                            UPDATE tutor_turn_snapshots
+                            SET snapshot = jsonb_set(
+                                snapshot,
+                                '{feedback}',
+                                jsonb_build_object('thumbs_up', %s::text, 'explanation', %s::text)
+                            )
+                            WHERE turn_id = %s
+                              AND (%s IS NULL OR user_sub = %s)
+                              AND (%s IS NULL OR app_user_id = %s)
+                            """,
+                            (
+                                thumbs_up,
+                                reason,
+                                turn_id,
+                                user_sub,
+                                user_sub,
+                                app_user_id,
+                                app_user_id,
+                            ),
                         )
-                        WHERE session_id = %s AND turn_index = %s
-                        """,
-                        (thumbs_up, reason, session_id, turn_index)
-                    )
+                    else:
+                        cursor.execute(
+                            """
+                            UPDATE tutor_turn_snapshots
+                            SET snapshot = jsonb_set(
+                                snapshot,
+                                '{feedback}',
+                                jsonb_build_object('thumbs_up', %s::text, 'explanation', %s::text)
+                            )
+                            WHERE session_id = %s
+                              AND turn_index = %s
+                              AND (%s IS NULL OR user_sub = %s)
+                              AND (%s IS NULL OR app_user_id = %s)
+                            """,
+                            (
+                                thumbs_up,
+                                reason,
+                                session_id,
+                                turn_index,
+                                user_sub,
+                                user_sub,
+                                app_user_id,
+                                app_user_id,
+                            ),
+                        )
                 connection.commit()
             return True
         except Exception as e:
@@ -687,11 +805,17 @@ class TelemetryStore:
                         UPDATE tutor_sessions
                         SET
                           last_request_id = %s,
+                          app_user_id = COALESCE(tutor_sessions.app_user_id, %s),
                           last_seen_at = now(),
                           status = %s
                         WHERE session_id = %s
                         """,
-                        (trace.request_id, session_status, trace.session_id),
+                        (
+                            trace.request_id,
+                            trace.app_user_id,
+                            session_status,
+                            trace.session_id,
+                        ),
                     )
                     cursor.execute(
                         """
@@ -702,6 +826,7 @@ class TelemetryStore:
                           answer_chars = COALESCE(%s, answer_chars),
                           completed_at = now(),
                           updated_at = now(),
+                          app_user_id = COALESCE(tutor_turns.app_user_id, %s),
                           model_provider = COALESCE(NULLIF(%s, ''), model_provider),
                           model_name = COALESCE(NULLIF(%s, ''), model_name),
                           metadata = COALESCE(tutor_turns.metadata, '{}'::jsonb) || COALESCE(%s, '{}'::jsonb)
@@ -711,6 +836,7 @@ class TelemetryStore:
                             status,
                             latency_ms,
                             answer_chars,
+                            trace.app_user_id,
                             _normalize_text(model_provider),
                             _normalize_text(model_name),
                             _json_adapter(metadata or {}),
