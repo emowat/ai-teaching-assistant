@@ -1041,6 +1041,20 @@ export function AdminDashboard({
                           {f.student_message || <span style={{ color: D.muted, fontStyle: "italic" }}>No message text</span>}
                         </div>
 
+                        {f.cot && Object.keys(f.cot).length > 0 && (
+                          <>
+                            <div style={{ fontSize: 12, color: D.muted, ...mono, marginTop: 4 }}>// chain_of_thought</div>
+                            <div style={{ background: D.surface, padding: 12, borderRadius: 6, fontSize: 12, border: `1px solid ${D.border}` }}>
+                              {Object.entries(f.cot).map(([key, val]) => (
+                                <div key={key} style={{ marginBottom: 4 }}>
+                                  <span style={{ fontWeight: 600, color: D.muted }}>{key}: </span>
+                                  <span style={{ color: D.text }}>{String(val)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </>
+                        )}
+
                         <div style={{ fontSize: 12, color: D.muted, ...mono, marginTop: 4 }}>// ai_response</div>
                         <div style={{ background: `${D.purple}08`, padding: 12, borderRadius: 6, fontSize: 13, borderLeft: `3px solid ${D.purple}`, whiteSpace: "pre-wrap" }}>
                           {f.ai_message ? f.ai_message.replace(/<think>[\s\S]*?<\/think>/g, '').replace(/<analysis>[\s\S]*?<\/analysis>/g, '').trim() : <span style={{ color: D.muted, fontStyle: "italic" }}>No response text</span>}

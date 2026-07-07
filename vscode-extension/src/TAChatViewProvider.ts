@@ -969,6 +969,7 @@ ${terminalOutput}`;
             const requestBody = {
                 model: modelName,
                 session_id: this._sessionId,
+                turn_index: currentTurnIndex,
                 messages: apiMessages,
                 stream: false,
                 options: {

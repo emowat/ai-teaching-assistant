@@ -39,7 +39,19 @@ def apply_all_guardrails(
     if v1["action"] == "replace":
         return {**v1, "stage": "v1"}
 
-    # Temporarily diable V2 for the output guardrail until the code stabilizes,
-    # relying on the frontier model for toxicity and V1 regex to enforce only a
-    # single statement at most from the LLM.
-    return {**v1, "stage": "v1"}
+    v2 = predict_safety(answer, user_query, student_code, conversation_history)
+    if v2 is None:
+        return {**v1, "stage": "v1"}
+
+    if v2["action"] == "replace":
+        return {**v2, "stage": "v2"}
+
+    if v2["action"] == "log_only":
+        v2["evidence"] = f"V1: {v1['evidence']} | V2: {v2['evidence']}"
+        v2["stage"] = "v2"
+        return v2
+
+    v1["evidence"] = f"V1: {v1['evidence']} | V2: {v2['evidence']}"
+    v1["stage"] = "v1+v2"
+    v1["v2_score"] = v2.get("v2_score", 0.0)
+    return v1

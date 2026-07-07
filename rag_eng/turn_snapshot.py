@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import re
 from typing import Any
 
 from rag.schemas import QueryInput, RetrievalResult
@@ -129,12 +130,12 @@ def _extract_cot_keys(raw_generation: str) -> dict[str, str]:
     cot_dict = {}
     if "<analysis>" in raw_generation and "</analysis>" in raw_generation:
         cot_text = raw_generation.split("</analysis>")[0].replace("<analysis>", "").strip()
-        for line in cot_text.split('\n'):
-            line = line.strip()
-            if line.startswith('- '):
-                parts = line[2:].split(':', 1)
-                if len(parts) == 2:
-                    cot_dict[parts[0].strip()] = parts[1].strip()
+        pattern = r'(?:^|\s+)-\s*([A-Za-z0-9_]+):\s*(.*?)(?=(?:^|\s+)-\s*[A-Za-z0-9_]+:|$)'
+        matches = re.findall(pattern, cot_text, flags=re.DOTALL)
+        if matches:
+            cot_dict = {k: v.strip() for k, v in matches}
+        else:
+            cot_dict = {"analysis": cot_text}
     return cot_dict
 
 

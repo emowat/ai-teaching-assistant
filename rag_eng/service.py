@@ -542,10 +542,10 @@ def _apply_pipeline_guardrails(
         )
         
         is_log_only = os.environ.get("GUARDRAILS_LOG_ONLY", "false").lower() == "true"
-        if is_log_only:
+        if is_log_only and guardrail.get("stage") == "v2":
             guardrail["wouldBlock"] = guardrail.get("blocked", False)
             guardrail["blocked"] = False
-            if guardrail.get("action") == "block":
+            if guardrail.get("action") == "replace":
                 guardrail["action"] = "log_only"
                 
         guardrail["evaluated_answer"] = visible_answer
@@ -1242,6 +1242,7 @@ async def run_chat(
     session_id: str | None = None,
     request_id: str | None = None,
     turn_id: str | None = None,
+    turn_index: int | None = None,
     section_id: str | None = None,
     result_count: int | None = None,
     rerank_strategy: str | None = None,
@@ -1262,6 +1263,7 @@ async def run_chat(
         "session_id": session_id,
         "request_id": request_id,
         "turn_id": turn_id,
+        "turn_index": turn_index,
         "section_id": section_id,
     }
     if result_count is not None:
