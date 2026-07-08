@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import math
 
-from rag.schemas import AssistMode, DocCategory, RetrievedDoc
+from rag.schemas import AssistMode, DocCategory, RetrievedDoc, ASTFeatures
 
 
 # ---------------------------------------------------------------------------
@@ -29,10 +29,19 @@ CATEGORY_WEIGHTS_CPP: dict[DocCategory, float] = {
 }
 
 
-def should_search_cpp(query_text: str, *, code_raw: str = "") -> bool:
+def should_search_cpp(query_text: str, ast: ASTFeatures) -> bool:
     """Return True if the query suggests C++ STL/reference material is relevant."""
-    if "std::" in query_text or "std::" in code_raw:
+    if "std::" in query_text:
         return True
+    if ast.has_stl_algorithm or ast.has_smart_pointer or ast.has_iterator:
+        return True
+    if ast.has_pointer or ast.has_reference or ast.has_new or ast.has_delete:
+        return True
+    if ast.near_cursor_stl:
+        return True
+    for var in ast.target_variables:
+        if "std::" in var and "cout" not in var and "cin" not in var:
+            return True
     return False
 
 

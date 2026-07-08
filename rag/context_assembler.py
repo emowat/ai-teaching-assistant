@@ -17,6 +17,9 @@ def assemble_context(
     supplementary: list[RetrievedDoc],
     guidelines: list[RetrievedDoc] | None = None,
     mode: AssistMode = AssistMode.HOMEWORK_ASSIST,
+    query_week: int = 1,
+    syllabus_matrix: str | None = None,
+    style_guide: str | None = None,
 ) -> str:
     """
     Formats retrieved documents into the [Vector_Database_Results] block.
@@ -29,9 +32,28 @@ def assemble_context(
     """
     chunks: list[str] = []
 
-    # Syllabus — always first if available
-    if syllabus:
+    # Syllabus — directly from Postgres matrix string now
+    if syllabus_matrix:
+        import json
+        try:
+            matrix = json.loads(syllabus_matrix)
+            week_key = str(query_week)
+            if week_key in matrix:
+                week_data = matrix[week_key]
+                allowed = week_data.get("allowed", "")
+                forbidden = week_data.get("forbidden", "")
+                chunks.append(f"[Retrieved_Syllabus_Chunk]\nWeek {query_week} Allowed topics: {allowed}\nWeek {query_week} Forbidden topics: {forbidden}")
+            else:
+                chunks.append(f"[Retrieved_Syllabus_Chunk]\nNo specific topics defined for week {query_week}.")
+        except Exception as e:
+            # Fallback if invalid JSON
+            chunks.append(f"[Retrieved_Syllabus_Chunk]\n{syllabus_matrix}")
+    elif syllabus:
         chunks.append(f"[Retrieved_Syllabus_Chunk]\n{syllabus.content}")
+
+    # Style Guide
+    if style_guide:
+        chunks.append(f"[Style_Rules]\n{style_guide}")
 
     # Strict rules — prefixed for the TA to recognize as mandatory
     for doc in rules:
@@ -64,6 +86,10 @@ def build_retrieval_result(
     supplementary: list[RetrievedDoc],
     guidelines: list[RetrievedDoc] | None = None,
     mode: AssistMode = AssistMode.HOMEWORK_ASSIST,
+    query_week: int = 1,
+    syllabus_matrix: str | None = None,
+    style_guide: str | None = None,
+    query_string: str = "",
 ) -> RetrievalResult:
     """Build the complete RetrievalResult including formatted context."""
     return RetrievalResult(
@@ -72,7 +98,16 @@ def build_retrieval_result(
         pedagogical=pedagogical,
         supplementary=supplementary,
         guidelines=guidelines or [],
+        query_string=query_string,
         formatted_context=assemble_context(
-            syllabus, rules, pedagogical, supplementary, guidelines, mode,
+            syllabus=syllabus,
+            rules=rules,
+            pedagogical=pedagogical,
+            supplementary=supplementary,
+            guidelines=guidelines,
+            mode=mode,
+            query_week=query_week,
+            syllabus_matrix=syllabus_matrix,
+            style_guide=style_guide,
         ),
     )

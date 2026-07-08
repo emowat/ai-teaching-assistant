@@ -14,6 +14,8 @@ interface CreateDraft {
   collection_name: string;
   aliases_text: string;
   is_active: boolean;
+  syllabus_matrix: string;
+  style_guide: string;
 }
 
 interface EditDraft {
@@ -21,6 +23,8 @@ interface EditDraft {
   retrieval_profile: RetrievalProfile;
   collection_name: string;
   is_active: boolean;
+  syllabus_matrix: string;
+  style_guide: string;
 }
 
 type RetrievalProfile = "mit" | "cs50";
@@ -103,6 +107,8 @@ function emptyCreateDraft(): CreateDraft {
     collection_name: "",
     aliases_text: "",
     is_active: true,
+    syllabus_matrix: "",
+    style_guide: "",
   };
 }
 
@@ -112,6 +118,8 @@ function emptyEditDraft(): EditDraft {
     retrieval_profile: DEFAULT_PROFILE,
     collection_name: "",
     is_active: true,
+    syllabus_matrix: "",
+    style_guide: "",
   };
 }
 
@@ -149,6 +157,8 @@ export function CourseManagementPanel({ accessToken }: CourseManagementPanelProp
       retrieval_profile: profileFromCourseSource(course.course_source),
       collection_name: course.collection_name,
       is_active: course.is_active,
+      syllabus_matrix: course.syllabus_matrix ?? "",
+      style_guide: course.style_guide ?? "",
     });
     setAliasInput("");
   };
@@ -222,6 +232,8 @@ export function CourseManagementPanel({ accessToken }: CourseManagementPanelProp
         collection_name: collectionName,
         is_active: createDraft.is_active,
         aliases,
+        syllabus_matrix: createDraft.syllabus_matrix.trim() || undefined,
+        style_guide: createDraft.style_guide.trim() || undefined,
       });
       upsertCourse(created);
       applySelectedCourse(created);
@@ -272,6 +284,8 @@ export function CourseManagementPanel({ accessToken }: CourseManagementPanelProp
         ),
         collection_name: collectionName,
         is_active: editDraft.is_active,
+        syllabus_matrix: editDraft.syllabus_matrix.trim() || undefined,
+        style_guide: editDraft.style_guide.trim() || undefined,
       });
       upsertCourse(updated);
       applySelectedCourse(updated);
@@ -490,6 +504,46 @@ export function CourseManagementPanel({ accessToken }: CourseManagementPanelProp
                 Separate aliases with commas, semicolons, or new lines.
               </div>
             </label>
+            <label style={{ display: "grid", gap: 5 }}>
+              <span style={{ fontSize: 12, color: D.muted }}>Syllabus matrix (JSON array/object)</span>
+              <textarea
+                value={createDraft.syllabus_matrix}
+                onChange={(e) =>
+                  setCreateDraft((current) => ({ ...current, syllabus_matrix: e.target.value }))
+                }
+                rows={4}
+                style={{
+                  background: D.bg,
+                  color: D.text,
+                  border: `1px solid ${D.border}`,
+                  borderRadius: 8,
+                  padding: "10px 12px",
+                  ...mono,
+                  fontSize: 12,
+                }}
+                placeholder='{"1": {"allowed": "...", "forbidden": "..."}}'
+              />
+            </label>
+            <label style={{ display: "grid", gap: 5 }}>
+              <span style={{ fontSize: 12, color: D.muted }}>Style guide (Markdown/Text)</span>
+              <textarea
+                value={createDraft.style_guide}
+                onChange={(e) =>
+                  setCreateDraft((current) => ({ ...current, style_guide: e.target.value }))
+                }
+                rows={4}
+                style={{
+                  background: D.bg,
+                  color: D.text,
+                  border: `1px solid ${D.border}`,
+                  borderRadius: 8,
+                  padding: "10px 12px",
+                  ...mono,
+                  fontSize: 12,
+                }}
+                placeholder="- Indentation: 4 spaces&#10;- Braces: K&R style"
+              />
+            </label>
             <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: D.muted }}>
               <input
                 type="checkbox"
@@ -620,6 +674,46 @@ export function CourseManagementPanel({ accessToken }: CourseManagementPanelProp
                       : "Used by Qdrant. Changing it is safe for a brand-new course before any ingestion runs."}
                   </div>
                 )}
+              </label>
+              <label style={{ display: "grid", gap: 5 }}>
+                <span style={{ fontSize: 12, color: D.muted }}>Syllabus matrix (JSON array/object)</span>
+                <textarea
+                  value={editDraft.syllabus_matrix}
+                  onChange={(e) =>
+                    setEditDraft((current) => ({ ...current, syllabus_matrix: e.target.value }))
+                  }
+                  rows={4}
+                  style={{
+                    background: D.bg,
+                    color: D.text,
+                    border: `1px solid ${D.border}`,
+                    borderRadius: 8,
+                    padding: "10px 12px",
+                    ...mono,
+                    fontSize: 12,
+                  }}
+                  placeholder='{"1": {"allowed": "...", "forbidden": "..."}}'
+                />
+              </label>
+              <label style={{ display: "grid", gap: 5 }}>
+                <span style={{ fontSize: 12, color: D.muted }}>Style guide (Markdown/Text)</span>
+                <textarea
+                  value={editDraft.style_guide}
+                  onChange={(e) =>
+                    setEditDraft((current) => ({ ...current, style_guide: e.target.value }))
+                  }
+                  rows={4}
+                  style={{
+                    background: D.bg,
+                    color: D.text,
+                    border: `1px solid ${D.border}`,
+                    borderRadius: 8,
+                    padding: "10px 12px",
+                    ...mono,
+                    fontSize: 12,
+                  }}
+                  placeholder="- Indentation: 4 spaces&#10;- Braces: K&R style"
+                />
               </label>
               <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: D.muted }}>
                 <input

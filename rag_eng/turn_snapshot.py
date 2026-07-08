@@ -75,6 +75,7 @@ def _retrieval_phase(
     *,
     retrieval_latency_ms: int | None = None,
     rerank_strategy: str | None = None,
+    query: QueryInput | None = None,
 ) -> dict[str, Any] | None:
     if retrieval_result is None:
         return None
@@ -84,6 +85,9 @@ def _retrieval_phase(
         "latency_ms": retrieval_latency_ms,
         "doc_count": len(chunks),
         "rerank_strategy": rerank_strategy,
+        "query_string": getattr(retrieval_result, "query_string", ""),
+        "has_style_guide": bool(getattr(query, "style_guide", None)) if query else None,
+        "has_syllabus_matrix": bool(getattr(query, "syllabus_matrix", None)) if query else None,
         "retrieved_rag_chunks": chunks,
     }
 
@@ -298,6 +302,7 @@ def build_turn_snapshot(
         retrieval_result,
         retrieval_latency_ms=retrieval_latency_ms,
         rerank_strategy=getattr(query, "rerank_strategy", None),
+        query=query,
     )
     ta_generation_phase = _ta_generation_phase(
         generation_attempts=generation_attempts,

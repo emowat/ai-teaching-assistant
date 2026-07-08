@@ -22,11 +22,13 @@ course registry layer.
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+
 from rag.course_registry import resolve_course_route
 from rag.schemas import AssistMode, CourseSource, QueryInput, RetrievalResult
-from rag.query_builder import build_query
+from rag.query_builder import build_course_query, build_cpp_query
 from rag.retrievers import (
-    retrieve_syllabus, retrieve_semantic, retrieve_strict_rules, retrieve_guidelines,
+    retrieve_semantic, retrieve_strict_rules, retrieve_guidelines,
     retrieve_harvard, retrieve_harvard_rules,
 )
 from rag.reranker import merge_and_rerank, CATEGORY_WEIGHTS, CATEGORY_WEIGHTS_CPP, should_search_cpp
@@ -123,81 +125,88 @@ def run_retrieval(query: QueryInput) -> RetrievalResult:
     retrieval_top_k = candidate_fetch_k if rerank_strategy != "similarity" else final_k
     guidelines_top_k = params["guidelines_top_k"]
 
-    dense_query = build_query(query)
+    # Build two separate query strings for the two retrieval concerns:
+    # - course_query: student's NL question only → course content collections
+    # - cpp_query:    AST keyword hints only     → CPP reference collection
+    course_query = build_course_query(query)
+    cpp_query = build_cpp_query(query)
 
-    # Guidelines are always available (week-agnostic, separate collection)
-    guidelines = retrieve_guidelines(
-        dense_query,
-        top_k=guidelines_top_k,
-        threshold=params["guidelines_threshold"],
-    )
-
+    # Determine course-content retrieval callables
     if query.course_source == CourseSource.MIT_14:
-        # MIT 6.0014 (default): syllabus + course material retrievers
-        syllabus = retrieve_syllabus(query.week, course="mit14")
-        semantic = retrieve_semantic(
-            dense_query,
-            query.week,
-            top_k=params["semantic_top_k"],
-            cumulative=params["cumulative"],
-            collection_name=route.collection_name,
-        )
-        rules = retrieve_strict_rules(
-            dense_query,
-            query.week,
-            top_k=params["rules_top_k"],
-            threshold=params["rules_threshold"],
-            cumulative=params["cumulative"],
-            collection_name=route.collection_name,
-        )
+        def _fetch_semantic():
+            return retrieve_semantic(
+                course_query, query.week,
+                top_k=params["semantic_top_k"],
+                cumulative=params["cumulative"],
+                collection_name=route.collection_name,
+            )
+        def _fetch_rules():
+            return retrieve_strict_rules(
+                course_query, query.week,
+                top_k=params["rules_top_k"],
+                threshold=params["rules_threshold"],
+                cumulative=params["cumulative"],
+                collection_name=route.collection_name,
+            )
     elif query.course_source == CourseSource.CS50:
-        # Harvard CS50: syllabus + CS50-specific retrievers (notes + transcripts)
-        syllabus = retrieve_syllabus(query.week, course="cs50")
-        semantic = retrieve_harvard(
-            dense_query,
-            query.week,
-            top_k=params["semantic_top_k"],
-            cumulative=params["cumulative"],
-        )
-        rules = retrieve_harvard_rules(
-            dense_query,
-            query.week,
-            top_k=params["rules_top_k"],
-            threshold=params["rules_threshold"],
-            cumulative=params["cumulative"],
-        )
+        def _fetch_semantic():
+            return retrieve_harvard(
+                course_query, query.week,
+                top_k=params["semantic_top_k"],
+                cumulative=params["cumulative"],
+            )
+        def _fetch_rules():
+            return retrieve_harvard_rules(
+                course_query, query.week,
+                top_k=params["rules_top_k"],
+                threshold=params["rules_threshold"],
+                cumulative=params["cumulative"],
+            )
     else:
-        # MIT 6.0013 / 6.0014: syllabus + course material retrievers
-        syllabus = retrieve_syllabus(
-            query.week,
-            course="mit13",
-        )
-        semantic = retrieve_semantic(
-            dense_query,
-            query.week,
-            top_k=retrieval_top_k,
-            cumulative=params["cumulative"],
-            collection_name=route.collection_name,
-        )
-        rules = retrieve_strict_rules(
-            dense_query,
-            query.week,
-            top_k=retrieval_top_k,
-            threshold=params["rules_threshold"],
-            cumulative=params["cumulative"],
-            collection_name=route.collection_name,
-        )
+        def _fetch_semantic():
+            return retrieve_semantic(
+                course_query, query.week,
+                top_k=retrieval_top_k,
+                cumulative=params["cumulative"],
+                collection_name=route.collection_name,
+            )
+        def _fetch_rules():
+            return retrieve_strict_rules(
+                course_query, query.week,
+                top_k=retrieval_top_k,
+                threshold=params["rules_threshold"],
+                cumulative=params["cumulative"],
+                collection_name=route.collection_name,
+            )
+
+    syllabus = None
+
+    # Fire course content and (optionally) CPP reference in parallel.
+    # Guidelines are skipped entirely when there are no AST hints to query with.
+    if cpp_query:
+        def _fetch_guidelines():
+            return retrieve_guidelines(
+                cpp_query,
+                top_k=guidelines_top_k,
+                threshold=params["guidelines_threshold"],
+            )
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            f_sem = pool.submit(_fetch_semantic)
+            f_rules = pool.submit(_fetch_rules)
+            f_guidelines = pool.submit(_fetch_guidelines)
+        semantic = f_sem.result()
+        rules = f_rules.result()
+        guidelines = f_guidelines.result()
+    else:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            f_sem = pool.submit(_fetch_semantic)
+            f_rules = pool.submit(_fetch_rules)
+        semantic = f_sem.result()
+        rules = f_rules.result()
+        guidelines = []
 
     # Merge + rerank (now returns 5-tuple with guidelines)
-    search_cpp = (
-        should_search_cpp(dense_query, code_raw=query.code_raw)
-        or any([
-            query.ast_features.has_pointer,
-            query.ast_features.has_reference,
-            query.ast_features.has_new,
-            query.ast_features.has_delete,
-        ])
-    )
+    search_cpp = should_search_cpp(course_query, query.ast_features)
     weights = CATEGORY_WEIGHTS_CPP if search_cpp else CATEGORY_WEIGHTS
     syllabus, rules_out, pedagogical_out, supplementary_out, guidelines_out = merge_and_rerank(
         syllabus=syllabus,
@@ -217,6 +226,10 @@ def run_retrieval(query: QueryInput) -> RetrievalResult:
         supplementary=supplementary_out,
         guidelines=guidelines_out,
         mode=query.mode,
+        query_week=query.week,
+        syllabus_matrix=query.syllabus_matrix,
+        style_guide=query.style_guide,
+        query_string=course_query,
     )
 
 

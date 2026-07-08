@@ -14,7 +14,8 @@ from typing import Any, AsyncIterator
 from rag import build_prompt, generate_response_from_result, run_retrieval
 from rag.runtime import create_qdrant_client
 
-from rag.course_registry import get_course_registry_status
+from rag.course_registry import get_course_registry_status, get_course_registry
+
 from rag_eng.config import Settings, get_inference_config, get_settings
 from rag_eng.config import get_runtime_policy_config
 from rag_eng.indexing import ensure_index, rebuild_index
@@ -718,6 +719,24 @@ def run_query(
     telemetry_store: TelemetryStore | None = None,
 ) -> QueryResponse:
     """Execute retrieval once, then generate the TA answer from that result."""
+    if query.course_id:
+        try:
+            registry = get_course_registry()
+            course_def = registry.get_course(query.course_id)
+            if course_def:
+                query.syllabus_matrix = course_def.syllabus_matrix
+                query.style_guide = course_def.style_guide
+                logger.info(
+                    "course_policy course_id=%s style_guide=%s syllabus_matrix=%s",
+                    query.course_id,
+                    "present" if course_def.style_guide else "missing",
+                    "present" if course_def.syllabus_matrix else "missing",
+                )
+            else:
+                logger.warning("get_course returned None for course_id=%s", query.course_id)
+        except Exception as exc:
+            logger.warning("Failed to load course policy for course_id=%s: %s", query.course_id, exc)
+
     telemetry_store = telemetry_store or get_telemetry_store()
     trace = telemetry_store.start_turn(query=query, source="query")
     runtime = get_inference_config()
@@ -1138,6 +1157,33 @@ def _extract_chat_context(messages: list[dict]) -> dict:
     if not student_message:
         student_message = re.sub(r"\[.*?\][\s\S]*?(?=\[|$)", "", content).strip()
 
+    def _extract_bool(key: str) -> bool:
+        m = re.search(rf"{key}:\s*(true|false)", content, re.IGNORECASE)
+        return m.group(1).lower() == "true" if m else False
+
+    def _extract_list(key: str) -> list[str]:
+        m = re.search(rf"{key}:\s*\[(.*?)\]", content, re.IGNORECASE)
+        if m:
+            items = m.group(1).split(",")
+            return [x.strip().strip("'\"") for x in items if x.strip()]
+        return []
+
+    ast_features = {
+        "has_pointer": _extract_bool("Has_Pointer"),
+        "has_reference": _extract_bool("Has_Reference"),
+        "has_loop": _extract_bool("Has_Loop"),
+        "has_new": _extract_bool("Has_New"),
+        "has_delete": _extract_bool("Has_Delete"),
+        "has_malloc": _extract_bool("Has_Malloc"),
+        "has_free": _extract_bool("Has_Free"),
+        "has_recursion": _extract_bool("Has_Recursion"),
+        "has_stl_algorithm": _extract_bool("Has_STL_Algorithm"),
+        "has_smart_pointer": _extract_bool("Has_Smart_Pointer"),
+        "has_iterator": _extract_bool("Has_Iterator"),
+        "target_variables": _extract_list("Target_Variables"),
+        "near_cursor_stl": _extract_list("Near_Cursor_STL"),
+    }
+
     week_match = re.search(r"Week[:\s]+(\d+)", content, re.IGNORECASE)
     week = int(week_match.group(1)) if week_match else 1
     week = max(1, min(8, week))
@@ -1164,13 +1210,14 @@ def _extract_chat_context(messages: list[dict]) -> dict:
     }
 
     return {
-        "student_message": student_message or content,
+        "student_message": student_message,
         "code_raw": code_raw,
         "terminal_output": terminal_output,
         "mode": mode,
         "week": week,
         "clipboard_event": clipboard_event,
         "engagement_metrics": engagement_metrics,
+        "ast_features": ast_features,
     }
 
 
@@ -1241,6 +1288,7 @@ async def run_chat(
     settings: Settings,
     stream: bool = False,
     course_id: str | None = None,
+    week_override: int | None = None,
     session_id: str | None = None,
     request_id: str | None = None,
     turn_id: str | None = None,
@@ -1254,15 +1302,19 @@ async def run_chat(
 ) -> dict | AsyncIterator[bytes]:
     """Full chat pipeline: context extraction -> RAG -> prompt assembly -> inference."""
     ctx = _extract_chat_context(messages)
+    # week_override from the request body (set in .vscode/settings.json) takes
+    # priority over the regex-parsed week from message content.
+    effective_week = week_override if week_override is not None else ctx["week"]
 
     query_kwargs: dict[str, object] = {
         "student_message": ctx["student_message"],
         "code_raw": ctx["code_raw"],
         "terminal_output": ctx["terminal_output"],
         "mode": ctx["mode"],
-        "week": ctx["week"],
+        "week": effective_week,
         "clipboard_event": ctx["clipboard_event"],
         "engagement_metrics": ctx["engagement_metrics"],
+        "ast_features": ctx["ast_features"],
         "course_id": course_id,
         "session_id": session_id,
         "request_id": request_id,
@@ -1270,6 +1322,25 @@ async def run_chat(
         "turn_index": turn_index,
         "section_id": section_id,
     }
+
+    if course_id:
+        try:
+            registry = get_course_registry()
+            course_def = registry.get_course(course_id)
+            if course_def:
+                query_kwargs["syllabus_matrix"] = course_def.syllabus_matrix
+                query_kwargs["style_guide"] = course_def.style_guide
+                logger.info(
+                    "course_policy course_id=%s style_guide=%s syllabus_matrix=%s",
+                    course_id,
+                    "present" if course_def.style_guide else "missing",
+                    "present" if course_def.syllabus_matrix else "missing",
+                )
+            else:
+                logger.warning("get_course returned None for course_id=%s", course_id)
+        except Exception as exc:
+            logger.warning("Failed to load course policy for course_id=%s: %s", course_id, exc)
+
     if result_count is not None:
         query_kwargs["result_count"] = result_count
     if rerank_strategy is not None:

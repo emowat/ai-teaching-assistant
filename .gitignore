@@ -30,6 +30,7 @@ frontend/dist/
 # Large Datasets
 raw_courses/
 synthetic-transcripts/*.jsonl
+synthetic-transcripts/*.json
 synthetic-transcripts/*.txt
 synthetic-transcripts/*.npy
 test/test_nvidia_guardrail_eval.py

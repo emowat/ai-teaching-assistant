@@ -150,6 +150,7 @@ class ChatRequest(BaseModel):
     """Ollama-compatible chat request (sent by the VS Code extension)."""
     model: str = "codingrabbit-ta"
     course_id: str | None = None
+    week: int | None = Field(default=None, ge=1, le=8)
     session_id: str | None = None
     request_id: str | None = None
     turn_id: str | None = None
@@ -819,7 +820,7 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     @app.get(
-        "/admin/llm/config",
+        "/api/admin/llm/config",
         response_model=AdminLlmConfigResponse,
         dependencies=[Depends(_require_admin_access)],
     )
@@ -827,7 +828,7 @@ def create_app() -> FastAPI:
         return _runtime_config_payload()
 
     @app.post(
-        "/admin/llm/config",
+        "/api/admin/llm/config",
         response_model=AdminLlmConfigResponse,
         dependencies=[Depends(_require_admin_access)],
     )
@@ -864,7 +865,28 @@ def create_app() -> FastAPI:
         return _runtime_config_payload()
 
     @app.post(
-        "/admin/restart",
+        "/api/admin/run-migration",
+        dependencies=[Depends(_require_admin_access)],
+    )
+    def admin_run_migration() -> dict:
+        from rag_eng.telemetry import _connect_postgres
+        from rag_eng.chat_log_export import _resolve_database_url
+        database_url = _resolve_database_url(None)
+        if not database_url:
+            raise HTTPException(status_code=500, detail="No database URL configured.")
+
+        try:
+            with _connect_postgres(database_url, 5) as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute("ALTER TABLE courses ADD COLUMN IF NOT EXISTS syllabus_matrix TEXT;")
+                    cursor.execute("ALTER TABLE courses ADD COLUMN IF NOT EXISTS style_guide TEXT;")
+                connection.commit()
+            return {"success": True, "message": "Migration complete."}
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc))
+
+    @app.post(
+        "/api/admin/restart",
         response_model=RestartResponse,
         dependencies=[Depends(_require_admin_access)],
     )
@@ -991,6 +1013,7 @@ def create_app() -> FastAPI:
                 settings=settings,
                 stream=payload.stream,
                 course_id=payload.course_id,
+                week_override=payload.week,
                 session_id=payload.session_id,
                 request_id=payload.request_id,
                 turn_id=payload.turn_id,

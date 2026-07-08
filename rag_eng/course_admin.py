@@ -96,6 +96,17 @@ def _validate_course_source(value: object) -> CourseSource:
         raise ValueError(f"Unsupported course_source value: {value}") from exc
 
 
+def _validate_json_string(value: str | None, field_name: str) -> str | None:
+    if not value or not value.strip():
+        return None
+    import json
+    try:
+        json.loads(value)
+        return value.strip()
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"{field_name} must be valid JSON: {exc}") from exc
+
+
 def _dedupe_aliases(aliases: list[str], course_id: str) -> list[str]:
     seen: set[str] = set()
     cleaned_aliases: list[str] = []
@@ -151,6 +162,8 @@ def _load_course_state(connection) -> _CourseState:
               collection_name,
               display_name,
               is_active,
+              syllabus_matrix,
+              style_guide,
               created_at,
               updated_at
             FROM courses
@@ -185,25 +198,18 @@ def _load_course_state(connection) -> _CourseState:
     ingestion_history_by_course: dict[str, bool] = {}
 
     for row in course_rows:
-        (
-            course_id,
-            course_source,
-            collection_name,
-            display_name,
-            is_active,
-            created_at,
-            updated_at,
-        ) = row[:7]
-        stored_course_id = str(course_id)
+        stored_course_id = str(row[0])
         courses_by_id[stored_course_id] = {
             "course_id": stored_course_id,
-            "course_source": _validate_course_source(course_source),
-            "collection_name": str(collection_name),
-            "display_name": str(display_name or ""),
-            "is_active": bool(is_active),
+            "course_source": _validate_course_source(row[1]),
+            "collection_name": str(row[2]),
+            "display_name": str(row[3] or ""),
+            "is_active": bool(row[4]),
+            "syllabus_matrix": row[5],
+            "style_guide": row[6],
+            "created_at": _format_timestamp(row[7]),
+            "updated_at": _format_timestamp(row[8]),
             "has_ingestion_history": False,
-            "created_at": created_at,
-            "updated_at": updated_at,
         }
         course_ids_by_normalized[_normalize_course_key(stored_course_id)] = stored_course_id
 
@@ -244,8 +250,10 @@ def _state_to_course(course_data: dict[str, Any], aliases: list[str]) -> AdminCo
         course_source=course_data["course_source"],
         collection_name=course_data["collection_name"],
         is_active=course_data["is_active"],
-        has_ingestion_history=course_data["has_ingestion_history"],
-        aliases=list(aliases),
+        has_ingestion_history=course_data.get("has_ingestion_history", False),
+        aliases=sorted(aliases),
+        syllabus_matrix=course_data.get("syllabus_matrix"),
+        style_guide=course_data.get("style_guide"),
         created_at=_format_timestamp(course_data["created_at"]),
         updated_at=_format_timestamp(course_data["updated_at"]),
     )
@@ -308,6 +316,8 @@ def _resolve_course_row(connection, course_id: str) -> tuple[Any, ...]:
               collection_name,
               display_name,
               is_active,
+              syllabus_matrix,
+              style_guide,
               created_at,
               updated_at
             FROM courses
@@ -387,6 +397,8 @@ def create_admin_course(
     collection_name = _validate_collection_name(payload.collection_name)
     course_source = _validate_course_source(payload.course_source)
     aliases = _dedupe_aliases(payload.aliases, cleaned_course_id)
+    syllabus_matrix = _validate_json_string(payload.syllabus_matrix, "syllabus_matrix")
+    style_guide = payload.style_guide.strip() if payload.style_guide else None
 
     with _connect_postgres(
         runtime.database_url,
@@ -405,13 +417,9 @@ def create_admin_course(
             cursor.execute(
                 """
                 INSERT INTO courses (
-                  course_id,
-                  course_source,
-                  collection_name,
-                  display_name,
-                  is_active
+                    course_id, course_source, collection_name, display_name, is_active, syllabus_matrix, style_guide
                 )
-                VALUES (%s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     cleaned_course_id,
@@ -419,6 +427,8 @@ def create_admin_course(
                     collection_name,
                     display_name,
                     payload.is_active,
+                    syllabus_matrix,
+                    style_guide,
                 ),
             )
             for alias in aliases:
@@ -451,16 +461,27 @@ def update_admin_course(
         raise RuntimeError("Course registry database URL is not configured.")
 
     cleaned_course_id = _clean_required_text(course_id, "course_id")
-    updates: list[tuple[str, object]] = []
+    updates: list[str] = []
+    values: list[Any] = []
 
     if payload.display_name is not None:
-        updates.append(("display_name", _clean_required_text(payload.display_name, "display_name")))
+        updates.append("display_name = %s")
+        values.append(_clean_required_text(payload.display_name, "display_name"))
     if payload.course_source is not None:
-        updates.append(("course_source", _validate_course_source(payload.course_source).value))
+        updates.append("course_source = %s")
+        values.append(_validate_course_source(payload.course_source).value)
     if payload.collection_name is not None:
-        updates.append(("collection_name", _validate_collection_name(payload.collection_name)))
+        updates.append("collection_name = %s")
+        values.append(_validate_collection_name(payload.collection_name))
     if payload.is_active is not None:
-        updates.append(("is_active", payload.is_active))
+        updates.append("is_active = %s")
+        values.append(payload.is_active)
+    if payload.syllabus_matrix is not None:
+        updates.append("syllabus_matrix = %s")
+        values.append(_validate_json_string(payload.syllabus_matrix, "syllabus_matrix"))
+    if payload.style_guide is not None:
+        updates.append("style_guide = %s")
+        values.append(payload.style_guide.strip() if payload.style_guide.strip() else None)
 
     if not updates:
         raise ValueError("At least one course field must be provided.")
@@ -470,8 +491,8 @@ def update_admin_course(
         runtime.connect_timeout_seconds,
     ) as connection:
         _resolve_course_row(connection, cleaned_course_id)
-        set_clause = ", ".join(f"{column} = %s" for column, _ in updates)
-        params = tuple(value for _, value in updates) + (cleaned_course_id,)
+        set_clause = ", ".join(updates)
+        params = tuple(values) + (cleaned_course_id,)
         with connection.cursor() as cursor:
             cursor.execute(
                 f"""

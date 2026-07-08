@@ -7,6 +7,8 @@ CREATE TABLE IF NOT EXISTS courses (
   collection_name text NOT NULL,
   display_name text NOT NULL DEFAULT '',
   is_active boolean NOT NULL DEFAULT TRUE,
+  syllabus_matrix text,
+  style_guide text,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );

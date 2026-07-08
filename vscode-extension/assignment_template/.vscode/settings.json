@@ -22,5 +22,7 @@
     "codingRabbit.cognitoUserPoolId": "us-east-1_Z5DAb8wni",
     "codingRabbit.cognitoClientId": "5k11ek5do9l3p6vhpev3aifh0f",
     "codingRabbit.cognitoScopes": "openid email profile",
-    "codingRabbit.modelName": "codingrabbit-qwen"
+    "codingRabbit.modelName": "codingrabbit-qwen",
+    "codingRabbit.courseId": "mit14",
+    "codingRabbit.currentWeek": 4
 }
