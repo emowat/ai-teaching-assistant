@@ -6,7 +6,16 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { CognitoAuthService } from './auth/CognitoAuthService';
 import type { CognitoAuthConfig, CognitoAuthSnapshot } from './auth/types';
-import { resolveApiBaseUrl, resolveChatApiUrl } from './extensionConfig';
+import { resolveApiBaseUrl } from './extensionConfig';
+import {
+    buildStudentApiUrl,
+    getStudentSection,
+    selectStudentSectionId,
+    type StudentBootstrapResponse,
+    type StudentTurnContext,
+} from './student/bootstrap';
+
+const STUDENT_SECTION_STATE_KEY = 'codingRabbit.student.sectionId';
 
 export class TAChatViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'coding-rabbit.chatView';
@@ -54,6 +63,12 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
     private _activityInterval: NodeJS.Timeout;
     private _currentWebview?: vscode.Webview;
     private _authStateSubscription?: vscode.Disposable;
+    private _studentBootstrap: StudentBootstrapResponse | null = null;
+    private _studentBootstrapLoading = false;
+    private _studentBootstrapError: string | null = null;
+    private _selectedStudentSectionId: string | null = null;
+    private _studentTurnContexts = new Map<number, StudentTurnContext>();
+    private _latestStudentTurnIndex: number | null = null;
 
     private async getParser(): Promise<Parser> {
         if (this._parser && this._cppLanguage) {
@@ -80,6 +95,7 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
         private readonly _context: vscode.ExtensionContext,
         private readonly _authService: CognitoAuthService
     ) {
+        this._selectedStudentSectionId = this._context.workspaceState.get<string>(STUDENT_SECTION_STATE_KEY) ?? null;
         this._authStateSubscription = this._authService.onDidChangeAuthState(() => {
             if (this._currentWebview) {
                 void this._renderCurrentWebview();
@@ -87,11 +103,17 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
 
             const status = this._authService.snapshot.status;
             if (status === 'signed_out' || status === 'unconfigured') {
-                this._conversationHistory = [];
-                this._hasGivenStyleNudge = false;
-                this._hasProactivelyAskedAboutPaste = false;
-                this._adversarialWarningCount = 0;
-                this._sessionId = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+                this._resetStudentConversationState();
+                this._studentBootstrap = null;
+                this._studentBootstrapLoading = false;
+                this._studentBootstrapError = null;
+                this._selectedStudentSectionId = null;
+                this._studentTurnContexts.clear();
+                this._latestStudentTurnIndex = null;
+            }
+
+            if (status === 'signed_in') {
+                void this._refreshStudentBootstrap(true);
             }
         });
         this._context.subscriptions.push(this._authStateSubscription);
@@ -175,7 +197,12 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
         
         if (!hasHomeworkMetrics && !hasStudyMetrics) return;
 
-        const telemetryUrl = `${resolveApiBaseUrl()}/api/telemetry`;
+        const telemetryContext = this._getStudentTelemetryContext();
+        if (!telemetryContext || !this._studentBootstrap) {
+            return;
+        }
+
+        const telemetryUrl = buildStudentApiUrl(resolveApiBaseUrl(), this._studentBootstrap.endpoints.telemetry);
 
         try {
             if (hasHomeworkMetrics) {
@@ -184,6 +211,11 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         session_id: this._sessionId,
+                        section_id: telemetryContext.sectionId,
+                        request_id: telemetryContext.requestId,
+                        turn_id: telemetryContext.turnId,
+                        turn_index: telemetryContext.turnIndex,
+                        course_id: telemetryContext.courseId,
                         mode: "Homework Assist",
                         engagement_metrics: {
                             active_editor_seconds: this._homeworkDeltaEditorSeconds,
@@ -207,6 +239,11 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         session_id: this._sessionId,
+                        section_id: telemetryContext.sectionId,
+                        request_id: telemetryContext.requestId,
+                        turn_id: telemetryContext.turnId,
+                        turn_index: telemetryContext.turnIndex,
+                        course_id: telemetryContext.courseId,
                         mode: "Study Assist",
                         engagement_metrics: {
                             active_editor_seconds: this._studyDeltaEditorSeconds,
@@ -266,6 +303,142 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
         }
     }
 
+    private _newSessionId(prefix: string = 'session'): string {
+        return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 12)}`;
+    }
+
+    private _resetStudentConversationState(): void {
+        this._conversationHistory = [];
+        this._hasGivenStyleNudge = false;
+        this._hasProactivelyAskedAboutPaste = false;
+        this._adversarialWarningCount = 0;
+        this._sessionId = this._newSessionId('student');
+        this._turnCount = 0;
+
+        this._turnDeltaEditorSeconds = 0;
+        this._turnDeltaShellSeconds = 0;
+        this._turnDeltaChatSeconds = 0;
+
+        this._homeworkDeltaEditorSeconds = 0;
+        this._homeworkDeltaShellSeconds = 0;
+        this._homeworkDeltaChatSeconds = 0;
+        this._homeworkDeltaRewardsGiven = 0;
+        this._homeworkDeltaStyleNudges = 0;
+
+        this._studyDeltaEditorSeconds = 0;
+        this._studyDeltaShellSeconds = 0;
+        this._studyDeltaChatSeconds = 0;
+        this._studyDeltaRewardsGiven = 0;
+        this._studyDeltaStyleNudges = 0;
+
+        this._studentTurnContexts.clear();
+        this._latestStudentTurnIndex = null;
+    }
+
+    private _getSelectedStudentSectionId(): string | null {
+        if (!this._studentBootstrap) {
+            return null;
+        }
+
+        const preferredSectionId =
+            this._selectedStudentSectionId ??
+            this._context.workspaceState.get<string>(STUDENT_SECTION_STATE_KEY) ??
+            null;
+        const selectedSectionId = selectStudentSectionId(
+            this._studentBootstrap,
+            preferredSectionId,
+        );
+        if (selectedSectionId) {
+            this._selectedStudentSectionId = selectedSectionId;
+        }
+        return selectedSectionId;
+    }
+
+    private _getSelectedStudentSection() {
+        const sectionId = this._getSelectedStudentSectionId();
+        if (!sectionId || !this._studentBootstrap) {
+            return null;
+        }
+        return getStudentSection(this._studentBootstrap, sectionId);
+    }
+
+    private _getMostRecentStudentTurnContext(): StudentTurnContext | null {
+        if (this._latestStudentTurnIndex === null) {
+            return null;
+        }
+        return this._studentTurnContexts.get(this._latestStudentTurnIndex) ?? null;
+    }
+
+    private _getStudentTelemetryContext(): StudentTurnContext | null {
+        const latestTurnContext = this._getMostRecentStudentTurnContext();
+        if (latestTurnContext) {
+            return latestTurnContext;
+        }
+
+        const selectedSection = this._getSelectedStudentSection();
+        if (!selectedSection) {
+            return null;
+        }
+
+        return {
+            requestId: `${this._sessionId}-telemetry`,
+            turnId: `${this._sessionId}-telemetry`,
+            turnIndex: 0,
+            sectionId: selectedSection.section_id,
+            courseId: selectedSection.course_id,
+        };
+    }
+
+    private async _refreshStudentBootstrap(force: boolean = false): Promise<void> {
+        const snapshot = this._authService.snapshot;
+        if (snapshot.status !== 'signed_in' && snapshot.status !== 'refreshing') {
+            return;
+        }
+        if (this._studentBootstrapLoading) {
+            return;
+        }
+        if (!force && this._studentBootstrap) {
+            return;
+        }
+
+        this._studentBootstrapLoading = true;
+        this._studentBootstrapError = null;
+        await this._renderCurrentWebview();
+
+        try {
+            const bootstrapUrl = buildStudentApiUrl(resolveApiBaseUrl(), '/api/student/bootstrap');
+            const response = await this._authService.fetch(bootstrapUrl, {
+                headers: { Accept: 'application/json' },
+            });
+            if (!response.ok) {
+                const body = await response.text().catch(() => '');
+                throw new Error(`Student bootstrap failed: ${response.status} ${response.statusText}${body ? ` - ${body}` : ''}`);
+            }
+
+            const bootstrap = (await response.json()) as StudentBootstrapResponse;
+            const selectedSectionId = selectStudentSectionId(
+                bootstrap,
+                this._selectedStudentSectionId ??
+                this._context.workspaceState.get<string>(STUDENT_SECTION_STATE_KEY) ??
+                null,
+            );
+            if (!selectedSectionId) {
+                throw new Error('No active student sections are available for this account.');
+            }
+
+            this._studentBootstrap = bootstrap;
+            this._selectedStudentSectionId = selectedSectionId;
+            await this._context.workspaceState.update(STUDENT_SECTION_STATE_KEY, selectedSectionId);
+            this._studentBootstrapError = null;
+        } catch (error) {
+            this._studentBootstrap = null;
+            this._studentBootstrapError = error instanceof Error ? error.message : 'Unable to load student bootstrap data.';
+        } finally {
+            this._studentBootstrapLoading = false;
+            await this._renderCurrentWebview();
+        }
+    }
+
     private async _renderCurrentWebview(): Promise<void> {
         if (!this._currentWebview) {
             return;
@@ -274,14 +447,33 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
         const snapshot = this._authService.snapshot;
         const authConfig = this._authService.config;
         const elapsed = this._totalElapsedSeconds;
-        if (snapshot.status === 'signed_in') {
+        if (snapshot.status === 'signed_in' || (snapshot.status === 'refreshing' && this._studentBootstrap)) {
+            if (this._studentBootstrapLoading && !this._studentBootstrap) {
+                this._currentWebview.html = this._getStudentBootstrapLoadingHtml(snapshot);
+                return;
+            }
+            if (!this._studentBootstrap) {
+                if (this._studentBootstrapError && !this._studentBootstrapLoading) {
+                    this._currentWebview.html = this._getStudentBootstrapLoadingHtml(snapshot);
+                    return;
+                }
+                void this._refreshStudentBootstrap(true);
+                this._currentWebview.html = this._getStudentBootstrapLoadingHtml(snapshot);
+                return;
+            }
             this._currentWebview.html = this._getHtmlForWebview(
-                this._currentWebview,
                 this._carrots,
                 elapsed,
                 this._isStopwatchPaused,
                 snapshot,
+                this._studentBootstrap,
+                this._getSelectedStudentSectionId(),
             );
+            return;
+        }
+
+        if (snapshot.status === 'refreshing') {
+            this._currentWebview.html = this._getStudentBootstrapLoadingHtml(snapshot);
             return;
         }
 
@@ -338,15 +530,24 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
                         placeHolder: "Tell us why..."
                     });
 
-                    const feedbackUrl = `${resolveApiBaseUrl()}/api/feedback`;
+                    const feedbackContext = this._studentTurnContexts.get(Number(data.messageIndex)) ?? this._getMostRecentStudentTurnContext();
+                    if (!feedbackContext || !this._studentBootstrap) {
+                        TAChatViewProvider.getOutputChannel().appendLine('[Feedback Error]: No student turn context is available for feedback.');
+                        break;
+                    }
+
+                    const feedbackUrl = buildStudentApiUrl(resolveApiBaseUrl(), this._studentBootstrap.endpoints.feedback);
                     await this._authService.fetch(feedbackUrl, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             session_id: this._sessionId,
+                            section_id: feedbackContext.sectionId,
+                            request_id: feedbackContext.requestId,
+                            turn_id: feedbackContext.turnId,
+                            turn_index: feedbackContext.turnIndex,
                             rating: data.rating,
                             reason: reason || "",
-                            message_index: data.messageIndex
                         })
                     }).catch(e => {
                         TAChatViewProvider.getOutputChannel().appendLine(`[Feedback Error]: ${e}`);
@@ -375,6 +576,31 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
                     if (!data.isPaused) {
                         this._recordActivity('chat'); // Manual resume triggers activity
                     }
+                    break;
+                }
+                case 'studentSectionChanged': {
+                    const nextSectionId = typeof data.sectionId === 'string' ? data.sectionId.trim() : '';
+                    if (!nextSectionId || nextSectionId === this._selectedStudentSectionId) {
+                        break;
+                    }
+
+                    const nextSection = this._studentBootstrap ? getStudentSection(this._studentBootstrap, nextSectionId) : null;
+                    if (!nextSection || !nextSection.is_active || nextSection.membership_status !== 'active') {
+                        TAChatViewProvider.getOutputChannel().appendLine(`[Student Section Error]: Invalid or inactive section selected: ${nextSectionId}`);
+                        break;
+                    }
+
+                    await this._flushTelemetry();
+                    this._selectedStudentSectionId = nextSectionId;
+                    await this._context.workspaceState.update(STUDENT_SECTION_STATE_KEY, nextSectionId);
+                    this._resetStudentConversationState();
+                    if (this._currentWebview) {
+                        void this._renderCurrentWebview();
+                    }
+                    break;
+                }
+                case 'studentBootstrapRetry': {
+                    await this._refreshStudentBootstrap(true);
                     break;
                 }
                 case 'webviewReady': {
@@ -507,6 +733,16 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
                 type: 'addResponse', 
                 text: `[Hard Mode Enforced]\\n\\nGitHub Copilot is currently active! To prevent AI-generated solutions from bypassing the learning process, I am disabling my assistance.\\n\\nPlease disable or uninstall GitHub Copilot for this workspace to continue using the CodingRabbit.`, 
                 isThinking: false 
+            });
+            return;
+        }
+
+        const selectedStudentSection = this._getSelectedStudentSection();
+        if (!this._studentBootstrap || !selectedStudentSection) {
+            webviewView.webview.postMessage({
+                type: 'addResponse',
+                text: 'CodingRabbit is still loading your student section. Please try again in a moment.',
+                isThinking: false,
             });
             return;
         }
@@ -920,6 +1156,16 @@ ${terminalOutput}`;
         const currentTurnIndex = this._turnCount;
         webviewView.webview.postMessage({ type: 'addResponse', text: 'Thinking...', isHtml: false, isThinking: true, turnIndex: currentTurnIndex });
 
+        const studentTurnContext: StudentTurnContext = {
+            requestId: this._newSessionId('request'),
+            turnId: this._newSessionId('turn'),
+            turnIndex: currentTurnIndex,
+            sectionId: selectedStudentSection.section_id,
+            courseId: selectedStudentSection.course_id,
+        };
+        this._studentTurnContexts.set(currentTurnIndex, studentTurnContext);
+        this._latestStudentTurnIndex = currentTurnIndex;
+
         // Add pure user message to history
         this._conversationHistory.push({ role: "user", content: userMessage, turnIndex: currentTurnIndex });
         
@@ -961,7 +1207,7 @@ ${terminalOutput}`;
             outputChannel.appendLine(`[Terminal_Context]\nExit_Code: ${exitCode}\nOutput:\n${terminalOutput}`);
             outputChannel.appendLine(`---------------------------------------------------`);
 
-            const apiUrl = resolveChatApiUrl();
+            const apiUrl = buildStudentApiUrl(resolveApiBaseUrl(), this._studentBootstrap.endpoints.chat);
             const modelName = vscode.workspace.getConfiguration('codingRabbit').get('modelName') || 'codingrabbit-ta';
             
             outputChannel.appendLine(`Model Requested: ${modelName}`);
@@ -969,7 +1215,11 @@ ${terminalOutput}`;
             const requestBody = {
                 model: modelName,
                 session_id: this._sessionId,
+                section_id: studentTurnContext.sectionId,
+                request_id: studentTurnContext.requestId,
+                turn_id: studentTurnContext.turnId,
                 turn_index: currentTurnIndex,
+                course_id: studentTurnContext.courseId,
                 messages: apiMessages,
                 stream: false,
                 options: {
@@ -1333,7 +1583,132 @@ ${terminalOutput}`;
 </html>`;
     }
 
-    private _getHtmlForWebview(webview: vscode.Webview, carrots: number, elapsed: number, isPaused: boolean, authState: CognitoAuthSnapshot) {
+    private _getStudentBootstrapLoadingHtml(snapshot: CognitoAuthSnapshot) {
+        const title = snapshot.status === 'refreshing'
+            ? 'Refreshing student access'
+            : 'Loading student access';
+        const message = this._studentBootstrapError
+            ? this._studentBootstrapError
+            : 'Checking your Aurora-backed student record and section memberships...';
+        const buttonLabel = this._studentBootstrapError ? 'Retry student access' : 'Try again';
+        return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CodingRabbit Student Access</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+            min-height: 100vh;
+            font-family: var(--vscode-font-family);
+            color: var(--vscode-editor-foreground);
+            background:
+                radial-gradient(circle at top left, rgba(255, 170, 0, 0.14), transparent 36%),
+                radial-gradient(circle at bottom right, rgba(0, 150, 255, 0.12), transparent 28%),
+                var(--vscode-editor-background);
+        }
+        .shell {
+            max-width: 560px;
+            margin: 0 auto;
+            padding: 24px;
+            border: 1px solid var(--vscode-widget-border);
+            border-radius: 18px;
+            background: var(--vscode-sideBar-background);
+            box-shadow: 0 18px 48px rgba(0, 0, 0, 0.16);
+        }
+        h1 {
+            margin: 0 0 10px;
+            font-size: 28px;
+            line-height: 1.1;
+        }
+        p {
+            margin: 0 0 18px;
+            line-height: 1.5;
+            color: var(--vscode-descriptionForeground);
+        }
+        button {
+            width: 100%;
+            padding: 12px 14px;
+            border: none;
+            border-radius: 12px;
+            background: var(--vscode-button-background);
+            color: var(--vscode-button-foreground);
+            font-weight: 600;
+            cursor: pointer;
+        }
+        button:hover {
+            background: var(--vscode-button-hoverBackground);
+        }
+        .small {
+            margin-top: 12px;
+            font-size: 12px;
+            color: var(--vscode-descriptionForeground);
+        }
+        .waiting {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            margin: 8px 0 18px;
+            padding: 10px 12px;
+            border-radius: 12px;
+            background: color-mix(in srgb, var(--vscode-button-background) 12%, transparent);
+            border: 1px solid var(--vscode-widget-border);
+            color: var(--vscode-descriptionForeground);
+        }
+        .spinner {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            border: 2px solid var(--vscode-descriptionForeground);
+            border-top-color: transparent;
+            animation: spin 0.9s linear infinite;
+        }
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="shell">
+        <div class="waiting"><span class="spinner"></span><span>Student bootstrap in progress...</span></div>
+        <h1>${this._escapeHtml(title)}</h1>
+        <p>${this._escapeHtml(message)}</p>
+        <button id="retryBtn">${this._escapeHtml(buttonLabel)}</button>
+        <div class="small">The extension is loading your active section list from Aurora before sending chat, telemetry, or feedback.</div>
+    </div>
+    <script>
+        const vscode = acquireVsCodeApi();
+        const retryBtn = document.getElementById('retryBtn');
+        retryBtn.addEventListener('click', () => {
+            vscode.postMessage({ type: 'studentBootstrapRetry' });
+        });
+    </script>
+</body>
+</html>`;
+    }
+
+    private _getHtmlForWebview(
+        carrots: number,
+        elapsed: number,
+        isPaused: boolean,
+        authState: CognitoAuthSnapshot,
+        bootstrap: StudentBootstrapResponse,
+        selectedSectionId: string | null,
+    ) {
+        const selectedSection = getStudentSection(bootstrap, selectedSectionId) ?? bootstrap.sections[0] ?? null;
+        const sectionOptions = bootstrap.sections.map(section => {
+            const selected = section.section_id === selectedSection?.section_id ? ' selected' : '';
+            const label = `${section.display_name}${section.term ? ` • ${section.term}` : ''}`;
+            return `<option value="${this._escapeHtml(section.section_id)}"${selected}>${this._escapeHtml(label)}</option>`;
+        }).join('');
+        const identityLabel = bootstrap.user.display_name || bootstrap.user.email;
+        const sectionLabel = selectedSection
+            ? `${selectedSection.display_name}${selectedSection.term ? ` • ${selectedSection.term}` : ''}`
+            : 'No active section available';
         return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1358,10 +1733,16 @@ ${terminalOutput}`;
 <body>
     <div class="chat-container">
         <div style="font-weight: bold; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--vscode-widget-border);">
-            Coding Rabbit: TA Chat
+            Coding Rabbit: Student Chat
             <button id="signOutBtn" title="Sign out locally from this extension" style="float: right; margin-left: 8px; width: auto;">Sign out</button>
-            <span id="authStatus" style="float: right; margin-left: 8px;">${authState.status === 'refreshing' ? 'Refreshing session...' : 'Signed in'}</span>
+            <span id="authStatus" style="float: right; margin-left: 8px;">${authState.status === 'refreshing' ? 'Refreshing session...' : 'Signed in as student'}</span>
             <span id="carrotCount" style="float: right;">🥕 ${carrots} Carrots</span>
+        </div>
+        <div style="margin-bottom: 10px; padding: 8px 10px; border: 1px solid var(--vscode-widget-border); border-radius: 6px; background: var(--vscode-editorWidget-background);">
+            <div style="font-size: 12px; opacity: 0.85; margin-bottom: 6px;">${this._escapeHtml(identityLabel)}</div>
+            <label for="sectionSelect" style="display: block; margin-bottom: 4px; font-size: 12px; opacity: 0.85;">Current section</label>
+            <select id="sectionSelect" style="width: 100%; margin-top: 0;">${sectionOptions}</select>
+            <div style="margin-top: 6px; font-size: 12px; opacity: 0.75;">Active class: ${this._escapeHtml(sectionLabel)}</div>
         </div>
         <div class="messages" id="messages">
             <div class="message ta-message">Hello! I am your C++ CodingRabbit. What are you working on today?</div>
@@ -1383,6 +1764,7 @@ ${terminalOutput}`;
         const vscode = acquireVsCodeApi();
         const input = document.getElementById('chatInput');
         const modeSelect = document.getElementById('modeSelect');
+        const sectionSelect = document.getElementById('sectionSelect');
         const terminalBtn = document.getElementById('terminalBtn');
         const exportBtn = document.getElementById('exportBtn');
         const stopwatchBtn = document.getElementById('stopwatchBtn');
@@ -1426,6 +1808,12 @@ ${terminalOutput}`;
         modeSelect.addEventListener('change', () => {
             vscode.postMessage({ type: 'modeChanged', mode: modeSelect.value });
         });
+
+        if (sectionSelect) {
+            sectionSelect.addEventListener('change', () => {
+                vscode.postMessage({ type: 'studentSectionChanged', sectionId: sectionSelect.value });
+            });
+        }
 
         terminalBtn.addEventListener('click', () => {
             vscode.postMessage({ type: 'startTerminal' });

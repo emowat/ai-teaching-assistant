@@ -116,7 +116,8 @@
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "test:auth": "npm run compile && node --test test/auth.test.js"
+    "test:auth": "npm run compile && node --test test/auth.test.js",
+    "test:extension": "npm run compile && node --test test/auth.test.js test/student-bootstrap.test.js"
   },
   "dependencies": {
     "diff": "^9.0.0",
