@@ -255,7 +255,7 @@ rag_eng_ecs:
     # Guardrail checkpoints are restored from S3 at startup; only the small
     # app image is baked into the ECS container.
     INPUT_GUARDRAILS_ENABLED: "true"
-    GUARDRAILS_LOG_ONLY: "false"
+    GUARDRAILS_LOG_ONLY: "true"
     INPUT_GUARDRAILS_CODEBERT_S3_URI: "s3://codingrabbit-data-dev/models/guardrails/input_codebert_v1/model.tar.gz"
     INPUT_GUARDRAILS_CODEBERT_CHECKPOINT_DIR: "input_guardrails/models/checkpoints/input_codebert_v1"
     INPUT_GUARDRAILS_CODEBERT_PASS_BELOW: "0.30"
