@@ -86,9 +86,9 @@ student   → [student]
 
 The student route is now a Codespaces launch page instead of a browser IDE:
 - It points students to the GitHub repo or assignment template configured in the repo root `.env` via `VITE_CODESPACES_TEMPLATE_URL` or `VITE_CODESPACES_REPO_URL` as a fallback.
-- The professor dashboard can override those values per week, including the default branch, and the student can pick the active week before launching Codespaces.
+- The professor dashboard can override those values per section, including the default branch, and the student can pick the active section before launching Codespaces.
 - Launch opens GitHub Codespaces in a new browser tab so the student does not lose the CodingRabbit launcher page.
-- For now, the per-week settings persist in browser `localStorage`; a backend-backed source of truth would be the next step if you need shared persistence across devices.
+- The launch configuration now comes from the backend bootstrap payload and section launch configs instead of browser `localStorage`.
 - It explains that the VS Code extension, terminal, file tree, and compiler all live inside Codespaces.
 - It no longer renders the Monaco editor, browser file explorer, or compile panel as the primary workflow.
 
