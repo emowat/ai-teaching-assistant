@@ -841,6 +841,55 @@ def test_get_student_bootstrap_returns_sections_and_default(
     assert response.sections[0].launch_configs == []
 
 
+def test_get_student_bootstrap_defaults_to_the_only_active_section(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _state()
+    state.users["student-1"] = _user(
+        user_id="student-1",
+        email="student@example.edu",
+        display_name="Student",
+        primary_role="student",
+        status="active",
+        cognito_sub="sub-student",
+    )
+    state.sections["mit14-fall-001"] = _section(
+        section_id="mit14-fall-001",
+        display_name="MIT 6.0014 Section A",
+    )
+    state.memberships[("mit14-fall-001", "student-1")] = _membership(
+        section_id="mit14-fall-001",
+        user_id="student-1",
+        role_in_section="student",
+    )
+    state.launch_configs["mit14-fall-001"] = [
+        {
+            "section_id": "mit14-fall-001",
+            "launch_id": "codespaces",
+            "label": "Codespaces",
+            "repo_url": "https://github.com/example/repo",
+            "template_url": "https://github.com/example/template",
+            "default_branch": "main",
+            "enabled": True,
+            "sort_order": 0,
+        }
+    ]
+    _patch_connection(monkeypatch, state)
+
+    response = app_registry.get_student_bootstrap(
+        CurrentUser(
+            cognito_sub="sub-student",
+            email="student@example.edu",
+            primary_role="student",
+        ),
+        runtime=_runtime(),
+    )
+
+    assert response.default_section_id == "mit14-fall-001"
+    assert response.sections[0].section_id == "mit14-fall-001"
+    assert response.sections[0].launch_configs[0].launch_id == "codespaces"
+
+
 def test_professor_launch_config_list_and_replace(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -922,6 +971,76 @@ def test_professor_launch_config_list_and_replace(
         "codespaces",
         "fallback",
     ]
+
+
+def test_professor_launch_config_routes_allow_ta_membership(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _state()
+    state.users["ta-1"] = _user(
+        user_id="ta-1",
+        email="ta@example.edu",
+        display_name="TA",
+        primary_role="professor",
+        status="active",
+        cognito_sub="sub-ta",
+    )
+    state.sections["mit14-fall-001"] = _section(
+        section_id="mit14-fall-001",
+        display_name="MIT 6.0014 Section A",
+    )
+    state.memberships[("mit14-fall-001", "ta-1")] = _membership(
+        section_id="mit14-fall-001",
+        user_id="ta-1",
+        role_in_section="ta",
+    )
+    state.launch_configs["mit14-fall-001"] = [
+        {
+            "section_id": "mit14-fall-001",
+            "launch_id": "codespaces",
+            "label": "Codespaces",
+            "repo_url": "https://github.com/example/repo",
+            "template_url": "https://github.com/example/template",
+            "default_branch": "main",
+            "enabled": True,
+            "sort_order": 0,
+        }
+    ]
+    _patch_connection(monkeypatch, state)
+
+    listed = app_registry.list_professor_section_launch_configs(
+        CurrentUser(
+            cognito_sub="sub-ta",
+            email="ta@example.edu",
+            primary_role="professor",
+        ),
+        "mit14-fall-001",
+        runtime=_runtime(),
+    )
+
+    updated = app_registry.replace_professor_section_launch_configs(
+        CurrentUser(
+            cognito_sub="sub-ta",
+            email="ta@example.edu",
+            primary_role="professor",
+        ),
+        "mit14-fall-001",
+        [
+            SectionLaunchConfig(
+                launch_id="codespaces",
+                label="Codespaces for TA",
+                repo_url="https://github.com/example/repo",
+                template_url="https://github.com/example/template",
+                default_branch="main",
+                enabled=True,
+                sort_order=0,
+            ),
+        ],
+        runtime=_runtime(),
+    )
+
+    assert listed[0].launch_id == "codespaces"
+    assert updated[0].label == "Codespaces for TA"
 
 
 def test_get_student_bootstrap_includes_launch_configs(
