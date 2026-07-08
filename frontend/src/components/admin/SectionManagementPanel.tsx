@@ -155,13 +155,46 @@ export function SectionManagementPanel({ accessToken }: SectionManagementPanelPr
         setSections(nextSections);
         setUsers(nextUsers);
         setMembershipCreateDraft(emptyMembershipCreateDraft(nextUsers));
-        applySelectedSection(nextSections[0] ?? null, nextUsers);
+        const firstSection = nextSections[0] ?? null;
+
+        if (firstSection === null) {
+          setSelectedSectionId(null);
+          setSelectedMembershipUserId(null);
+          setEditDraft(emptyEditDraft());
+          setMembershipCreateDraft(emptyMembershipCreateDraft(nextUsers));
+          setMembershipEditDraft(emptyMembershipEditDraft());
+          return;
+        }
+
+        setSelectedSectionId(firstSection.section_id);
+        setSelectedMembershipUserId(firstSection.memberships[0]?.user_id ?? null);
+        setEditDraft({
+          display_name: firstSection.display_name,
+          term: firstSection.term,
+          is_active: firstSection.is_active,
+        });
+        setMembershipCreateDraft((current) => ({
+          ...current,
+          user_id: current.user_id || nextUsers[0]?.user_id || "",
+        }));
+        setMembershipEditDraft(
+          firstSection.memberships[0]
+            ? {
+                role_in_section: firstSection.memberships[0].role_in_section,
+                status: firstSection.memberships[0].status,
+              }
+            : emptyMembershipEditDraft()
+        );
       })
       .catch((err: Error) => {
         if (!cancelled) {
           setSections([]);
           setUsers([]);
-          applySelectedSection(null, []);
+          setSelectedSectionId(null);
+          setSelectedMembershipUserId(null);
+          setEditDraft(emptyEditDraft());
+          setMembershipCreateDraft(emptyMembershipCreateDraft([]));
+          setMembershipEditDraft(emptyMembershipEditDraft());
           setFormError(err.message);
         }
       })

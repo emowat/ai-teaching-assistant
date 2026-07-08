@@ -442,8 +442,8 @@ export function AdminDashboard({
     try {
       const res = await triggerChatLogExport(accessToken, courseFilter, exportStartDate, exportEndDate, timezoneFilter);
       setExportResult(`Success: ${res.message} (Total records: ${res.total_records})`);
-    } catch (err: any) {
-      setExportResult(`Error: ${err.message}`);
+    } catch (err: unknown) {
+      setExportResult(`Error: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setExporting(false);
     }
@@ -619,7 +619,7 @@ export function AdminDashboard({
     );
   };
 
-  const formatTime = (seconds: any): string => {
+  const formatTime = (seconds: number | string | null | undefined): string => {
     const s = Number(seconds);
     if (isNaN(s)) return "...";
     if (s < 60) return `${s}s`;
@@ -627,34 +627,42 @@ export function AdminDashboard({
     return `${(s / 3600).toFixed(1)}h`;
   };
 
-  const { scaledEngagementData, engagementUnit } = useMemo(() => {
-    if (!dashboardStats?.weekly_engagement) return { scaledEngagementData: [], engagementUnit: "seconds" };
+  const weeklyEngagement = dashboardStats?.weekly_engagement ?? [];
+  let engagementUnit = "seconds";
+  let scaledEngagementData = weeklyEngagement;
+  if (weeklyEngagement.length > 0) {
     let maxSecs = 0;
-    for (const d of dashboardStats.weekly_engagement) {
+    for (const d of weeklyEngagement) {
       if (d.chat_seconds > maxSecs) maxSecs = d.chat_seconds;
       if (d.editor_seconds > maxSecs) maxSecs = d.editor_seconds;
       if (d.terminal_seconds > maxSecs) maxSecs = d.terminal_seconds;
     }
-    
+
     let divisor = 1;
-    let unit = "seconds";
     if (maxSecs > 3600) {
       divisor = 3600;
-      unit = "hours";
+      engagementUnit = "hours";
     } else if (maxSecs > 60) {
       divisor = 60;
-      unit = "minutes";
+      engagementUnit = "minutes";
     }
-    
-    const scaled = dashboardStats.weekly_engagement.map(d => ({
+
+    scaledEngagementData = weeklyEngagement.map((d) => ({
       ...d,
       chat_seconds: Number((d.chat_seconds / divisor).toFixed(1)),
       editor_seconds: Number((d.editor_seconds / divisor).toFixed(1)),
       terminal_seconds: Number((d.terminal_seconds / divisor).toFixed(1)),
     }));
-    
-    return { scaledEngagementData: scaled, engagementUnit: unit };
-  }, [dashboardStats?.weekly_engagement]);
+  }
+
+  const formatEngagementTooltip = (value: unknown): [string, string | undefined] => {
+    const display = Array.isArray(value)
+      ? value.join(", ")
+      : typeof value === "number" || typeof value === "string"
+        ? value
+        : 0;
+    return [`${display} ${engagementUnit}`, undefined];
+  };
 
   return (
     <div
@@ -891,7 +899,7 @@ export function AdminDashboard({
                       <CartesianGrid strokeDasharray="3 3" stroke={D.border} vertical={false} />
                       <XAxis dataKey="day" stroke={D.muted} tick={{ fontSize: 11, fill: D.muted }} />
                       <YAxis stroke={D.muted} tick={{ fontSize: 11, fill: D.muted }} />
-                      <Tooltip {...chartTooltipStyle} formatter={(val: any) => [`${val} ${engagementUnit}`, undefined]} />
+                      <Tooltip {...chartTooltipStyle} formatter={formatEngagementTooltip} />
                       <Legend iconSize={8} wrapperStyle={{ fontSize: 11, color: D.muted }} />
                       <Bar dataKey="chat_seconds" name="Chat" fill={D.purple} />
                       <Bar dataKey="editor_seconds" name="Editor" fill={D.blue} />
