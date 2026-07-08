@@ -14,19 +14,17 @@ import {
   type ProfessorSectionStudent,
   type ProfessorSectionSummary,
 } from "../api/professorSectionsApi";
+import {
+  listProfessorSectionLaunchConfigs,
+  replaceProfessorSectionLaunchConfigs,
+  type SectionLaunchConfig,
+} from "../api/sectionLaunchConfigsApi";
 import { Avatar, Btn, Card, Stat, Tag } from "../design/atoms";
 import { chartTooltipStyle, D, mono } from "../design/tokens";
 import { Sidebar } from "../components/Sidebar";
 import { TopBar } from "../components/TopBar";
 import type { AppView } from "../types/navigation";
-import {
-  defaultWeekLaunchConfigs,
-  getWeekLaunchUrl,
-  isWeekLaunchReady,
-  loadWeekLaunchConfigs,
-  saveWeekLaunchConfigs,
-  type WeekLaunchConfig,
-} from "../data/codespaces";
+import { getWeekLaunchUrl, isWeekLaunchReady } from "../data/codespaces";
 
 interface ProfessorDashboardProps {
   onNavigate: (view: AppView) => void;
@@ -45,7 +43,7 @@ const weekData = [
 
 const profTabs = [
   { key: "overview", icon: "📋", label: "Overview" },
-  { key: "materials", icon: "📚", label: "Materials" },
+  { key: "launches", icon: "🚀", label: "Launches" },
   { key: "students", icon: "👥", label: "Students" },
   { key: "analytics", icon: "📊", label: "Analytics" },
 ];
@@ -59,6 +57,29 @@ const inputStyle = {
   fontSize: 13,
   width: "100%",
 };
+
+function emptyLaunchConfig(index = 0): SectionLaunchConfig {
+  return {
+    launch_id: `launch-${index + 1}`,
+    label: `Launch ${index + 1}`,
+    repo_url: "",
+    template_url: "",
+    default_branch: "main",
+    enabled: true,
+    sort_order: index,
+  };
+}
+
+function toWeekLaunchConfig(config: SectionLaunchConfig) {
+  return {
+    id: config.launch_id,
+    label: config.label,
+    repoUrl: config.repo_url,
+    templateUrl: config.template_url,
+    defaultBranch: config.default_branch,
+    enabled: config.enabled,
+  };
+}
 
 function formatLastSession(value: string): string {
   if (!value) {
@@ -74,17 +95,19 @@ export function ProfessorDashboard({
   accessToken,
 }: ProfessorDashboardProps) {
   const [tab, setTab] = useState("overview");
-  const [weeks, setWeeks] = useState<WeekLaunchConfig[]>(() => loadWeekLaunchConfigs());
   const [sections, setSections] = useState<ProfessorSectionSummary[]>([]);
   const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
   const [students, setStudents] = useState<ProfessorSectionStudent[]>([]);
+  const [launchConfigs, setLaunchConfigs] = useState<SectionLaunchConfig[]>([]);
+  const [launchConfigsSectionId, setLaunchConfigsSectionId] = useState<string | null>(null);
   const [loadingSections, setLoadingSections] = useState(true);
   const [studentFetchComplete, setStudentFetchComplete] = useState(false);
   const [sectionError, setSectionError] = useState<string | null>(null);
   const [studentError, setStudentError] = useState<string | null>(null);
+  const [launchConfigError, setLaunchConfigError] = useState<string | null>(null);
+  const [launchConfigStatus, setLaunchConfigStatus] = useState<string | null>(null);
+  const [savingLaunchConfigs, setSavingLaunchConfigs] = useState(false);
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
-
-  const enabledWeeks = useMemo(() => weeks.filter((week) => week.enabled), [weeks]);
   const selectedSection = useMemo(
     () => sections.find((section) => section.section_id === selectedSectionId) ?? null,
     [sections, selectedSectionId]
@@ -93,11 +116,17 @@ export function ProfessorDashboard({
     () => students.find((student) => student.user_id === selectedStudentId) ?? null,
     [selectedStudentId, students]
   );
+  const activeLaunchConfigs = useMemo(
+    () => (launchConfigsSectionId === selectedSectionId ? launchConfigs : []),
+    [launchConfigs, launchConfigsSectionId, selectedSectionId],
+  );
+  const loadingLaunchConfigs = Boolean(
+    selectedSectionId &&
+      accessToken &&
+      launchConfigsSectionId !== selectedSectionId &&
+      !launchConfigError
+  );
   const loadingStudents = Boolean(selectedSectionId) && !studentFetchComplete && !studentError;
-
-  useEffect(() => {
-    saveWeekLaunchConfigs(weeks);
-  }, [weeks]);
 
   useEffect(() => {
     let cancelled = false;
@@ -122,6 +151,32 @@ export function ProfessorDashboard({
       cancelled = true;
     };
   }, [accessToken]);
+
+  useEffect(() => {
+    if (!selectedSectionId || !accessToken) {
+      return;
+    }
+
+    let cancelled = false;
+
+    void listProfessorSectionLaunchConfigs(selectedSectionId, accessToken)
+      .then((nextConfigs) => {
+        if (cancelled) return;
+        setLaunchConfigs(nextConfigs);
+        setLaunchConfigsSectionId(selectedSectionId);
+        setLaunchConfigStatus(null);
+      })
+      .catch((err: Error) => {
+        if (!cancelled) {
+          setLaunchConfigError(err.message);
+          setLaunchConfigsSectionId(selectedSectionId);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken, selectedSectionId]);
 
   useEffect(() => {
     if (!selectedSectionId) {
@@ -151,27 +206,108 @@ export function ProfessorDashboard({
     };
   }, [accessToken, selectedSectionId]);
 
-  const updateWeek = (id: string, patch: Partial<WeekLaunchConfig>) => {
-    setWeeks((current) =>
-      current.map((week) => (week.id === id ? { ...week, ...patch } : week))
-    );
-  };
-
-  const resetWeeks = () => {
-    setWeeks(defaultWeekLaunchConfigs.map((week) => ({ ...week })));
-  };
-
   const handleSectionChange = (nextSectionId: string | null) => {
     setSelectedSectionId(nextSectionId);
     setStudents([]);
     setSelectedStudentId(null);
     setStudentError(null);
     setStudentFetchComplete(false);
+    setLaunchConfigError(null);
+    setLaunchConfigStatus(null);
   };
 
   const rosterSummary = selectedSection
     ? `${selectedSection.student_count} students · ${selectedSection.ta_count} TAs · ${selectedSection.professor_count} professors`
     : "Select a section to view the roster";
+
+  const updateLaunchConfig = (launchId: string, patch: Partial<SectionLaunchConfig>) => {
+    setLaunchConfigs((current) =>
+      current.map((config) =>
+        config.launch_id === launchId ? { ...config, ...patch } : config
+      )
+    );
+  };
+
+  const addLaunchConfig = () => {
+    setLaunchConfigs((current) => [...current, emptyLaunchConfig(current.length)]);
+  };
+
+  const removeLaunchConfig = (launchId: string) => {
+    setLaunchConfigs((current) =>
+      current.filter((config) => config.launch_id !== launchId)
+    );
+  };
+
+  const resetLaunchConfigs = () => {
+    if (!selectedSectionId) {
+      return;
+    }
+    setLaunchConfigStatus(null);
+    setLaunchConfigError(null);
+    setLaunchConfigsSectionId(null);
+    void listProfessorSectionLaunchConfigs(selectedSectionId, accessToken)
+      .then((nextConfigs) => {
+        setLaunchConfigs(nextConfigs);
+        setLaunchConfigsSectionId(selectedSectionId);
+      })
+      .catch((err: Error) => {
+        setLaunchConfigError(err.message);
+        setLaunchConfigsSectionId(selectedSectionId);
+      });
+  };
+
+  const saveLaunchConfigs = async () => {
+    if (!selectedSectionId) {
+      return;
+    }
+
+    setSavingLaunchConfigs(true);
+    setLaunchConfigError(null);
+    setLaunchConfigStatus(null);
+
+    try {
+      const cleaned = launchConfigs.map((config, index) => {
+        const launchId = config.launch_id.trim();
+        const label = config.label.trim();
+        if (!launchId) {
+          throw new Error(`Launch ID is required for row ${index + 1}.`);
+        }
+        if (!label) {
+          throw new Error(`Label is required for row ${index + 1}.`);
+        }
+        return {
+          ...config,
+          launch_id: launchId,
+          label,
+          repo_url: config.repo_url.trim(),
+          template_url: config.template_url.trim(),
+          default_branch: config.default_branch.trim() || "main",
+          sort_order: index,
+        };
+      });
+
+      const seen = new Set<string>();
+      for (const config of cleaned) {
+        if (seen.has(config.launch_id)) {
+          throw new Error(`Duplicate launch ID: ${config.launch_id}.`);
+        }
+        seen.add(config.launch_id);
+      }
+
+      const updated = await replaceProfessorSectionLaunchConfigs(
+        selectedSectionId,
+        accessToken,
+        cleaned
+      );
+      setLaunchConfigs(updated);
+      setLaunchConfigsSectionId(selectedSectionId);
+      setLaunchConfigStatus("Saved launch configs.");
+    } catch (err) {
+      setLaunchConfigError(err instanceof Error ? err.message : "Unable to save launch configs.");
+    } finally {
+      setSavingLaunchConfigs(false);
+    }
+  };
 
   return (
     <div
@@ -296,112 +432,168 @@ export function ProfessorDashboard({
                 </div>
               </Card>
             </div>
-          ) : tab === "materials" ? (
+          ) : tab === "launches" ? (
             <div>
               <div
                 style={{
                   display: "flex",
                   justifyContent: "space-between",
-                  alignItems: "center",
-                  marginBottom: 18,
-                }}
+                alignItems: "center",
+                marginBottom: 18,
+              }}
               >
                 <div style={{ fontSize: 18, fontWeight: 600 }}>
-                  Week repo routing <Tag color={D.muted}>Local config</Tag>
+                  Section launch config <Tag color={D.green}>Aurora-backed</Tag>
                 </div>
-                <Btn small variant="ghost" onClick={resetWeeks}>
-                  Reset defaults
-                </Btn>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <Btn small variant="ghost" onClick={addLaunchConfig} disabled={!selectedSectionId}>
+                    Add launch option
+                  </Btn>
+                  <Btn small variant="ghost" onClick={resetLaunchConfigs} disabled={!selectedSectionId}>
+                    Reload
+                  </Btn>
+                  <Btn
+                    small
+                    onClick={() => void saveLaunchConfigs()}
+                    disabled={!selectedSectionId || savingLaunchConfigs || loadingLaunchConfigs}
+                  >
+                    {savingLaunchConfigs ? "Saving..." : "Save launch configs"}
+                  </Btn>
+                </div>
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {weeks.map((week, index) => (
-                  <Card key={week.id} style={{ display: "grid", gap: 10 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <div style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>
-                        Week {index + 1} settings
+              {launchConfigError && (
+                <Card style={{ marginBottom: 12, color: D.red, fontSize: 12 }}>
+                  {launchConfigError}
+                </Card>
+              )}
+              {launchConfigStatus && (
+                <Card style={{ marginBottom: 12, color: D.green, fontSize: 12 }}>
+                  {launchConfigStatus}
+                </Card>
+              )}
+              {loadingLaunchConfigs ? (
+                <Card>Loading launch configs...</Card>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {activeLaunchConfigs.length === 0 && (
+                    <Card style={{ color: D.muted, fontSize: 13, lineHeight: 1.7 }}>
+                      No launch configs are saved for this section yet. Add one to define the
+                      Codespaces launch target students should use.
+                    </Card>
+                  )}
+                  {activeLaunchConfigs.map((launchConfig, index) => (
+                    <Card key={launchConfig.launch_id} style={{ display: "grid", gap: 10 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <div style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>
+                          Launch option {index + 1}
+                        </div>
+                        <Tag color={launchConfig.enabled ? D.green : D.muted}>
+                          {launchConfig.enabled ? "Enabled" : "Disabled"}
+                        </Tag>
+                        <Btn small variant="danger" onClick={() => removeLaunchConfig(launchConfig.launch_id)}>
+                          Remove
+                        </Btn>
                       </div>
-                      <Tag color={week.enabled ? D.green : D.muted}>
-                        {week.enabled ? "Enabled" : "Disabled"}
-                      </Tag>
-                    </div>
 
-                    <label style={{ display: "grid", gap: 6 }}>
-                      <span style={{ fontSize: 12, color: D.muted }}>Week label</span>
-                      <input
-                        value={week.label}
-                        onChange={(event) => updateWeek(week.id, { label: event.target.value })}
-                        style={inputStyle}
-                      />
-                    </label>
+                      <label style={{ display: "grid", gap: 6 }}>
+                        <span style={{ fontSize: 12, color: D.muted }}>Launch ID</span>
+                        <input
+                          value={launchConfig.launch_id}
+                          onChange={(event) =>
+                            updateLaunchConfig(launchConfig.launch_id, {
+                              launch_id: event.target.value,
+                            })
+                          }
+                          style={inputStyle}
+                        />
+                      </label>
 
-                    <label style={{ display: "grid", gap: 6 }}>
-                      <span style={{ fontSize: 12, color: D.muted }}>
-                        Student repo URL for this week
-                      </span>
-                      <input
-                        value={week.repoUrl}
-                        onChange={(event) => updateWeek(week.id, { repoUrl: event.target.value })}
-                        style={inputStyle}
-                      />
-                    </label>
+                      <label style={{ display: "grid", gap: 6 }}>
+                        <span style={{ fontSize: 12, color: D.muted }}>Label</span>
+                        <input
+                          value={launchConfig.label}
+                          onChange={(event) =>
+                            updateLaunchConfig(launchConfig.launch_id, {
+                              label: event.target.value,
+                            })
+                          }
+                          style={inputStyle}
+                        />
+                      </label>
 
-                    <label style={{ display: "grid", gap: 6 }}>
-                      <span style={{ fontSize: 12, color: D.muted }}>
-                        Codespaces template URL for this week
-                      </span>
-                      <input
-                        value={week.templateUrl}
-                        onChange={(event) =>
-                          updateWeek(week.id, { templateUrl: event.target.value })
-                        }
-                        style={inputStyle}
-                      />
-                    </label>
+                      <label style={{ display: "grid", gap: 6 }}>
+                        <span style={{ fontSize: 12, color: D.muted }}>
+                          Student repo URL for this launch
+                        </span>
+                        <input
+                          value={launchConfig.repo_url}
+                          onChange={(event) =>
+                            updateLaunchConfig(launchConfig.launch_id, {
+                              repo_url: event.target.value,
+                            })
+                          }
+                          style={inputStyle}
+                        />
+                      </label>
 
-                    <label style={{ display: "grid", gap: 6 }}>
-                      <span style={{ fontSize: 12, color: D.muted }}>
-                        Default branch for Codespaces
-                      </span>
-                      <input
-                        value={week.defaultBranch}
-                        onChange={(event) =>
-                          updateWeek(week.id, { defaultBranch: event.target.value })
-                        }
-                        style={inputStyle}
-                      />
-                    </label>
+                      <label style={{ display: "grid", gap: 6 }}>
+                        <span style={{ fontSize: 12, color: D.muted }}>
+                          Codespaces template URL
+                        </span>
+                        <input
+                          value={launchConfig.template_url}
+                          onChange={(event) =>
+                            updateLaunchConfig(launchConfig.launch_id, {
+                              template_url: event.target.value,
+                            })
+                          }
+                          style={inputStyle}
+                        />
+                      </label>
 
-                    <label
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 8,
-                        fontSize: 13,
-                        color: D.text,
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={week.enabled}
-                        onChange={(event) => updateWeek(week.id, { enabled: event.target.checked })}
-                      />
-                      Enable this week for students
-                    </label>
+                      <label style={{ display: "grid", gap: 6 }}>
+                        <span style={{ fontSize: 12, color: D.muted }}>
+                          Default branch for Codespaces
+                        </span>
+                        <input
+                          value={launchConfig.default_branch}
+                          onChange={(event) =>
+                            updateLaunchConfig(launchConfig.launch_id, {
+                              default_branch: event.target.value,
+                            })
+                          }
+                          style={inputStyle}
+                        />
+                      </label>
 
-                    <div style={{ fontSize: 11, color: D.muted }}>
-                      Students will see this week in the launcher when it is enabled.
-                      Launch target: <code>{getWeekLaunchUrl(week)}</code>
-                    </div>
-
-                    <div style={{ fontSize: 11, color: D.muted }}>
-                      Status: {isWeekLaunchReady(week) ? "launch ready" : "missing repo/template URL"}
-                    </div>
-                  </Card>
-                ))}
-              </div>
-              <div style={{ marginTop: 12, fontSize: 12, color: D.muted }}>
-                Enabled weeks: {enabledWeeks.map((week) => week.label).join(", ") || "none"}
-              </div>
+                      <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+                        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: D.muted }}>
+                          <input
+                            type="checkbox"
+                            checked={launchConfig.enabled}
+                            onChange={(event) =>
+                              updateLaunchConfig(launchConfig.launch_id, {
+                                enabled: event.target.checked,
+                              })
+                            }
+                          />
+                          Enabled
+                        </label>
+                        <div style={{ fontSize: 11, color: D.muted }}>
+                          Launch URL:{" "}
+                          <code>{getWeekLaunchUrl(toWeekLaunchConfig(launchConfig))}</code>
+                        </div>
+                        <div style={{ fontSize: 11, color: D.muted }}>
+                          Status:{" "}
+                          {isWeekLaunchReady(toWeekLaunchConfig(launchConfig))
+                            ? "launch ready"
+                            : "missing repo/template URL"}
+                        </div>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              )}
             </div>
           ) : tab === "students" ? (
             <div style={{ display: "grid", gap: 14 }}>

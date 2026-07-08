@@ -29,6 +29,7 @@ from rag_eng.schemas import (
     StudentBootstrapUser,
     ProfessorSectionStudent,
     ProfessorSectionSummary,
+    SectionLaunchConfig,
     SectionMembershipSummary,
 )
 
@@ -696,6 +697,32 @@ def _load_section_launch_config_rows(
     )
 
 
+def _launch_config_from_row(
+    row: tuple[Any, ...],
+    *,
+    model_cls: type[SectionLaunchConfig] = StudentLaunchConfig,
+) -> SectionLaunchConfig:
+    (
+        _section_id,
+        launch_id,
+        label,
+        repo_url,
+        template_url,
+        default_branch,
+        enabled,
+        sort_order,
+    ) = row[:8]
+    return model_cls(
+        launch_id=_clean_text(launch_id),
+        label=_clean_text(label),
+        repo_url=_clean_text(repo_url),
+        template_url=_clean_text(template_url),
+        default_branch=_clean_text(default_branch) or "main",
+        enabled=bool(enabled),
+        sort_order=int(sort_order or 0),
+    )
+
+
 def _load_most_recent_student_section_id(connection, user_sub: str) -> str | None:
     row = _fetch_one_row(
         connection,
@@ -1237,6 +1264,101 @@ def list_professor_sections(
         )
 
     return _group_professor_sections(section_rows, membership_rows)
+
+
+def list_professor_section_launch_configs(
+    current_user: CurrentUser,
+    section_id: str,
+    *,
+    runtime: AppRegistryRuntimeConfig | None = None,
+) -> list[SectionLaunchConfig]:
+    runtime = runtime or load_app_registry_runtime_config()
+    database_url = _require_database_url(runtime)
+    require_section_membership(
+        current_user,
+        section_id,
+        allowed_roles={"professor", "ta"},
+        runtime=runtime,
+    )
+
+    with _connect_postgres(database_url, runtime.connect_timeout_seconds) as connection:
+        rows = _load_section_launch_config_rows(connection, section_id)
+
+    return [
+        _launch_config_from_row(row, model_cls=SectionLaunchConfig)
+        for row in rows
+    ]
+
+
+def replace_professor_section_launch_configs(
+    current_user: CurrentUser,
+    section_id: str,
+    payload: list[SectionLaunchConfig],
+    *,
+    runtime: AppRegistryRuntimeConfig | None = None,
+) -> list[SectionLaunchConfig]:
+    runtime = runtime or load_app_registry_runtime_config()
+    database_url = _require_database_url(runtime)
+    require_section_membership(
+        current_user,
+        section_id,
+        allowed_roles={"professor", "ta"},
+        runtime=runtime,
+    )
+
+    normalized_rows: list[tuple[Any, ...]] = []
+    seen_launch_ids: set[str] = set()
+    for sort_order, config in enumerate(payload):
+        launch_id = _clean_text(config.launch_id)
+        label = _clean_text(config.label)
+        if not launch_id:
+            raise ValueError("launch_id is required for each launch config.")
+        if not label:
+            raise ValueError("label is required for each launch config.")
+        if launch_id in seen_launch_ids:
+            raise ValueError(f"Duplicate launch_id '{launch_id}' in launch config payload.")
+        seen_launch_ids.add(launch_id)
+        normalized_rows.append(
+            (
+                section_id,
+                launch_id,
+                label,
+                _clean_text(config.repo_url),
+                _clean_text(config.template_url),
+                _clean_text(config.default_branch) or "main",
+                bool(config.enabled),
+                sort_order,
+            )
+        )
+
+    with _connect_postgres(database_url, runtime.connect_timeout_seconds) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                DELETE FROM section_launch_configs
+                WHERE section_id = %s
+                """,
+                (section_id,),
+            )
+            for row in normalized_rows:
+                cursor.execute(
+                    """
+                    INSERT INTO section_launch_configs (
+                      section_id,
+                      launch_id,
+                      label,
+                      repo_url,
+                      template_url,
+                      default_branch,
+                      enabled,
+                      sort_order
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    row,
+                )
+
+    return list_professor_section_launch_configs(current_user, section_id, runtime=runtime)
 
 
 def list_professor_section_students(

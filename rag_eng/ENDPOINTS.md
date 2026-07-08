@@ -79,6 +79,8 @@ smoke testing, but section membership still applies.
 | `POST` | `/api/student/chat` | section-gated student chat route |
 | `POST` | `/api/student/telemetry` | authenticated student telemetry surface that persists Aurora identity |
 | `POST` | `/api/student/feedback` | authenticated student feedback surface that persists Aurora identity |
+| `GET` | `/professor/sections/{section_id}/launch-configs` | list launch targets for a professor-visible section |
+| `PUT` | `/professor/sections/{section_id}/launch-configs` | replace all launch targets for a section |
 
 Example bootstrap call:
 
@@ -158,6 +160,44 @@ curl -sS "$BASE_URL/api/student/feedback" \
 }
 JSON
 ```
+
+## Professor launch-config routes
+
+These routes are useful when you want to keep the browser student launcher and
+the VS Code extension aligned on the same section-specific launch targets.
+
+List the launch configs for a section:
+
+```bash
+curl -sS "$BASE_URL/professor/sections/mit14-fall-001/launch-configs" \
+  -H "Authorization: Bearer $COGNITO_ACCESS_TOKEN" | jq .
+```
+
+Replace the launch configs for a section:
+
+```bash
+curl -sS "$BASE_URL/professor/sections/mit14-fall-001/launch-configs" \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $COGNITO_ACCESS_TOKEN" \
+  -X PUT \
+  -d @- <<'JSON' | jq .
+[
+  {
+    "launch_id": "codespaces",
+    "label": "Codespaces",
+    "repo_url": "https://github.com/example/repo",
+    "template_url": "https://github.com/example/template",
+    "default_branch": "main",
+    "enabled": true,
+    "sort_order": 0
+  }
+]
+JSON
+```
+
+The student bootstrap response already includes the same `launch_configs`
+payload per section, so the student launcher can stay in sync without a second
+lookup.
 
 ## Payload notes
 

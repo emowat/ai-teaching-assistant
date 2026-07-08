@@ -26,6 +26,7 @@ There are three auth patterns in the service today:
 | `GET /health`, `POST /query`, `POST /api/chat`, `POST /api/diagnostics/*` | currently unauthenticated |
 | `GET /me`, `POST /run/compile` | Cognito bearer token |
 | `GET /api/student/bootstrap`, `POST /api/student/chat`, `POST /api/student/telemetry`, `POST /api/student/feedback` | Cognito bearer token + active Aurora section membership; admin/professor roles may enter the student surface for mimic/smoke flows |
+| `GET /professor/sections/{section_id}/launch-configs`, `PUT /professor/sections/{section_id}/launch-configs` | Cognito bearer token + active professor/TA membership for the section |
 | most `/admin/*` routes | admin Cognito bearer token or `X-Admin-Token` |
 | `POST /admin/index/ensure`, `POST /admin/index/rebuild` | `X-Admin-Token` only |
 
@@ -46,6 +47,11 @@ Aurora is also the source of truth for application users, sections, and
 section memberships. Cognito still handles authentication and the coarse
 global role, but the `/admin/users`, `/admin/sections`, and `/professor/*`
 routes read from the Aurora-backed application registry.
+
+The student launcher and professor launch editor now share the same
+section-level launch configuration stored in Aurora. The student bootstrap
+payload includes those launch configs, and professors can replace them with
+`GET` / `PUT /professor/sections/{section_id}/launch-configs`.
 
 Admin bearer auth means:
 
@@ -71,6 +77,8 @@ routes accept either auth style.
 | `POST` | `/api/student/chat` | bearer | section-gated student tutoring pipeline |
 | `POST` | `/api/student/telemetry` | bearer | record authenticated student telemetry with Aurora identity |
 | `POST` | `/api/student/feedback` | bearer | record authenticated student feedback with Aurora identity |
+| `GET` | `/professor/sections/{section_id}/launch-configs` | bearer | read section launch targets |
+| `PUT` | `/professor/sections/{section_id}/launch-configs` | bearer | replace section launch targets |
 | `POST` | `/api/diagnostics/input-guardrail` | none | public pre-RAG input-guardrail probe |
 | `POST` | `/api/diagnostics/rag` | none | public RAG-stage probe |
 | `POST` | `/api/diagnostics/output-guardrail` | none | public post-LLM guardrail probe |
@@ -190,6 +198,9 @@ If `RUNTIME_CONFIG_S3_URI` is set, the same startup path restores
 [`runtime_config.yaml`](./runtime_config.yaml) from S3 before the app starts,
 and `POST /admin/llm/config` syncs saved routing changes back to that object
 so the admin model selection survives ECS task replacement.
+The same persistence model applies to section launch configs: professors edit
+the Aurora-backed records, and the student web launcher / VS Code extension
+consume the same payload from `GET /api/student/bootstrap`.
 
 9. Start the service:
 

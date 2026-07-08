@@ -15,6 +15,7 @@ from rag_eng.schemas import (
     AdminSectionMembershipUpdate,
     AdminSectionUpdate,
     AdminUserCreate,
+    SectionLaunchConfig,
     StudentBootstrapResponse,
 )
 
@@ -391,7 +392,10 @@ class _FakeCursor:
             section_id = str(params[0])
             rows = [
                 self._launch_config_row(record)
-                for record in self.state.launch_configs.get(section_id, [])
+                for record in sorted(
+                    self.state.launch_configs.get(section_id, []),
+                    key=lambda row: (int(row.get("sort_order", 0)), str(row.get("launch_id", ""))),
+                )
             ]
             self._rows = rows
             return
@@ -484,6 +488,42 @@ class _FakeCursor:
                 "created_at": NOW,
                 "updated_at": NOW,
             }
+            self.rowcount = 1
+            return
+
+        if sql.startswith("DELETE FROM section_launch_configs WHERE section_id = %s"):
+            section_id = str(params[0])
+            removed = len(self.state.launch_configs.get(section_id, []))
+            self.state.launch_configs[section_id] = []
+            self.rowcount = removed
+            return
+
+        if sql.startswith(
+            "INSERT INTO section_launch_configs ( section_id, launch_id, label, repo_url, template_url, default_branch, enabled, sort_order ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)"
+        ):
+            (
+                section_id,
+                launch_id,
+                label,
+                repo_url,
+                template_url,
+                default_branch,
+                enabled,
+                sort_order,
+            ) = params
+            records = self.state.launch_configs.setdefault(str(section_id), [])
+            records.append(
+                {
+                    "section_id": str(section_id),
+                    "launch_id": str(launch_id),
+                    "label": str(label),
+                    "repo_url": str(repo_url),
+                    "template_url": str(template_url),
+                    "default_branch": str(default_branch),
+                    "enabled": bool(enabled),
+                    "sort_order": int(sort_order),
+                }
+            )
             self.rowcount = 1
             return
 
@@ -799,6 +839,89 @@ def test_get_student_bootstrap_returns_sections_and_default(
     assert response.default_section_id == "mit14-fall-002"
     assert response.endpoints.chat == "/api/student/chat"
     assert response.sections[0].launch_configs == []
+
+
+def test_professor_launch_config_list_and_replace(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _state()
+    state.users["prof-1"] = _user(
+        user_id="prof-1",
+        email="prof@example.edu",
+        display_name="Professor",
+        primary_role="professor",
+        status="active",
+        cognito_sub="sub-prof",
+    )
+    state.sections["mit14-fall-001"] = _section(
+        section_id="mit14-fall-001",
+        display_name="MIT 6.0014 Section A",
+    )
+    state.memberships[("mit14-fall-001", "prof-1")] = _membership(
+        section_id="mit14-fall-001",
+        user_id="prof-1",
+        role_in_section="professor",
+    )
+    state.launch_configs["mit14-fall-001"] = [
+        {
+            "section_id": "mit14-fall-001",
+            "launch_id": "codespaces",
+            "label": "Codespaces",
+            "repo_url": "https://github.com/example/old",
+            "template_url": "https://github.com/example/template",
+            "default_branch": "main",
+            "enabled": True,
+            "sort_order": 0,
+        }
+    ]
+    _patch_connection(monkeypatch, state)
+
+    listed = app_registry.list_professor_section_launch_configs(
+        CurrentUser(
+            cognito_sub="sub-prof",
+            email="prof@example.edu",
+            primary_role="professor",
+        ),
+        "mit14-fall-001",
+        runtime=_runtime(),
+    )
+
+    updated = app_registry.replace_professor_section_launch_configs(
+        CurrentUser(
+            cognito_sub="sub-prof",
+            email="prof@example.edu",
+            primary_role="professor",
+        ),
+        "mit14-fall-001",
+        [
+            SectionLaunchConfig(
+                launch_id="codespaces",
+                label="Codespaces Updated",
+                repo_url="https://github.com/example/new",
+                template_url="https://github.com/example/template",
+                default_branch="main",
+                enabled=True,
+                sort_order=0,
+            ),
+            SectionLaunchConfig(
+                launch_id="fallback",
+                label="Fallback",
+                repo_url="",
+                template_url="",
+                default_branch="main",
+                enabled=False,
+                sort_order=1,
+            ),
+        ],
+        runtime=_runtime(),
+    )
+
+    assert listed[0].launch_id == "codespaces"
+    assert updated[0].label == "Codespaces Updated"
+    assert [row["launch_id"] for row in state.launch_configs["mit14-fall-001"]] == [
+        "codespaces",
+        "fallback",
+    ]
 
 
 def test_get_student_bootstrap_includes_launch_configs(

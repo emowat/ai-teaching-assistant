@@ -326,8 +326,8 @@ class ProfessorSectionStudent(BaseModel):
     last_session_at: str = ""
 
 
-class StudentLaunchConfig(BaseModel):
-    """Student-facing launch routing metadata for one section launch option."""
+class SectionLaunchConfig(BaseModel):
+    """Launch routing metadata for a section launch option."""
 
     launch_id: str
     label: str
@@ -336,6 +336,10 @@ class StudentLaunchConfig(BaseModel):
     default_branch: str = "main"
     enabled: bool = False
     sort_order: int = 0
+
+
+class StudentLaunchConfig(SectionLaunchConfig):
+    """Student-facing launch routing metadata for one section launch option."""
 
 
 class StudentBootstrapSection(BaseModel):

@@ -1,71 +1,146 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Btn, Card, Tag } from "../design/atoms";
 import { D, mono } from "../design/tokens";
 import { TopBar } from "../components/TopBar";
 import type { AppView } from "../types/navigation";
-import {
-  getCodespacesFallbackUrl,
-  getDefaultWeekId,
-  getWeekLaunchUrl,
-  isWeekLaunchReady,
-  loadWeekLaunchConfigs,
-} from "../data/codespaces";
+import { getCodespacesFallbackUrl, getWeekLaunchUrl, isWeekLaunchReady } from "../data/codespaces";
+import { getStudentBootstrap, type StudentBootstrapResponse } from "../api/studentBootstrapApi";
+import type { SectionLaunchConfig } from "../api/sectionLaunchConfigsApi";
 
 interface StudentInterfaceProps {
   onNavigate: (view: AppView) => void;
   allowedViews: AppView[];
   onSignOut: () => void;
+  accessToken: string;
 }
 
 const fallbackCodespacesUrl = getCodespacesFallbackUrl();
+
+function launchConfigToWeek(config: SectionLaunchConfig) {
+  return {
+    id: config.launch_id,
+    label: config.label,
+    repoUrl: config.repo_url,
+    templateUrl: config.template_url,
+    defaultBranch: config.default_branch,
+    enabled: config.enabled,
+  };
+}
+
+function pickDefaultSection(bootstrap: StudentBootstrapResponse): string | null {
+  return bootstrap.default_section_id ?? bootstrap.sections[0]?.section_id ?? null;
+}
+
+function pickDefaultLaunchId(sectionLaunchConfigs: SectionLaunchConfig[]): string | null {
+  return (
+    sectionLaunchConfigs.find((config) => config.enabled)?.launch_id ??
+    sectionLaunchConfigs[0]?.launch_id ??
+    null
+  );
+}
 
 export function StudentInterface({
   onNavigate,
   allowedViews,
   onSignOut,
+  accessToken,
 }: StudentInterfaceProps) {
-  const weeks = useMemo(() => loadWeekLaunchConfigs(), []);
-  const [selectedWeekId, setSelectedWeekId] = useState<string>(() =>
-    getDefaultWeekId(weeks)
+  const [bootstrap, setBootstrap] = useState<StudentBootstrapResponse | null>(null);
+  const [bootstrapToken, setBootstrapToken] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
+  const [selectedLaunchId, setSelectedLaunchId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!accessToken) return;
+
+    let cancelled = false;
+
+    void getStudentBootstrap(accessToken)
+      .then((nextBootstrap) => {
+        if (cancelled) return;
+        setBootstrap(nextBootstrap);
+        setBootstrapToken(accessToken);
+        setSelectedSectionId((current) => current ?? pickDefaultSection(nextBootstrap));
+        const defaultSectionId = pickDefaultSection(nextBootstrap);
+        const defaultSection =
+          nextBootstrap.sections.find((section) => section.section_id === defaultSectionId) ??
+          nextBootstrap.sections[0] ??
+          null;
+        setSelectedLaunchId(
+          (current) =>
+            current ??
+            pickDefaultLaunchId(defaultSection?.launch_configs ?? []) ??
+            null
+        );
+        setError(null);
+      })
+      .catch((err: Error) => {
+        if (!cancelled) {
+          setBootstrap(null);
+          setBootstrapToken(accessToken);
+          setSelectedSectionId(null);
+          setSelectedLaunchId(null);
+          setError(err.message);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken]);
+
+  const activeBootstrap = bootstrapToken === accessToken ? bootstrap : null;
+  const isBootstrapLoading = Boolean(accessToken) && bootstrapToken !== accessToken;
+  const activeBootstrapError = accessToken ? error : null;
+
+  const selectedSection = useMemo(
+    () => activeBootstrap?.sections.find((section) => section.section_id === selectedSectionId) ?? null,
+    [activeBootstrap, selectedSectionId],
+  );
+  const launchConfigs = useMemo(
+    () => selectedSection?.launch_configs ?? [],
+    [selectedSection],
+  );
+  const selectedLaunchConfig = useMemo(
+    () =>
+      launchConfigs.find((config) => config.launch_id === selectedLaunchId) ??
+      launchConfigs.find((config) => config.enabled) ??
+      launchConfigs[0] ??
+      null,
+    [launchConfigs, selectedLaunchId],
   );
 
-  const selectedWeek = useMemo(
-    () => weeks.find((week) => week.id === selectedWeekId && week.enabled) ?? weeks.find((week) => week.enabled),
-    [selectedWeekId, weeks]
-  );
-
-  const codespacesUrl = useMemo(() => {
-    if (selectedWeek) {
-      return getWeekLaunchUrl(selectedWeek);
+  const launchUrl = useMemo(() => {
+    if (!selectedLaunchConfig) {
+      return fallbackCodespacesUrl;
     }
-    return getCodespacesFallbackUrl();
-  }, [selectedWeek]);
+    return getWeekLaunchUrl(launchConfigToWeek(selectedLaunchConfig));
+  }, [selectedLaunchConfig]);
 
-  const isConfigured = codespacesUrl !== fallbackCodespacesUrl;
-  const isLaunchReady = selectedWeek ? isWeekLaunchReady(selectedWeek) : false;
+  const isConfigured = launchUrl !== fallbackCodespacesUrl;
+  const isLaunchReady = selectedLaunchConfig ? isWeekLaunchReady(launchConfigToWeek(selectedLaunchConfig)) : false;
+  const hasEnabledSections = Boolean(activeBootstrap?.sections.length);
 
-  const openCodespaces = () => {
-    window.open(codespacesUrl, "_blank", "noopener,noreferrer");
+  const openLaunchTarget = () => {
+    window.open(launchUrl, "_blank", "noopener,noreferrer");
   };
-
-  const enabledWeeks = weeks.filter((week) => week.enabled);
-  const hasEnabledWeeks = enabledWeeks.length > 0;
 
   const stepCards = [
     {
-      title: "1. Open the assignment in Codespaces",
+      title: "1. Pick your section",
       body:
-        "Your coursework now lives in the GitHub repo. Open the template or assignment repo in Codespaces and let GitHub create the workspace for you.",
+        "Your active sections now come from the backend bootstrap payload, not browser storage. The extension and the web launcher see the same assignments.",
     },
     {
-      title: "2. Use the VS Code extension",
+      title: "2. Open the configured launch target",
       body:
-        "The CodingRabbit extension loads inside the Codespace and talks to the deployed rag_eng API. That is where the Socratic tutor lives now.",
+        "Each section carries its own Codespaces launch config. Open the active launch option for the section you are working on.",
     },
     {
-      title: "3. Compile in the Codespaces terminal",
+      title: "3. Use the extension inside Codespaces",
       body:
-        "Use the built-in terminal, g++, make, and debugger tools inside the container. The old browser sandbox is no longer the student path.",
+        "The VS Code extension, compile tools, and live tutor continue to run inside the Codespace. The web app is the launcher and status surface.",
     },
   ];
 
@@ -89,194 +164,278 @@ export function StudentInterface({
       />
 
       <div style={{ flex: 1, overflow: "auto", padding: "40px 24px 56px" }}>
-        <div style={{ maxWidth: 1040, margin: "0 auto" }}>
+        <div style={{ maxWidth: 1080, margin: "0 auto" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
-            <Tag>Codespaces-first student flow</Tag>
+            <Tag>Backend-backed student launch</Tag>
             <span style={{ ...mono, fontSize: 12, color: D.muted }}>
-              Monaco editor removed from the primary path
+              Student bootstrap is the source of truth
             </span>
           </div>
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
-              gap: 18,
-            }}
-          >
-            <Card style={{ padding: 28 }}>
-              <div style={{ ...mono, fontSize: 12, color: D.orange, marginBottom: 10 }}>
-                // student workspace
+          {isBootstrapLoading ? (
+            <Card style={{ padding: 24, marginBottom: 18 }}>
+              <div style={{ fontSize: 14, color: D.muted }}>Loading student access...</div>
+            </Card>
+          ) : activeBootstrapError ? (
+            <Card
+              style={{
+                marginBottom: 18,
+                padding: 24,
+                border: `1px solid ${D.red}24`,
+                background: `${D.red}08`,
+              }}
+            >
+              <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>
+                Student access unavailable
               </div>
-              <h1
-                style={{
-                  fontSize: 40,
-                  lineHeight: 1.05,
-                  margin: "0 0 14px",
-                  letterSpacing: -1,
-                }}
-              >
-                Open your assignment in{" "}
-                <span style={{ color: D.orange }}>GitHub Codespaces</span>
-              </h1>
-              <p style={{ color: D.muted, lineHeight: 1.8, margin: "0 0 22px" }}>
-                The browser editor, file explorer, and compile panel have been retired
-                from the main student route. Students now work inside the Codespace
-                itself, where the VS Code extension, terminal, and file tree are already
-                available.
-              </p>
-
-              <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 20 }}>
-                <Btn onClick={openCodespaces} disabled={!hasEnabledWeeks || !isLaunchReady}>
-                  Open Codespaces
-                </Btn>
-                <Btn
-                  variant="ghost"
-                  onClick={() =>
-                    selectedWeek?.repoUrl && window.open(selectedWeek.repoUrl, "_blank", "noopener,noreferrer")
-                  }
-                  disabled={!selectedWeek?.repoUrl}
-                >
-                  Open week repo ↗
-                </Btn>
+              <div style={{ color: D.muted, lineHeight: 1.7, marginBottom: 16 }}>
+                {activeBootstrapError}
               </div>
-
-              <div style={{ marginBottom: 18 }}>
-                <div style={{ fontSize: 12, color: D.muted, marginBottom: 6 }}>
-                  Select the week you are working on
+              <Btn onClick={() => window.location.reload()}>Retry student access</Btn>
+            </Card>
+          ) : (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "minmax(320px, 1.2fr) minmax(280px, 0.8fr)",
+                gap: 18,
+                alignItems: "start",
+              }}
+            >
+              <Card style={{ padding: 28 }}>
+                <div style={{ ...mono, fontSize: 12, color: D.orange, marginBottom: 10 }}>
+                  // student workspace
                 </div>
-                <select
-                  value={selectedWeek?.id ?? ""}
-                  onChange={(event) => setSelectedWeekId(event.target.value)}
-                  disabled={!hasEnabledWeeks}
+                <h1
                   style={{
-                    width: "100%",
-                    background: D.card,
-                    border: `1px solid ${D.border}`,
-                    color: D.text,
-                    borderRadius: 8,
-                    padding: "10px 12px",
-                    fontSize: 13,
+                    fontSize: 40,
+                    lineHeight: 1.05,
+                    margin: "0 0 14px",
+                    letterSpacing: -1,
                   }}
                 >
-                  {enabledWeeks.map((week) => (
-                    <option key={week.id} value={week.id}>
-                      {week.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
+                  Launch your{" "}
+                  <span style={{ color: D.orange }}>section-specific Codespace</span>
+                </h1>
+                <p style={{ color: D.muted, lineHeight: 1.8, margin: "0 0 22px" }}>
+                  The browser editor and local week config are gone from the primary path.
+                  Student access is now resolved from Aurora and the same backend data powers
+                  the VS Code extension.
+                </p>
 
-              {!hasEnabledWeeks && (
-                <div
-                  style={{
-                    padding: "12px 14px",
-                    borderRadius: 10,
-                    border: `1px solid ${D.red}40`,
-                    background: `${D.red}10`,
-                    color: D.text,
-                    fontSize: 13,
-                    lineHeight: 1.6,
-                    marginBottom: 20,
-                  }}
-                >
-                  No week is enabled yet. Ask the professor to enable a week in the
-                  Professor dashboard before opening Codespaces.
+                <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 18 }}>
+                  <Btn onClick={openLaunchTarget} disabled={!isConfigured || !isLaunchReady}>
+                    Open launch target
+                  </Btn>
                 </div>
-              )}
 
-              {selectedWeek && (
-                <div
-                  style={{
-                    padding: "12px 14px",
-                    borderRadius: 10,
-                    border: `1px solid ${D.border}`,
-                    background: D.surface,
-                    marginBottom: 20,
-                    lineHeight: 1.6,
-                    fontSize: 13,
-                  }}
-                >
-                  <div style={{ fontWeight: 600, marginBottom: 4 }}>{selectedWeek.label}</div>
-                  <div style={{ color: D.muted }}>
-                    Repo: <code>{selectedWeek.repoUrl}</code>
-                    <br />
-                    Template: <code>{selectedWeek.templateUrl}</code>
-                    <br />
-                    Branch: <code>{selectedWeek.defaultBranch}</code>
+                <div style={{ display: "grid", gap: 14, marginBottom: 20 }}>
+                  <div>
+                    <div style={{ fontSize: 12, color: D.muted, marginBottom: 6 }}>
+                      Active section
+                    </div>
+                    <select
+                      value={selectedSection?.section_id ?? ""}
+                      onChange={(event) => {
+                        const nextSectionId = event.target.value || null;
+                        setSelectedSectionId(nextSectionId);
+                        const nextSection =
+                          activeBootstrap?.sections.find((section) => section.section_id === nextSectionId) ?? null;
+                        setSelectedLaunchId(
+                          nextSection ? pickDefaultLaunchId(nextSection.launch_configs) : null,
+                        );
+                      }}
+                      disabled={!hasEnabledSections}
+                      style={{
+                        width: "100%",
+                        background: D.card,
+                        border: `1px solid ${D.border}`,
+                        color: D.text,
+                        borderRadius: 8,
+                        padding: "10px 12px",
+                        fontSize: 13,
+                      }}
+                    >
+                      {(activeBootstrap?.sections ?? []).map((section) => (
+                        <option key={section.section_id} value={section.section_id}>
+                          {section.display_name} · {section.term || "no term"}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <div style={{ fontSize: 12, color: D.muted, marginBottom: 6 }}>
+                      Launch target
+                    </div>
+                    <select
+                      value={selectedLaunchConfig?.launch_id ?? ""}
+                      onChange={(event) => setSelectedLaunchId(event.target.value || null)}
+                      disabled={!launchConfigs.length}
+                      style={{
+                        width: "100%",
+                        background: D.card,
+                        border: `1px solid ${D.border}`,
+                        color: D.text,
+                        borderRadius: 8,
+                        padding: "10px 12px",
+                        fontSize: 13,
+                      }}
+                    >
+                      {launchConfigs.map((config) => (
+                        <option key={config.launch_id} value={config.launch_id}>
+                          {config.label}
+                          {config.enabled ? "" : " (disabled)"}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </div>
-              )}
 
-              {selectedWeek && !isLaunchReady && (
-                <div
-                  style={{
-                    padding: "12px 14px",
-                    borderRadius: 10,
-                    border: `1px solid ${D.yellow}40`,
-                    background: `${D.yellow}12`,
-                    color: D.text,
-                    fontSize: 13,
-                    lineHeight: 1.6,
-                    marginBottom: 20,
-                  }}
-                >
-                  This week is enabled but not launch-ready yet. Add a repo URL or
-                  template URL in the Professor dashboard before launching.
-                </div>
-              )}
-
-              {!isConfigured && (
-                <div
-                  style={{
-                    padding: "12px 14px",
-                    borderRadius: 10,
-                    border: `1px solid ${D.yellow}40`,
-                    background: `${D.yellow}12`,
-                    color: D.text,
-                    fontSize: 13,
-                    lineHeight: 1.6,
-                  }}
-                >
-                  Set <code>VITE_CODESPACES_TEMPLATE_URL</code> or{" "}
-                  <code>VITE_CODESPACES_REPO_URL</code> in the repo root{" "}
-                  <code>.env</code> as a fallback for weeks that do not define an override.
-                </div>
-              )}
-            </Card>
-
-            <Card style={{ padding: 22 }}>
-              <div style={{ ...mono, fontSize: 11, color: D.muted, marginBottom: 14 }}>
-                // required environment
-              </div>
-              <div style={{ display: "grid", gap: 10 }}>
-                {[
-                  ["GitHub Codespaces", "enabled for the org or class"],
-                  ["Assignment repo", "template or starter repo"],
-                  ["RAG endpoint", "deployed rag_eng API URL"],
-                  ["Extension", "preinstalled in the devcontainer"],
-                ].map(([label, value]) => (
+                {!hasEnabledSections && (
                   <div
-                    key={label}
                     style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      gap: 12,
-                      padding: "10px 12px",
-                      borderRadius: 8,
-                      border: `1px solid ${D.border}`,
-                      background: D.surface,
+                      padding: "12px 14px",
+                      borderRadius: 10,
+                      border: `1px solid ${D.red}24`,
+                      background: `${D.red}08`,
+                      color: D.text,
+                      fontSize: 13,
+                      lineHeight: 1.6,
+                      marginBottom: 20,
                     }}
                   >
-                    <div style={{ fontSize: 13, fontWeight: 500 }}>{label}</div>
-                    <div style={{ fontSize: 12, color: D.muted, textAlign: "right" }}>
-                      {value}
+                    No active student section is assigned to this account yet. Contact your
+                    instructor or an admin to finish provisioning.
+                  </div>
+                )}
+
+                {selectedSection && (
+                  <div
+                    style={{
+                      padding: "12px 14px",
+                      borderRadius: 10,
+                      border: `1px solid ${D.border}`,
+                      background: D.surface,
+                      marginBottom: 20,
+                      lineHeight: 1.6,
+                      fontSize: 13,
+                    }}
+                  >
+                    <div style={{ fontWeight: 600, marginBottom: 4 }}>{selectedSection.display_name}</div>
+                    <div style={{ color: D.muted }}>
+                      Course: <code>{selectedSection.course_id}</code>
+                      <br />
+                      Section: <code>{selectedSection.section_id}</code>
+                      <br />
+                      Membership: <code>{selectedSection.membership_status}</code>
                     </div>
                   </div>
-                ))}
+                )}
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                    gap: 12,
+                  }}
+                >
+                  <Card style={{ padding: 14 }}>
+                    <div style={{ fontSize: 12, color: D.muted, marginBottom: 6 }}>Student</div>
+                    <div style={{ fontWeight: 600 }}>{activeBootstrap?.user.display_name}</div>
+                    <div style={{ fontSize: 12, color: D.muted, marginTop: 4 }}>
+                      {activeBootstrap?.user.email}
+                    </div>
+                  </Card>
+                  <Card style={{ padding: 14 }}>
+                    <div style={{ fontSize: 12, color: D.muted, marginBottom: 6 }}>Launch readiness</div>
+                    <div style={{ fontWeight: 600 }}>{isLaunchReady ? "Ready" : "Not ready"}</div>
+                    <div style={{ fontSize: 12, color: D.muted, marginTop: 4 }}>
+                      {selectedLaunchConfig ? selectedLaunchConfig.label : "No launch target selected"}
+                    </div>
+                  </Card>
+                </div>
+              </Card>
+
+              <div style={{ display: "grid", gap: 18 }}>
+                <Card style={{ padding: 22 }}>
+                  <div style={{ ...mono, fontSize: 11, color: D.muted, marginBottom: 14 }}>
+                    // launch details
+                  </div>
+                  {selectedLaunchConfig ? (
+                    <div style={{ display: "grid", gap: 10 }}>
+                      <div style={{ fontSize: 18, fontWeight: 600 }}>{selectedLaunchConfig.label}</div>
+                      <div style={{ fontSize: 13, color: D.muted, lineHeight: 1.7 }}>
+                        Repo: <code>{selectedLaunchConfig.repo_url || "not set"}</code>
+                        <br />
+                        Template: <code>{selectedLaunchConfig.template_url || "not set"}</code>
+                        <br />
+                        Branch: <code>{selectedLaunchConfig.default_branch}</code>
+                      </div>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <Tag color={selectedLaunchConfig.enabled ? D.green : D.muted}>
+                          {selectedLaunchConfig.enabled ? "enabled" : "disabled"}
+                        </Tag>
+                        <Tag color={D.blue}>sort {selectedLaunchConfig.sort_order}</Tag>
+                      </div>
+                      <div style={{ fontSize: 12, color: D.muted, lineHeight: 1.7 }}>
+                        Launch URL:
+                        <br />
+                        <code>{launchUrl}</code>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ color: D.muted, lineHeight: 1.7 }}>
+                      No launch target is configured for this section yet.
+                    </div>
+                  )}
+                </Card>
+
+                <Card style={{ padding: 22 }}>
+                  <div style={{ ...mono, fontSize: 11, color: D.muted, marginBottom: 14 }}>
+                    // required environment
+                  </div>
+                  <div style={{ display: "grid", gap: 10 }}>
+                    {[
+                      ["GitHub Codespaces", "enabled for the org or class"],
+                      ["Section launch config", "saved in Aurora"],
+                      ["RAG endpoint", "deployed rag_eng API URL"],
+                      ["VS Code extension", "uses the same Cognito session"],
+                    ].map(([label, value]) => (
+                      <div
+                        key={label}
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          gap: 12,
+                          padding: "10px 12px",
+                          borderRadius: 8,
+                          border: `1px solid ${D.border}`,
+                          background: D.surface,
+                        }}
+                      >
+                        <div style={{ fontSize: 13, fontWeight: 500 }}>{label}</div>
+                        <div style={{ fontSize: 12, color: D.muted, textAlign: "right" }}>
+                          {value}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+
+                <Card style={{ padding: 20 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>
+                    What the backend now controls
+                  </div>
+                  <div style={{ color: D.muted, fontSize: 13, lineHeight: 1.7 }}>
+                    Active sections, launch targets, and access state now come from Aurora.
+                    If a section changes in the database, both the web launcher and the VS Code
+                    extension will see the same configuration.
+                  </div>
+                </Card>
               </div>
-            </Card>
-          </div>
+            </div>
+          )}
 
           <div
             style={{
@@ -295,17 +454,6 @@ export function StudentInterface({
               </Card>
             ))}
           </div>
-
-          <Card style={{ padding: 20, marginTop: 18 }}>
-            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>
-              What stays in the web app
-            </div>
-            <div style={{ color: D.muted, fontSize: 13, lineHeight: 1.7 }}>
-              Admin and professor dashboards remain here. Students use Codespaces for
-              editing and terminal work; the web app is now a launcher and status surface
-              instead of a browser IDE.
-            </div>
-          </Card>
         </div>
       </div>
     </div>

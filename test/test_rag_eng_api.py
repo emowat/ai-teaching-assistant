@@ -18,6 +18,7 @@ from rag_eng.schemas import (
     IndexRebuildResponse,
     ProfessorSectionStudent,
     ProfessorSectionSummary,
+    SectionLaunchConfig,
     QueryResponse,
     StudentBootstrapEndpoints,
     StudentBootstrapResponse,
@@ -1026,6 +1027,58 @@ def test_professor_section_routes_return_live_data(
     assert students_response.status_code == 200
     assert sections_response.json()[0]["section_id"] == "mit14-fall-001"
     assert students_response.json()[0]["email"] == "student@example.edu"
+
+
+def test_professor_launch_config_routes_return_live_data(
+    monkeypatch, client: TestClient
+) -> None:
+    client.app.dependency_overrides[require_authenticated_user] = lambda: CurrentUser(
+        cognito_sub="prof-sub",
+        email="prof@example.edu",
+        primary_role="professor",
+    )
+    monkeypatch.setattr(
+        "rag_eng.api.list_professor_section_launch_configs",
+        lambda current_user, section_id: [
+            SectionLaunchConfig(
+                launch_id="codespaces",
+                label="Codespaces",
+                repo_url="https://github.com/example/repo",
+                template_url="https://github.com/example/template",
+                default_branch="main",
+                enabled=True,
+                sort_order=0,
+            )
+        ],
+    )
+    monkeypatch.setattr(
+        "rag_eng.api.replace_professor_section_launch_configs",
+        lambda current_user, section_id, payload: payload,
+    )
+
+    try:
+        list_response = client.get("/professor/sections/mit14-fall-001/launch-configs")
+        replace_response = client.put(
+            "/professor/sections/mit14-fall-001/launch-configs",
+            json=[
+                {
+                    "launch_id": "codespaces",
+                    "label": "Codespaces",
+                    "repo_url": "https://github.com/example/repo",
+                    "template_url": "https://github.com/example/template",
+                    "default_branch": "main",
+                    "enabled": True,
+                    "sort_order": 0,
+                }
+            ],
+        )
+    finally:
+        client.app.dependency_overrides.clear()
+
+    assert list_response.status_code == 200
+    assert replace_response.status_code == 200
+    assert list_response.json()[0]["launch_id"] == "codespaces"
+    assert replace_response.json()[0]["label"] == "Codespaces"
 
 
 def test_admin_ensure_returns_500_on_service_exception(
