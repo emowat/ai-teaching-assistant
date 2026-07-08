@@ -722,8 +722,10 @@ def resolve_application_user(
     """Resolve or claim the Aurora application user for a Cognito identity."""
     runtime = runtime or load_app_registry_runtime_config()
     database_url = _require_database_url(runtime)
-    if current_user.primary_role not in {"professor", "student"}:
-        raise AppUserNotProvisionedError("Application user resolution is only required for professor and student roles.")
+    if current_user.primary_role not in {"admin", "professor", "student"}:
+        raise AppUserNotProvisionedError(
+            "Application user resolution is only required for admin, professor, and student roles."
+        )
 
     cognito_sub = _clean_text(current_user.cognito_sub)
     if not cognito_sub:
@@ -786,7 +788,7 @@ def sync_application_user(
     runtime: AppRegistryRuntimeConfig | None = None,
 ) -> dict[str, Any] | None:
     """Best-effort claim of an invited Aurora application user after login."""
-    if current_user.primary_role not in {"professor", "student"}:
+    if current_user.primary_role not in {"admin", "professor", "student"}:
         return None
     return resolve_application_user(current_user, runtime=runtime)
 

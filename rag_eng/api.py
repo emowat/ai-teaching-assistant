@@ -20,7 +20,10 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
 
 from rag_eng.auth.cognito import verify_cognito_access_token
-from rag_eng.auth.dependencies import require_authenticated_user, require_role
+from rag_eng.auth.dependencies import (
+    require_authenticated_user,
+    require_student_surface_user,
+)
 from rag_eng.auth.models import MeResponse
 from rag_eng.app_registry import (
     AppUserConflictError,
@@ -376,7 +379,7 @@ def create_app() -> FastAPI:
         response_model=StudentBootstrapResponse,
     )
     def student_bootstrap(
-        current_user=Depends(require_role("student")),
+        current_user=Depends(require_student_surface_user),
     ) -> StudentBootstrapResponse:
         try:
             return get_student_bootstrap(current_user)
@@ -1006,7 +1009,7 @@ def create_app() -> FastAPI:
     async def student_chat(
         payload: ChatRequest,
         settings: Settings = Depends(get_settings),
-        current_user=Depends(require_role("student")),
+        current_user=Depends(require_student_surface_user),
     ):
         """Authenticated student chat endpoint backed by Aurora membership."""
         missing_fields = _missing_payload_fields(
@@ -1058,7 +1061,7 @@ def create_app() -> FastAPI:
     @app.post("/api/student/telemetry")
     async def student_telemetry(
         payload: StudentTelemetryPayload,
-        current_user=Depends(require_role("student")),
+        current_user=Depends(require_student_surface_user),
     ):
         """Authenticated student telemetry routed through Aurora."""
         missing_fields = _missing_payload_fields(
@@ -1106,7 +1109,7 @@ def create_app() -> FastAPI:
     @app.post("/api/student/feedback")
     async def student_feedback(
         payload: StudentFeedbackPayload,
-        current_user=Depends(require_role("student")),
+        current_user=Depends(require_student_surface_user),
     ):
         """Authenticated student feedback routed through Aurora."""
         missing_fields = _missing_payload_fields(

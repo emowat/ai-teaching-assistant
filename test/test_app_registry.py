@@ -688,6 +688,33 @@ def test_resolve_application_user_claims_invited_user_by_email(
     assert state.users["user-2"]["status"] == "active"
 
 
+def test_resolve_application_user_allows_admin_role(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _state()
+    state.users["admin-1"] = _user(
+        user_id="admin-1",
+        email="admin@example.edu",
+        display_name="Admin",
+        primary_role="admin",
+        status="active",
+        cognito_sub="sub-admin",
+    )
+    _patch_connection(monkeypatch, state)
+
+    resolved = app_registry.resolve_application_user(
+        CurrentUser(
+            cognito_sub="sub-admin",
+            email="admin@example.edu",
+            primary_role="admin",
+        ),
+        runtime=_runtime(),
+    )
+
+    assert resolved["user_id"] == "admin-1"
+    assert resolved["email"] == "admin@example.edu"
+
+
 def test_resolve_application_user_rejects_disabled_user(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

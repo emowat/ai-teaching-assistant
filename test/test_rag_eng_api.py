@@ -629,6 +629,55 @@ def test_student_bootstrap_endpoint_returns_sections(
     assert body["endpoints"]["chat"] == "/api/student/chat"
 
 
+def test_student_bootstrap_endpoint_allows_admin_role(
+    monkeypatch, client: TestClient
+) -> None:
+    client.app.dependency_overrides[require_authenticated_user] = lambda: CurrentUser(
+        cognito_sub="admin-sub",
+        email="admin@example.edu",
+        primary_role="admin",
+    )
+    monkeypatch.setattr(
+        "rag_eng.api.get_student_bootstrap",
+        lambda current_user: StudentBootstrapResponse(
+            user=StudentBootstrapUser(
+                app_user_id="user-admin",
+                cognito_sub=current_user.cognito_sub,
+                email=current_user.email or "",
+                display_name="Admin",
+                primary_role="admin",
+                status="active",
+            ),
+            sections=[
+                StudentBootstrapSection(
+                    section_id="mit14-fall-001",
+                    course_id="mit14",
+                    course_display_name="MIT 6.0014",
+                    display_name="MIT 6.0014 Section A",
+                    term="Fall 2026",
+                    is_active=True,
+                    membership_status="active",
+                    launch_configs=[],
+                )
+            ],
+            default_section_id="mit14-fall-001",
+            endpoints=StudentBootstrapEndpoints(
+                chat="/api/student/chat",
+                telemetry="/api/student/telemetry",
+                feedback="/api/student/feedback",
+            ),
+        ),
+    )
+
+    try:
+        response = client.get("/api/student/bootstrap")
+    finally:
+        client.app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["user"]["primary_role"] == "admin"
+
+
 def test_student_chat_endpoint_stamps_student_identity(
     monkeypatch, client: TestClient
 ) -> None:

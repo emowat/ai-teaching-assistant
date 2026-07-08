@@ -42,3 +42,15 @@ def require_role(*allowed_roles: str) -> Callable[..., CurrentUser]:
         return current_user
 
     return _dependency
+
+
+def require_student_surface_user(
+    current_user: CurrentUser = Depends(require_authenticated_user),
+) -> CurrentUser:
+    """Allow admin, professor, or student roles to access the student surface."""
+    if current_user.primary_role not in {"admin", "professor", "student"}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient role for this operation.",
+        )
+    return current_user
