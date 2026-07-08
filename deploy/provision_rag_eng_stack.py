@@ -477,6 +477,14 @@ def _ensure_task_role(
                         "Resource": [endpoint_arn],
                     },
                     {
+                        "Sid": "CognitoGetUser",
+                        "Effect": "Allow",
+                        "Action": [
+                            "cognito-idp:GetUser",
+                        ],
+                        "Resource": ["*"],
+                    },
+                    {
                         "Sid": "UseBedrockConverse",
                         "Effect": "Allow",
                         "Action": [

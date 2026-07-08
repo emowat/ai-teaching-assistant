@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from functools import lru_cache
 from typing import Any
 
+import boto3
 import httpx
 from fastapi import HTTPException, status
+from botocore.exceptions import BotoCoreError, ClientError
 from jose import JWTError, jwt
 
 from rag_eng.auth.models import CurrentUser
@@ -56,6 +59,23 @@ def _claims_to_user(claims: dict[str, Any]) -> CurrentUser:
         groups=list(groups),
         primary_role=_resolve_primary_role(list(groups)),
     )
+
+
+@lru_cache(maxsize=1024)
+def _lookup_email_from_cognito(access_token: str, region: str) -> str | None:
+    """Resolve the Cognito email attribute for tokens that omit it."""
+    session = boto3.Session(region_name=region)
+    client = session.client("cognito-idp")
+    try:
+        response = client.get_user(AccessToken=access_token)
+    except (BotoCoreError, ClientError):
+        return None
+
+    for attribute in response.get("UserAttributes", []):
+        if attribute.get("Name") == "email":
+            value = attribute.get("Value")
+            return str(value) if value else None
+    return None
 
 
 def verify_cognito_access_token(token: str, settings: Settings) -> CurrentUser:
@@ -120,4 +140,7 @@ def verify_cognito_access_token(token: str, settings: Settings) -> CurrentUser:
             detail="Token was not issued for this application.",
         )
 
-    return _claims_to_user(claims)
+    current_user = _claims_to_user(claims)
+    if current_user.email is None and settings.cognito_region:
+        current_user.email = _lookup_email_from_cognito(token, settings.cognito_region)
+    return current_user

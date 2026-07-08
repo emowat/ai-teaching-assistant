@@ -105,6 +105,7 @@ def test_record_turn_snapshot_writes_aura_sql(monkeypatch) -> None:
     assert len(statements) == 1
     sql, params = statements[0]
     assert "INSERT INTO tutor_turn_snapshots" in sql
+    assert sql.count("%s") == 11
     assert params[0] == "turn-1"
     assert params[1] == "sess-1"
     assert params[2] == "req-1"

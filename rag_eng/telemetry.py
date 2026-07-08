@@ -536,7 +536,7 @@ class TelemetryStore:
                           schema_version,
                           snapshot
                         )
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         ON CONFLICT (turn_id) DO UPDATE SET
                           session_id = EXCLUDED.session_id,
                           request_id = EXCLUDED.request_id,

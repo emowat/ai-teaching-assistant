@@ -139,6 +139,9 @@ def test_ensure_task_role_writes_runtime_permissions() -> None:
         "sagemaker:InvokeEndpointAsync",
         "sagemaker:DescribeEndpoint",
     }
+    assert statements["CognitoGetUser"]["Action"] == [
+        "cognito-idp:GetUser",
+    ]
     assert statements["UseBedrockConverse"]["Action"] == [
         "bedrock:Converse",
         "bedrock:ConverseStream",

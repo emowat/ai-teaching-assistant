@@ -677,6 +677,7 @@ def test_run_pipeline_diagnostic_uses_non_persistent_telemetry(monkeypatch) -> N
         session_id=None,
         request_id=None,
         turn_id=None,
+        turn_index=None,
         section_id=None,
         result_count=None,
         rerank_strategy=None,
@@ -694,6 +695,7 @@ def test_run_pipeline_diagnostic_uses_non_persistent_telemetry(monkeypatch) -> N
             model_name="codingrabbit",
             settings=SimpleNamespace(),
             stream=False,
+            turn_index=1,
         )
     )
 
