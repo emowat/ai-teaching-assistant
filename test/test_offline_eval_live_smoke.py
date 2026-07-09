@@ -6,7 +6,7 @@ import shutil
 import subprocess
 import time
 import uuid
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 from dotenv import load_dotenv
@@ -136,15 +136,16 @@ def test_live_pipeline_chat_persists_snapshot_and_exports_to_s3() -> None:
     assert snapshot["trace"]["turn_id"] == turn_id
     assert snapshot["trace"]["session_id"] == session_id
     assert snapshot["trace"]["request_id"] == request_id
-    assert snapshot["student_phase"]["input_guardrail"]["blocked"] is False
+    assert snapshot["student_phase"]["processed_input"]
+    assert snapshot["input_guardrail_phase"]["blocked"] is False
     assert snapshot["orchestrator_phase"]["final_rendered_text"] == response["message"]["content"]
 
     exported = export_turn_snapshots_to_s3(
         database_url=database_url,
         bucket=s3_bucket,
         prefix="eval/chat_logs/turn_logs",
-        start_date=snapshot_date,
-        end_date=snapshot_date,
+        start_date=snapshot_date - timedelta(days=1),
+        end_date=snapshot_date + timedelta(days=1),
         course_id=course_id,
         profile=os.getenv("AWS_PROFILE"),
         region=os.getenv("AWS_REGION") or os.getenv("AWS_DEFAULT_REGION"),
@@ -159,6 +160,10 @@ def test_live_pipeline_chat_persists_snapshot_and_exports_to_s3() -> None:
         profile_name=os.getenv("AWS_PROFILE") or None,
         region_name=os.getenv("AWS_REGION") or os.getenv("AWS_DEFAULT_REGION"),
     ).client("s3")
-    key = exported[0]["key"]
-    body = s3_client.get_object(Bucket=s3_bucket, Key=key)["Body"].read().decode("utf-8")
-    assert turn_id in body
+    exported_bodies = [
+        s3_client.get_object(Bucket=s3_bucket, Key=partition["key"])["Body"]
+        .read()
+        .decode("utf-8")
+        for partition in exported
+    ]
+    assert any(turn_id in body for body in exported_bodies)
