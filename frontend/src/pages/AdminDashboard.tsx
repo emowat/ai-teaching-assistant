@@ -181,7 +181,7 @@ function getDefaultModel(provider: LlmProvider): string {
 
 const baseAdminTabs: SidebarTab[] = [
   { key: "users", icon: "👥", label: "Users" },
-  { key: "classes", icon: "🏫", label: "Classes" },
+  { key: "sections", icon: "🏫", label: "Sections" },
   { key: "courses", icon: "🎓", label: "Courses" },
   { key: "rag", icon: "📚", label: "RAG Docs" },
   { key: "stats", icon: "📊", label: "Evaluation" },
@@ -1341,7 +1341,7 @@ export function AdminDashboard({
             <UserManagementPanel accessToken={accessToken} />
           )}
 
-          {activeTab === "classes" && (
+          {activeTab === "sections" && (
             <SectionManagementPanel accessToken={accessToken} />
           )}
 

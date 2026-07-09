@@ -339,7 +339,7 @@ export function SectionManagementPanel({ accessToken }: SectionManagementPanelPr
       <Card style={{ display: "grid", gap: 10 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
           <div>
-            <div style={{ fontSize: 18, fontWeight: 600 }}>Classes</div>
+            <div style={{ fontSize: 18, fontWeight: 600 }}>Sections</div>
             <div style={{ fontSize: 12, color: D.muted, marginTop: 4 }}>
               Aurora-backed sections and their memberships.
             </div>
