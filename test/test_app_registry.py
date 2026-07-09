@@ -387,6 +387,21 @@ class _FakeCursor:
             return
 
         if sql.startswith(
+            "SELECT s.section_id, s.course_id, c.display_name, s.display_name, s.term, s.is_active, sm.status, s.created_at, s.updated_at FROM section_memberships AS sm INNER JOIN sections AS s ON s.section_id = sm.section_id INNER JOIN courses AS c ON c.course_id = s.course_id WHERE sm.user_id = %s AND sm.role_in_section IN ('student', 'professor', 'ta') AND sm.status = 'active' AND s.is_active = TRUE ORDER BY s.section_id ASC"
+        ):
+            user_id = str(params[0])
+            rows = [
+                self._student_section_row(membership)
+                for membership in self.state.memberships.values()
+                if str(membership["user_id"]) == user_id
+                and str(membership["status"]) == "active"
+                and bool(self.state.sections[str(membership["section_id"])]["is_active"])
+                and str(membership["role_in_section"]) in {"student", "professor", "ta"}
+            ]
+            self._rows = sorted(rows, key=lambda row: str(row[0]))
+            return
+
+        if sql.startswith(
             "SELECT section_id, launch_id, label, repo_url, template_url, default_branch, enabled, sort_order FROM section_launch_configs WHERE section_id = %s ORDER BY sort_order ASC, launch_id ASC"
         ):
             section_id = str(params[0])
@@ -888,6 +903,45 @@ def test_get_student_bootstrap_defaults_to_the_only_active_section(
     assert response.default_section_id == "mit14-fall-001"
     assert response.sections[0].section_id == "mit14-fall-001"
     assert response.sections[0].launch_configs[0].launch_id == "codespaces"
+
+
+def test_get_student_bootstrap_allows_staff_smoke_memberships(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _state()
+    state.users["prof-1"] = _user(
+        user_id="prof-1",
+        email="prof@example.edu",
+        display_name="Professor",
+        primary_role="professor",
+        status="active",
+        cognito_sub="sub-prof",
+    )
+    state.sections["mit14-fall-001"] = _section(
+        section_id="mit14-fall-001",
+        display_name="MIT 6.0014 Section A",
+    )
+    state.memberships[("mit14-fall-001", "prof-1")] = _membership(
+        section_id="mit14-fall-001",
+        user_id="prof-1",
+        role_in_section="professor",
+    )
+    _patch_connection(monkeypatch, state)
+
+    response = app_registry.get_student_bootstrap(
+        CurrentUser(
+            cognito_sub="sub-prof",
+            email="prof@example.edu",
+            primary_role="professor",
+        ),
+        runtime=_runtime(),
+    )
+
+    assert response.user.primary_role == "professor"
+    assert [section.section_id for section in response.sections] == [
+        "mit14-fall-001",
+    ]
+    assert response.default_section_id == "mit14-fall-001"
 
 
 def test_professor_launch_config_list_and_replace(

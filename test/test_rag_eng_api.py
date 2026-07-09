@@ -752,6 +752,75 @@ def test_student_chat_endpoint_stamps_student_identity(
     assert captured["app_user_id"] == "user-1"
 
 
+def test_student_chat_endpoint_allows_staff_smoke_membership(
+    monkeypatch, client: TestClient
+) -> None:
+    client.app.dependency_overrides[require_authenticated_user] = lambda: CurrentUser(
+        cognito_sub="prof-sub",
+        email="prof@example.edu",
+        primary_role="professor",
+    )
+
+    captured: dict[str, object] = {}
+
+    def fake_require_section_membership(
+        current_user,
+        section_id,
+        allowed_roles=None,
+        runtime=None,
+    ):
+        captured["section_id"] = section_id
+        captured["allowed_roles"] = allowed_roles
+        return {"user_id": "user-1"}
+
+    async def fake_run_chat(
+        messages,
+        model_name,
+        settings,
+        stream=False,
+        course_id=None,
+        session_id=None,
+        request_id=None,
+        turn_id=None,
+        turn_index=None,
+        section_id=None,
+        result_count=None,
+        rerank_strategy=None,
+        user_sub=None,
+        app_user_id=None,
+        telemetry_store=None,
+    ):
+        captured["user_sub"] = user_sub
+        captured["app_user_id"] = app_user_id
+        return {"message": {"content": "staff response"}}
+
+    monkeypatch.setattr("rag_eng.api.require_section_membership", fake_require_section_membership)
+    monkeypatch.setattr("rag_eng.api.run_chat", fake_run_chat)
+
+    try:
+        response = client.post(
+            "/api/student/chat",
+            json={
+                "model": "codingrabbit-ta",
+                "course_id": "mit14",
+                "section_id": "mit14-fall-001",
+                "session_id": "sess-1",
+                "request_id": "req-1",
+                "turn_id": "turn-1",
+                "turn_index": 1,
+                "messages": [{"role": "user", "content": "Why does this crash?"}],
+            },
+        )
+    finally:
+        client.app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert captured["section_id"] == "mit14-fall-001"
+    assert captured["allowed_roles"] == {"student", "professor", "ta"}
+    assert captured["user_sub"] == "prof-sub"
+    assert captured["app_user_id"] == "user-1"
+
+
 def test_student_telemetry_endpoint_records_aurora_identity(
     monkeypatch, client: TestClient
 ) -> None:

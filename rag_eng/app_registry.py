@@ -646,10 +646,26 @@ def _load_student_rows_for_section(connection, section_id: str) -> list[tuple[An
     )
 
 
-def _load_student_section_rows(connection, user_id: str) -> list[tuple[Any, ...]]:
-    return _fetch_all_rows(
-        connection,
-        """
+def student_surface_allowed_roles(primary_role: str | None) -> set[str]:
+    """Return the section membership roles allowed on the student surface."""
+    role = _clean_text(primary_role)
+    if role in {"admin", "professor"}:
+        return {"student", "professor", "ta"}
+    return {"student"}
+
+
+def _load_student_section_rows(
+    connection,
+    user_id: str,
+    *,
+    allowed_roles: set[str] | None = None,
+) -> list[tuple[Any, ...]]:
+    allowed = {role for role in (allowed_roles or {"student"}) if role in {"student", "professor", "ta"}}
+    if not allowed:
+        return []
+
+    if allowed == {"student"}:
+        sql = """
         SELECT
           s.section_id,
           s.course_id,
@@ -668,9 +684,29 @@ def _load_student_section_rows(connection, user_id: str) -> list[tuple[Any, ...]
           AND sm.status = 'active'
           AND s.is_active = TRUE
         ORDER BY s.section_id ASC
-        """,
-        (user_id,),
-    )
+        """
+    else:
+        sql = """
+        SELECT
+          s.section_id,
+          s.course_id,
+          c.display_name,
+          s.display_name,
+          s.term,
+          s.is_active,
+          sm.status,
+          s.created_at,
+          s.updated_at
+        FROM section_memberships AS sm
+        INNER JOIN sections AS s ON s.section_id = sm.section_id
+        INNER JOIN courses AS c ON c.course_id = s.course_id
+        WHERE sm.user_id = %s
+          AND sm.role_in_section IN ('student', 'professor', 'ta')
+          AND sm.status = 'active'
+          AND s.is_active = TRUE
+        ORDER BY s.section_id ASC
+        """
+    return _fetch_all_rows(connection, sql, (user_id,))
 
 
 def _load_section_launch_config_rows(
@@ -1393,12 +1429,21 @@ def get_student_bootstrap(
     app_user = sync_application_user(current_user, runtime=runtime)
     if not app_user:
         raise AppUserNotProvisionedError("No provisioned application user is available for this identity.")
+    allowed_roles = student_surface_allowed_roles(current_user.primary_role)
 
     with _connect_postgres(database_url, runtime.connect_timeout_seconds) as connection:
-        section_rows = _load_student_section_rows(connection, app_user["user_id"])
+        section_rows = _load_student_section_rows(
+            connection,
+            app_user["user_id"],
+            allowed_roles=allowed_roles,
+        )
         if not section_rows:
+            if allowed_roles == {"student"}:
+                raise MembershipAccessDeniedError(
+                    "No active student memberships are assigned to this user."
+                )
             raise MembershipAccessDeniedError(
-                "No active student memberships are assigned to this user."
+                "No active student or smoke-test memberships are assigned to this user."
             )
         section_ids = [_clean_text(row[0]) for row in section_rows]
         default_section_id = section_ids[0]

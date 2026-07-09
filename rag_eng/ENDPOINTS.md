@@ -71,7 +71,9 @@ Environment overrides are documented in the script itself:
 These routes require a Cognito access token in the `Authorization` header.
 They are the preferred surface for the VS Code extension after sign-in.
 Admin and professor accounts may also use this surface for student mimic /
-smoke testing, but section membership still applies.
+smoke testing. They can enter the student surface through active student,
+professor, or TA memberships, so the same identity can test both real student
+and staff smoke flows.
 
 | Method | Path | Purpose |
 |---|---|---|

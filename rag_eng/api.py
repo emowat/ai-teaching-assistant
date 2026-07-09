@@ -47,6 +47,7 @@ from rag_eng.app_registry import (
     require_section_membership,
     sync_application_user,
     replace_professor_section_launch_configs,
+    student_surface_allowed_roles,
     update_admin_section,
     update_admin_user,
     update_section_membership,
@@ -1087,7 +1088,7 @@ def create_app() -> FastAPI:
             app_user = require_section_membership(
                 current_user,
                 payload.section_id,
-                allowed_roles={"student"},
+                allowed_roles=student_surface_allowed_roles(current_user.primary_role),
             )
         except Exception as exc:
             raise _app_registry_http_error(exc) from exc
@@ -1139,7 +1140,7 @@ def create_app() -> FastAPI:
             app_user = require_section_membership(
                 current_user,
                 payload.section_id,
-                allowed_roles={"student"},
+                allowed_roles=student_surface_allowed_roles(current_user.primary_role),
             )
         except Exception as exc:
             raise _app_registry_http_error(exc) from exc
@@ -1187,7 +1188,7 @@ def create_app() -> FastAPI:
             app_user = require_section_membership(
                 current_user,
                 payload.section_id,
-                allowed_roles={"student"},
+                allowed_roles=student_surface_allowed_roles(current_user.primary_role),
             )
         except Exception as exc:
             raise _app_registry_http_error(exc) from exc

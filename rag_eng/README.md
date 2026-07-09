@@ -25,7 +25,7 @@ There are three auth patterns in the service today:
 |---|---|
 | `GET /health`, `POST /query`, `POST /api/chat`, `POST /api/diagnostics/*` | currently unauthenticated |
 | `GET /me`, `POST /run/compile` | Cognito bearer token |
-| `GET /api/student/bootstrap`, `POST /api/student/chat`, `POST /api/student/telemetry`, `POST /api/student/feedback` | Cognito bearer token + active Aurora section membership; admin/professor roles may enter the student surface for mimic/smoke flows |
+| `GET /api/student/bootstrap`, `POST /api/student/chat`, `POST /api/student/telemetry`, `POST /api/student/feedback` | Cognito bearer token + active Aurora section membership; admin/professor roles may enter the student surface for mimic/smoke flows through active student, professor, or TA memberships |
 | `GET /professor/sections/{section_id}/launch-configs`, `PUT /professor/sections/{section_id}/launch-configs` | Cognito bearer token + active professor/TA membership for the section |
 | most `/admin/*` routes | admin Cognito bearer token or `X-Admin-Token` |
 | `POST /admin/index/ensure`, `POST /admin/index/rebuild` | `X-Admin-Token` only |
