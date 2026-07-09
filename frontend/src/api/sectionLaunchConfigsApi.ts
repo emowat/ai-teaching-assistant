@@ -1,4 +1,4 @@
-import { apiGet, apiPut } from "./client";
+import { apiGet, apiPut } from "./client.ts";
 
 export interface SectionLaunchConfig {
   launch_id: string;
@@ -10,7 +10,7 @@ export interface SectionLaunchConfig {
   sort_order: number;
 }
 
-function sectionLaunchConfigPath(sectionId: string): string {
+export function sectionLaunchConfigPath(sectionId: string): string {
   return `/professor/sections/${encodeURIComponent(sectionId)}/launch-configs`;
 }
 

@@ -10,8 +10,8 @@ export interface WeekLaunchConfig {
 const fallbackCodespacesUrl =
   "https://github.com/codespaces/new?hide_repo_select=true&skip_quickstart=true";
 
-const globalTemplateUrl = import.meta.env.VITE_CODESPACES_TEMPLATE_URL?.trim() ?? "";
-const globalRepoUrl = import.meta.env.VITE_CODESPACES_REPO_URL?.trim() ?? "";
+const globalTemplateUrl = import.meta.env?.VITE_CODESPACES_TEMPLATE_URL?.trim() ?? "";
+const globalRepoUrl = import.meta.env?.VITE_CODESPACES_REPO_URL?.trim() ?? "";
 
 export const defaultWeekLaunchConfigs: WeekLaunchConfig[] = [
   {

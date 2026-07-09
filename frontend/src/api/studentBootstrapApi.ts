@@ -1,5 +1,5 @@
-import { apiGet } from "./client";
-import type { SectionLaunchConfig } from "./sectionLaunchConfigsApi";
+import { apiGet } from "./client.ts";
+import type { SectionLaunchConfig } from "./sectionLaunchConfigsApi.ts";
 
 export interface StudentBootstrapUser {
   app_user_id: string;
@@ -34,6 +34,8 @@ export interface StudentBootstrapResponse {
   endpoints: StudentBootstrapEndpoints;
 }
 
+export const studentBootstrapPath = "/api/student/bootstrap";
+
 export function getStudentBootstrap(accessToken: string): Promise<StudentBootstrapResponse> {
-  return apiGet<StudentBootstrapResponse>("/api/student/bootstrap", accessToken);
+  return apiGet<StudentBootstrapResponse>(studentBootstrapPath, accessToken);
 }

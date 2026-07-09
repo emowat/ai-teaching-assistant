@@ -341,6 +341,7 @@ export function ProfessorDashboard({
       >
         <span style={{ fontSize: 13, color: D.muted }}>Teaching:</span>
         <select
+          aria-label="Teaching section"
           value={selectedSectionId ?? ""}
           onChange={(event) => handleSectionChange(event.target.value || null)}
           style={{

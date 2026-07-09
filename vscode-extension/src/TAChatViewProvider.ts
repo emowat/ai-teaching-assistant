@@ -14,8 +14,11 @@ import {
     type StudentBootstrapResponse,
     type StudentTurnContext,
 } from './student/bootstrap';
-
-const STUDENT_SECTION_STATE_KEY = 'codingRabbit.student.sectionId';
+import {
+    clearStoredStudentSectionId,
+    loadStoredStudentSectionId,
+    storeSelectedStudentSectionId,
+} from './student/sectionState';
 
 export class TAChatViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'coding-rabbit.chatView';
@@ -95,7 +98,7 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
         private readonly _context: vscode.ExtensionContext,
         private readonly _authService: CognitoAuthService
     ) {
-        this._selectedStudentSectionId = this._context.workspaceState.get<string>(STUDENT_SECTION_STATE_KEY) ?? null;
+        this._selectedStudentSectionId = loadStoredStudentSectionId(this._context.workspaceState);
         this._authStateSubscription = this._authService.onDidChangeAuthState(() => {
             if (this._currentWebview) {
                 void this._renderCurrentWebview();
@@ -110,6 +113,7 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
                 this._selectedStudentSectionId = null;
                 this._studentTurnContexts.clear();
                 this._latestStudentTurnIndex = null;
+                void clearStoredStudentSectionId(this._context.workspaceState);
             }
 
             if (status === 'signed_in') {
@@ -342,7 +346,7 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
 
         const preferredSectionId =
             this._selectedStudentSectionId ??
-            this._context.workspaceState.get<string>(STUDENT_SECTION_STATE_KEY) ??
+            loadStoredStudentSectionId(this._context.workspaceState) ??
             null;
         const selectedSectionId = selectStudentSectionId(
             this._studentBootstrap,
@@ -419,7 +423,7 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
             const selectedSectionId = selectStudentSectionId(
                 bootstrap,
                 this._selectedStudentSectionId ??
-                this._context.workspaceState.get<string>(STUDENT_SECTION_STATE_KEY) ??
+                loadStoredStudentSectionId(this._context.workspaceState) ??
                 null,
             );
             if (!selectedSectionId) {
@@ -428,7 +432,7 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
 
             this._studentBootstrap = bootstrap;
             this._selectedStudentSectionId = selectedSectionId;
-            await this._context.workspaceState.update(STUDENT_SECTION_STATE_KEY, selectedSectionId);
+            await storeSelectedStudentSectionId(this._context.workspaceState, selectedSectionId);
             this._studentBootstrapError = null;
         } catch (error) {
             this._studentBootstrap = null;
@@ -592,7 +596,7 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
 
                     await this._flushTelemetry();
                     this._selectedStudentSectionId = nextSectionId;
-                    await this._context.workspaceState.update(STUDENT_SECTION_STATE_KEY, nextSectionId);
+                    await storeSelectedStudentSectionId(this._context.workspaceState, nextSectionId);
                     this._resetStudentConversationState();
                     if (this._currentWebview) {
                         void this._renderCurrentWebview();

@@ -6,6 +6,7 @@ import type { AppView } from "../types/navigation";
 import { getCodespacesFallbackUrl, getWeekLaunchUrl, isWeekLaunchReady } from "../data/codespaces";
 import { getStudentBootstrap, type StudentBootstrapResponse } from "../api/studentBootstrapApi";
 import type { SectionLaunchConfig } from "../api/sectionLaunchConfigsApi";
+import { pickDefaultLaunchId, pickDefaultSection } from "../data/studentLaunch";
 
 interface StudentInterfaceProps {
   onNavigate: (view: AppView) => void;
@@ -13,8 +14,6 @@ interface StudentInterfaceProps {
   onSignOut: () => void;
   accessToken: string;
 }
-
-const fallbackCodespacesUrl = getCodespacesFallbackUrl();
 
 function launchConfigToWeek(config: SectionLaunchConfig) {
   return {
@@ -27,17 +26,7 @@ function launchConfigToWeek(config: SectionLaunchConfig) {
   };
 }
 
-function pickDefaultSection(bootstrap: StudentBootstrapResponse): string | null {
-  return bootstrap.default_section_id ?? bootstrap.sections[0]?.section_id ?? null;
-}
-
-function pickDefaultLaunchId(sectionLaunchConfigs: SectionLaunchConfig[]): string | null {
-  return (
-    sectionLaunchConfigs.find((config) => config.enabled)?.launch_id ??
-    sectionLaunchConfigs[0]?.launch_id ??
-    null
-  );
-}
+const fallbackCodespacesUrl = getCodespacesFallbackUrl();
 
 export function StudentInterface({
   onNavigate,
@@ -235,6 +224,7 @@ export function StudentInterface({
                       Active section
                     </div>
                     <select
+                      aria-label="Active section"
                       value={selectedSection?.section_id ?? ""}
                       onChange={(event) => {
                         const nextSectionId = event.target.value || null;
@@ -269,6 +259,7 @@ export function StudentInterface({
                       Launch target
                     </div>
                     <select
+                      aria-label="Launch target"
                       value={selectedLaunchConfig?.launch_id ?? ""}
                       onChange={(event) => setSelectedLaunchId(event.target.value || null)}
                       disabled={!launchConfigs.length}

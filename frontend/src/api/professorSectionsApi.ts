@@ -1,4 +1,4 @@
-import { apiGet } from "./client";
+import { apiGet } from "./client.ts";
 import type {
   SectionMembershipRole,
   SectionMembershipStatus,
@@ -29,6 +29,10 @@ export interface ProfessorSectionStudent {
   last_session_at: string;
 }
 
+export function professorSectionStudentsPath(sectionId: string): string {
+  return `/professor/sections/${encodeURIComponent(sectionId)}/students`;
+}
+
 export function listProfessorSections(
   accessToken: string
 ): Promise<ProfessorSectionSummary[]> {
@@ -39,8 +43,5 @@ export function listProfessorSectionStudents(
   sectionId: string,
   accessToken: string
 ): Promise<ProfessorSectionStudent[]> {
-  return apiGet<ProfessorSectionStudent[]>(
-    `/professor/sections/${encodeURIComponent(sectionId)}/students`,
-    accessToken
-  );
+  return apiGet<ProfessorSectionStudent[]>(professorSectionStudentsPath(sectionId), accessToken);
 }

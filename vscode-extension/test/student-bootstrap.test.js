@@ -6,6 +6,12 @@ const {
   selectStudentSectionId,
   getStudentSection,
 } = require('../out/student/bootstrap.js');
+const {
+  STUDENT_SECTION_STATE_KEY,
+  loadStoredStudentSectionId,
+  storeSelectedStudentSectionId,
+  clearStoredStudentSectionId,
+} = require('../out/student/sectionState.js');
 
 const bootstrap = {
   user: {
@@ -77,4 +83,43 @@ test('buildStudentApiUrl joins base URLs and endpoint paths cleanly', () => {
     buildStudentApiUrl('https://example.com/', '/api/student/bootstrap'),
     'https://example.com/api/student/bootstrap',
   );
+});
+
+test('loadStoredStudentSectionId trims persisted values and ignores blanks', () => {
+  const workspaceState = {
+    get(key) {
+      return key === STUDENT_SECTION_STATE_KEY ? '  sec-1  ' : undefined;
+    },
+  };
+
+  assert.equal(loadStoredStudentSectionId(workspaceState), 'sec-1');
+
+  const blankState = {
+    get(key) {
+      return key === STUDENT_SECTION_STATE_KEY ? '   ' : undefined;
+    },
+  };
+
+  assert.equal(loadStoredStudentSectionId(blankState), null);
+});
+
+test('storeSelectedStudentSectionId and clearStoredStudentSectionId update workspace state', async () => {
+  const updates = [];
+  const workspaceState = {
+    get() {
+      return undefined;
+    },
+    update(key, value) {
+      updates.push({ key, value });
+      return Promise.resolve();
+    },
+  };
+
+  await storeSelectedStudentSectionId(workspaceState, '  sec-2  ');
+  await clearStoredStudentSectionId(workspaceState);
+
+  assert.deepEqual(updates, [
+    { key: STUDENT_SECTION_STATE_KEY, value: 'sec-2' },
+    { key: STUDENT_SECTION_STATE_KEY, value: undefined },
+  ]);
 });
