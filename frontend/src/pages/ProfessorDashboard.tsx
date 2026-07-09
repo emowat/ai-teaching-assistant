@@ -120,6 +120,15 @@ export function ProfessorDashboard({
     () => (launchConfigsSectionId === selectedSectionId ? launchConfigs : []),
     [launchConfigs, launchConfigsSectionId, selectedSectionId],
   );
+  const readyLaunchConfigCount = useMemo(
+    () =>
+      activeLaunchConfigs.reduce(
+        (count, config) =>
+          count + (isWeekLaunchReady(toWeekLaunchConfig(config)) ? 1 : 0),
+        0,
+      ),
+    [activeLaunchConfigs],
+  );
   const loadingLaunchConfigs = Boolean(
     selectedSectionId &&
       accessToken &&
@@ -339,7 +348,7 @@ export function ProfessorDashboard({
           flexWrap: "wrap",
         }}
       >
-        <span style={{ fontSize: 13, color: D.muted }}>Teaching:</span>
+        <span style={{ fontSize: 13, color: D.muted }}>Section:</span>
         <select
           aria-label="Teaching section"
           value={selectedSectionId ?? ""}
@@ -366,7 +375,7 @@ export function ProfessorDashboard({
         <div style={{ flex: 1 }} />
         <Tag color={D.green}>{selectedSection ? selectedSection.course_id : "no section"}</Tag>
         <Tag color={D.red}>{selectedSection ? `${selectedSection.student_count} students` : "no roster"}</Tag>
-        <Tag color={D.muted}>Live roster</Tag>
+        <Tag color={D.muted}>Section roster</Tag>
       </div>
 
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
@@ -383,7 +392,7 @@ export function ProfessorDashboard({
           {tab === "overview" ? (
             <div>
               <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 18 }}>
-                {selectedSection ? selectedSection.display_name : "Professor overview"}
+                {selectedSection ? selectedSection.display_name : "Section overview"}
               </div>
               {sectionError && (
                 <Card style={{ marginBottom: 14, color: D.red, fontSize: 12 }}>{sectionError}</Card>
@@ -421,6 +430,34 @@ export function ProfessorDashboard({
                   color={selectedSection?.is_active ? D.green : D.yellow}
                 />
               </div>
+              <Card style={{ marginBottom: 18, display: "grid", gap: 8 }}>
+                <div style={{ fontSize: 12, color: D.muted }}>Section context</div>
+                <div style={{ fontSize: 15, fontWeight: 600 }}>
+                  {selectedSection ? selectedSection.section_id : "No section selected"}
+                </div>
+                <div style={{ fontSize: 12, color: D.dim }}>
+                  {selectedSection
+                    ? `${selectedSection.course_id} · ${selectedSection.course_display_name} · ${selectedSection.term || "n/a"}`
+                    : "Choose a section from the selector above."}
+                </div>
+                <div style={{ fontSize: 12, color: D.dim, lineHeight: 1.5 }}>
+                  Students use the launch configs in this section to enter the workspace. Keep the
+                  selected section and its launch setup aligned with the roster below.
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <Tag color={selectedSection?.is_active ? D.green : D.red}>
+                    {selectedSection?.is_active ? "active section" : "inactive section"}
+                  </Tag>
+                  <Tag color={D.blue}>
+                    {activeLaunchConfigs.length} launch config
+                    {activeLaunchConfigs.length === 1 ? "" : "s"}
+                  </Tag>
+                  <Tag color={D.orange}>
+                    {readyLaunchConfigCount} ready
+                    {readyLaunchConfigCount === 1 ? "" : " configs"}
+                  </Tag>
+                </div>
+              </Card>
               <Card>
                 <div style={{ fontSize: 12, color: D.muted, marginBottom: 6 }}>Current section</div>
                 <div style={{ fontSize: 14, fontWeight: 600 }}>
@@ -600,8 +637,14 @@ export function ProfessorDashboard({
             <div style={{ display: "grid", gap: 14 }}>
               <div style={{ fontSize: 18, fontWeight: 600 }}>
                 Students for {selectedSection ? selectedSection.display_name : "selected section"}{" "}
-                <Tag color={D.muted}>{loadingStudents ? "loading" : "live"}</Tag>
+                <Tag color={D.muted}>
+                  {loadingStudents ? "loading" : "active memberships only"}
+                </Tag>
               </div>
+              <Card style={{ fontSize: 12, color: D.muted, lineHeight: 1.7 }}>
+                This roster shows active student memberships for the selected section and includes
+                live session usage from Aurora-backed telemetry.
+              </Card>
               {studentError && <Card style={{ color: D.red, fontSize: 12 }}>{studentError}</Card>}
               {selectedStudent ? (
                 <Card style={{ display: "grid", gap: 10 }}>
@@ -673,7 +716,7 @@ export function ProfessorDashboard({
           ) : tab === "analytics" ? (
             <div>
               <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 18 }}>
-                Class analytics <Tag color={D.muted}>STUB</Tag>
+                Section analytics <Tag color={D.muted}>STUB</Tag>
               </div>
               <Card style={{ marginBottom: 12, fontSize: 12, color: D.muted }}>
                 Analytics cards remain stubbed until the aggregation API lands. The roster and section

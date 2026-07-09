@@ -96,6 +96,12 @@ describe("ProfessorDashboard", () => {
     );
 
     expect(await screen.findByLabelText("Teaching section")).toHaveValue("mit14-fall-001");
+    expect(screen.getByText("Section context")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Students use the launch configs in this section to enter the workspace\./i,
+      ),
+    ).toBeInTheDocument();
     await waitFor(() => {
       expect(mockedListProfessorSections).toHaveBeenCalledWith("access-token-1");
       expect(mockedListProfessorSectionLaunchConfigs).toHaveBeenCalledWith(
@@ -189,5 +195,12 @@ describe("ProfessorDashboard", () => {
     });
 
     expect(await screen.findByText("Saved launch configs.")).toBeInTheDocument();
+
+    screen.getByRole("button", { name: /analytics/i }).click();
+
+    expect(await screen.findByText("Section analytics")).toBeInTheDocument();
+    expect(
+      screen.getByText(/Analytics cards remain stubbed until the aggregation API lands\./i),
+    ).toBeInTheDocument();
   });
 });
