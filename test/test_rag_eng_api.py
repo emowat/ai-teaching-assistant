@@ -16,6 +16,7 @@ from rag_eng.schemas import (
     HealthResponse,
     IndexEnsureResponse,
     IndexRebuildResponse,
+    ProfessorSectionAnalytics,
     ProfessorSectionStudent,
     ProfessorSectionSummary,
     ProfessorTeachingPlan,
@@ -1098,6 +1099,63 @@ def test_professor_section_routes_return_live_data(
     assert students_response.status_code == 200
     assert sections_response.json()[0]["section_id"] == "mit14-fall-001"
     assert students_response.json()[0]["email"] == "student@example.edu"
+
+
+def test_professor_section_analytics_route_returns_live_data(
+    monkeypatch, client: TestClient
+) -> None:
+    client.app.dependency_overrides[require_authenticated_user] = lambda: CurrentUser(
+        cognito_sub="prof-sub",
+        email="prof@example.edu",
+        primary_role="professor",
+    )
+    monkeypatch.setattr(
+        "rag_eng.api.get_professor_section_analytics",
+        lambda current_user, section_id, tz="America/Los_Angeles": ProfessorSectionAnalytics(
+            section=ProfessorSectionSummary(
+                section_id="mit14-fall-001",
+                course_id="mit14",
+                course_display_name="MIT 6.0014",
+                display_name="MIT 6.0014 Section A",
+                term="Fall 2026",
+                is_active=True,
+                professor_count=1,
+                ta_count=0,
+                student_count=1,
+                created_at="2026-06-20T00:00:00+00:00",
+                updated_at="2026-06-20T00:00:00+00:00",
+            ),
+            sessions_last_7_days=8,
+            active_students_last_7_days=2,
+            weekly_activity=[
+                {"day": "Mon", "sessions": 1, "active_students": 1},
+                {"day": "Tue", "sessions": 0, "active_students": 0},
+            ],
+            top_students=[
+                ProfessorSectionStudent(
+                    user_id="student-1",
+                    cognito_sub="student-sub",
+                    email="student@example.edu",
+                    display_name="Student",
+                    membership_status="active",
+                    role_in_section="student",
+                    session_count=3,
+                    last_session_at="2026-06-20T00:00:00+00:00",
+                )
+            ],
+            generated_at="2026-06-20T00:00:00+00:00",
+        ),
+    )
+
+    try:
+        response = client.get("/professor/sections/mit14-fall-001/analytics")
+    finally:
+        client.app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["section"]["section_id"] == "mit14-fall-001"
+    assert response.json()["sessions_last_7_days"] == 8
+    assert response.json()["top_students"][0]["email"] == "student@example.edu"
 
 
 def test_professor_launch_config_routes_return_live_data(

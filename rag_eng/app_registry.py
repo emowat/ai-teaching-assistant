@@ -7,7 +7,7 @@ import os
 from collections import defaultdict
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 import uuid
 
@@ -30,6 +30,8 @@ from rag_eng.schemas import (
     StudentLaunchConfig,
     StudentBootstrapUser,
     ProfessorSectionStudent,
+    ProfessorSectionAnalytics,
+    ProfessorSectionAnalyticsPoint,
     ProfessorSectionSummary,
     ProfessorTeachingPlan,
     ProfessorTeachingPlanUpdate,
@@ -1488,6 +1490,136 @@ def list_professor_sections(
         )
 
     return _group_professor_sections(section_rows, membership_rows)
+
+
+def get_professor_section_analytics(
+    current_user: CurrentUser,
+    section_id: str,
+    *,
+    tz: str = "America/Los_Angeles",
+    runtime: AppRegistryRuntimeConfig | None = None,
+) -> ProfessorSectionAnalytics:
+    runtime = runtime or load_app_registry_runtime_config()
+    database_url = _require_database_url(runtime)
+    require_section_membership(
+        current_user,
+        section_id,
+        allowed_roles={"professor", "ta"},
+        runtime=runtime,
+    )
+
+    import pytz
+
+    if tz not in pytz.all_timezones:
+        raise ValueError("Invalid timezone")
+
+    pt_tz = pytz.timezone(tz)
+    now = datetime.now(pt_tz)
+    timeline: dict[str, dict[str, int | str]] = {}
+    for days_ago in range(6, -1, -1):
+        day = (now - timedelta(days=days_ago)).strftime("%a")
+        timeline[day] = {"day": day, "sessions": 0, "active_students": 0}
+
+    with _connect_postgres(database_url, runtime.connect_timeout_seconds) as connection:
+        section_row = _load_section_by_id(connection, section_id)
+        if section_row is None:
+            raise SectionNotFoundError(f"Section {section_id} was not found.")
+
+        membership_rows = _load_section_memberships_by_section(connection, section_id)
+        counts = {"professor": 0, "ta": 0, "student": 0}
+        for row in membership_rows:
+            role_in_section = _clean_text(row[5])
+            status = _clean_text(row[6])
+            if status == "active" and role_in_section in counts:
+                counts[role_in_section] += 1
+
+        section_summary = ProfessorSectionSummary(
+            **_section_summary_from_row(section_row),
+            professor_count=counts["professor"],
+            ta_count=counts["ta"],
+            student_count=counts["student"],
+        )
+
+        totals_row = _fetch_one_row(
+            connection,
+            """
+            SELECT
+              COUNT(*) AS session_count,
+              COUNT(DISTINCT user_sub) AS active_students
+            FROM tutor_sessions
+            WHERE section_id = %s
+              AND last_seen_at >= (CURRENT_TIMESTAMP AT TIME ZONE %s)::DATE - INTERVAL '6 days'
+            """,
+            (section_id, tz),
+        )
+        totals = {
+            "sessions": int(totals_row[0]) if totals_row and totals_row[0] is not None else 0,
+            "active_students": int(totals_row[1]) if totals_row and totals_row[1] is not None else 0,
+        }
+
+        daily_rows = _fetch_all_rows(
+            connection,
+            """
+            SELECT
+              TO_CHAR((last_seen_at AT TIME ZONE %s), 'Dy') AS day,
+              COUNT(*) AS sessions,
+              COUNT(DISTINCT user_sub) AS active_students
+            FROM tutor_sessions
+            WHERE section_id = %s
+              AND last_seen_at >= (CURRENT_TIMESTAMP AT TIME ZONE %s)::DATE - INTERVAL '6 days'
+            GROUP BY DATE((last_seen_at AT TIME ZONE %s)), day
+            ORDER BY DATE((last_seen_at AT TIME ZONE %s)) ASC
+            """,
+            (tz, section_id, tz, tz, tz),
+        )
+        for day, sessions, active_students in daily_rows:
+            key = str(day)
+            if key not in timeline:
+                continue
+            timeline[key]["sessions"] = int(sessions)
+            timeline[key]["active_students"] = int(active_students)
+
+        student_rows = _load_student_rows_for_section(connection, section_id)
+
+    top_students = sorted(
+        (
+            ProfessorSectionStudent(
+                user_id=_clean_text(row[0]),
+                cognito_sub=_clean_text(row[1]) or None,
+                email=_clean_text(row[2]),
+                display_name=_clean_text(row[3]),
+                membership_status=_clean_text(row[4]),
+                role_in_section=_clean_text(row[5]),
+                session_count=int(row[6]) if row[6] is not None else 0,
+                last_session_at=_format_timestamp(row[7]),
+            )
+            for row in student_rows
+        ),
+        key=lambda student: (
+            -student.session_count,
+            student.last_session_at or "",
+            student.display_name.casefold(),
+            student.email.casefold(),
+        ),
+    )[:5]
+
+    weekly_activity = [
+        ProfessorSectionAnalyticsPoint(
+            day=str(values["day"]),
+            sessions=int(values["sessions"]),
+            active_students=int(values["active_students"]),
+        )
+        for values in timeline.values()
+    ]
+
+    return ProfessorSectionAnalytics(
+        section=section_summary,
+        sessions_last_7_days=totals["sessions"],
+        active_students_last_7_days=totals["active_students"],
+        weekly_activity=weekly_activity,
+        top_students=top_students,
+        generated_at=_format_timestamp(datetime.now(timezone.utc)),
+    )
 
 
 def list_professor_section_launch_configs(

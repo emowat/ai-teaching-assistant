@@ -9,8 +9,10 @@ import {
   YAxis,
 } from "recharts";
 import {
+  getProfessorSectionAnalytics,
   listProfessorSectionStudents,
   listProfessorSections,
+  type ProfessorSectionAnalytics,
   type ProfessorSectionStudent,
   type ProfessorSectionSummary,
 } from "../api/professorSectionsApi";
@@ -43,14 +45,6 @@ interface ProfessorDashboardProps {
   onSignOut: () => void;
   accessToken: string;
 }
-
-const weekData = [
-  { week: "W1", sessions: 4, hints: 1 },
-  { week: "W2", sessions: 6, hints: 2 },
-  { week: "W3", sessions: 6, hints: 2 },
-  { week: "W4", sessions: 7, hints: 3 },
-  { week: "W5", sessions: 6, hints: 3 },
-];
 
 const profTabs = [
   { key: "overview", icon: "📋", label: "Overview" },
@@ -122,14 +116,18 @@ export function ProfessorDashboard({
   const [sections, setSections] = useState<ProfessorSectionSummary[]>([]);
   const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
   const [students, setStudents] = useState<ProfessorSectionStudent[]>([]);
+  const [analytics, setAnalytics] = useState<ProfessorSectionAnalytics | null>(null);
+  const [analyticsSectionId, setAnalyticsSectionId] = useState<string | null>(null);
   const [launchConfigs, setLaunchConfigs] = useState<SectionLaunchConfig[]>([]);
   const [launchConfigsSectionId, setLaunchConfigsSectionId] = useState<string | null>(null);
   const [teachingPlan, setTeachingPlan] = useState<ProfessorTeachingPlan | null>(null);
   const [teachingPlanSectionId, setTeachingPlanSectionId] = useState<string | null>(null);
   const [loadingSections, setLoadingSections] = useState(true);
   const [studentFetchComplete, setStudentFetchComplete] = useState(false);
+  const [analyticsFetchComplete, setAnalyticsFetchComplete] = useState(false);
   const [sectionError, setSectionError] = useState<string | null>(null);
   const [studentError, setStudentError] = useState<string | null>(null);
+  const [analyticsError, setAnalyticsError] = useState<string | null>(null);
   const [launchConfigError, setLaunchConfigError] = useState<string | null>(null);
   const [launchConfigStatus, setLaunchConfigStatus] = useState<string | null>(null);
   const [teachingPlanError, setTeachingPlanError] = useState<string | null>(null);
@@ -151,6 +149,10 @@ export function ProfessorDashboard({
     () => (launchConfigsSectionId === selectedSectionId ? launchConfigs : []),
     [launchConfigs, launchConfigsSectionId, selectedSectionId],
   );
+  const activeAnalytics = useMemo(
+    () => (analyticsSectionId === selectedSectionId ? analytics : null),
+    [analytics, analyticsSectionId, selectedSectionId],
+  );
   const activeTeachingPlan = useMemo(
     () => (teachingPlanSectionId === selectedSectionId ? teachingPlan : null),
     [selectedSectionId, teachingPlan, teachingPlanSectionId],
@@ -170,6 +172,7 @@ export function ProfessorDashboard({
       launchConfigsSectionId !== selectedSectionId &&
       !launchConfigError
   );
+  const loadingAnalytics = Boolean(selectedSectionId) && !analyticsFetchComplete && !analyticsError;
   const loadingTeachingPlan = Boolean(
     selectedSectionId &&
       accessToken &&
@@ -256,6 +259,36 @@ export function ProfessorDashboard({
   }, [accessToken, selectedSectionId]);
 
   useEffect(() => {
+    if (!selectedSectionId || !accessToken) {
+      return;
+    }
+
+    let cancelled = false;
+
+    void getProfessorSectionAnalytics(selectedSectionId, accessToken)
+      .then((nextAnalytics) => {
+        if (cancelled) return;
+        setAnalytics(nextAnalytics);
+        setAnalyticsSectionId(selectedSectionId);
+        setAnalyticsError(null);
+      })
+      .catch((err: Error) => {
+        if (!cancelled) {
+          setAnalytics(null);
+          setAnalyticsSectionId(selectedSectionId);
+          setAnalyticsError(err.message);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setAnalyticsFetchComplete(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken, selectedSectionId]);
+
+  useEffect(() => {
     if (!selectedSectionId) {
       return;
     }
@@ -289,6 +322,10 @@ export function ProfessorDashboard({
     setSelectedStudentId(null);
     setStudentError(null);
     setStudentFetchComplete(false);
+    setAnalytics(null);
+    setAnalyticsSectionId(null);
+    setAnalyticsError(null);
+    setAnalyticsFetchComplete(false);
     setLaunchConfigError(null);
     setLaunchConfigStatus(null);
     setTeachingPlan(null);
@@ -1227,26 +1264,111 @@ export function ProfessorDashboard({
           ) : tab === "analytics" ? (
             <div>
               <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 18 }}>
-                Section analytics <Tag color={D.muted}>STUB</Tag>
+                Section analytics <Tag color={D.green}>LIVE</Tag>
               </div>
               <Card style={{ marginBottom: 12, fontSize: 12, color: D.muted }}>
-                Analytics cards remain stubbed until the aggregation API lands. The roster and section
-                selector above are live.
+                Live Aurora-backed analytics for the selected section. This view stays scoped to the
+                professor or TA memberships on that section.
+                {activeAnalytics?.generated_at ? (
+                  <span style={{ display: "block", marginTop: 8, color: D.dim }}>
+                    Refreshed at {activeAnalytics.generated_at}
+                  </span>
+                ) : null}
+              </Card>
+              {analyticsError ? (
+                <Card style={{ marginBottom: 12, color: D.red }}>
+                  Analytics failed to load: {analyticsError}
+                </Card>
+              ) : null}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                  gap: 12,
+                  marginBottom: 12,
+                }}
+              >
+                <Stat
+                  label="// sessions_7d"
+                  value={activeAnalytics?.sessions_last_7_days ?? 0}
+                  sub="Aurora tutor_sessions"
+                  color={D.orange}
+                />
+                <Stat
+                  label="// active_students_7d"
+                  value={activeAnalytics?.active_students_last_7_days ?? 0}
+                  sub="distinct student authors"
+                  color={D.blue}
+                />
+                <Stat
+                  label="// section_roster"
+                  value={selectedSection?.student_count ?? 0}
+                  sub={selectedSection ? selectedSection.section_id : "no section selected"}
+                  color={D.green}
+                />
+              </div>
+              <Card style={{ marginBottom: 12 }}>
+                <div style={{ ...mono, fontSize: 11, color: D.muted, marginBottom: 14 }}>
+                  // weekly_section_activity
+                </div>
+                {loadingAnalytics ? (
+                  <div style={{ fontSize: 12, color: D.muted }}>Loading analytics...</div>
+                ) : (
+                  <ResponsiveContainer width="100%" height={220}>
+                    <BarChart data={activeAnalytics?.weekly_activity ?? []}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={D.border} />
+                      <XAxis
+                        dataKey="day"
+                        stroke={D.muted}
+                        tick={{ fontSize: 11, fill: D.muted }}
+                      />
+                      <YAxis stroke={D.muted} tick={{ fontSize: 11, fill: D.muted }} />
+                      <Tooltip {...chartTooltipStyle} />
+                      <Bar dataKey="sessions" fill={D.orange} radius={[3, 3, 0, 0]} name="sessions" />
+                      <Bar
+                        dataKey="active_students"
+                        fill={D.blue}
+                        radius={[3, 3, 0, 0]}
+                        name="active students"
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
               </Card>
               <Card>
                 <div style={{ ...mono, fontSize: 11, color: D.muted, marginBottom: 14 }}>
-                  // avg_sessions_and_hints_per_week
+                  // top_active_students
                 </div>
-                <ResponsiveContainer width="100%" height={220}>
-                  <BarChart data={weekData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={D.border} />
-                    <XAxis dataKey="week" stroke={D.muted} tick={{ fontSize: 11, fill: D.muted }} />
-                    <YAxis stroke={D.muted} tick={{ fontSize: 11, fill: D.muted }} />
-                    <Tooltip {...chartTooltipStyle} />
-                    <Bar dataKey="sessions" fill={D.orange} radius={[3, 3, 0, 0]} name="avg sessions" />
-                    <Bar dataKey="hints" fill={D.yellow} radius={[3, 3, 0, 0]} name="avg hints" />
-                  </BarChart>
-                </ResponsiveContainer>
+                {loadingAnalytics ? (
+                  <div style={{ fontSize: 12, color: D.muted }}>Loading student highlights...</div>
+                ) : activeAnalytics?.top_students.length ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {activeAnalytics.top_students.map((student) => (
+                      <Card
+                        key={student.user_id}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 12,
+                          background: D.surface,
+                          borderColor: D.border,
+                        }}
+                      >
+                        <Avatar name={student.display_name || student.email} size={32} />
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 13, fontWeight: 500 }}>{student.display_name}</div>
+                          <div style={{ fontSize: 11, color: D.muted }}>{student.email}</div>
+                        </div>
+                        <Tag color={D.orange}>{student.session_count} sessions</Tag>
+                        <Tag color={D.blue}>{student.membership_status}</Tag>
+                      </Card>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 12, color: D.dim }}>
+                    No section activity has been recorded yet.
+                  </div>
+                )}
               </Card>
             </div>
           ) : null}

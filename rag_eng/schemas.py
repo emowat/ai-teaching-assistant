@@ -327,6 +327,25 @@ class ProfessorSectionStudent(BaseModel):
     last_session_at: str = ""
 
 
+class ProfessorSectionAnalyticsPoint(BaseModel):
+    """Professor-facing daily activity point for a section."""
+
+    day: str
+    sessions: int = 0
+    active_students: int = 0
+
+
+class ProfessorSectionAnalytics(BaseModel):
+    """Professor-facing analytics payload for one section."""
+
+    section: ProfessorSectionSummary
+    sessions_last_7_days: int = 0
+    active_students_last_7_days: int = 0
+    weekly_activity: list[ProfessorSectionAnalyticsPoint] = Field(default_factory=list)
+    top_students: list[ProfessorSectionStudent] = Field(default_factory=list)
+    generated_at: str = ""
+
+
 class SectionLaunchConfig(BaseModel):
     """Launch routing metadata for a section launch option."""
 

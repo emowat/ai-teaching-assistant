@@ -82,6 +82,7 @@ and staff smoke flows.
 | `POST` | `/api/student/telemetry` | authenticated student telemetry surface that persists Aurora identity |
 | `POST` | `/api/student/feedback` | authenticated student feedback surface that persists Aurora identity |
 | `GET` | `/professor/sections/{section_id}/launch-configs` | list launch targets for a professor-visible section |
+| `GET` | `/professor/sections/{section_id}/analytics` | read section-scoped usage analytics |
 | `PUT` | `/professor/sections/{section_id}/launch-configs` | replace all launch targets for a section |
 | `GET` | `/professor/sections/{section_id}/teaching-plan` | load the section Teaching Plan |
 | `POST` | `/professor/sections/{section_id}/teaching-plan` | save the Teaching Plan title / summary |
@@ -208,6 +209,17 @@ JSON
 The student bootstrap response already includes the same `launch_configs`
 payload per section, so the student launcher can stay in sync without a second
 lookup.
+
+Professor analytics are also section-scoped. The dashboard uses
+`GET /professor/sections/{section_id}/analytics` to render live counts and a
+weekly activity chart from Aurora-backed tutor sessions.
+
+Example analytics call:
+
+```bash
+curl -sS "$BASE_URL/professor/sections/mit14-fall-001/analytics" \
+  -H "Authorization: Bearer $COGNITO_ACCESS_TOKEN" | jq .
+```
 
 ### Teaching plan routes
 

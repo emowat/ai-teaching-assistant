@@ -27,6 +27,7 @@ There are three auth patterns in the service today:
 | `GET /me`, `POST /run/compile` | Cognito bearer token |
 | `GET /api/student/bootstrap`, `POST /api/student/chat`, `POST /api/student/telemetry`, `POST /api/student/feedback` | Cognito bearer token + active Aurora section membership; admin/professor roles may enter the student surface for mimic/smoke flows through active student, professor, or TA memberships |
 | `GET /professor/sections/{section_id}/launch-configs`, `PUT /professor/sections/{section_id}/launch-configs` | Cognito bearer token + active professor/TA membership for the section |
+| `GET /professor/sections/{section_id}/analytics` | Cognito bearer token + active professor/TA membership for the section |
 | `GET /professor/sections/{section_id}/teaching-plan`, `POST /professor/sections/{section_id}/teaching-plan`, `POST /professor/sections/{section_id}/teaching-plan/publish`, `POST /professor/sections/{section_id}/teaching-plan/archive`, `POST /professor/sections/{section_id}/teaching-plan/weeks`, `GET /professor/sections/{section_id}/teaching-plan/weeks/{week_id}`, `PATCH /professor/sections/{section_id}/teaching-plan/weeks/{week_id}`, `DELETE /professor/sections/{section_id}/teaching-plan/weeks/{week_id}` | Cognito bearer token + active professor/TA membership for the section |
 | most `/admin/*` routes | admin Cognito bearer token or `X-Admin-Token` |
 | `POST /admin/index/ensure`, `POST /admin/index/rebuild` | `X-Admin-Token` only |
@@ -60,6 +61,10 @@ can read, edit, publish, archive, and manage week-by-week Teaching Plans at
 Launch configs remain the routing primitive; Teaching Plans are instructional
 metadata layered on top.
 
+Professor analytics are also section-scoped and backed by Aurora tutor-session
+activity. Use `/professor/sections/{section_id}/analytics` to drive the live
+section analytics tab in the dashboard.
+
 Admin bearer auth means:
 
 - `Authorization: Bearer <access-token>`
@@ -85,6 +90,7 @@ routes accept either auth style.
 | `POST` | `/api/student/telemetry` | bearer | record authenticated student telemetry with Aurora identity |
 | `POST` | `/api/student/feedback` | bearer | record authenticated student feedback with Aurora identity |
 | `GET` | `/professor/sections/{section_id}/launch-configs` | bearer | read section launch targets |
+| `GET` | `/professor/sections/{section_id}/analytics` | bearer | read section-scoped analytics |
 | `PUT` | `/professor/sections/{section_id}/launch-configs` | bearer | replace section launch targets |
 | `GET` | `/professor/sections/{section_id}/teaching-plan` | bearer | load the section Teaching Plan |
 | `POST` | `/professor/sections/{section_id}/teaching-plan` | bearer | save Teaching Plan title / summary |

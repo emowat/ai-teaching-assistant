@@ -18,6 +18,7 @@ from rag_eng.schemas import (
     ProfessorTeachingPlanUpdate,
     ProfessorTeachingPlanWeekCreate,
     ProfessorTeachingPlanWeekUpdate,
+    ProfessorSectionAnalytics,
     SectionLaunchConfig,
     StudentBootstrapResponse,
 )
@@ -405,6 +406,47 @@ class _FakeCursor:
                 and str(membership["status"]) == "active"
             ]
             self._rows = rows
+            return
+
+        if sql.startswith(
+            "SELECT COUNT(*) AS session_count, COUNT(DISTINCT user_sub) AS active_students FROM tutor_sessions WHERE section_id = %s AND last_seen_at >= (CURRENT_TIMESTAMP AT TIME ZONE %s)::DATE - INTERVAL '6 days'"
+        ):
+            section_id = str(params[0])
+            sessions = [
+                session
+                for session in self.state.tutor_sessions
+                if str(session.get("section_id", "")) == section_id
+            ]
+            self._rows = [
+                (
+                    len(sessions),
+                    len({str(session.get("user_sub", "")) for session in sessions}),
+                )
+            ]
+            return
+
+        if sql.startswith(
+            "SELECT TO_CHAR((last_seen_at AT TIME ZONE %s), 'Dy') AS day, COUNT(*) AS sessions, COUNT(DISTINCT user_sub) AS active_students FROM tutor_sessions WHERE section_id = %s AND last_seen_at >= (CURRENT_TIMESTAMP AT TIME ZONE %s)::DATE - INTERVAL '6 days' GROUP BY DATE((last_seen_at AT TIME ZONE %s)), day ORDER BY DATE((last_seen_at AT TIME ZONE %s)) ASC"
+        ):
+            section_id = str(params[1])
+            by_day: dict[str, dict[str, set[str] | int]] = {}
+            for session in self.state.tutor_sessions:
+                if str(session.get("section_id", "")) != section_id:
+                    continue
+                day = session["last_seen_at"].strftime("%a")
+                bucket = by_day.setdefault(day, {"sessions": 0, "users": set()})
+                bucket["sessions"] = int(bucket["sessions"]) + 1
+                users = bucket["users"]
+                assert isinstance(users, set)
+                users.add(str(session.get("user_sub", "")))
+            self._rows = [
+                (
+                    day,
+                    values["sessions"],
+                    len(values["users"]),
+                )
+                for day, values in sorted(by_day.items(), key=lambda item: item[0])
+            ]
             return
 
         if sql.startswith(
@@ -1646,3 +1688,73 @@ def test_professor_views_return_active_sections_and_rosters(
     assert [section.section_id for section in sections] == ["mit14-fall-001"]
     assert students[0].email == "student@example.edu"
     assert students[0].session_count == 1
+
+
+def test_professor_section_analytics_uses_live_section_activity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _state()
+    state.users["prof-1"] = _user(
+        user_id="prof-1",
+        email="prof@example.edu",
+        display_name="Prof",
+        primary_role="professor",
+        status="active",
+        cognito_sub="sub-prof",
+    )
+    state.users["student-1"] = _user(
+        user_id="student-1",
+        email="student@example.edu",
+        display_name="Student",
+        primary_role="student",
+        status="active",
+        cognito_sub="sub-student",
+    )
+    state.sections["mit14-fall-001"] = _section(
+        section_id="mit14-fall-001",
+        display_name="MIT 6.0014 Section A",
+    )
+    state.memberships[("mit14-fall-001", "prof-1")] = _membership(
+        section_id="mit14-fall-001",
+        user_id="prof-1",
+        role_in_section="professor",
+    )
+    state.memberships[("mit14-fall-001", "student-1")] = _membership(
+        section_id="mit14-fall-001",
+        user_id="student-1",
+        role_in_section="student",
+    )
+    state.tutor_sessions.append(
+        {
+            "session_id": "sess-1",
+            "user_sub": "sub-student",
+            "section_id": "mit14-fall-001",
+            "last_seen_at": NOW,
+        }
+    )
+    state.tutor_sessions.append(
+        {
+            "session_id": "sess-2",
+            "user_sub": "sub-student",
+            "section_id": "mit14-fall-001",
+            "last_seen_at": NOW,
+        }
+    )
+    _patch_connection(monkeypatch, state)
+
+    analytics = app_registry.get_professor_section_analytics(
+        CurrentUser(
+            cognito_sub="sub-prof",
+            email="prof@example.edu",
+            primary_role="professor",
+        ),
+        "mit14-fall-001",
+        runtime=_runtime(),
+    )
+
+    assert isinstance(analytics, ProfessorSectionAnalytics)
+    assert analytics.section.section_id == "mit14-fall-001"
+    assert analytics.sessions_last_7_days == 2
+    assert analytics.active_students_last_7_days == 1
+    assert len(analytics.weekly_activity) == 7
+    assert analytics.top_students[0].email == "student@example.edu"

@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ProfessorDashboard } from "../src/pages/ProfessorDashboard";
+import { getProfessorSectionAnalytics } from "../src/api/professorSectionsApi";
 import {
   listProfessorSectionLaunchConfigs,
   replaceProfessorSectionLaunchConfigs,
@@ -21,6 +22,7 @@ import {
 } from "../src/api/teachingPlanApi";
 
 vi.mock("../src/api/professorSectionsApi", () => ({
+  getProfessorSectionAnalytics: vi.fn(),
   listProfessorSections: vi.fn(),
   listProfessorSectionStudents: vi.fn(),
 }));
@@ -41,6 +43,7 @@ vi.mock("../src/api/teachingPlanApi", () => ({
 }));
 
 const mockedListProfessorSections = vi.mocked(listProfessorSections);
+const mockedGetProfessorSectionAnalytics = vi.mocked(getProfessorSectionAnalytics);
 const mockedListProfessorSectionStudents = vi.mocked(listProfessorSectionStudents);
 const mockedListProfessorSectionLaunchConfigs = vi.mocked(listProfessorSectionLaunchConfigs);
 const mockedReplaceProfessorSectionLaunchConfigs = vi.mocked(
@@ -56,6 +59,7 @@ const mockedDeleteProfessorTeachingPlanWeek = vi.mocked(deleteProfessorTeachingP
 
 describe("ProfessorDashboard", () => {
   beforeEach(() => {
+    mockedGetProfessorSectionAnalytics.mockReset();
     mockedListProfessorSections.mockReset();
     mockedListProfessorSectionStudents.mockReset();
     mockedListProfessorSectionLaunchConfigs.mockReset();
@@ -67,6 +71,45 @@ describe("ProfessorDashboard", () => {
     mockedCreateProfessorTeachingPlanWeek.mockReset();
     mockedUpdateProfessorTeachingPlanWeek.mockReset();
     mockedDeleteProfessorTeachingPlanWeek.mockReset();
+    mockedGetProfessorSectionAnalytics.mockResolvedValue({
+      section: {
+        section_id: "mit14-fall-001",
+        course_id: "mit14",
+        course_display_name: "MIT 6.0014",
+        display_name: "Section A",
+        term: "Fall 2026",
+        is_active: true,
+        professor_count: 1,
+        ta_count: 1,
+        student_count: 2,
+        created_at: "2026-07-08T00:00:00Z",
+        updated_at: "2026-07-08T00:00:00Z",
+      },
+      sessions_last_7_days: 8,
+      active_students_last_7_days: 2,
+      weekly_activity: [
+        { day: "Mon", sessions: 1, active_students: 1 },
+        { day: "Tue", sessions: 0, active_students: 0 },
+        { day: "Wed", sessions: 2, active_students: 2 },
+        { day: "Thu", sessions: 1, active_students: 1 },
+        { day: "Fri", sessions: 3, active_students: 2 },
+        { day: "Sat", sessions: 1, active_students: 1 },
+        { day: "Sun", sessions: 0, active_students: 0 },
+      ],
+      top_students: [
+        {
+          user_id: "student-1",
+          cognito_sub: "cognito-sub-1",
+          email: "ada@example.com",
+          display_name: "Ada Lovelace",
+          membership_status: "active",
+          role_in_section: "student",
+          session_count: 3,
+          last_session_at: "2026-07-08T01:02:03Z",
+        },
+      ],
+      generated_at: "2026-07-08T00:00:00Z",
+    });
     mockedGetProfessorTeachingPlan.mockResolvedValue({
       teaching_plan_id: null,
       section_id: "mit14-fall-001",
@@ -159,6 +202,10 @@ describe("ProfessorDashboard", () => {
         "mit14-fall-001",
         "access-token-1",
       );
+      expect(mockedGetProfessorSectionAnalytics).toHaveBeenCalledWith(
+        "mit14-fall-001",
+        "access-token-1",
+      );
     });
 
     screen.getByRole("button", { name: /students/i }).click();
@@ -167,6 +214,12 @@ describe("ProfessorDashboard", () => {
     expect(screen.getByText("Ada Lovelace")).toBeInTheDocument();
     expect(screen.getByText("ada@example.com")).toBeInTheDocument();
     expect(screen.getByText("3 sessions")).toBeInTheDocument();
+
+    screen.getByRole("button", { name: /analytics/i }).click();
+
+    expect(await screen.findByText("Section analytics")).toBeInTheDocument();
+    expect(screen.getByText("// sessions_7d")).toBeInTheDocument();
+    expect(screen.getByText("Ada Lovelace")).toBeInTheDocument();
   });
 
   it("shows launch configs and saves changes from the launches tab", async () => {
@@ -247,7 +300,7 @@ describe("ProfessorDashboard", () => {
 
     expect(await screen.findByText("Section analytics")).toBeInTheDocument();
     expect(
-      screen.getByText(/Analytics cards remain stubbed until the aggregation API lands\./i),
+      screen.getByText(/Live Aurora-backed analytics for the selected section\./i),
     ).toBeInTheDocument();
   });
 
