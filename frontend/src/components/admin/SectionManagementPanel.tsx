@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   createAdminSection,
   createAdminSectionMembership,
@@ -85,8 +85,10 @@ export function SectionManagementPanel({ accessToken }: SectionManagementPanelPr
   const [sections, setSections] = useState<AdminSection[]>([]);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
   const [selectedMembershipUserId, setSelectedMembershipUserId] = useState<string | null>(null);
+  const selectedSectionIdRef = useRef<string | null>(null);
   const [createDraft, setCreateDraft] = useState<CreateDraft>(emptyCreateDraft());
   const [editDraft, setEditDraft] = useState<EditDraft>(emptyEditDraft());
   const [membershipCreateDraft, setMembershipCreateDraft] = useState<MembershipCreateDraft>(
@@ -115,7 +117,46 @@ export function SectionManagementPanel({ accessToken }: SectionManagementPanelPr
     });
   };
 
+  const syncSectionData = useCallback((nextSections: AdminSection[], nextUsers: AdminUser[]) => {
+    setSections(nextSections);
+    setUsers(nextUsers);
+    setMembershipCreateDraft((current) => ({
+      ...current,
+      user_id: nextUsers.some((user) => user.user_id === current.user_id)
+        ? current.user_id
+        : nextUsers[0]?.user_id || "",
+    }));
+
+    const nextSelectedSection =
+      nextSections.find((section) => section.section_id === selectedSectionIdRef.current) ?? nextSections[0] ?? null;
+
+    selectedSectionIdRef.current = nextSelectedSection?.section_id ?? null;
+    setSelectedSectionId(nextSelectedSection?.section_id ?? null);
+    setSelectedMembershipUserId(nextSelectedSection?.memberships[0]?.user_id ?? null);
+
+    if (nextSelectedSection === null) {
+      setEditDraft(emptyEditDraft());
+      setMembershipEditDraft(emptyMembershipEditDraft());
+      return;
+    }
+
+    setEditDraft({
+      display_name: nextSelectedSection.display_name,
+      term: nextSelectedSection.term,
+      is_active: nextSelectedSection.is_active,
+    });
+    setMembershipEditDraft(
+      nextSelectedSection.memberships[0]
+        ? {
+            role_in_section: nextSelectedSection.memberships[0].role_in_section,
+            status: nextSelectedSection.memberships[0].status,
+          }
+        : emptyMembershipEditDraft()
+    );
+  }, []);
+
   const applySelectedSection = (section: AdminSection | null, nextUsers: AdminUser[] = users) => {
+    selectedSectionIdRef.current = section?.section_id ?? null;
     setSelectedSectionId(section?.section_id ?? null);
     const firstMembershipUserId = section?.memberships[0]?.user_id ?? null;
     setSelectedMembershipUserId(firstMembershipUserId);
@@ -152,39 +193,7 @@ export function SectionManagementPanel({ accessToken }: SectionManagementPanelPr
     void Promise.all([listAdminSections(accessToken), listAdminUsers(accessToken)])
       .then(([nextSections, nextUsers]) => {
         if (cancelled) return;
-        setSections(nextSections);
-        setUsers(nextUsers);
-        setMembershipCreateDraft(emptyMembershipCreateDraft(nextUsers));
-        const firstSection = nextSections[0] ?? null;
-
-        if (firstSection === null) {
-          setSelectedSectionId(null);
-          setSelectedMembershipUserId(null);
-          setEditDraft(emptyEditDraft());
-          setMembershipCreateDraft(emptyMembershipCreateDraft(nextUsers));
-          setMembershipEditDraft(emptyMembershipEditDraft());
-          return;
-        }
-
-        setSelectedSectionId(firstSection.section_id);
-        setSelectedMembershipUserId(firstSection.memberships[0]?.user_id ?? null);
-        setEditDraft({
-          display_name: firstSection.display_name,
-          term: firstSection.term,
-          is_active: firstSection.is_active,
-        });
-        setMembershipCreateDraft((current) => ({
-          ...current,
-          user_id: current.user_id || nextUsers[0]?.user_id || "",
-        }));
-        setMembershipEditDraft(
-          firstSection.memberships[0]
-            ? {
-                role_in_section: firstSection.memberships[0].role_in_section,
-                status: firstSection.memberships[0].status,
-              }
-            : emptyMembershipEditDraft()
-        );
+        syncSectionData(nextSections, nextUsers);
       })
       .catch((err: Error) => {
         if (!cancelled) {
@@ -205,7 +214,26 @@ export function SectionManagementPanel({ accessToken }: SectionManagementPanelPr
     return () => {
       cancelled = true;
     };
-  }, [accessToken]);
+  }, [accessToken, syncSectionData]);
+
+  const handleRefreshSections = async () => {
+    setRefreshing(true);
+    setFormError(null);
+    setFormStatus(null);
+
+    try {
+      const [nextSections, nextUsers] = await Promise.all([
+        listAdminSections(accessToken),
+        listAdminUsers(accessToken),
+      ]);
+      syncSectionData(nextSections, nextUsers);
+      setFormStatus(`Refreshed ${nextSections.length} sections.`);
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Unable to refresh sections.");
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const activeCount = sections.filter((section) => section.is_active).length;
   const membershipCount = sections.reduce((total, section) => total + section.memberships.length, 0);
@@ -326,6 +354,7 @@ export function SectionManagementPanel({ accessToken }: SectionManagementPanelPr
     if (!membership) {
       return;
     }
+    selectedSectionIdRef.current = section.section_id;
     setSelectedSectionId(section.section_id);
     setSelectedMembershipUserId(userId);
     setMembershipEditDraft({
@@ -348,6 +377,9 @@ export function SectionManagementPanel({ accessToken }: SectionManagementPanelPr
             <Tag color={D.blue}>{sections.length} total</Tag>
             <Tag color={D.green}>{activeCount} active</Tag>
             <Tag color={D.orange}>{membershipCount} memberships</Tag>
+            <Btn small variant="ghost" onClick={() => void handleRefreshSections()} disabled={loading || refreshing}>
+              {refreshing ? "Refreshing..." : "Refresh"}
+            </Btn>
           </div>
         </div>
         {loading && <div style={{ fontSize: 12, color: D.muted }}>Loading sections...</div>}

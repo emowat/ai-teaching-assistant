@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   createAdminUser,
   listAdminUsers,
@@ -57,6 +57,7 @@ function membershipStatusColor(status: SectionMembershipStatus): string {
 export function UserManagementPanel({ accessToken }: UserManagementPanelProps) {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [formStatus, setFormStatus] = useState<string | null>(null);
@@ -66,10 +67,12 @@ export function UserManagementPanel({ accessToken }: UserManagementPanelProps) {
   const [statusFilter, setStatusFilter] = useState<UserStatus | "all">("all");
   const [createDraft, setCreateDraft] = useState<CreateDraft>(emptyCreateDraft());
   const [editDraft, setEditDraft] = useState<EditDraft>(emptyEditDraft());
+  const selectedUserIdRef = useRef<string | null>(null);
 
   const selectedUser = users.find((user) => user.user_id === selectedUserId) ?? null;
 
-  const applySelectedUser = (user: AdminUser | null) => {
+  const applySelectedUser = useCallback((user: AdminUser | null) => {
+    selectedUserIdRef.current = user?.user_id ?? null;
     setSelectedUserId(user?.user_id ?? null);
     if (user === null) {
       setEditDraft(emptyEditDraft());
@@ -81,7 +84,14 @@ export function UserManagementPanel({ accessToken }: UserManagementPanelProps) {
       primary_role: user.primary_role,
       status: user.status,
     });
-  };
+  }, []);
+
+  const syncUsers = useCallback((nextUsers: AdminUser[]) => {
+    setUsers(nextUsers);
+    const nextSelectedUser =
+      nextUsers.find((user) => user.user_id === selectedUserIdRef.current) ?? nextUsers[0] ?? null;
+    applySelectedUser(nextSelectedUser);
+  }, [applySelectedUser]);
 
   const upsertUser = (nextUser: AdminUser) => {
     setUsers((current) => {
@@ -98,8 +108,7 @@ export function UserManagementPanel({ accessToken }: UserManagementPanelProps) {
     void listAdminUsers(accessToken)
       .then((nextUsers) => {
         if (cancelled) return;
-        setUsers(nextUsers);
-        applySelectedUser(nextUsers[0] ?? null);
+        syncUsers(nextUsers);
       })
       .catch((err: Error) => {
         if (!cancelled) {
@@ -115,7 +124,23 @@ export function UserManagementPanel({ accessToken }: UserManagementPanelProps) {
     return () => {
       cancelled = true;
     };
-  }, [accessToken]);
+  }, [accessToken, applySelectedUser, syncUsers]);
+
+  const handleRefreshUsers = async () => {
+    setRefreshing(true);
+    setFormError(null);
+    setFormStatus(null);
+
+    try {
+      const nextUsers = await listAdminUsers(accessToken);
+      syncUsers(nextUsers);
+      setFormStatus(`Refreshed ${nextUsers.length} users.`);
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Unable to refresh users.");
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const filteredUsers = useMemo(
     () =>
@@ -198,11 +223,18 @@ export function UserManagementPanel({ accessToken }: UserManagementPanelProps) {
             <div style={{ fontSize: 12, color: D.muted, marginTop: 4 }}>
               Aurora-backed application users and their section memberships.
             </div>
+            <div style={{ fontSize: 11, color: D.dim, marginTop: 6, lineHeight: 1.4 }}>
+              Invite users in Aurora first. On first Cognito sign-in, the app claims the Aurora record by email
+              and stores the Cognito `sub`.
+            </div>
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             <Tag color={D.blue}>{users.length} total</Tag>
             <Tag color={D.green}>{activeCount} active</Tag>
             <Tag color={D.orange}>{invitedCount} invited</Tag>
+            <Btn small variant="ghost" onClick={() => void handleRefreshUsers()} disabled={loading || refreshing}>
+              {refreshing ? "Refreshing..." : "Refresh"}
+            </Btn>
           </div>
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -375,7 +407,7 @@ export function UserManagementPanel({ accessToken }: UserManagementPanelProps) {
                   <div style={{ fontSize: 14, fontWeight: 600 }}>{selectedUser.display_name}</div>
                   <div style={{ fontSize: 12, color: D.muted }}>{selectedUser.email}</div>
                   <div style={{ fontSize: 11, color: D.dim }}>
-                    Cognito: {selectedUser.cognito_sub ?? "unclaimed"}
+                    Cognito claim: {selectedUser.cognito_sub ?? "unclaimed"}
                   </div>
                 </div>
               </div>
