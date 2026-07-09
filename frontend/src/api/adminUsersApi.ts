@@ -1,4 +1,4 @@
-import { apiGet, apiPatch, apiPost } from "./client";
+import { apiGet, apiPatch, apiPost } from "./client.ts";
 
 export type AppPrimaryRole = "admin" | "professor" | "student";
 export type UserStatus = "invited" | "active" | "disabled";

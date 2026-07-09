@@ -1,4 +1,4 @@
-import { API_BASE_URL } from "./client";
+import { API_BASE_URL } from "./client.ts";
 
 export type LlmProvider = "cohere" | "openai" | "ollama" | "sagemaker" | "bedrock";
 
@@ -50,21 +50,21 @@ async function adminFetch<T>(
 }
 
 export function getAdminLlmConfig(accessToken: string): Promise<AdminLlmConfig> {
-  return adminFetch<AdminLlmConfig>("/admin/llm/config", accessToken);
+  return adminFetch<AdminLlmConfig>("/api/admin/llm/config", accessToken);
 }
 
 export function saveAdminLlmConfig(
   payload: AdminLlmConfigUpdate,
   accessToken: string
 ): Promise<AdminLlmConfig> {
-  return adminFetch<AdminLlmConfig>("/admin/llm/config", accessToken, {
+  return adminFetch<AdminLlmConfig>("/api/admin/llm/config", accessToken, {
     method: "POST",
     body: JSON.stringify(payload),
   });
 }
 
 export function restartBackend(accessToken: string): Promise<RestartResponse> {
-  return adminFetch<RestartResponse>("/admin/restart", accessToken, {
+  return adminFetch<RestartResponse>("/api/admin/restart", accessToken, {
     method: "POST",
     body: JSON.stringify({}),
   });

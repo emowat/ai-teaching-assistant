@@ -1,4 +1,4 @@
-import { apiPost } from "./client";
+import { apiPost } from "./client.ts";
 import type { TutorRequest, TutorResponse } from "../types/tutor";
 
 export function askTutor(

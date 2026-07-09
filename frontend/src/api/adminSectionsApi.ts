@@ -1,4 +1,4 @@
-import { apiGet, apiPatch, apiPost } from "./client";
+import { apiGet, apiPatch, apiPost } from "./client.ts";
 import type {
   SectionMembershipRole,
   SectionMembershipStatus,

@@ -6,6 +6,11 @@ import { professorSectionStudentsPath } from "../src/api/professorSectionsApi.ts
 import { sectionLaunchConfigPath } from "../src/api/sectionLaunchConfigsApi.ts";
 import { studentBootstrapPath } from "../src/api/studentBootstrapApi.ts";
 import {
+  getAdminLlmConfig,
+  restartBackend,
+  saveAdminLlmConfig,
+} from "../src/api/adminLlmApi.ts";
+import {
   getCodespacesFallbackUrl,
   getWeekLaunchUrl,
   isWeekLaunchReady,
@@ -89,4 +94,46 @@ test("professor-facing API helpers encode section identifiers safely", () => {
     sectionLaunchConfigPath("mit14/fall-001"),
     "/professor/sections/mit14%2Ffall-001/launch-configs",
   );
+});
+
+test("admin LLM helpers call the versioned API routes", async () => {
+  const originalFetch = globalThis.fetch;
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    calls.push({
+      url: typeof input === "string" ? input : input.toString(),
+      init,
+    });
+
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ success: true }),
+      text: async () => "",
+    } as Response;
+  }) as typeof fetch;
+
+  try {
+    await getAdminLlmConfig("token-a");
+    await saveAdminLlmConfig(
+      {
+        rag: { provider: "openai", model: "gpt-5.4-mini" },
+        chat: { provider: "ollama", model: "qwen3.5:9b" },
+        openai_api_key: null,
+        openai_base_url: "https://api.openai.com/v1",
+      },
+      "token-b",
+    );
+    await restartBackend("token-c");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(calls[0]?.url, "http://localhost:8000/api/admin/llm/config");
+  assert.equal(calls[0]?.init?.method ?? "GET", "GET");
+  assert.equal(calls[1]?.url, "http://localhost:8000/api/admin/llm/config");
+  assert.equal(calls[1]?.init?.method, "POST");
+  assert.equal(calls[2]?.url, "http://localhost:8000/api/admin/restart");
+  assert.equal(calls[2]?.init?.method, "POST");
 });
