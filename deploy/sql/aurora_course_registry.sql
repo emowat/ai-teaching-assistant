@@ -86,6 +86,36 @@ CREATE TABLE IF NOT EXISTS section_launch_configs (
   PRIMARY KEY (section_id, launch_id)
 );
 
+CREATE TABLE IF NOT EXISTS teaching_plans (
+  teaching_plan_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  section_id text NOT NULL UNIQUE REFERENCES sections(section_id) ON DELETE CASCADE,
+  version integer NOT NULL DEFAULT 1,
+  status text NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'published', 'archived')),
+  title text NOT NULL DEFAULT '',
+  summary text NOT NULL DEFAULT '',
+  created_by uuid NOT NULL REFERENCES users(user_id) ON DELETE RESTRICT,
+  published_by uuid REFERENCES users(user_id) ON DELETE SET NULL,
+  published_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS teaching_plan_weeks (
+  week_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  teaching_plan_id uuid NOT NULL REFERENCES teaching_plans(teaching_plan_id) ON DELETE CASCADE,
+  week_number integer NOT NULL CHECK (week_number >= 1),
+  title text NOT NULL DEFAULT '',
+  topic text NOT NULL DEFAULT '',
+  start_date date,
+  end_date date,
+  learning_objectives jsonb NOT NULL DEFAULT '[]'::jsonb,
+  instructional_guidance text NOT NULL DEFAULT '',
+  status text NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'published', 'archived')),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (teaching_plan_id, week_number)
+);
+
 CREATE INDEX IF NOT EXISTS users_email_idx
   ON users (email);
 
@@ -103,6 +133,12 @@ CREATE INDEX IF NOT EXISTS section_memberships_section_id_role_status_idx
 
 CREATE INDEX IF NOT EXISTS section_launch_configs_section_id_enabled_sort_idx
   ON section_launch_configs (section_id, enabled, sort_order, launch_id);
+
+CREATE INDEX IF NOT EXISTS teaching_plans_section_id_status_idx
+  ON teaching_plans (section_id, status);
+
+CREATE INDEX IF NOT EXISTS teaching_plan_weeks_plan_id_week_number_idx
+  ON teaching_plan_weeks (teaching_plan_id, week_number);
 
 CREATE TABLE IF NOT EXISTS ingestion_jobs (
   job_id text PRIMARY KEY,

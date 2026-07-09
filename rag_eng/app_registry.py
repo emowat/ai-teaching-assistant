@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import json
 import os
 from collections import defaultdict
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any
+import uuid
 
 from dotenv import load_dotenv
 
@@ -29,6 +31,11 @@ from rag_eng.schemas import (
     StudentBootstrapUser,
     ProfessorSectionStudent,
     ProfessorSectionSummary,
+    ProfessorTeachingPlan,
+    ProfessorTeachingPlanUpdate,
+    ProfessorTeachingPlanWeek,
+    ProfessorTeachingPlanWeekCreate,
+    ProfessorTeachingPlanWeekUpdate,
     SectionLaunchConfig,
     SectionMembershipSummary,
 )
@@ -759,6 +766,187 @@ def _launch_config_from_row(
     )
 
 
+def _json_list_from_value(value: object | None) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [_clean_text(item) for item in value if _clean_text(item)]
+    if isinstance(value, tuple):
+        return [_clean_text(item) for item in value if _clean_text(item)]
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            cleaned = _clean_text(value)
+            return [cleaned] if cleaned else []
+        if isinstance(parsed, list):
+            return [_clean_text(item) for item in parsed if _clean_text(item)]
+        cleaned = _clean_text(parsed)
+        return [cleaned] if cleaned else []
+    cleaned = _clean_text(value)
+    return [cleaned] if cleaned else []
+
+
+def _load_section_teaching_plan_row(connection, section_id: str) -> tuple[Any, ...] | None:
+    return _fetch_one_row(
+        connection,
+        """
+        SELECT
+          teaching_plan_id,
+          section_id,
+          version,
+          status,
+          title,
+          summary,
+          created_by,
+          published_by,
+          published_at,
+          created_at,
+          updated_at
+        FROM teaching_plans
+        WHERE section_id = %s
+        """,
+        (section_id,),
+    )
+
+
+def _load_section_teaching_plan_week_rows(
+    connection,
+    teaching_plan_id: str,
+) -> list[tuple[Any, ...]]:
+    return _fetch_all_rows(
+        connection,
+        """
+        SELECT
+          week_id,
+          teaching_plan_id,
+          week_number,
+          title,
+          topic,
+          start_date,
+          end_date,
+          learning_objectives,
+          instructional_guidance,
+          status,
+          created_at,
+          updated_at
+        FROM teaching_plan_weeks
+        WHERE teaching_plan_id = %s
+        ORDER BY week_number ASC, week_id ASC
+        """,
+        (teaching_plan_id,),
+    )
+
+
+def _teaching_plan_week_from_row(row: tuple[Any, ...]) -> ProfessorTeachingPlanWeek:
+    (
+        week_id,
+        teaching_plan_id,
+        week_number,
+        title,
+        topic,
+        start_date,
+        end_date,
+        learning_objectives,
+        instructional_guidance,
+        status,
+        created_at,
+        updated_at,
+    ) = row[:12]
+    return ProfessorTeachingPlanWeek(
+        week_id=_clean_text(week_id),
+        teaching_plan_id=_clean_text(teaching_plan_id),
+        week_number=int(week_number or 0),
+        title=_clean_text(title),
+        topic=_clean_text(topic),
+        start_date=_format_timestamp(start_date) or None,
+        end_date=_format_timestamp(end_date) or None,
+        learning_objectives=_json_list_from_value(learning_objectives),
+        instructional_guidance=_clean_text(instructional_guidance),
+        status=_clean_text(status) or "draft",
+        created_at=_format_timestamp(created_at),
+        updated_at=_format_timestamp(updated_at),
+    )
+
+
+def _teaching_plan_from_row(
+    row: tuple[Any, ...] | None,
+    *,
+    week_rows: list[tuple[Any, ...]] | None = None,
+) -> ProfessorTeachingPlan:
+    if row is None:
+        return ProfessorTeachingPlan(section_id="")
+
+    (
+        teaching_plan_id,
+        section_id,
+        version,
+        status,
+        title,
+        summary,
+        created_by,
+        published_by,
+        published_at,
+        created_at,
+        updated_at,
+    ) = row[:11]
+    return ProfessorTeachingPlan(
+        teaching_plan_id=_clean_text(teaching_plan_id) or None,
+        section_id=_clean_text(section_id),
+        version=int(version or 1),
+        status=_clean_text(status) or "draft",
+        title=_clean_text(title),
+        summary=_clean_text(summary),
+        created_by_user_id=_clean_text(created_by) or None,
+        published_by_user_id=_clean_text(published_by) or None,
+        published_at=_format_timestamp(published_at) or None,
+        weeks=[
+            _teaching_plan_week_from_row(week_row)
+            for week_row in (week_rows or [])
+        ],
+        created_at=_format_timestamp(created_at),
+        updated_at=_format_timestamp(updated_at),
+    )
+
+
+def _load_professor_section_teaching_plan(
+    connection,
+    section_id: str,
+) -> ProfessorTeachingPlan:
+    plan_row = _load_section_teaching_plan_row(connection, section_id)
+    if plan_row is None:
+        return ProfessorTeachingPlan(section_id=section_id)
+    teaching_plan_id = _clean_text(plan_row[0])
+    week_rows = _load_section_teaching_plan_week_rows(connection, teaching_plan_id)
+    return _teaching_plan_from_row(plan_row, week_rows=week_rows)
+
+
+def _ensure_professor_section_teaching_plan(
+    connection,
+    *,
+    section_id: str,
+    created_by_user_id: str,
+) -> str:
+    plan_row = _load_section_teaching_plan_row(connection, section_id)
+    if plan_row is not None:
+        return _clean_text(plan_row[0])
+
+    teaching_plan_id = str(uuid.uuid4())
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            INSERT INTO teaching_plans (
+              teaching_plan_id,
+              section_id,
+              created_by
+            )
+            VALUES (%s, %s, %s)
+            """,
+            (teaching_plan_id, section_id, created_by_user_id),
+        )
+    return teaching_plan_id
+
+
 def _load_most_recent_student_section_id(connection, user_sub: str) -> str | None:
     row = _fetch_one_row(
         connection,
@@ -1395,6 +1583,367 @@ def replace_professor_section_launch_configs(
                 )
 
     return list_professor_section_launch_configs(current_user, section_id, runtime=runtime)
+
+
+def get_professor_section_teaching_plan(
+    current_user: CurrentUser,
+    section_id: str,
+    *,
+    runtime: AppRegistryRuntimeConfig | None = None,
+) -> ProfessorTeachingPlan:
+    runtime = runtime or load_app_registry_runtime_config()
+    database_url = _require_database_url(runtime)
+    require_section_membership(
+        current_user,
+        section_id,
+        allowed_roles={"professor", "ta"},
+        runtime=runtime,
+    )
+
+    with _connect_postgres(database_url, runtime.connect_timeout_seconds) as connection:
+        return _load_professor_section_teaching_plan(connection, section_id)
+
+
+def upsert_professor_section_teaching_plan(
+    current_user: CurrentUser,
+    section_id: str,
+    payload: ProfessorTeachingPlanUpdate,
+    *,
+    runtime: AppRegistryRuntimeConfig | None = None,
+) -> ProfessorTeachingPlan:
+    runtime = runtime or load_app_registry_runtime_config()
+    database_url = _require_database_url(runtime)
+    app_user = require_section_membership(
+        current_user,
+        section_id,
+        allowed_roles={"professor", "ta"},
+        runtime=runtime,
+    )
+
+    with _connect_postgres(database_url, runtime.connect_timeout_seconds) as connection:
+        _ensure_professor_section_teaching_plan(
+            connection,
+            section_id=section_id,
+            created_by_user_id=str(app_user["user_id"]),
+        )
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE teaching_plans
+                SET title = %s,
+                    summary = %s,
+                    updated_at = now()
+                WHERE section_id = %s
+                """,
+                (_clean_text(payload.title), _clean_text(payload.summary), section_id),
+            )
+
+        return _load_professor_section_teaching_plan(connection, section_id)
+
+
+def publish_professor_section_teaching_plan(
+    current_user: CurrentUser,
+    section_id: str,
+    *,
+    runtime: AppRegistryRuntimeConfig | None = None,
+) -> ProfessorTeachingPlan:
+    runtime = runtime or load_app_registry_runtime_config()
+    database_url = _require_database_url(runtime)
+    app_user = require_section_membership(
+        current_user,
+        section_id,
+        allowed_roles={"professor", "ta"},
+        runtime=runtime,
+    )
+
+    with _connect_postgres(database_url, runtime.connect_timeout_seconds) as connection:
+        plan_row = _load_section_teaching_plan_row(connection, section_id)
+        if plan_row is None:
+            raise LookupError(f"Teaching plan for section {section_id} was not found.")
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE teaching_plans
+                SET status = 'published',
+                    version = version + 1,
+                    published_by = %s,
+                    published_at = now(),
+                    updated_at = now()
+                WHERE section_id = %s
+                """,
+                (str(app_user["user_id"]), section_id),
+            )
+
+        return _load_professor_section_teaching_plan(connection, section_id)
+
+
+def archive_professor_section_teaching_plan(
+    current_user: CurrentUser,
+    section_id: str,
+    *,
+    runtime: AppRegistryRuntimeConfig | None = None,
+) -> ProfessorTeachingPlan:
+    runtime = runtime or load_app_registry_runtime_config()
+    database_url = _require_database_url(runtime)
+    require_section_membership(
+        current_user,
+        section_id,
+        allowed_roles={"professor", "ta"},
+        runtime=runtime,
+    )
+
+    with _connect_postgres(database_url, runtime.connect_timeout_seconds) as connection:
+        plan_row = _load_section_teaching_plan_row(connection, section_id)
+        if plan_row is None:
+            raise LookupError(f"Teaching plan for section {section_id} was not found.")
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE teaching_plans
+                SET status = 'archived',
+                    updated_at = now()
+                WHERE section_id = %s
+                """,
+                (section_id,),
+            )
+
+        return _load_professor_section_teaching_plan(connection, section_id)
+
+
+def create_professor_section_teaching_plan_week(
+    current_user: CurrentUser,
+    section_id: str,
+    payload: ProfessorTeachingPlanWeekCreate,
+    *,
+    runtime: AppRegistryRuntimeConfig | None = None,
+) -> ProfessorTeachingPlan:
+    runtime = runtime or load_app_registry_runtime_config()
+    database_url = _require_database_url(runtime)
+    app_user = require_section_membership(
+        current_user,
+        section_id,
+        allowed_roles={"professor", "ta"},
+        runtime=runtime,
+    )
+
+    with _connect_postgres(database_url, runtime.connect_timeout_seconds) as connection:
+        teaching_plan_id = _ensure_professor_section_teaching_plan(
+            connection,
+            section_id=section_id,
+            created_by_user_id=str(app_user["user_id"]),
+        )
+        duplicate_row = _fetch_one_row(
+            connection,
+            """
+            SELECT week_id
+            FROM teaching_plan_weeks
+            WHERE teaching_plan_id = %s
+              AND week_number = %s
+            """,
+            (teaching_plan_id, int(payload.week_number)),
+        )
+        if duplicate_row is not None:
+            raise ValueError(
+                f"Week {payload.week_number} already exists for teaching plan {section_id}."
+            )
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO teaching_plan_weeks (
+                  week_id,
+                  teaching_plan_id,
+                  week_number,
+                  title,
+                  topic,
+                  start_date,
+                  end_date,
+                  learning_objectives,
+                  instructional_guidance,
+                  status
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
+                """,
+                (
+                    str(uuid.uuid4()),
+                    teaching_plan_id,
+                    int(payload.week_number),
+                    _clean_text(payload.title),
+                    _clean_text(payload.topic),
+                    payload.start_date or None,
+                    payload.end_date or None,
+                    json.dumps(payload.learning_objectives or []),
+                    _clean_text(payload.instructional_guidance),
+                    _clean_text(payload.status) or "draft",
+                ),
+            )
+
+        return _load_professor_section_teaching_plan(connection, section_id)
+
+
+def get_professor_section_teaching_plan_week(
+    current_user: CurrentUser,
+    section_id: str,
+    week_id: str,
+    *,
+    runtime: AppRegistryRuntimeConfig | None = None,
+) -> ProfessorTeachingPlanWeek:
+    runtime = runtime or load_app_registry_runtime_config()
+    database_url = _require_database_url(runtime)
+    require_section_membership(
+        current_user,
+        section_id,
+        allowed_roles={"professor", "ta"},
+        runtime=runtime,
+    )
+
+    with _connect_postgres(database_url, runtime.connect_timeout_seconds) as connection:
+        row = _fetch_one_row(
+            connection,
+            """
+            SELECT
+              tw.week_id,
+              tw.teaching_plan_id,
+              tw.week_number,
+              tw.title,
+              tw.topic,
+              tw.start_date,
+              tw.end_date,
+              tw.learning_objectives,
+              tw.instructional_guidance,
+              tw.status,
+              tw.created_at,
+              tw.updated_at
+            FROM teaching_plan_weeks AS tw
+            INNER JOIN teaching_plans AS tp ON tp.teaching_plan_id = tw.teaching_plan_id
+            WHERE tp.section_id = %s
+              AND tw.week_id = %s
+            """,
+            (section_id, week_id),
+        )
+
+    if row is None:
+        raise LookupError(f"Week {week_id} was not found for section {section_id}.")
+    return _teaching_plan_week_from_row(row)
+
+
+def update_professor_section_teaching_plan_week(
+    current_user: CurrentUser,
+    section_id: str,
+    week_id: str,
+    payload: ProfessorTeachingPlanWeekUpdate,
+    *,
+    runtime: AppRegistryRuntimeConfig | None = None,
+) -> ProfessorTeachingPlan:
+    runtime = runtime or load_app_registry_runtime_config()
+    database_url = _require_database_url(runtime)
+    require_section_membership(
+        current_user,
+        section_id,
+        allowed_roles={"professor", "ta"},
+        runtime=runtime,
+    )
+
+    fields: list[str] = []
+    values: list[Any] = []
+    if payload.week_number is not None:
+        fields.append("week_number = %s")
+        values.append(int(payload.week_number))
+    if payload.title is not None:
+        fields.append("title = %s")
+        values.append(_clean_text(payload.title))
+    if payload.topic is not None:
+        fields.append("topic = %s")
+        values.append(_clean_text(payload.topic))
+    if payload.start_date is not None:
+        fields.append("start_date = %s")
+        values.append(payload.start_date or None)
+    if payload.end_date is not None:
+        fields.append("end_date = %s")
+        values.append(payload.end_date or None)
+    if payload.learning_objectives is not None:
+        fields.append("learning_objectives = %s::jsonb")
+        values.append(json.dumps(payload.learning_objectives))
+    if payload.instructional_guidance is not None:
+        fields.append("instructional_guidance = %s")
+        values.append(_clean_text(payload.instructional_guidance))
+    if payload.status is not None:
+        fields.append("status = %s")
+        values.append(_clean_text(payload.status))
+
+    if not fields:
+        raise ValueError("At least one week field must be provided.")
+
+    with _connect_postgres(database_url, runtime.connect_timeout_seconds) as connection:
+        existing = _fetch_one_row(
+            connection,
+            """
+            SELECT tw.week_id
+            FROM teaching_plan_weeks AS tw
+            INNER JOIN teaching_plans AS tp ON tp.teaching_plan_id = tw.teaching_plan_id
+            WHERE tp.section_id = %s
+              AND tw.week_id = %s
+            """,
+            (section_id, week_id),
+        )
+        if existing is None:
+            raise LookupError(f"Week {week_id} was not found for section {section_id}.")
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                UPDATE teaching_plan_weeks
+                SET {", ".join(fields)},
+                    updated_at = now()
+                WHERE week_id = %s
+                """,
+                tuple(values + [week_id]),
+            )
+
+        return _load_professor_section_teaching_plan(connection, section_id)
+
+
+def delete_professor_section_teaching_plan_week(
+    current_user: CurrentUser,
+    section_id: str,
+    week_id: str,
+    *,
+    runtime: AppRegistryRuntimeConfig | None = None,
+) -> ProfessorTeachingPlan:
+    runtime = runtime or load_app_registry_runtime_config()
+    database_url = _require_database_url(runtime)
+    require_section_membership(
+        current_user,
+        section_id,
+        allowed_roles={"professor", "ta"},
+        runtime=runtime,
+    )
+
+    with _connect_postgres(database_url, runtime.connect_timeout_seconds) as connection:
+        existing = _fetch_one_row(
+            connection,
+            """
+            SELECT tw.week_id
+            FROM teaching_plan_weeks AS tw
+            INNER JOIN teaching_plans AS tp ON tp.teaching_plan_id = tw.teaching_plan_id
+            WHERE tp.section_id = %s
+              AND tw.week_id = %s
+            """,
+            (section_id, week_id),
+        )
+        if existing is None:
+            raise LookupError(f"Week {week_id} was not found for section {section_id}.")
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                DELETE FROM teaching_plan_weeks
+                WHERE week_id = %s
+                """,
+                (week_id,),
+            )
+
+        return _load_professor_section_teaching_plan(connection, section_id)
 
 
 def list_professor_section_students(

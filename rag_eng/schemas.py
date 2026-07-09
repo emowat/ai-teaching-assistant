@@ -17,6 +17,7 @@ AppPrimaryRole = Literal["admin", "professor", "student"]
 UserStatus = Literal["invited", "active", "disabled"]
 SectionMembershipStatus = Literal["invited", "active", "dropped", "disabled"]
 SectionMembershipRole = Literal["professor", "ta", "student"]
+TeachingPlanStatus = Literal["draft", "published", "archived"]
 RERANK_STRATEGY_CHOICES: tuple[str, ...] = (
     "similarity",
     "mmr_0.5",
@@ -381,6 +382,88 @@ class StudentBootstrapResponse(BaseModel):
     sections: list[StudentBootstrapSection] = Field(default_factory=list)
     default_section_id: str | None = None
     endpoints: StudentBootstrapEndpoints
+
+
+class ProfessorTeachingPlanWeek(BaseModel):
+    """Professor-facing week plan within a Teaching Plan."""
+
+    week_id: str
+    teaching_plan_id: str
+    week_number: int
+    title: str = ""
+    topic: str = ""
+    start_date: str | None = None
+    end_date: str | None = None
+    learning_objectives: list[str] = Field(default_factory=list)
+    instructional_guidance: str = ""
+    status: TeachingPlanStatus = "draft"
+    created_at: str = ""
+    updated_at: str = ""
+
+
+class ProfessorTeachingPlan(BaseModel):
+    """Professor-facing Teaching Plan for a section."""
+
+    teaching_plan_id: str | None = None
+    section_id: str
+    version: int = 1
+    status: TeachingPlanStatus = "draft"
+    title: str = ""
+    summary: str = ""
+    created_by_user_id: str | None = None
+    published_by_user_id: str | None = None
+    published_at: str | None = None
+    weeks: list[ProfessorTeachingPlanWeek] = Field(default_factory=list)
+    created_at: str = ""
+    updated_at: str = ""
+
+
+class ProfessorTeachingPlanUpdate(BaseModel):
+    """Payload used to create or update a Teaching Plan draft."""
+
+    title: str = ""
+    summary: str = ""
+
+
+class ProfessorTeachingPlanWeekCreate(BaseModel):
+    """Payload used to create a week within a Teaching Plan."""
+
+    week_number: int = Field(ge=1)
+    title: str = ""
+    topic: str = ""
+    start_date: str | None = None
+    end_date: str | None = None
+    learning_objectives: list[str] = Field(default_factory=list)
+    instructional_guidance: str = ""
+    status: TeachingPlanStatus = "draft"
+
+
+class ProfessorTeachingPlanWeekUpdate(BaseModel):
+    """Payload used to update a week within a Teaching Plan."""
+
+    week_number: int | None = Field(default=None, ge=1)
+    title: str | None = None
+    topic: str | None = None
+    start_date: str | None = None
+    end_date: str | None = None
+    learning_objectives: list[str] | None = None
+    instructional_guidance: str | None = None
+    status: TeachingPlanStatus | None = None
+
+    @model_validator(mode="after")
+    def _validate_non_empty_update(self) -> "ProfessorTeachingPlanWeekUpdate":
+        if (
+            self.week_number is None
+            and self.title is None
+            and self.topic is None
+            and self.start_date is None
+            and self.end_date is None
+            and self.learning_objectives is None
+            and self.instructional_guidance is None
+            and self.status is None
+        ):
+            raise ValueError("At least one week field must be provided.")
+        return self
 
 
 class IndexEnsureResponse(BaseModel):

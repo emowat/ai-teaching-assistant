@@ -83,6 +83,14 @@ and staff smoke flows.
 | `POST` | `/api/student/feedback` | authenticated student feedback surface that persists Aurora identity |
 | `GET` | `/professor/sections/{section_id}/launch-configs` | list launch targets for a professor-visible section |
 | `PUT` | `/professor/sections/{section_id}/launch-configs` | replace all launch targets for a section |
+| `GET` | `/professor/sections/{section_id}/teaching-plan` | load the section Teaching Plan |
+| `POST` | `/professor/sections/{section_id}/teaching-plan` | save the Teaching Plan title / summary |
+| `POST` | `/professor/sections/{section_id}/teaching-plan/publish` | publish the Teaching Plan |
+| `POST` | `/professor/sections/{section_id}/teaching-plan/archive` | archive the Teaching Plan |
+| `POST` | `/professor/sections/{section_id}/teaching-plan/weeks` | add a Teaching Plan week |
+| `GET` | `/professor/sections/{section_id}/teaching-plan/weeks/{week_id}` | load one Teaching Plan week |
+| `PATCH` | `/professor/sections/{section_id}/teaching-plan/weeks/{week_id}` | update one Teaching Plan week |
+| `DELETE` | `/professor/sections/{section_id}/teaching-plan/weeks/{week_id}` | delete one Teaching Plan week |
 
 Example bootstrap call:
 
@@ -200,6 +208,44 @@ JSON
 The student bootstrap response already includes the same `launch_configs`
 payload per section, so the student launcher can stay in sync without a second
 lookup.
+
+### Teaching plan routes
+
+Teaching Plan is a section-owned instructional layer that sits alongside launch
+configs. Use these routes to read and edit a section plan, then manage its
+weeks:
+
+```bash
+curl -sS "$BASE_URL/professor/sections/mit14-fall-001/teaching-plan" \
+  -H "Authorization: Bearer $COGNITO_ACCESS_TOKEN" | jq .
+
+curl -sS "$BASE_URL/professor/sections/mit14-fall-001/teaching-plan" \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $COGNITO_ACCESS_TOKEN" \
+  -d @- <<'JSON' | jq .
+{
+  "title": "Pointer Safety and Memory",
+  "summary": "Teaching plan for the first unit."
+}
+JSON
+
+curl -sS "$BASE_URL/professor/sections/mit14-fall-001/teaching-plan/weeks" \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $COGNITO_ACCESS_TOKEN" \
+  -d @- <<'JSON' | jq .
+{
+  "week_number": 1,
+  "title": "C Basics",
+  "topic": "Pointers and memory",
+  "learning_objectives": [
+    "Trace pointer lifetimes",
+    "Explain why free() invalidates a pointer"
+  ],
+  "instructional_guidance": "Keep examples short and concrete.",
+  "status": "draft"
+}
+JSON
+```
 
 ## Payload notes
 

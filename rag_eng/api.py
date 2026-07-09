@@ -39,17 +39,25 @@ from rag_eng.app_registry import (
     create_admin_section,
     create_admin_user,
     create_section_membership,
+    archive_professor_section_teaching_plan,
     list_admin_sections,
     list_admin_users,
+    create_professor_section_teaching_plan_week,
     list_professor_section_launch_configs,
+    get_professor_section_teaching_plan,
+    get_professor_section_teaching_plan_week,
     list_professor_section_students,
     list_professor_sections,
     require_section_membership,
     sync_application_user,
     replace_professor_section_launch_configs,
+    publish_professor_section_teaching_plan,
+    upsert_professor_section_teaching_plan,
     student_surface_allowed_roles,
     update_admin_section,
     update_admin_user,
+    delete_professor_section_teaching_plan_week,
+    update_professor_section_teaching_plan_week,
     update_section_membership,
 )
 from rag_eng.course_admin import (
@@ -107,6 +115,11 @@ from rag_eng.schemas import (
     IndexRebuildResponse,
     ProfessorSectionStudent,
     ProfessorSectionSummary,
+    ProfessorTeachingPlan,
+    ProfessorTeachingPlanUpdate,
+    ProfessorTeachingPlanWeek,
+    ProfessorTeachingPlanWeekCreate,
+    ProfessorTeachingPlanWeekUpdate,
     SectionLaunchConfig,
     OutputGuardrailDiagnosticResponse,
     OutputGuardrailReviewRequest,
@@ -757,6 +770,129 @@ def create_app() -> FastAPI:
     ) -> list[SectionLaunchConfig]:
         try:
             return replace_professor_section_launch_configs(current_user, section_id, payload)
+        except Exception as exc:
+            raise _app_registry_http_error(exc) from exc
+
+    @app.get(
+        "/professor/sections/{section_id}/teaching-plan",
+        response_model=ProfessorTeachingPlan,
+        dependencies=[Depends(require_authenticated_user)],
+    )
+    def professor_get_section_teaching_plan(
+        section_id: str,
+        current_user=Depends(require_authenticated_user),
+    ) -> ProfessorTeachingPlan:
+        try:
+            return get_professor_section_teaching_plan(current_user, section_id)
+        except Exception as exc:
+            raise _app_registry_http_error(exc) from exc
+
+    @app.post(
+        "/professor/sections/{section_id}/teaching-plan",
+        response_model=ProfessorTeachingPlan,
+        dependencies=[Depends(require_authenticated_user)],
+    )
+    def professor_upsert_section_teaching_plan(
+        section_id: str,
+        payload: ProfessorTeachingPlanUpdate,
+        current_user=Depends(require_authenticated_user),
+    ) -> ProfessorTeachingPlan:
+        try:
+            return upsert_professor_section_teaching_plan(current_user, section_id, payload)
+        except Exception as exc:
+            raise _app_registry_http_error(exc) from exc
+
+    @app.post(
+        "/professor/sections/{section_id}/teaching-plan/publish",
+        response_model=ProfessorTeachingPlan,
+        dependencies=[Depends(require_authenticated_user)],
+    )
+    def professor_publish_section_teaching_plan(
+        section_id: str,
+        current_user=Depends(require_authenticated_user),
+    ) -> ProfessorTeachingPlan:
+        try:
+            return publish_professor_section_teaching_plan(current_user, section_id)
+        except Exception as exc:
+            raise _app_registry_http_error(exc) from exc
+
+    @app.post(
+        "/professor/sections/{section_id}/teaching-plan/archive",
+        response_model=ProfessorTeachingPlan,
+        dependencies=[Depends(require_authenticated_user)],
+    )
+    def professor_archive_section_teaching_plan(
+        section_id: str,
+        current_user=Depends(require_authenticated_user),
+    ) -> ProfessorTeachingPlan:
+        try:
+            return archive_professor_section_teaching_plan(current_user, section_id)
+        except Exception as exc:
+            raise _app_registry_http_error(exc) from exc
+
+    @app.post(
+        "/professor/sections/{section_id}/teaching-plan/weeks",
+        response_model=ProfessorTeachingPlan,
+        dependencies=[Depends(require_authenticated_user)],
+    )
+    def professor_create_section_teaching_plan_week(
+        section_id: str,
+        payload: ProfessorTeachingPlanWeekCreate,
+        current_user=Depends(require_authenticated_user),
+    ) -> ProfessorTeachingPlan:
+        try:
+            return create_professor_section_teaching_plan_week(current_user, section_id, payload)
+        except Exception as exc:
+            raise _app_registry_http_error(exc) from exc
+
+    @app.get(
+        "/professor/sections/{section_id}/teaching-plan/weeks/{week_id}",
+        response_model=ProfessorTeachingPlanWeek,
+        dependencies=[Depends(require_authenticated_user)],
+    )
+    def professor_get_section_teaching_plan_week(
+        section_id: str,
+        week_id: str,
+        current_user=Depends(require_authenticated_user),
+    ) -> ProfessorTeachingPlanWeek:
+        try:
+            return get_professor_section_teaching_plan_week(current_user, section_id, week_id)
+        except Exception as exc:
+            raise _app_registry_http_error(exc) from exc
+
+    @app.patch(
+        "/professor/sections/{section_id}/teaching-plan/weeks/{week_id}",
+        response_model=ProfessorTeachingPlan,
+        dependencies=[Depends(require_authenticated_user)],
+    )
+    def professor_update_section_teaching_plan_week(
+        section_id: str,
+        week_id: str,
+        payload: ProfessorTeachingPlanWeekUpdate,
+        current_user=Depends(require_authenticated_user),
+    ) -> ProfessorTeachingPlan:
+        try:
+            return update_professor_section_teaching_plan_week(
+                current_user,
+                section_id,
+                week_id,
+                payload,
+            )
+        except Exception as exc:
+            raise _app_registry_http_error(exc) from exc
+
+    @app.delete(
+        "/professor/sections/{section_id}/teaching-plan/weeks/{week_id}",
+        response_model=ProfessorTeachingPlan,
+        dependencies=[Depends(require_authenticated_user)],
+    )
+    def professor_delete_section_teaching_plan_week(
+        section_id: str,
+        week_id: str,
+        current_user=Depends(require_authenticated_user),
+    ) -> ProfessorTeachingPlan:
+        try:
+            return delete_professor_section_teaching_plan_week(current_user, section_id, week_id)
         except Exception as exc:
             raise _app_registry_http_error(exc) from exc
 

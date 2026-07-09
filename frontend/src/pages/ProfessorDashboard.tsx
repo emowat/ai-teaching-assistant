@@ -19,6 +19,17 @@ import {
   replaceProfessorSectionLaunchConfigs,
   type SectionLaunchConfig,
 } from "../api/sectionLaunchConfigsApi";
+import {
+  archiveProfessorTeachingPlan,
+  createProfessorTeachingPlanWeek,
+  deleteProfessorTeachingPlanWeek,
+  getProfessorTeachingPlan,
+  publishProfessorTeachingPlan,
+  saveProfessorTeachingPlan,
+  updateProfessorTeachingPlanWeek,
+  type ProfessorTeachingPlan,
+  type ProfessorTeachingPlanWeek,
+} from "../api/teachingPlanApi";
 import { Avatar, Btn, Card, Stat, Tag } from "../design/atoms";
 import { chartTooltipStyle, D, mono } from "../design/tokens";
 import { Sidebar } from "../components/Sidebar";
@@ -44,6 +55,7 @@ const weekData = [
 const profTabs = [
   { key: "overview", icon: "📋", label: "Overview" },
   { key: "launches", icon: "🚀", label: "Launches" },
+  { key: "teaching-plan", icon: "🧭", label: "Teaching Plan" },
   { key: "students", icon: "👥", label: "Students" },
   { key: "analytics", icon: "📊", label: "Analytics" },
 ];
@@ -88,6 +100,18 @@ function formatLastSession(value: string): string {
   return value;
 }
 
+function nextTeachingPlanWeekNumber(plan: ProfessorTeachingPlan | null): number {
+  const highestWeek = plan?.weeks.reduce((max, week) => Math.max(max, week.week_number), 0) ?? 0;
+  return highestWeek + 1;
+}
+
+function splitObjectives(value: string): string[] {
+  return value
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
 export function ProfessorDashboard({
   onNavigate,
   allowedViews,
@@ -100,13 +124,20 @@ export function ProfessorDashboard({
   const [students, setStudents] = useState<ProfessorSectionStudent[]>([]);
   const [launchConfigs, setLaunchConfigs] = useState<SectionLaunchConfig[]>([]);
   const [launchConfigsSectionId, setLaunchConfigsSectionId] = useState<string | null>(null);
+  const [teachingPlan, setTeachingPlan] = useState<ProfessorTeachingPlan | null>(null);
+  const [teachingPlanSectionId, setTeachingPlanSectionId] = useState<string | null>(null);
   const [loadingSections, setLoadingSections] = useState(true);
   const [studentFetchComplete, setStudentFetchComplete] = useState(false);
   const [sectionError, setSectionError] = useState<string | null>(null);
   const [studentError, setStudentError] = useState<string | null>(null);
   const [launchConfigError, setLaunchConfigError] = useState<string | null>(null);
   const [launchConfigStatus, setLaunchConfigStatus] = useState<string | null>(null);
+  const [teachingPlanError, setTeachingPlanError] = useState<string | null>(null);
+  const [teachingPlanStatus, setTeachingPlanStatus] = useState<string | null>(null);
   const [savingLaunchConfigs, setSavingLaunchConfigs] = useState(false);
+  const [savingTeachingPlan, setSavingTeachingPlan] = useState(false);
+  const [savingTeachingPlanWeekId, setSavingTeachingPlanWeekId] = useState<string | null>(null);
+  const [creatingTeachingPlanWeek, setCreatingTeachingPlanWeek] = useState(false);
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   const selectedSection = useMemo(
     () => sections.find((section) => section.section_id === selectedSectionId) ?? null,
@@ -119,6 +150,10 @@ export function ProfessorDashboard({
   const activeLaunchConfigs = useMemo(
     () => (launchConfigsSectionId === selectedSectionId ? launchConfigs : []),
     [launchConfigs, launchConfigsSectionId, selectedSectionId],
+  );
+  const activeTeachingPlan = useMemo(
+    () => (teachingPlanSectionId === selectedSectionId ? teachingPlan : null),
+    [selectedSectionId, teachingPlan, teachingPlanSectionId],
   );
   const readyLaunchConfigCount = useMemo(
     () =>
@@ -134,6 +169,12 @@ export function ProfessorDashboard({
       accessToken &&
       launchConfigsSectionId !== selectedSectionId &&
       !launchConfigError
+  );
+  const loadingTeachingPlan = Boolean(
+    selectedSectionId &&
+      accessToken &&
+      teachingPlanSectionId !== selectedSectionId &&
+      !teachingPlanError
   );
   const loadingStudents = Boolean(selectedSectionId) && !studentFetchComplete && !studentError;
 
@@ -188,6 +229,33 @@ export function ProfessorDashboard({
   }, [accessToken, selectedSectionId]);
 
   useEffect(() => {
+    if (!selectedSectionId || !accessToken) {
+      return;
+    }
+
+    let cancelled = false;
+
+    void getProfessorTeachingPlan(selectedSectionId, accessToken)
+      .then((nextPlan) => {
+        if (cancelled) return;
+        setTeachingPlan(nextPlan);
+        setTeachingPlanSectionId(selectedSectionId);
+        setTeachingPlanStatus(null);
+      })
+      .catch((err: Error) => {
+        if (!cancelled) {
+          setTeachingPlan(null);
+          setTeachingPlanSectionId(selectedSectionId);
+          setTeachingPlanError(err.message);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken, selectedSectionId]);
+
+  useEffect(() => {
     if (!selectedSectionId) {
       return;
     }
@@ -223,6 +291,10 @@ export function ProfessorDashboard({
     setStudentFetchComplete(false);
     setLaunchConfigError(null);
     setLaunchConfigStatus(null);
+    setTeachingPlan(null);
+    setTeachingPlanSectionId(null);
+    setTeachingPlanError(null);
+    setTeachingPlanStatus(null);
   };
 
   const rosterSummary = selectedSection
@@ -316,6 +388,207 @@ export function ProfessorDashboard({
     } finally {
       setSavingLaunchConfigs(false);
     }
+  };
+
+  const reloadTeachingPlan = () => {
+    if (!selectedSectionId) {
+      return;
+    }
+    setTeachingPlanError(null);
+    setTeachingPlanStatus(null);
+    setTeachingPlanSectionId(null);
+    void getProfessorTeachingPlan(selectedSectionId, accessToken)
+      .then((nextPlan) => {
+        setTeachingPlan(nextPlan);
+        setTeachingPlanSectionId(selectedSectionId);
+      })
+      .catch((err: Error) => {
+        setTeachingPlan(null);
+        setTeachingPlanSectionId(selectedSectionId);
+        setTeachingPlanError(err.message);
+      });
+  };
+
+  const saveTeachingPlan = async () => {
+    if (!selectedSectionId || !activeTeachingPlan) {
+      return;
+    }
+
+    setSavingTeachingPlan(true);
+    setTeachingPlanError(null);
+    setTeachingPlanStatus(null);
+
+    try {
+      const updated = await saveProfessorTeachingPlan(selectedSectionId, accessToken, {
+        title: activeTeachingPlan.title.trim(),
+        summary: activeTeachingPlan.summary.trim(),
+      });
+      setTeachingPlan(updated);
+      setTeachingPlanSectionId(selectedSectionId);
+      setTeachingPlanStatus("Saved teaching plan.");
+    } catch (err) {
+      setTeachingPlanError(
+        err instanceof Error ? err.message : "Unable to save teaching plan."
+      );
+    } finally {
+      setSavingTeachingPlan(false);
+    }
+  };
+
+  const publishTeachingPlan = async () => {
+    if (!selectedSectionId) {
+      return;
+    }
+
+    setSavingTeachingPlan(true);
+    setTeachingPlanError(null);
+    setTeachingPlanStatus(null);
+
+    try {
+      const updated = await publishProfessorTeachingPlan(selectedSectionId, accessToken);
+      setTeachingPlan(updated);
+      setTeachingPlanSectionId(selectedSectionId);
+      setTeachingPlanStatus("Published teaching plan.");
+    } catch (err) {
+      setTeachingPlanError(
+        err instanceof Error ? err.message : "Unable to publish teaching plan."
+      );
+    } finally {
+      setSavingTeachingPlan(false);
+    }
+  };
+
+  const archiveTeachingPlan = async () => {
+    if (!selectedSectionId) {
+      return;
+    }
+
+    setSavingTeachingPlan(true);
+    setTeachingPlanError(null);
+    setTeachingPlanStatus(null);
+
+    try {
+      const updated = await archiveProfessorTeachingPlan(selectedSectionId, accessToken);
+      setTeachingPlan(updated);
+      setTeachingPlanSectionId(selectedSectionId);
+      setTeachingPlanStatus("Archived teaching plan.");
+    } catch (err) {
+      setTeachingPlanError(
+        err instanceof Error ? err.message : "Unable to archive teaching plan."
+      );
+    } finally {
+      setSavingTeachingPlan(false);
+    }
+  };
+
+  const createTeachingPlanWeek = async () => {
+    if (!selectedSectionId) {
+      return;
+    }
+
+    setCreatingTeachingPlanWeek(true);
+    setTeachingPlanError(null);
+    setTeachingPlanStatus(null);
+
+    try {
+      const nextWeekNumber = nextTeachingPlanWeekNumber(activeTeachingPlan);
+      const updated = await createProfessorTeachingPlanWeek(selectedSectionId, accessToken, {
+        week_number: nextWeekNumber,
+        title: `Week ${nextWeekNumber}`,
+        topic: "",
+        learning_objectives: [],
+        instructional_guidance: "",
+        status: "draft",
+      });
+      setTeachingPlan(updated);
+      setTeachingPlanSectionId(selectedSectionId);
+      setTeachingPlanStatus(`Added week ${nextWeekNumber}.`);
+    } catch (err) {
+      setTeachingPlanError(
+        err instanceof Error ? err.message : "Unable to add teaching plan week."
+      );
+    } finally {
+      setCreatingTeachingPlanWeek(false);
+    }
+  };
+
+  const saveTeachingPlanWeek = async (week: ProfessorTeachingPlanWeek) => {
+    if (!selectedSectionId) {
+      return;
+    }
+
+    setSavingTeachingPlanWeekId(week.week_id);
+    setTeachingPlanError(null);
+    setTeachingPlanStatus(null);
+
+    try {
+      const updated = await updateProfessorTeachingPlanWeek(
+        selectedSectionId,
+        week.week_id,
+        accessToken,
+        {
+          week_number: week.week_number,
+          title: week.title,
+          topic: week.topic,
+          start_date: week.start_date,
+          end_date: week.end_date,
+          learning_objectives: week.learning_objectives,
+          instructional_guidance: week.instructional_guidance,
+          status: week.status,
+        }
+      );
+      setTeachingPlan(updated);
+      setTeachingPlanSectionId(selectedSectionId);
+      setTeachingPlanStatus(`Saved week ${week.week_number}.`);
+    } catch (err) {
+      setTeachingPlanError(
+        err instanceof Error ? err.message : "Unable to save teaching plan week."
+      );
+    } finally {
+      setSavingTeachingPlanWeekId(null);
+    }
+  };
+
+  const deleteTeachingPlanWeek = async (week: ProfessorTeachingPlanWeek) => {
+    if (!selectedSectionId) {
+      return;
+    }
+
+    setSavingTeachingPlanWeekId(week.week_id);
+    setTeachingPlanError(null);
+    setTeachingPlanStatus(null);
+
+    try {
+      const updated = await deleteProfessorTeachingPlanWeek(
+        selectedSectionId,
+        week.week_id,
+        accessToken,
+      );
+      setTeachingPlan(updated);
+      setTeachingPlanSectionId(selectedSectionId);
+      setTeachingPlanStatus(`Deleted week ${week.week_number}.`);
+    } catch (err) {
+      setTeachingPlanError(
+        err instanceof Error ? err.message : "Unable to delete teaching plan week."
+      );
+    } finally {
+      setSavingTeachingPlanWeekId(null);
+    }
+  };
+
+  const updateTeachingPlanWeekDraft = (
+    weekId: string,
+    patch: Partial<ProfessorTeachingPlanWeek>
+  ) => {
+    setTeachingPlan((current) => {
+      if (!current) {
+        return current;
+      }
+      return {
+        ...current,
+        weeks: current.weeks.map((week) => (week.week_id === weekId ? { ...week, ...patch } : week)),
+      };
+    });
   };
 
   return (
@@ -627,6 +900,244 @@ export function ProfessorDashboard({
                             ? "launch ready"
                             : "missing repo/template URL"}
                         </div>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : tab === "teaching-plan" ? (
+            <div style={{ display: "grid", gap: 14 }}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: 12,
+                  flexWrap: "wrap",
+                }}
+              >
+                <div style={{ fontSize: 18, fontWeight: 600 }}>
+                  Teaching Plan for {selectedSection ? selectedSection.display_name : "selected section"}{" "}
+                  <Tag color={activeTeachingPlan?.status === "published" ? D.green : D.blue}>
+                    {activeTeachingPlan?.status || "draft"}
+                  </Tag>
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <Btn small variant="ghost" onClick={reloadTeachingPlan} disabled={!selectedSectionId}>
+                    Reload
+                  </Btn>
+                  <Btn
+                    small
+                    variant="ghost"
+                    onClick={() => void createTeachingPlanWeek()}
+                    disabled={!selectedSectionId || creatingTeachingPlanWeek}
+                  >
+                    {creatingTeachingPlanWeek ? "Adding..." : "Add week"}
+                  </Btn>
+                  <Btn
+                    small
+                    variant="ghost"
+                    onClick={() => void archiveTeachingPlan()}
+                    disabled={!selectedSectionId || savingTeachingPlan}
+                  >
+                    Archive
+                  </Btn>
+                  <Btn
+                    small
+                    onClick={() => void saveTeachingPlan()}
+                    disabled={!selectedSectionId || savingTeachingPlan || loadingTeachingPlan}
+                  >
+                    {savingTeachingPlan ? "Saving..." : "Save plan"}
+                  </Btn>
+                  <Btn
+                    small
+                    onClick={() => void publishTeachingPlan()}
+                    disabled={!selectedSectionId || savingTeachingPlan || loadingTeachingPlan}
+                  >
+                    Publish
+                  </Btn>
+                </div>
+              </div>
+              {teachingPlanError && (
+                <Card style={{ color: D.red, fontSize: 12 }}>{teachingPlanError}</Card>
+              )}
+              {teachingPlanStatus && (
+                <Card style={{ color: D.green, fontSize: 12 }}>{teachingPlanStatus}</Card>
+              )}
+              <Card style={{ display: "grid", gap: 12 }}>
+                <label style={{ display: "grid", gap: 6 }}>
+                  <span style={{ fontSize: 12, color: D.muted }}>Plan title</span>
+                  <input
+                    value={activeTeachingPlan?.title ?? ""}
+                    onChange={(event) =>
+                      setTeachingPlan((current) =>
+                        current ? { ...current, title: event.target.value } : current
+                      )
+                    }
+                    style={inputStyle}
+                  />
+                </label>
+                <label style={{ display: "grid", gap: 6 }}>
+                  <span style={{ fontSize: 12, color: D.muted }}>Plan summary</span>
+                  <textarea
+                    value={activeTeachingPlan?.summary ?? ""}
+                    onChange={(event) =>
+                      setTeachingPlan((current) =>
+                        current ? { ...current, summary: event.target.value } : current
+                      )
+                    }
+                    rows={4}
+                    style={{ ...inputStyle, resize: "vertical", minHeight: 90 }}
+                  />
+                </label>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <Tag color={D.blue}>
+                    {activeTeachingPlan?.weeks.length ?? 0} week
+                    {(activeTeachingPlan?.weeks.length ?? 0) === 1 ? "" : "s"}
+                  </Tag>
+                  <Tag color={D.orange}>Version {activeTeachingPlan?.version ?? 1}</Tag>
+                  <Tag color={D.muted}>
+                    {activeTeachingPlan?.teaching_plan_id ? "saved in Aurora" : "not saved yet"}
+                  </Tag>
+                </div>
+              </Card>
+              {loadingTeachingPlan ? (
+                <Card>Loading teaching plan...</Card>
+              ) : (
+                <div style={{ display: "grid", gap: 10 }}>
+                  {(activeTeachingPlan?.weeks.length ?? 0) === 0 && (
+                    <Card style={{ color: D.muted, fontSize: 13, lineHeight: 1.7 }}>
+                      No week plans exist for this section yet. Add the first week to define the
+                      instructional scope for students and retrieval.
+                    </Card>
+                  )}
+                  {activeTeachingPlan?.weeks.map((week) => (
+                    <Card key={week.week_id} style={{ display: "grid", gap: 10 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <div style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>
+                          Week {week.week_number}
+                        </div>
+                        <Tag color={week.status === "published" ? D.green : D.muted}>
+                          {week.status}
+                        </Tag>
+                        <Btn
+                          small
+                          variant="danger"
+                          onClick={() => void deleteTeachingPlanWeek(week)}
+                          disabled={savingTeachingPlanWeekId === week.week_id}
+                        >
+                          Delete
+                        </Btn>
+                      </div>
+
+                      <label style={{ display: "grid", gap: 6 }}>
+                        <span style={{ fontSize: 12, color: D.muted }}>Week number</span>
+                        <input
+                          type="number"
+                          min={1}
+                          value={week.week_number}
+                          onChange={(event) =>
+                            updateTeachingPlanWeekDraft(week.week_id, {
+                              week_number: Number(event.target.value) || 1,
+                            })
+                          }
+                          style={inputStyle}
+                        />
+                      </label>
+
+                      <label style={{ display: "grid", gap: 6 }}>
+                        <span style={{ fontSize: 12, color: D.muted }}>Week title</span>
+                        <input
+                          value={week.title}
+                          onChange={(event) =>
+                            updateTeachingPlanWeekDraft(week.week_id, { title: event.target.value })
+                          }
+                          style={inputStyle}
+                        />
+                      </label>
+
+                      <label style={{ display: "grid", gap: 6 }}>
+                        <span style={{ fontSize: 12, color: D.muted }}>Topic</span>
+                        <input
+                          value={week.topic}
+                          onChange={(event) =>
+                            updateTeachingPlanWeekDraft(week.week_id, { topic: event.target.value })
+                          }
+                          style={inputStyle}
+                        />
+                      </label>
+
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
+                        <label style={{ display: "grid", gap: 6 }}>
+                          <span style={{ fontSize: 12, color: D.muted }}>Start date</span>
+                          <input
+                            type="date"
+                            value={week.start_date ?? ""}
+                            onChange={(event) =>
+                              updateTeachingPlanWeekDraft(week.week_id, {
+                                start_date: event.target.value || null,
+                              })
+                            }
+                            style={inputStyle}
+                          />
+                        </label>
+                        <label style={{ display: "grid", gap: 6 }}>
+                          <span style={{ fontSize: 12, color: D.muted }}>End date</span>
+                          <input
+                            type="date"
+                            value={week.end_date ?? ""}
+                            onChange={(event) =>
+                              updateTeachingPlanWeekDraft(week.week_id, {
+                                end_date: event.target.value || null,
+                              })
+                            }
+                            style={inputStyle}
+                          />
+                        </label>
+                      </div>
+
+                      <label style={{ display: "grid", gap: 6 }}>
+                        <span style={{ fontSize: 12, color: D.muted }}>
+                          Learning objectives, one per line
+                        </span>
+                        <textarea
+                          value={week.learning_objectives.join("\n")}
+                          onChange={(event) =>
+                            updateTeachingPlanWeekDraft(week.week_id, {
+                              learning_objectives: splitObjectives(event.target.value),
+                            })
+                          }
+                          rows={4}
+                          style={{ ...inputStyle, resize: "vertical", minHeight: 100 }}
+                        />
+                      </label>
+
+                      <label style={{ display: "grid", gap: 6 }}>
+                        <span style={{ fontSize: 12, color: D.muted }}>Instructional guidance</span>
+                        <textarea
+                          value={week.instructional_guidance}
+                          onChange={(event) =>
+                            updateTeachingPlanWeekDraft(week.week_id, {
+                              instructional_guidance: event.target.value,
+                            })
+                          }
+                          rows={4}
+                          style={{ ...inputStyle, resize: "vertical", minHeight: 100 }}
+                        />
+                      </label>
+
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                        <div style={{ fontSize: 11, color: D.muted }}>
+                          Week ID: <code>{week.week_id}</code>
+                        </div>
+                        <Btn
+                          small
+                          onClick={() => void saveTeachingPlanWeek(week)}
+                          disabled={savingTeachingPlanWeekId === week.week_id}
+                        >
+                          {savingTeachingPlanWeekId === week.week_id ? "Saving..." : "Save week"}
+                        </Btn>
                       </div>
                     </Card>
                   ))}

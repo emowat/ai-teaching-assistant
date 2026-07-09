@@ -15,6 +15,9 @@ from rag_eng.schemas import (
     AdminSectionMembershipUpdate,
     AdminSectionUpdate,
     AdminUserCreate,
+    ProfessorTeachingPlanUpdate,
+    ProfessorTeachingPlanWeekCreate,
+    ProfessorTeachingPlanWeekUpdate,
     SectionLaunchConfig,
     StudentBootstrapResponse,
 )
@@ -30,6 +33,8 @@ class _State:
     sections: dict[str, dict[str, object]]
     memberships: dict[tuple[str, str], dict[str, object]]
     launch_configs: dict[str, list[dict[str, object]]]
+    teaching_plans: dict[str, dict[str, object]]
+    teaching_plan_weeks: dict[str, dict[str, object]]
     tutor_sessions: list[dict[str, object]]
 
 
@@ -160,6 +165,37 @@ class _FakeCursor:
             record.get("default_branch", "main"),
             record.get("enabled", False),
             record.get("sort_order", 0),
+        )
+
+    def _teaching_plan_row(self, record: dict[str, object]) -> tuple[object, ...]:
+        return (
+            record["teaching_plan_id"],
+            record["section_id"],
+            record.get("version", 1),
+            record.get("status", "draft"),
+            record.get("title", ""),
+            record.get("summary", ""),
+            record.get("created_by"),
+            record.get("published_by"),
+            record.get("published_at"),
+            record["created_at"],
+            record["updated_at"],
+        )
+
+    def _teaching_plan_week_row(self, record: dict[str, object]) -> tuple[object, ...]:
+        return (
+            record["week_id"],
+            record["teaching_plan_id"],
+            record["week_number"],
+            record.get("title", ""),
+            record.get("topic", ""),
+            record.get("start_date"),
+            record.get("end_date"),
+            record.get("learning_objectives", []),
+            record.get("instructional_guidance", ""),
+            record.get("status", "draft"),
+            record["created_at"],
+            record["updated_at"],
         )
 
     def execute(self, query: str, params: tuple[object, ...] | None = None) -> None:
@@ -506,6 +542,179 @@ class _FakeCursor:
             self.rowcount = 1
             return
 
+        if sql.startswith(
+            "SELECT teaching_plan_id, section_id, version, status, title, summary, created_by, published_by, published_at, created_at, updated_at FROM teaching_plans WHERE section_id = %s"
+        ):
+            section_id = str(params[0])
+            record = self.state.teaching_plans.get(section_id)
+            if record is not None:
+                self._rows = [self._teaching_plan_row(record)]
+            return
+
+        if sql.startswith(
+            "SELECT week_id, teaching_plan_id, week_number, title, topic, start_date, end_date, learning_objectives, instructional_guidance, status, created_at, updated_at FROM teaching_plan_weeks WHERE teaching_plan_id = %s ORDER BY week_number ASC, week_id ASC"
+        ):
+            teaching_plan_id = str(params[0])
+            rows = [
+                self._teaching_plan_week_row(record)
+                for record in self.state.teaching_plan_weeks.values()
+                if str(record["teaching_plan_id"]) == teaching_plan_id
+            ]
+            self._rows = sorted(rows, key=lambda row: (int(row[2]), str(row[0])))
+            return
+
+        if sql.startswith(
+            "SELECT week_id FROM teaching_plan_weeks WHERE teaching_plan_id = %s AND week_number = %s"
+        ):
+            teaching_plan_id, week_number = params
+            for record in self.state.teaching_plan_weeks.values():
+                if str(record["teaching_plan_id"]) == str(teaching_plan_id) and int(record["week_number"]) == int(week_number):
+                    self._rows = [(record["week_id"],)]
+                    return
+            return
+
+        if sql.startswith(
+            "SELECT tw.week_id, tw.teaching_plan_id, tw.week_number, tw.title, tw.topic, tw.start_date, tw.end_date, tw.learning_objectives, tw.instructional_guidance, tw.status, tw.created_at, tw.updated_at FROM teaching_plan_weeks AS tw INNER JOIN teaching_plans AS tp ON tp.teaching_plan_id = tw.teaching_plan_id WHERE tp.section_id = %s AND tw.week_id = %s"
+        ):
+            section_id, week_id = map(str, params)
+            record = self.state.teaching_plan_weeks.get(week_id)
+            if record is not None and str(record["section_id"]) == section_id:
+                self._rows = [self._teaching_plan_week_row(record)]
+            return
+
+        if sql.startswith(
+            "SELECT tw.week_id FROM teaching_plan_weeks AS tw INNER JOIN teaching_plans AS tp ON tp.teaching_plan_id = tw.teaching_plan_id WHERE tp.section_id = %s AND tw.week_id = %s"
+        ):
+            section_id, week_id = map(str, params)
+            record = self.state.teaching_plan_weeks.get(week_id)
+            if record is not None and str(record["section_id"]) == section_id:
+                self._rows = [(week_id,)]
+            return
+
+        if sql.startswith(
+            "INSERT INTO teaching_plans ( teaching_plan_id, section_id, created_by ) VALUES (%s, %s, %s)"
+        ):
+            teaching_plan_id, section_id, created_by = params
+            self.state.teaching_plans[str(section_id)] = {
+                "teaching_plan_id": str(teaching_plan_id),
+                "section_id": str(section_id),
+                "version": 1,
+                "status": "draft",
+                "title": "",
+                "summary": "",
+                "created_by": str(created_by),
+                "published_by": None,
+                "published_at": None,
+                "created_at": NOW,
+                "updated_at": NOW,
+            }
+            self.rowcount = 1
+            return
+
+        if sql.startswith(
+            "UPDATE teaching_plans SET title = %s, summary = %s, updated_at = now() WHERE section_id = %s"
+        ):
+            title, summary, section_id = params
+            record = self.state.teaching_plans.get(str(section_id))
+            if record is None:
+                return
+            record["title"] = str(title)
+            record["summary"] = str(summary)
+            record["updated_at"] = NOW
+            self.rowcount = 1
+            return
+
+        if sql.startswith(
+            "UPDATE teaching_plans SET status = 'published', version = version + 1, published_by = %s, published_at = now(), updated_at = now() WHERE section_id = %s"
+        ):
+            published_by, section_id = params
+            record = self.state.teaching_plans.get(str(section_id))
+            if record is None:
+                return
+            record["status"] = "published"
+            record["version"] = int(record.get("version", 1)) + 1
+            record["published_by"] = str(published_by)
+            record["published_at"] = NOW
+            record["updated_at"] = NOW
+            self.rowcount = 1
+            return
+
+        if sql.startswith(
+            "UPDATE teaching_plans SET status = 'archived', updated_at = now() WHERE section_id = %s"
+        ):
+            section_id = str(params[0])
+            record = self.state.teaching_plans.get(section_id)
+            if record is None:
+                return
+            record["status"] = "archived"
+            record["updated_at"] = NOW
+            self.rowcount = 1
+            return
+
+        if sql.startswith(
+            "INSERT INTO teaching_plan_weeks ( week_id, teaching_plan_id, week_number, title, topic, start_date, end_date, learning_objectives, instructional_guidance, status ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)"
+        ):
+            (
+                week_id,
+                teaching_plan_id,
+                week_number,
+                title,
+                topic,
+                start_date,
+                end_date,
+                learning_objectives,
+                instructional_guidance,
+                status,
+            ) = params
+            section_id = None
+            for plan in self.state.teaching_plans.values():
+                if str(plan["teaching_plan_id"]) == str(teaching_plan_id):
+                    section_id = str(plan["section_id"])
+                    break
+            self.state.teaching_plan_weeks[str(week_id)] = {
+                "week_id": str(week_id),
+                "teaching_plan_id": str(teaching_plan_id),
+                "section_id": section_id,
+                "week_number": int(week_number),
+                "title": str(title),
+                "topic": str(topic),
+                "start_date": start_date,
+                "end_date": end_date,
+                "learning_objectives": learning_objectives,
+                "instructional_guidance": str(instructional_guidance),
+                "status": str(status),
+                "created_at": NOW,
+                "updated_at": NOW,
+            }
+            self.rowcount = 1
+            return
+
+        if sql.startswith("UPDATE teaching_plan_weeks SET"):
+            week_id = str(params[-1])
+            record = self.state.teaching_plan_weeks.get(week_id)
+            if record is None:
+                return
+            columns = [
+                match
+                for match in re.findall(r"(\w+)\s*=\s*(?:%s(?:::jsonb)?|now\(\))", sql)
+                if match != "updated_at"
+            ]
+            param_index = 0
+            for column in columns:
+                value = params[param_index]
+                param_index += 1
+                record[column] = value
+            record["updated_at"] = NOW
+            self.rowcount = 1
+            return
+
+        if sql.startswith("DELETE FROM teaching_plan_weeks WHERE week_id = %s"):
+            week_id = str(params[0])
+            if week_id in self.state.teaching_plan_weeks:
+                del self.state.teaching_plan_weeks[week_id]
+                self.rowcount = 1
+            return
+
         if sql.startswith("DELETE FROM section_launch_configs WHERE section_id = %s"):
             section_id = str(params[0])
             removed = len(self.state.launch_configs.get(section_id, []))
@@ -613,6 +822,8 @@ def _state() -> _State:
         sections={},
         memberships={},
         launch_configs={},
+        teaching_plans={},
+        teaching_plan_weeks={},
         tutor_sessions=[],
     )
 
@@ -1025,6 +1236,132 @@ def test_professor_launch_config_list_and_replace(
         "codespaces",
         "fallback",
     ]
+
+
+def test_professor_teaching_plan_lifecycle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _state()
+    state.users["prof-1"] = _user(
+        user_id="prof-1",
+        email="prof@example.edu",
+        display_name="Professor",
+        primary_role="professor",
+        status="active",
+        cognito_sub="sub-prof",
+    )
+    state.sections["mit14-fall-001"] = _section(
+        section_id="mit14-fall-001",
+        display_name="MIT 6.0014 Section A",
+    )
+    state.memberships[("mit14-fall-001", "prof-1")] = _membership(
+        section_id="mit14-fall-001",
+        user_id="prof-1",
+        role_in_section="professor",
+    )
+    _patch_connection(monkeypatch, state)
+
+    bootstrap = app_registry.get_professor_section_teaching_plan(
+        CurrentUser(
+            cognito_sub="sub-prof",
+            email="prof@example.edu",
+            primary_role="professor",
+        ),
+        "mit14-fall-001",
+        runtime=_runtime(),
+    )
+    assert bootstrap.section_id == "mit14-fall-001"
+    assert bootstrap.status == "draft"
+    assert bootstrap.weeks == []
+
+    updated = app_registry.upsert_professor_section_teaching_plan(
+        CurrentUser(
+            cognito_sub="sub-prof",
+            email="prof@example.edu",
+            primary_role="professor",
+        ),
+        "mit14-fall-001",
+        ProfessorTeachingPlanUpdate(
+            title="Pointer Safety and Memory Basics",
+            summary="Week-by-week plan for the first half of the course.",
+        ),
+        runtime=_runtime(),
+    )
+    assert updated.title == "Pointer Safety and Memory Basics"
+    assert updated.summary.startswith("Week-by-week plan")
+    assert updated.teaching_plan_id is not None
+
+    with_week = app_registry.create_professor_section_teaching_plan_week(
+        CurrentUser(
+            cognito_sub="sub-prof",
+            email="prof@example.edu",
+            primary_role="professor",
+        ),
+        "mit14-fall-001",
+        ProfessorTeachingPlanWeekCreate(
+            week_number=1,
+            title="C Basics",
+            topic="Functions, variables, and memory",
+            learning_objectives=["Understand pointer basics", "Trace a simple program"],
+            instructional_guidance="Keep examples short and concrete.",
+        ),
+        runtime=_runtime(),
+    )
+    assert with_week.weeks[0].week_number == 1
+    assert with_week.weeks[0].title == "C Basics"
+    assert state.teaching_plans["mit14-fall-001"]["status"] == "draft"
+
+    week = app_registry.get_professor_section_teaching_plan_week(
+        CurrentUser(
+            cognito_sub="sub-prof",
+            email="prof@example.edu",
+            primary_role="professor",
+        ),
+        "mit14-fall-001",
+        with_week.weeks[0].week_id,
+        runtime=_runtime(),
+    )
+    assert week.week_number == 1
+    assert week.topic == "Functions, variables, and memory"
+
+    patched = app_registry.update_professor_section_teaching_plan_week(
+        CurrentUser(
+            cognito_sub="sub-prof",
+            email="prof@example.edu",
+            primary_role="professor",
+        ),
+        "mit14-fall-001",
+        week.week_id,
+        ProfessorTeachingPlanWeekUpdate(
+            topic="Variables, pointers, and stack memory",
+            instructional_guidance="Keep it practical.",
+        ),
+        runtime=_runtime(),
+    )
+    assert patched.weeks[0].topic == "Variables, pointers, and stack memory"
+
+    published = app_registry.publish_professor_section_teaching_plan(
+        CurrentUser(
+            cognito_sub="sub-prof",
+            email="prof@example.edu",
+            primary_role="professor",
+        ),
+        "mit14-fall-001",
+        runtime=_runtime(),
+    )
+    assert published.status == "published"
+    assert published.published_by_user_id == "prof-1"
+
+    archived = app_registry.archive_professor_section_teaching_plan(
+        CurrentUser(
+            cognito_sub="sub-prof",
+            email="prof@example.edu",
+            primary_role="professor",
+        ),
+        "mit14-fall-001",
+        runtime=_runtime(),
+    )
+    assert archived.status == "archived"
 
 
 def test_professor_launch_config_routes_allow_ta_membership(

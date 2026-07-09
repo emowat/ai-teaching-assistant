@@ -77,3 +77,22 @@ export async function apiPut<TRequest, TResponse>(
 
   return response.json() as Promise<TResponse>;
 }
+
+export async function apiDelete<TResponse>(
+  path: string,
+  accessToken: string
+): Promise<TResponse> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`API error ${response.status}: ${await response.text()}`);
+  }
+
+  return response.json() as Promise<TResponse>;
+}

@@ -18,6 +18,8 @@ from rag_eng.schemas import (
     IndexRebuildResponse,
     ProfessorSectionStudent,
     ProfessorSectionSummary,
+    ProfessorTeachingPlan,
+    ProfessorTeachingPlanWeek,
     SectionLaunchConfig,
     QueryResponse,
     StudentBootstrapEndpoints,
@@ -1148,6 +1150,182 @@ def test_professor_launch_config_routes_return_live_data(
     assert replace_response.status_code == 200
     assert list_response.json()[0]["launch_id"] == "codespaces"
     assert replace_response.json()[0]["label"] == "Codespaces"
+
+
+def test_professor_teaching_plan_routes_return_live_data(
+    monkeypatch, client: TestClient
+) -> None:
+    client.app.dependency_overrides[require_authenticated_user] = lambda: CurrentUser(
+        cognito_sub="prof-sub",
+        email="prof@example.edu",
+        primary_role="professor",
+    )
+
+    plan = ProfessorTeachingPlan(
+        teaching_plan_id="plan-1",
+        section_id="mit14-fall-001",
+        version=1,
+        status="draft",
+        title="Pointer Safety",
+        summary="Week-by-week plan",
+        weeks=[],
+        created_at="2026-06-20T00:00:00+00:00",
+        updated_at="2026-06-20T00:00:00+00:00",
+    )
+    week = ProfessorTeachingPlanWeek(
+        week_id="week-1",
+        teaching_plan_id="plan-1",
+        week_number=1,
+        title="C Basics",
+        topic="Pointers",
+        learning_objectives=["Trace pointer lifetimes"],
+        instructional_guidance="Keep it concrete.",
+        status="draft",
+        created_at="2026-06-20T00:00:00+00:00",
+        updated_at="2026-06-20T00:00:00+00:00",
+    )
+
+    monkeypatch.setattr("rag_eng.api.get_professor_section_teaching_plan", lambda *args, **kwargs: plan)
+    monkeypatch.setattr(
+        "rag_eng.api.upsert_professor_section_teaching_plan",
+        lambda current_user, section_id, payload: ProfessorTeachingPlan(
+            teaching_plan_id="plan-1",
+            section_id=section_id,
+            version=1,
+            status="draft",
+            title=payload.title,
+            summary=payload.summary,
+            weeks=[],
+            created_at="2026-06-20T00:00:00+00:00",
+            updated_at="2026-06-20T00:00:00+00:00",
+        ),
+    )
+    monkeypatch.setattr(
+        "rag_eng.api.publish_professor_section_teaching_plan",
+        lambda *args, **kwargs: ProfessorTeachingPlan(
+            teaching_plan_id="plan-1",
+            section_id="mit14-fall-001",
+            version=2,
+            status="published",
+            title="Pointer Safety",
+            summary="Week-by-week plan",
+            weeks=[week],
+            published_by_user_id="prof-1",
+            published_at="2026-06-20T00:00:00+00:00",
+            created_at="2026-06-20T00:00:00+00:00",
+            updated_at="2026-06-20T00:00:00+00:00",
+        ),
+    )
+    monkeypatch.setattr(
+        "rag_eng.api.archive_professor_section_teaching_plan",
+        lambda *args, **kwargs: ProfessorTeachingPlan(
+            teaching_plan_id="plan-1",
+            section_id="mit14-fall-001",
+            version=2,
+            status="archived",
+            title="Pointer Safety",
+            summary="Week-by-week plan",
+            weeks=[week],
+            published_by_user_id="prof-1",
+            published_at="2026-06-20T00:00:00+00:00",
+            created_at="2026-06-20T00:00:00+00:00",
+            updated_at="2026-06-20T00:00:00+00:00",
+        ),
+    )
+    monkeypatch.setattr(
+        "rag_eng.api.create_professor_section_teaching_plan_week",
+        lambda *args, **kwargs: ProfessorTeachingPlan(
+            teaching_plan_id="plan-1",
+            section_id="mit14-fall-001",
+            version=1,
+            status="draft",
+            title="Pointer Safety",
+            summary="Week-by-week plan",
+            weeks=[week],
+            created_at="2026-06-20T00:00:00+00:00",
+            updated_at="2026-06-20T00:00:00+00:00",
+        ),
+    )
+    monkeypatch.setattr("rag_eng.api.get_professor_section_teaching_plan_week", lambda *args, **kwargs: week)
+    monkeypatch.setattr(
+        "rag_eng.api.update_professor_section_teaching_plan_week",
+        lambda *args, **kwargs: ProfessorTeachingPlan(
+            teaching_plan_id="plan-1",
+            section_id="mit14-fall-001",
+            version=1,
+            status="draft",
+            title="Pointer Safety",
+            summary="Week-by-week plan",
+            weeks=[
+                ProfessorTeachingPlanWeek(
+                    **{**week.model_dump(), "topic": "Pointers and stack memory"}
+                )
+            ],
+            created_at="2026-06-20T00:00:00+00:00",
+            updated_at="2026-06-20T00:00:00+00:00",
+        ),
+    )
+    monkeypatch.setattr(
+        "rag_eng.api.delete_professor_section_teaching_plan_week",
+        lambda *args, **kwargs: ProfessorTeachingPlan(
+            teaching_plan_id="plan-1",
+            section_id="mit14-fall-001",
+            version=1,
+            status="draft",
+            title="Pointer Safety",
+            summary="Week-by-week plan",
+            weeks=[],
+            created_at="2026-06-20T00:00:00+00:00",
+            updated_at="2026-06-20T00:00:00+00:00",
+        ),
+    )
+
+    try:
+        get_response = client.get("/professor/sections/mit14-fall-001/teaching-plan")
+        post_response = client.post(
+            "/professor/sections/mit14-fall-001/teaching-plan",
+            json={"title": "Pointer Safety", "summary": "Week-by-week plan"},
+        )
+        publish_response = client.post("/professor/sections/mit14-fall-001/teaching-plan/publish")
+        create_week_response = client.post(
+            "/professor/sections/mit14-fall-001/teaching-plan/weeks",
+            json={
+                "week_number": 1,
+                "title": "C Basics",
+                "topic": "Pointers",
+                "learning_objectives": ["Trace pointer lifetimes"],
+                "instructional_guidance": "Keep it concrete.",
+                "status": "draft",
+            },
+        )
+        get_week_response = client.get(
+            "/professor/sections/mit14-fall-001/teaching-plan/weeks/week-1"
+        )
+        patch_week_response = client.patch(
+            "/professor/sections/mit14-fall-001/teaching-plan/weeks/week-1",
+            json={"topic": "Pointers and stack memory"},
+        )
+        delete_week_response = client.delete(
+            "/professor/sections/mit14-fall-001/teaching-plan/weeks/week-1"
+        )
+        archive_response = client.post("/professor/sections/mit14-fall-001/teaching-plan/archive")
+    finally:
+        client.app.dependency_overrides.clear()
+
+    assert get_response.status_code == 200
+    assert post_response.status_code == 200
+    assert publish_response.status_code == 200
+    assert create_week_response.status_code == 200
+    assert get_week_response.status_code == 200
+    assert patch_week_response.status_code == 200
+    assert delete_week_response.status_code == 200
+    assert archive_response.status_code == 200
+    assert get_response.json()["status"] == "draft"
+    assert post_response.json()["title"] == "Pointer Safety"
+    assert publish_response.json()["status"] == "published"
+    assert get_week_response.json()["title"] == "C Basics"
+    assert patch_week_response.json()["weeks"][0]["topic"] == "Pointers and stack memory"
+    assert delete_week_response.json()["weeks"] == []
 
 
 def test_admin_ensure_returns_500_on_service_exception(

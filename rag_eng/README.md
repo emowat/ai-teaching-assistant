@@ -27,6 +27,7 @@ There are three auth patterns in the service today:
 | `GET /me`, `POST /run/compile` | Cognito bearer token |
 | `GET /api/student/bootstrap`, `POST /api/student/chat`, `POST /api/student/telemetry`, `POST /api/student/feedback` | Cognito bearer token + active Aurora section membership; admin/professor roles may enter the student surface for mimic/smoke flows through active student, professor, or TA memberships |
 | `GET /professor/sections/{section_id}/launch-configs`, `PUT /professor/sections/{section_id}/launch-configs` | Cognito bearer token + active professor/TA membership for the section |
+| `GET /professor/sections/{section_id}/teaching-plan`, `POST /professor/sections/{section_id}/teaching-plan`, `POST /professor/sections/{section_id}/teaching-plan/publish`, `POST /professor/sections/{section_id}/teaching-plan/archive`, `POST /professor/sections/{section_id}/teaching-plan/weeks`, `GET /professor/sections/{section_id}/teaching-plan/weeks/{week_id}`, `PATCH /professor/sections/{section_id}/teaching-plan/weeks/{week_id}`, `DELETE /professor/sections/{section_id}/teaching-plan/weeks/{week_id}` | Cognito bearer token + active professor/TA membership for the section |
 | most `/admin/*` routes | admin Cognito bearer token or `X-Admin-Token` |
 | `POST /admin/index/ensure`, `POST /admin/index/rebuild` | `X-Admin-Token` only |
 
@@ -52,6 +53,12 @@ The student launcher and professor launch editor now share the same
 section-level launch configuration stored in Aurora. The student bootstrap
 payload includes those launch configs, and professors can replace them with
 `GET` / `PUT /professor/sections/{section_id}/launch-configs`.
+
+Teaching Plans are now the next section-owned instructional layer. Professors
+can read, edit, publish, archive, and manage week-by-week Teaching Plans at
+`/professor/sections/{section_id}/teaching-plan` and the nested week routes.
+Launch configs remain the routing primitive; Teaching Plans are instructional
+metadata layered on top.
 
 Admin bearer auth means:
 
@@ -79,6 +86,14 @@ routes accept either auth style.
 | `POST` | `/api/student/feedback` | bearer | record authenticated student feedback with Aurora identity |
 | `GET` | `/professor/sections/{section_id}/launch-configs` | bearer | read section launch targets |
 | `PUT` | `/professor/sections/{section_id}/launch-configs` | bearer | replace section launch targets |
+| `GET` | `/professor/sections/{section_id}/teaching-plan` | bearer | load the section Teaching Plan |
+| `POST` | `/professor/sections/{section_id}/teaching-plan` | bearer | save Teaching Plan title / summary |
+| `POST` | `/professor/sections/{section_id}/teaching-plan/publish` | bearer | publish the section Teaching Plan |
+| `POST` | `/professor/sections/{section_id}/teaching-plan/archive` | bearer | archive the section Teaching Plan |
+| `POST` | `/professor/sections/{section_id}/teaching-plan/weeks` | bearer | add a Teaching Plan week |
+| `GET` | `/professor/sections/{section_id}/teaching-plan/weeks/{week_id}` | bearer | read one Teaching Plan week |
+| `PATCH` | `/professor/sections/{section_id}/teaching-plan/weeks/{week_id}` | bearer | update one Teaching Plan week |
+| `DELETE` | `/professor/sections/{section_id}/teaching-plan/weeks/{week_id}` | bearer | delete one Teaching Plan week |
 | `POST` | `/api/diagnostics/input-guardrail` | none | public pre-RAG input-guardrail probe |
 | `POST` | `/api/diagnostics/rag` | none | public RAG-stage probe |
 | `POST` | `/api/diagnostics/output-guardrail` | none | public post-LLM guardrail probe |
