@@ -1365,8 +1365,14 @@ def test_run_chat_streams_guardrailed_sagemaker_answer(monkeypatch) -> None:
 
         chunks: list[str] = []
         async for chunk in stream:
-            payload = json.loads(chunk.decode("utf-8").strip())
-            chunks.append(payload["message"]["content"])
+            for line in chunk.decode("utf-8").strip().splitlines():
+                if not line.strip():
+                    continue
+                payload = json.loads(line)
+                if payload.get("replace"):
+                    chunks = [payload["message"]["content"]]
+                else:
+                    chunks.append(payload["message"]["content"])
         return "".join(chunks)
 
     answer = asyncio.run(_collect())
@@ -1375,3 +1381,144 @@ def test_run_chat_streams_guardrailed_sagemaker_answer(monkeypatch) -> None:
     event_types = [event["event_type"] for event in fake_telemetry.events]
     assert "guardrail_started" in event_types
     assert "guardrail_finished" in event_types
+
+
+def test_run_chat_mid_stream_code_leakage_triggers_erase_and_retry(
+    monkeypatch,
+) -> None:
+    """Verify the Phase 3 'erase and rewind' cycle.
+
+    Stream layout for attempt 1:
+      chunk 1 — analysis block closes + partial (unterminated) C++ fence → safe
+      chunk 2 — completes the code block into >1 statements → triggers regenerate
+    The generator must:
+      - emit {"type": "control", "action": "regenerate"}
+      - loop back and make a second LLM call
+      - stream a clean answer with no code
+    The collector must see the control signal then only the clean answer text.
+    """
+    monkeypatch.setattr(
+        "rag_eng.service.get_inference_config",
+        lambda: _runtime_config(rag_provider="cohere", chat_provider="sagemaker"),
+    )
+    monkeypatch.setattr(
+        "rag_eng.service.get_settings",
+        lambda: SimpleNamespace(
+            cohere_api_key="cohere",
+            openai_api_key="sk-test",
+            openai_base_url="https://api.openai.com/v1",
+            sagemaker_inference_backend="vllm",
+            sagemaker_endpoint="endpoint",
+            sagemaker_poll_timeout_seconds=600,
+            s3_data_bucket="bucket",
+            aws_profile=None,
+            aws_region="us-east-1",
+            use_sagemaker=True,
+            model_family="qwen",
+        ),
+    )
+    monkeypatch.setattr(
+        "rag_eng.service.run_retrieval",
+        lambda query: SimpleNamespace(formatted_context="[ctx]"),
+    )
+    # Post-stream guardrails pass (safe) — leakage is caught mid-stream by regex
+    monkeypatch.setattr(
+        "rag_eng.service.apply_all_guardrails",
+        lambda answer, user_query, student_code, conversation_history: {
+            "safe": True,
+            "blocked": False,
+            "violation_type": None,
+            "severity": "low",
+            "action": "pass",
+            "evidence": "",
+            "stage": "v1",
+        },
+    )
+    fake_telemetry = _FakeTelemetryStore()
+    monkeypatch.setattr("rag_eng.service.get_telemetry_store", lambda: fake_telemetry)
+
+    # Chunk 1: analysis closes + unterminated ```cpp fence — single statement only → SAFE
+    # "for(int i=0; i<n" has no closing brace, regex sees an unterminated block → ignores it
+    _CHUNK1 = (
+        json.dumps({"message": {"content": "<analysis>\n- Cognitive_Stage: Debugging\n</analysis>\n"}}) + "\n"
+        + json.dumps({"message": {"content": "Here is a hint:\n```cpp\nfor(int i=0; i<n"}}) + "\n"
+    ).encode()
+
+    # Chunk 2: closes the block with two more statements → check_code_leakage fires
+    _CHUNK2 = (
+        json.dumps({"message": {"content": "; i++) {\n  arr[i] = 0;\n  total += arr[i];\n}\n```\n"}}) + "\n"
+    ).encode()
+
+    # Clean retry answer — no code blocks
+    _RETRY_CHUNK = (
+        json.dumps({"message": {"content": "Think about what happens at the boundary."}}) + "\n"
+    ).encode()
+
+    call_count = 0
+
+    async def fake_run_inference(messages, model_name, settings, stream=False):
+        nonlocal call_count
+        call_count += 1
+
+        async def _attempt_1():
+            yield _CHUNK1
+            yield _CHUNK2
+
+        async def _attempt_2():
+            yield _RETRY_CHUNK
+
+        return _attempt_1() if call_count == 1 else _attempt_2()
+
+    monkeypatch.setattr("rag_eng.service.run_inference", fake_run_inference)
+
+    async def _collect() -> tuple[list[str], bool]:
+        stream = await run_chat(
+            [
+                {
+                    "role": "user",
+                    "content": "Mode: Homework Assist\n[Code_Context]\nint arr[5];\n[Student_Question]\nHow do I iterate?",
+                }
+            ],
+            model_name="codingrabbit",
+            settings=SimpleNamespace(
+                cohere_api_key="cohere",
+                openai_api_key="sk-test",
+                openai_base_url="https://api.openai.com/v1",
+                sagemaker_inference_backend="vllm",
+                sagemaker_endpoint="endpoint",
+                sagemaker_poll_timeout_seconds=600,
+                s3_data_bucket="bucket",
+                aws_profile=None,
+                aws_region="us-east-1",
+                use_sagemaker=True,
+                model_family="qwen",
+            ),
+            stream=True,
+        )
+
+        text_chunks: list[str] = []
+        saw_regenerate = False
+        async for chunk in stream:
+            for line in chunk.decode("utf-8").strip().splitlines():
+                if not line.strip():
+                    continue
+                payload = json.loads(line)
+                if payload.get("type") == "control" and payload.get("action") == "regenerate":
+                    saw_regenerate = True
+                    text_chunks = []  # mimic UI erase
+                elif payload.get("replace"):
+                    text_chunks = [payload["message"]["content"]]
+                else:
+                    text_chunks.append(payload.get("message", {}).get("content", ""))
+        return text_chunks, saw_regenerate
+
+    text_chunks, saw_regenerate = asyncio.run(_collect())
+    final_answer = "".join(text_chunks)
+
+    # The control signal must have been emitted
+    assert saw_regenerate, "Expected a 'regenerate' control signal mid-stream"
+    # The generator must have made exactly 2 LLM calls (attempt 1 + retry)
+    assert call_count == 2, f"Expected 2 LLM calls, got {call_count}"
+    # The final rendered answer is the clean retry — no code blocks
+    assert "boundary" in final_answer
+    assert "```" not in final_answer
