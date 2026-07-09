@@ -1350,7 +1350,7 @@ def create_app() -> FastAPI:
                         SELECT
                             TO_CHAR((created_at AT TIME ZONE '{tz}'), 'Dy') as day,
                             COALESCE(snapshot->'ide_context'->>'mode', 'unknown') as mode,
-                            COALESCE(INITCAP(REPLACE(SUBSTRING(snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Pedagogical_Action' FROM '\\[(.*?)\\]'), '_', ' ')), 'None') as category,
+                            COALESCE(INITCAP(REPLACE(SUBSTRING(snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Pedagogical_Action' FROM '([A-Z_]{{2,}})'), '_', ' ')), 'None') as category,
                             COUNT(*) as count
                         FROM tutor_turn_snapshots
                         WHERE created_at >= (CURRENT_TIMESTAMP AT TIME ZONE '{tz}')::DATE - INTERVAL '6 days'

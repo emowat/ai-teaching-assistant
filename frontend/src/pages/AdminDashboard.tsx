@@ -1056,7 +1056,13 @@ export function AdminDashboard({
                               {Object.entries(f.cot).map(([key, val]) => (
                                 <div key={key} style={{ marginBottom: 4 }}>
                                   <span style={{ fontWeight: 600, color: D.muted }}>{key}: </span>
-                                  <span style={{ color: D.text }}>{String(val)}</span>
+                                  <span style={{ color: D.text }}>
+                                    {key === 'Pedagogical_Action' && typeof val === 'string'
+                                      ? (val.match(/([A-Z_]{2,})/) 
+                                          ? val.match(/([A-Z_]{2,})/)![1].split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ') 
+                                          : 'None')
+                                      : String(val)}
+                                  </span>
                                 </div>
                               ))}
                             </div>
