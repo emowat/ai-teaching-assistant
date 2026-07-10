@@ -22,6 +22,7 @@ import {
 
 export class TAChatViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'coding-rabbit.chatView';
+    private static readonly STARTING_CARROTS = 20;
     private _conversationHistory: {role: string, content: string, turnIndex?: number}[] = [];
     private _studyAssistBlankDoc: vscode.TextDocument | undefined = undefined;
     private _studyAssistPreviousEditor: vscode.Uri | undefined = undefined;
@@ -294,7 +295,7 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
 
     private get _carrots(): number {
         this._checkCarrotReset();
-        return this._context.workspaceState.get<number>('carrots', 100);
+        return this._context.workspaceState.get<number>('carrots', TAChatViewProvider.STARTING_CARROTS);
     }
 
     private set _carrots(value: number) {
@@ -304,7 +305,7 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
     private _checkCarrotReset() {
         const resetTime = this._context.workspaceState.get<number>('carrotsResetTime', 0);
         if (Date.now() > resetTime) {
-            this._context.workspaceState.update('carrots', 100);
+            this._context.workspaceState.update('carrots', TAChatViewProvider.STARTING_CARROTS);
             this._context.workspaceState.update('carrotsResetTime', Date.now() + 3600000);
         }
     }
@@ -1354,6 +1355,13 @@ ${terminalOutput}`;
                     try {
                         const payload = JSON.parse(line);
                         if (payload.type === 'control' && payload.action === 'regenerate') {
+                            // Latch reward BEFORE wiping — the tag may be fully or partially
+                            // assembled in rawTaResponse if the backend split it across chunks
+                            // (e.g. "[DEBUG_" arrived, then regenerate fired before "IDEA_UNLOCKED]").
+                            // Matching without the closing ] handles the split-chunk edge case.
+                            if (rawTaResponse.includes('[DEBUG_IDEA_UNLOCKED')) {
+                                debugIdeaUnlocked = true;
+                            }
                             // Erase the leaked content in-place — reset the existing bubble
                             webviewView.webview.postMessage({ type: 'clearResponse', text: '*(Coding Rabbit is thinking...)*', turnIndex: currentTurnIndex });
                             rawTaResponse = "";
@@ -1404,6 +1412,10 @@ ${terminalOutput}`;
                         rawTaResponse = payload.message?.content || "";
                     } else {
                         rawTaResponse += payload.message?.content || "";
+                    }
+                    // Latch check on final flush — mirrors the in-loop check
+                    if (rawTaResponse.includes('[DEBUG_IDEA_UNLOCKED')) {
+                        debugIdeaUnlocked = true;
                     }
                 } catch(e) {}
             }
@@ -1502,6 +1514,8 @@ ${terminalOutput}`;
                             displayResponse += `\n\n*(Coding Rabbit got to eat a carrot! 🥕 You have ${this._carrots} carrots remaining this hour.)*`;
                         }
                         webviewView.webview.postMessage({ type: 'updateCarrots', count: this._carrots });
+                    } else {
+                        displayResponse += `\n\n*(Coding Rabbit 🐰 loves your insight!)*`;
                     }
                 }
                 
