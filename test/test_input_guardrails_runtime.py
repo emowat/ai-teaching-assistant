@@ -64,3 +64,42 @@ def test_evaluate_input_guardrail_blocks_on_high_model_score(monkeypatch) -> Non
     assert result["action"] == "block"
     assert result["model"]["decision"] == "block"
     assert result["final_answer"].startswith("Let's keep this focused")
+
+
+def test_empty_message_with_pasted_code_reaches_model_not_empty_block() -> None:
+    # Regression: a code-only paste (empty message + student_code) must NOT be
+    # blocked as ERR_EMPTY_INPUT by the rule layer; it should flow to the model
+    # stage. Real rules run here (no monkeypatch) with the model stubbed low.
+    set_thresholds(0.30, 0.70)
+    set_predict_fn(lambda _text: 0.05)
+    try:
+        result = evaluate_input_guardrail(
+            student_message="",
+            student_code="int main() { int* p; *p = 5; }",
+            course_topic="pointers",
+            assignment_context="lab",
+        )
+    finally:
+        set_predict_fn(None)
+        set_thresholds(0.30, 0.70)
+
+    assert result["rules"]["action"] == "PASS"
+    assert result["rules"]["flag_reason"] is None
+    assert result["violation_type"] != "ERR_EMPTY_INPUT"
+    assert result["blocked"] is False
+    assert result["action"] == "pass"
+    assert result["model"]["decision"] == "pass"
+
+
+def test_empty_message_without_code_still_blocks_empty_input() -> None:
+    # Real rules; no code attached -> ERR_EMPTY_INPUT preserved.
+    result = evaluate_input_guardrail(
+        student_message="",
+        student_code="",
+        course_topic="pointers",
+        assignment_context="lab",
+    )
+    assert result["blocked"] is True
+    assert result["action"] == "block"
+    assert result["rules"]["flag_reason"] == "ERR_EMPTY_INPUT"
+    assert result["violation_type"] == "ERR_EMPTY_INPUT"
