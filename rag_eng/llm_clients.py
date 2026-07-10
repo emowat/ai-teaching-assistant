@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 from dataclasses import dataclass
-from typing import AsyncIterator
+from typing import AsyncIterator, Iterator
 
 import httpx
 
@@ -72,6 +72,7 @@ def _normalize_bedrock_messages(messages: list[dict]) -> tuple[list[dict], list[
             continue
         if role == "system":
             system_blocks.append({"text": content})
+            system_blocks.append({"cachePoint": {"type": "default"}})
             continue
         normalized_messages.append(
             {
@@ -184,6 +185,68 @@ async def ainvoke_bedrock_chat_completion(
 ) -> str:
     """Asynchronously invoke Bedrock Converse using a worker thread."""
     return await asyncio.to_thread(invoke_bedrock_chat_completion, messages, config)
+
+def invoke_bedrock_chat_stream(
+    messages: list[dict],
+    config: BedrockChatConfig,
+) -> Iterator[str]:
+    """Synchronously stream Bedrock Converse."""
+    import boto3
+    from botocore.config import Config as BotocoreConfig
+
+    system_blocks, normalized_messages = _normalize_bedrock_messages(messages)
+    payload: dict[str, object] = {
+        "modelId": config.model_id,
+        "messages": normalized_messages,
+        "inferenceConfig": _bedrock_inference_config(config),
+    }
+    if system_blocks:
+        payload["system"] = system_blocks
+
+    session = boto3.Session(
+        profile_name=config.profile_name,
+        region_name=config.region,
+    )
+    client = session.client(
+        "bedrock-runtime",
+        region_name=config.region,
+        config=BotocoreConfig(
+            connect_timeout=config.timeout_seconds,
+            read_timeout=config.timeout_seconds,
+        ),
+    )
+    response = client.converse_stream(**payload)
+    for event in response.get("stream", []):
+        if "contentBlockDelta" in event:
+            yield event["contentBlockDelta"]["delta"].get("text", "")
+
+async def ainvoke_bedrock_chat_stream(
+    messages: list[dict],
+    config: BedrockChatConfig,
+) -> AsyncIterator[bytes]:
+    """Asynchronously stream Bedrock Converse using a worker thread and queue."""
+    import queue
+    import threading
+
+    q = queue.Queue()
+    sentinel = object()
+
+    def run():
+        try:
+            for chunk in invoke_bedrock_chat_stream(messages, config):
+                q.put(chunk)
+            q.put(sentinel)
+        except Exception as e:
+            q.put(e)
+
+    threading.Thread(target=run, daemon=True).start()
+    while True:
+        item = await asyncio.to_thread(q.get)
+        if item is sentinel:
+            break
+        if isinstance(item, Exception):
+            raise item
+        yield (json.dumps({"message": {"content": item}}) + "\n").encode()
 
 
 async def chunk_text(text: str, chunk_size: int = 20) -> AsyncIterator[bytes]:

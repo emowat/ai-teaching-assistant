@@ -17,6 +17,8 @@ retrieval concerns in the RAG pipeline.
 """
 from __future__ import annotations
 
+import re
+
 from rag.schemas import ASTFeatures, QueryInput
 
 
@@ -34,12 +36,21 @@ def build_course_query(input: QueryInput) -> str:
 def build_cpp_query(input: QueryInput) -> str:
     """Return the dense query for CPP reference retrieval.
 
-    Uses AST-derived keyword hints only, not the student's question.
-    The student's question (e.g. 'why did my program crash?') carries
-    no meaningful signal for a CPP reference lookup.
+    Uses AST-derived keyword hints as the primary signal. Also scans the
+    student's message for any explicitly mentioned std:: identifiers (e.g.
+    "I think I use std::unique_lock<mutex> right?") since these are strong
+    retrieval signals that may not yet appear in the AST.
     """
     ast = input.ast_features
-    return _ast_hints(ast)
+    ast_hints = _ast_hints(ast)
+    message_hints = _message_std_hints(input.student_message or "")
+    combined = ast_hints
+    if message_hints:
+        # Avoid duplicating terms already in the AST hints
+        for term in message_hints:
+            if term not in ast_hints:
+                combined = f"{combined} {term}".strip()
+    return combined
 
 
 def _ast_hints(ast: ASTFeatures) -> str:
@@ -87,6 +98,24 @@ def _ast_hints(ast: ASTFeatures) -> str:
                 hints.append(base)
 
     return " ".join(hints)
+
+
+def _message_std_hints(message: str) -> list[str]:
+    """Extract std:: identifiers explicitly mentioned in the student's message.
+
+    Matches patterns like std::unique_lock, std::unique_lock<mutex>,
+    std::vector<int>, etc. and returns the base type (stripping template args)
+    so it matches CPP reference index entries.
+    """
+    matches = re.findall(r"std::[a-zA-Z_][a-zA-Z0-9_]*(?:<[^>]*>)?", message)
+    seen: set[str] = set()
+    result: list[str] = []
+    for m in matches:
+        base = m.split("<")[0].strip()
+        if base not in ("std::cout", "std::cin", "std::endl") and base not in seen:
+            seen.add(base)
+            result.append(base)
+    return result
 
 
 # ---------------------------------------------------------------------------

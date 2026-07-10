@@ -23,6 +23,8 @@ import {
 export class TAChatViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'coding-rabbit.chatView';
     private _conversationHistory: {role: string, content: string, turnIndex?: number}[] = [];
+    private _studyAssistBlankDoc: vscode.TextDocument | undefined = undefined;
+    private _studyAssistPreviousEditor: vscode.Uri | undefined = undefined;
     private static _outputChannel: vscode.OutputChannel;
     private _parser?: Parser;
     private _cppLanguage?: Parser.Language;
@@ -563,12 +565,49 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
                     break;
                 }
                 case 'modeChanged': {
+                    const previousMode = this._currentMode;
                     this._currentMode = data.mode;
-                    if (data.mode === 'Study Assist') {
+                    if (data.mode === 'Study Assist' && previousMode !== 'Study Assist') {
+                        // Save the active editor so the student can get back with one click
+                        this._studyAssistPreviousEditor =
+                            vscode.window.activeTextEditor?.document.uri;
                         // Close the terminal/panel area
                         vscode.commands.executeCommand('workbench.action.closePanel');
-                        // Close all editors so the focus is entirely on the chat
-                        vscode.commands.executeCommand('workbench.action.closeAllEditors');
+                        // Open a blank untitled doc — gives empty code context without
+                        // closing the student's file (it stays as a tab)
+                        const blankDoc = await vscode.workspace.openTextDocument({
+                            content: '',
+                            language: 'plaintext',
+                        });
+                        this._studyAssistBlankDoc = blankDoc;
+                        await vscode.window.showTextDocument(blankDoc, {
+                            preview: false,
+                            preserveFocus: true,
+                        });
+                    } else if (data.mode !== 'Study Assist' && previousMode === 'Study Assist') {
+                        // Switching back — restore the previous file if it's still open
+                        if (this._studyAssistPreviousEditor) {
+                            try {
+                                const doc = await vscode.workspace.openTextDocument(
+                                    this._studyAssistPreviousEditor
+                                );
+                                await vscode.window.showTextDocument(doc, { preview: false });
+                            } catch {
+                                // File may have been closed; leave whatever is active
+                            }
+                        }
+                        // Close the blank study-assist tab if it's still around
+                        if (this._studyAssistBlankDoc) {
+                            for (const tab of vscode.window.tabGroups.all.flatMap(g => g.tabs)) {
+                                const input = tab.input as { uri?: vscode.Uri } | undefined;
+                                if (input?.uri?.toString() === this._studyAssistBlankDoc.uri.toString()) {
+                                    await vscode.window.tabGroups.close(tab);
+                                    break;
+                                }
+                            }
+                            this._studyAssistBlankDoc = undefined;
+                        }
+                        this._studyAssistPreviousEditor = undefined;
                     }
                     break;
                 }
@@ -1265,7 +1304,7 @@ ${terminalOutput}`;
                 turn_index: currentTurnIndex,
                 course_id: studentTurnContext.courseId,
                 messages: apiMessages,
-                stream: false,
+                stream: true,
                 options: {
                     temperature: 0.7,
                     top_p: 0.9,
@@ -1294,8 +1333,84 @@ ${terminalOutput}`;
                 throw new Error(`API error: ${response.statusText} - ${errBody}`);
             }
 
-            const data: any = await response.json();
-            let rawTaResponse = data.message?.content || "No response generated.";
+            if (!response.body) {
+                throw new Error("No response body from server");
+            }
+            
+            let rawTaResponse = "";
+            let debugIdeaUnlocked = false;
+            
+            const decoder = new TextDecoder("utf-8");
+            let buffer = "";
+            let lastUpdate = Date.now();
+            
+            for await (const chunk of (response.body as any)) {
+                buffer += decoder.decode(chunk, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || "";
+                
+                for (const line of lines) {
+                    if (!line.trim()) continue;
+                    try {
+                        const payload = JSON.parse(line);
+                        if (payload.type === 'control' && payload.action === 'regenerate') {
+                            // Erase the leaked content in-place — reset the existing bubble
+                            webviewView.webview.postMessage({ type: 'clearResponse', text: '*(Coding Rabbit is thinking...)*', turnIndex: currentTurnIndex });
+                            rawTaResponse = "";
+                            continue;
+                        }
+                        if (payload.replace) {
+                            rawTaResponse = payload.message?.content || "";
+                        } else {
+                            rawTaResponse += payload.message?.content || "";
+                        }
+                        // Latch the reward flag immediately — survives replace overwrites
+                        if (rawTaResponse.includes('[DEBUG_IDEA_UNLOCKED]')) {
+                            debugIdeaUnlocked = true;
+                        }
+                    } catch (e) {
+                        // ignore invalid json chunks
+                    }
+                }
+                
+                // Throttle UI updates to every 100ms
+                if (Date.now() - lastUpdate > 100) {
+                    let tempDisplay = rawTaResponse;
+                    if (tempDisplay.includes('<think>')) {
+                        if (!tempDisplay.includes('</think>')) {
+                            tempDisplay = tempDisplay.substring(0, tempDisplay.indexOf('<think>')) + '\n\n*(Coding Rabbit is thinking...)*';
+                        } else {
+                            tempDisplay = tempDisplay.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+                        }
+                    }
+                    if (tempDisplay.includes('<analysis>')) {
+                        if (!tempDisplay.includes('</analysis>')) {
+                            tempDisplay = tempDisplay.substring(0, tempDisplay.indexOf('<analysis>')) + '\n\n*(Coding Rabbit is analyzing code...)*';
+                        } else {
+                            tempDisplay = tempDisplay.replace(/<analysis>[\s\S]*?<\/analysis>/g, '').trim();
+                        }
+                    }
+                    
+                    const tempHtml = await marked.parse(tempDisplay);
+                    webviewView.webview.postMessage({ type: 'updateResponse', html: tempHtml, isHtml: true, turnIndex: currentTurnIndex });
+                    lastUpdate = Date.now();
+                }
+            }
+            
+            if (buffer.trim()) {
+                try {
+                    const payload = JSON.parse(buffer);
+                    if (payload.replace) {
+                        rawTaResponse = payload.message?.content || "";
+                    } else {
+                        rawTaResponse += payload.message?.content || "";
+                    }
+                } catch(e) {}
+            }
+            
+            if (rawTaResponse.length === 0) {
+                rawTaResponse = "No response generated.";
+            }
             
             let displayResponse = rawTaResponse;
             
@@ -1331,7 +1446,7 @@ ${terminalOutput}`;
             
             // Strip hallucinated pedagogical tags and residual CoT headers
             const strayTags = [
-                '[CONCEPTUAL_HINT]', '[VISUAL_SCAFFOLD]', '[DIRECT_SYNTAX_SCAFFOLD]', 
+                '[CONCEPTUAL_HINT]', '[VISUAL_SCAFFOLD]', '[DIRECT_SYNTAX_SCAFFOLD]',
                 '[ANALOGY_SCAFFOLD]', '[CONCEPTUAL_INTEGRATION]', '[DIRECT_THEORY_SCAFFOLD]',
                 '[HIDDEN CoT RATIONALE]'
             ];
@@ -1341,6 +1456,9 @@ ${terminalOutput}`;
                     displayResponse = displayResponse.split(tag).join('').trim();
                 }
             }
+            // Strip orphaned **Turn N — ** headers left after pedagogical tag removal
+            // e.g. "**Turn 2 — **" or "**Turn 3+ — **"
+            displayResponse = displayResponse.replace(/\*\*Turn \d+\+?\s*[—\-]+\s*\*\*/g, '').trim();
             
             if (displayResponse.includes('[STYLE_NUDGE]')) {
                 this._hasGivenStyleNudge = true;
@@ -1370,7 +1488,10 @@ ${terminalOutput}`;
                 const htmlContent = await marked.parse(displayResponse);
                 webviewView.webview.postMessage({ type: 'addResponse', html: htmlContent, isHtml: true, isThinking: false, turnIndex: currentTurnIndex });
             } else {
-                if (displayResponse.includes('[DEBUG_IDEA_UNLOCKED]')) {
+                // Check the latch set during streaming — survives replace overwrites and
+                // rawTaResponse resets from the regenerate cycle
+                const hasReward = displayResponse.includes('[DEBUG_IDEA_UNLOCKED]') || debugIdeaUnlocked;
+                if (hasReward) {
                     displayResponse = displayResponse.replace(/\[DEBUG_IDEA_UNLOCKED\]/g, '').trim();
                     if (mode !== 'Study Assist') {
                         this._homeworkDeltaRewardsGiven += 1;
@@ -1913,6 +2034,24 @@ ${terminalOutput}`;
                     break;
                 case 'clearChat':
                     messages.innerHTML = '';
+                    break;
+                case 'updateResponse':
+                    if (thinkingElement && !message.isUser) {
+                        const content = message.isHtml ? message.html : message.text;
+                        if (message.isHtml) {
+                            thinkingElement.innerHTML = content;
+                        } else {
+                            thinkingElement.innerText = content;
+                        }
+                    }
+                    messages.scrollTop = messages.scrollHeight;
+                    break;
+                case 'clearResponse':
+                    // Erase leaked streamed content in-place and reset to thinking placeholder
+                    if (thinkingElement) {
+                        thinkingElement.innerText = message.text || '*(Coding Rabbit is thinking...)*';
+                    }
+                    messages.scrollTop = messages.scrollHeight;
                     break;
                 case 'addResponse':
                     if (message.isThinking) {

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import logging
 import json
+import logging
 import os
 import re
 import time
@@ -26,7 +26,6 @@ from rag_eng.llm_clients import (
     OpenAIChatConfig,
     invoke_bedrock_chat_completion,
     ainvoke_openai_chat_completion,
-    chunk_text,
     invoke_openai_chat_completion,
 )
 from rag_eng.prompts import get_system_prompt
@@ -40,6 +39,7 @@ from rag_eng.turn_snapshot import build_turn_snapshot
 from input_guardrails.runtime import evaluate_input_guardrail
 from input_guardrails.responses import repeated_violation_response, response_for
 from output_guardrails.combined import apply_all_guardrails
+from output_guardrails.output_guardrails import check_code_leakage
 from rag_eng.schemas import (
     HealthResponse,
     IndexEnsureResponse,
@@ -399,7 +399,7 @@ def _run_input_guardrail(
                 None,
             ),
         )
-        
+
         is_log_only = os.environ.get("GUARDRAILS_LOG_ONLY", "false").lower() == "true"
         if is_log_only:
             result["wouldBlock"] = result.get("blocked", False)
@@ -541,14 +541,14 @@ def _apply_pipeline_guardrails(
             student_code,
             conversation_history,
         )
-        
+
         is_log_only = os.environ.get("GUARDRAILS_LOG_ONLY", "false").lower() == "true"
         if is_log_only and guardrail.get("stage") == "v2":
             guardrail["wouldBlock"] = guardrail.get("blocked", False)
             guardrail["blocked"] = False
             if guardrail.get("action") == "replace":
                 guardrail["action"] = "log_only"
-                
+
         guardrail["evaluated_answer"] = visible_answer
     except Exception as exc:  # pragma: no cover - defensive fallback
         logger.warning("Guardrail evaluation failed; returning draft answer: %s", exc)
@@ -567,7 +567,7 @@ def _apply_pipeline_guardrails(
     else:
         guardrail_status = guardrail.get("action", "pass")
 
-    # If the guardrail replaced the text, use its fallback. 
+    # If the guardrail replaced the text, use its fallback.
     # Otherwise, return the original answer (which includes the CoT).
     if guardrail_status in ("pass", "log_only"):
         final_answer = answer
@@ -1146,8 +1146,17 @@ def _extract_chat_context(messages: list[dict]) -> dict:
     )
     content = last_user["content"] if last_user else ""
 
+    # Exact block tags emitted by the VS Code extension — used as delimiters.
+    # Using an explicit allowlist avoids false matches on C++ identifiers like
+    # [MAX_SIZE_BUFFER], lambda captures [&]/[=]/[], or any other [] in student text.
+    _KNOWN_TAGS = (
+        "Code_Context|Terminal_Context|Student_Question"
+        "|State_Tracking|/State_Tracking"
+    )
+    _TAG_BOUNDARY = rf"(?=\[(?:{_KNOWN_TAGS})\]|$)"
+
     def _block(tag: str) -> str:
-        m = re.search(rf"\[{tag}\](.*?)(?=\[|$)", content, re.DOTALL)
+        m = re.search(rf"\[{tag}\](.*?){_TAG_BOUNDARY}", content, re.DOTALL)
         return m.group(1).strip() if m else ""
 
     mode = "Study Assist" if "Mode: Study Assist" in content else "Homework Assist"
@@ -1155,7 +1164,10 @@ def _extract_chat_context(messages: list[dict]) -> dict:
     terminal_output = _block("Terminal_Context")
     student_message = _block("Student_Question")
     if not student_message:
-        student_message = re.sub(r"\[.*?\][\s\S]*?(?=\[|$)", "", content).strip()
+        # Strip only the known block markers and their content from raw message
+        student_message = re.sub(
+            rf"\[(?:{_KNOWN_TAGS})\][\s\S]*?{_TAG_BOUNDARY}", "", content
+        ).strip()
 
     def _extract_bool(key: str) -> bool:
         m = re.search(rf"{key}:\s*(true|false)", content, re.IGNORECASE)
@@ -1209,7 +1221,7 @@ def _extract_chat_context(messages: list[dict]) -> dict:
     week = max(1, min(8, week))
 
     likely_paste = "Likely_Paste_Detected: true" in content
-    
+
     pasted_char_count = 0
     if likely_paste:
 
@@ -1253,7 +1265,7 @@ async def _generate_llm_response(
     model_name,
 ) -> tuple[str, list[dict], Any | None]:
     api_messages = list(base_api_messages)
-    
+
     if chat_route.provider == "sagemaker":
         from rag_eng.prompt_budget import assemble_sagemaker_messages
         api_messages = assemble_sagemaker_messages(
@@ -1279,6 +1291,11 @@ async def _generate_llm_response(
         )
         full_system = f"{system_prompt}\n{rag_context}"
         api_messages.insert(0, {"role": "system", "content": full_system})
+        if stream:
+            # Need to import ainvoke_bedrock_chat_stream
+            from rag_eng.llm_clients import ainvoke_bedrock_chat_stream
+            stream_result = ainvoke_bedrock_chat_stream(api_messages, config)
+            return "", api_messages, stream_result
         text = await ainvoke_bedrock_chat_completion(api_messages, config)
         return text, api_messages, None
 
@@ -1298,7 +1315,7 @@ async def _generate_llm_response(
         text = await ainvoke_openai_chat_completion(api_messages, config)
         return text, api_messages, None
 
-        
+
     raise ValueError(f"Unknown chat provider: {chat_route.provider}")
 
 
@@ -1473,121 +1490,265 @@ async def run_chat(
         generation_attempts = []
         base_api_messages = [m for m in messages if m.get("role") != "system"]
         max_attempts = 2
-        
-        for attempt_idx in range(max_attempts):
-            telemetry_store.record_event(
+
+        if stream:
+            async def _streaming_generator():
+                nonlocal base_api_messages
+                for attempt_idx in range(max_attempts):
+                    telemetry_store.record_event(
+                        trace,
+                        event_type="llm_started",
+                        stage="llm_inference",
+                        status="started",
+                        model_provider=chat_route.provider,
+                        model_name=telemetry_model_name,
+                        metadata=retrieval_metadata,
+                    )
+                    llm_started = time.perf_counter()
+
+                    _, _, stream_result = await _generate_llm_response(
+                        chat_route,
+                        base_api_messages,
+                        get_system_prompt(ctx["mode"]),
+                        rag_context,
+                        ctx,
+                        runtime,
+                        settings,
+                        True,
+                        telemetry_model_name,
+                    )
+
+                    raw_text_acc = ""
+                    mid_stream_blocked = False
+
+                    async for chunk_bytes in stream_result:
+                        decoded = chunk_bytes.decode("utf-8").strip()
+                        for line in decoded.splitlines():
+                            if not line.strip():
+                                continue
+                            try:
+                                payload = json.loads(line)
+                                content = payload.get("message", {}).get("content", "")
+                                if content:
+                                    raw_text_acc += content
+                            except Exception:
+                                pass
+
+                        # Phase 3: Active Revocation Mid-stream
+                        if "</analysis>" in raw_text_acc:
+                            visible_text = raw_text_acc.split("</analysis>")[-1]
+                            leaked, _, _ = check_code_leakage(visible_text, ctx["code_raw"])
+                            if leaked:
+                                mid_stream_blocked = True
+                                # Signal the UI to erase and show thinking, then we loop
+                                yield (json.dumps({"type": "control", "action": "regenerate"}) + "\n").encode("utf-8")
+                                break
+
+                        yield chunk_bytes
+
+                    # Stream finished (or broken by mid-stream block), run post-processing
+                    answer, guardrail = _apply_pipeline_guardrails(
+                        trace=trace,
+                        telemetry_store=telemetry_store,
+                        answer=raw_text_acc,
+                        user_query=ctx["student_message"],
+                        student_code=ctx["code_raw"],
+                        conversation_history=conversation_history,
+                        retrieval_metadata=retrieval_metadata,
+                    )
+
+                    if mid_stream_blocked:
+                        guardrail["action"] = "replace"
+                        guardrail["violation_type"] = "code_leakage"
+                        guardrail["blocked"] = True
+
+                    llm_latency_ms = int((time.perf_counter() - llm_started) * 1000)
+
+                    telemetry_store.record_event(
+                        trace,
+                        event_type="llm_finished",
+                        stage="llm_inference",
+                        status="completed",
+                        latency_ms=llm_latency_ms,
+                        model_provider=chat_route.provider,
+                        model_name=telemetry_model_name,
+                        metadata={
+                            **retrieval_metadata,
+                            "answer_chars": len(answer),
+                            **_guardrail_summary(guardrail),
+                            **_input_guardrail_summary(input_guardrail),
+                        },
+                    )
+
+                    generation_attempts.append({
+                        "model_provider": chat_route.provider,
+                        "model_name": telemetry_model_name,
+                        "llm_latency_ms": llm_latency_ms,
+                        "raw_generation": raw_text_acc,
+                        "guardrail": guardrail,
+                    })
+
+                    # If code leakage was detected, retry over the same stream connection
+                    if guardrail.get("action") == "replace" and guardrail.get("violation_type") == "code_leakage" and attempt_idx < max_attempts - 1:
+                        base_api_messages = base_api_messages + [
+                            {"role": "assistant", "content": raw_text_acc},
+                            {"role": "user", "content": "Your previous response was rejected by safety guardrails due to code leakage. Please generate a new response that strictly adheres to the pedagogical rules, ensuring no direct code leakage."},
+                        ]
+                        if not mid_stream_blocked:
+                            # Post-processing caught the leak after a clean stream - signal UI to erase
+                            yield (json.dumps({"type": "control", "action": "regenerate"}) + "\n").encode("utf-8")
+                        continue
+
+                    # Final response: send replace payload if post-processing flagged a substitution
+                    if guardrail.get("action") == "replace":
+                        replacement_payload = {
+                            "message": {"content": guardrail.get("final_answer", answer)},
+                            "replace": True,
+                        }
+                        yield (json.dumps(replacement_payload) + "\n").encode("utf-8")
+
+                    telemetry_store.finish_turn(
+                        trace,
+                        status="completed",
+                        latency_ms=int((time.perf_counter() - started_at) * 1000),
+                        model_provider=chat_route.provider,
+                        model_name=telemetry_model_name,
+                        answer_chars=len(answer),
+                        metadata={
+                            **retrieval_metadata,
+                            "retrieval_latency_ms": retrieval_latency_ms,
+                            "llm_latency_ms": llm_latency_ms,
+                            "answer_chars": len(answer),
+                            **_guardrail_summary(guardrail),
+                            **_input_guardrail_summary(input_guardrail),
+                        },
+                    )
+
+                    _persist_turn_snapshot(
+                        telemetry_store=telemetry_store,
+                        trace=trace,
+                        query=query,
+                        source="chat",
+                        input_guardrail=input_guardrail,
+                        retrieval_result=retrieval_result,
+                        generation_attempts=generation_attempts,
+                        final_answer=answer,
+                        retrieval_latency_ms=retrieval_latency_ms,
+                        policy_snapshot=policy_snapshot,
+                    )
+                    break
+
+            return _streaming_generator()
+        else:
+            for attempt_idx in range(max_attempts):
+                telemetry_store.record_event(
+                    trace,
+                    event_type="llm_started",
+                    stage="llm_inference",
+                    status="started",
+                    model_provider=chat_route.provider,
+                    model_name=telemetry_model_name,
+                    metadata=retrieval_metadata,
+                )
+                llm_started = time.perf_counter()
+
+                raw_text, _, stream_result = await _generate_llm_response(
+                    chat_route,
+                    base_api_messages,
+                    get_system_prompt(ctx["mode"]),
+                    rag_context,
+                    ctx,
+                    runtime,
+                    settings,
+                    False,
+                    telemetry_model_name,
+                )
+
+                if stream_result:
+                    raw_text = await _collect_stream_answer(stream_result)
+
+                answer, guardrail = _apply_pipeline_guardrails(
+                    trace=trace,
+                    telemetry_store=telemetry_store,
+                    answer=raw_text,
+                    user_query=ctx["student_message"],
+                    student_code=ctx["code_raw"],
+                    conversation_history=conversation_history,
+                    retrieval_metadata=retrieval_metadata,
+                )
+
+                llm_latency_ms = int((time.perf_counter() - llm_started) * 1000)
+
+                telemetry_store.record_event(
+                    trace,
+                    event_type="llm_finished",
+                    stage="llm_inference",
+                    status="completed",
+                    latency_ms=llm_latency_ms,
+                    model_provider=chat_route.provider,
+                    model_name=telemetry_model_name,
+                    metadata={
+                        **retrieval_metadata,
+                        "answer_chars": len(answer),
+                        **_guardrail_summary(guardrail),
+                        **_input_guardrail_summary(input_guardrail),
+                    },
+                )
+
+                generation_attempts.append({
+                    "model_provider": chat_route.provider,
+                    "model_name": telemetry_model_name,
+                    "llm_latency_ms": llm_latency_ms,
+                    "raw_generation": raw_text,
+                    "guardrail": guardrail,
+                })
+
+                if guardrail.get("action") == "replace" and guardrail.get("violation_type") == "code_leakage" and attempt_idx < max_attempts - 1:
+                    base_api_messages.append({"role": "assistant", "content": raw_text})
+                    base_api_messages.append({
+                        "role": "user",
+                        "content": "Your previous response was rejected by safety guardrails due to code leakage. Please generate a new response that strictly adheres to the pedagogical rules, ensuring no direct code leakage."
+                    })
+                    continue
+
+                break
+
+            telemetry_store.finish_turn(
                 trace,
-                event_type="llm_started",
-                stage="llm_inference",
-                status="started",
-                model_provider=chat_route.provider,
-                model_name=telemetry_model_name,
-                metadata=retrieval_metadata,
-            )
-            llm_started = time.perf_counter()
-            
-            raw_text, _, stream_result = await _generate_llm_response(
-                chat_route,
-                base_api_messages,
-                get_system_prompt(ctx["mode"]),
-                rag_context,
-                ctx,
-                runtime,
-                settings,
-                stream,
-                telemetry_model_name,
-            )
-            
-            if stream and stream_result:
-                raw_text = await _collect_stream_answer(stream_result)
-                
-            answer, guardrail = _apply_pipeline_guardrails(
-                trace=trace,
-                telemetry_store=telemetry_store,
-                answer=raw_text,
-                user_query=ctx["student_message"],
-                student_code=ctx["code_raw"],
-                conversation_history=conversation_history,
-                retrieval_metadata=retrieval_metadata,
-            )
-            
-            llm_latency_ms = int((time.perf_counter() - llm_started) * 1000)
-            
-            telemetry_store.record_event(
-                trace,
-                event_type="llm_finished",
-                stage="llm_inference",
                 status="completed",
-                latency_ms=llm_latency_ms,
+                latency_ms=int((time.perf_counter() - started_at) * 1000),
                 model_provider=chat_route.provider,
                 model_name=telemetry_model_name,
+                answer_chars=len(answer),
                 metadata={
                     **retrieval_metadata,
+                    "retrieval_latency_ms": retrieval_latency_ms,
+                    "llm_latency_ms": llm_latency_ms,
                     "answer_chars": len(answer),
                     **_guardrail_summary(guardrail),
                     **_input_guardrail_summary(input_guardrail),
                 },
             )
-            
-            generation_attempts.append({
-                "model_provider": chat_route.provider,
-                "model_name": telemetry_model_name,
-                "llm_latency_ms": llm_latency_ms,
-                "raw_generation": raw_text,
-                "guardrail": guardrail,
-            })
-            
-            if guardrail.get("action") == "replace" and guardrail.get("violation_type") == "code_leakage" and attempt_idx < max_attempts - 1:
-                # Self-correction prompt injected for the next iteration
-                base_api_messages.append({"role": "assistant", "content": raw_text})
-                base_api_messages.append({
-                    "role": "user", 
-                    "content": "Your previous response was rejected by safety guardrails due to code leakage. Please generate a new response that strictly adheres to the pedagogical rules, ensuring no direct code leakage."
-                })
-                continue
-            
-            # Break on success, or on hard fails (v2_unsafe, etc)
-            break
-            
-        telemetry_store.finish_turn(
-            trace,
-            status="completed",
-            latency_ms=int((time.perf_counter() - started_at) * 1000),
-            model_provider=chat_route.provider,
-            model_name=telemetry_model_name,
-            answer_chars=len(answer),
-            metadata={
-                **retrieval_metadata,
-                "retrieval_latency_ms": retrieval_latency_ms,
-                "llm_latency_ms": llm_latency_ms,
-                "answer_chars": len(answer),
-                **_guardrail_summary(guardrail),
-                **_input_guardrail_summary(input_guardrail),
-            },
-        )
-        
-        _persist_turn_snapshot(
-            telemetry_store=telemetry_store,
-            trace=trace,
-            query=query,
-            source="chat",
-            input_guardrail=input_guardrail,
-            retrieval_result=retrieval_result,
-            generation_attempts=generation_attempts,
-            final_answer=answer,
-            retrieval_latency_ms=retrieval_latency_ms,
-            policy_snapshot=policy_snapshot,
-        )
-        
-        if stream:
-            return chunk_text(answer, runtime.sagemaker.streaming_chunk_size if chat_route.provider == "sagemaker" else 100)
-            
-        return _chat_response_payload_with_guardrail(
-            answer,
-            trace,
-            guardrail,
-            input_guardrail=input_guardrail,
-        )
+
+            _persist_turn_snapshot(
+                telemetry_store=telemetry_store,
+                trace=trace,
+                query=query,
+                source="chat",
+                input_guardrail=input_guardrail,
+                retrieval_result=retrieval_result,
+                generation_attempts=generation_attempts,
+                final_answer=answer,
+                retrieval_latency_ms=retrieval_latency_ms,
+                policy_snapshot=policy_snapshot,
+            )
+
+            return _chat_response_payload_with_guardrail(
+                answer,
+                trace,
+                guardrail,
+                input_guardrail=input_guardrail,
+            )
     except Exception as exc:
         telemetry_store.finish_turn(
             trace,
