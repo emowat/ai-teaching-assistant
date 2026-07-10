@@ -51,6 +51,33 @@ _CONF = {
 }
 _PASS_CONF = 0.10
 
+# Editor/file-context keys that may carry code the student pasted or selected
+# without typing a question. The service passes it as `code_raw`; the other
+# names are accepted so the guardrail is robust to the caller's payload shape.
+_CODE_CONTEXT_KEYS = (
+    "code_raw",
+    "student_code",
+    "selected_code",
+    "code_context",
+    "editor_content",
+    "raw_code_snippet",
+)
+
+
+def _extract_code_context(ide_context: dict | None) -> str:
+    """Return non-empty pasted/selected code from ide_context, else ''.
+
+    Checks the recognized keys in order and returns the first that holds
+    non-whitespace text. Never raises on odd input.
+    """
+    if not isinstance(ide_context, dict):
+        return ""
+    for key in _CODE_CONTEXT_KEYS:
+        value = ide_context.get(key)
+        if isinstance(value, str) and value.strip():
+            return value
+    return ""
+
 
 def _normalize(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip().lower()
@@ -66,11 +93,16 @@ def check_input_guardrail(raw_input: str, ide_context: dict | None = None) -> In
 
     Args:
         raw_input: the student's raw question, verbatim.
-        ide_context: reserved for future use (editor/file context). UNUSED in v1.
+        ide_context: optional editor/file context. Recognized keys carry any
+            pasted / selected code the student attached without typing a
+            question (see _CODE_CONTEXT_KEYS). A code-only paste is a valid
+            request — it triggers an out-of-band question about the code — so
+            it must NOT be blocked as ERR_EMPTY_INPUT.
 
     Returns:
         InputGuardrailResult. On BLOCK, processed_input is None; on PASS it
-        equals raw_input.
+        equals raw_input, except a code-only paste (empty message + code)
+        passes with processed_input set to the pasted code.
     """
     start = time.perf_counter()
 
@@ -84,8 +116,15 @@ def check_input_guardrail(raw_input: str, ide_context: dict | None = None) -> In
             latency_ms=latency_ms,
         )
 
-    # 0. Empty / whitespace-only — invalid input, not a real violation.
+    # 0. Empty / whitespace-only message. Invalid input, not a real violation —
+    #    UNLESS the student pasted/selected code with no accompanying question.
+    #    That code-only paste is a legitimate request (it drives an out-of-band
+    #    question about the code), so let it PASS to the model stage instead of
+    #    blocking as ERR_EMPTY_INPUT.
     if raw_input is None or not raw_input.strip():
+        pasted_code = _extract_code_context(ide_context)
+        if pasted_code:
+            return _result("PASS", None, pasted_code, _PASS_CONF)
         return _result("BLOCK", ERR_EMPTY_INPUT, None, _CONF[ERR_EMPTY_INPUT])
 
     text = _normalize(raw_input)

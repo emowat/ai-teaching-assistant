@@ -159,7 +159,12 @@ def evaluate_input_guardrail(
 ) -> dict[str, Any]:
     """Run the input guardrail stack and return a structured decision."""
     started = time.perf_counter()
-    rule_result = check_input_guardrail(student_message)
+    # Pass pasted/selected code through so a code-only paste (empty message +
+    # code) is treated as a valid request instead of ERR_EMPTY_INPUT.
+    rule_result = check_input_guardrail(
+        student_message,
+        ide_context={"student_code": student_code} if student_code else None,
+    )
     rule_data = rule_result.model_dump()
     model_enabled = _env_bool(_ENABLED_ENV_VAR, True)
     resolved_checkpoint_dir = resolve_checkpoint_dir(checkpoint_dir)
