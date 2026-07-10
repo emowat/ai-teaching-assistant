@@ -62,6 +62,28 @@ Why does my pointer segfault?"""
     assert ctx["mode"] == "Study Assist"
 
 
+def test_extract_chat_context_cpp_brackets_not_truncated() -> None:
+    """C++ bracket patterns in student messages must not be treated as block delimiters.
+
+    Regression for: student writing []{ return x; } (lambda), [MAX_SIZE] (array),
+    or [&]/[=] (capture lists) causing student_message to be truncated.
+    """
+    for question in [
+        "What does []{ return processed; } mean — is that a lambda?",
+        "I have char myArray[MAX_SIZE_BUFFER]; why does it crash?",
+        "cv.wait(lock, [&]{ return ready; }) — when does this unblock?",
+        "if I write [=] does it capture by value?",
+    ]:
+        content = (
+            "[State_Tracking]\nMode: Homework Assist\n[Student_Question]\n" + question
+        )
+        ctx = _extract_chat_context([{"role": "user", "content": content}])
+        assert ctx["student_message"] == question, (
+            f"student_message truncated for: {question!r}\n"
+            f"got: {ctx['student_message']!r}"
+        )
+
+
 def test_get_health_reports_course_registry_status_when_unconfigured(monkeypatch):
     class _FakeQdrantClient:
         def get_collections(self):

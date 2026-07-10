@@ -1146,8 +1146,17 @@ def _extract_chat_context(messages: list[dict]) -> dict:
     )
     content = last_user["content"] if last_user else ""
 
+    # Exact block tags emitted by the VS Code extension — used as delimiters.
+    # Using an explicit allowlist avoids false matches on C++ identifiers like
+    # [MAX_SIZE_BUFFER], lambda captures [&]/[=]/[], or any other [] in student text.
+    _KNOWN_TAGS = (
+        "Code_Context|Terminal_Context|Student_Question"
+        "|State_Tracking|/State_Tracking"
+    )
+    _TAG_BOUNDARY = rf"(?=\[(?:{_KNOWN_TAGS})\]|$)"
+
     def _block(tag: str) -> str:
-        m = re.search(rf"\[{tag}\](.*?)(?=\[|$)", content, re.DOTALL)
+        m = re.search(rf"\[{tag}\](.*?){_TAG_BOUNDARY}", content, re.DOTALL)
         return m.group(1).strip() if m else ""
 
     mode = "Study Assist" if "Mode: Study Assist" in content else "Homework Assist"
@@ -1155,7 +1164,10 @@ def _extract_chat_context(messages: list[dict]) -> dict:
     terminal_output = _block("Terminal_Context")
     student_message = _block("Student_Question")
     if not student_message:
-        student_message = re.sub(r"\[.*?\][\s\S]*?(?=\[|$)", "", content).strip()
+        # Strip only the known block markers and their content from raw message
+        student_message = re.sub(
+            rf"\[(?:{_KNOWN_TAGS})\][\s\S]*?{_TAG_BOUNDARY}", "", content
+        ).strip()
 
     def _extract_bool(key: str) -> bool:
         m = re.search(rf"{key}:\s*(true|false)", content, re.IGNORECASE)
