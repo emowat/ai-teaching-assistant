@@ -28,6 +28,8 @@ from rag.course_registry import resolve_course_route
 from rag.schemas import AssistMode, CourseSource, QueryInput, RetrievalResult
 from rag.query_builder import build_course_query, build_cpp_query
 from rag.retrievers import (
+    embed_query,
+    embed_queries,
     retrieve_semantic, retrieve_strict_rules, retrieve_guidelines,
     retrieve_harvard, retrieve_harvard_rules,
 )
@@ -131,18 +133,29 @@ def run_retrieval(query: QueryInput) -> RetrievalResult:
     course_query = build_course_query(query)
     cpp_query = build_cpp_query(query)
 
+    # Embed the query strings once, up front and off the thread pool below. The
+    # semantic and rules lanes share the single course vector instead of each
+    # re-encoding the same text, and batching the course + cpp strings into one
+    # encode call keeps the CPU-bound embedding work on a single thread. The
+    # worker pool below then only runs I/O-bound Qdrant queries in parallel.
+    if cpp_query:
+        course_vector, cpp_vector = embed_queries([course_query, cpp_query])
+    else:
+        course_vector = embed_query(course_query)
+        cpp_vector = None
+
     # Determine course-content retrieval callables
     if query.course_source == CourseSource.MIT_14:
         def _fetch_semantic():
             return retrieve_semantic(
-                course_query, query.week,
+                course_vector, query.week,
                 top_k=params["semantic_top_k"],
                 cumulative=params["cumulative"],
                 collection_name=route.collection_name,
             )
         def _fetch_rules():
             return retrieve_strict_rules(
-                course_query, query.week,
+                course_vector, query.week,
                 top_k=params["rules_top_k"],
                 threshold=params["rules_threshold"],
                 cumulative=params["cumulative"],
@@ -151,28 +164,30 @@ def run_retrieval(query: QueryInput) -> RetrievalResult:
     elif query.course_source == CourseSource.CS50:
         def _fetch_semantic():
             return retrieve_harvard(
-                course_query, query.week,
+                course_vector, query.week,
                 top_k=params["semantic_top_k"],
                 cumulative=params["cumulative"],
+                collection_name=route.collection_name,
             )
         def _fetch_rules():
             return retrieve_harvard_rules(
-                course_query, query.week,
+                course_vector, query.week,
                 top_k=params["rules_top_k"],
                 threshold=params["rules_threshold"],
                 cumulative=params["cumulative"],
+                collection_name=route.collection_name,
             )
     else:
         def _fetch_semantic():
             return retrieve_semantic(
-                course_query, query.week,
+                course_vector, query.week,
                 top_k=retrieval_top_k,
                 cumulative=params["cumulative"],
                 collection_name=route.collection_name,
             )
         def _fetch_rules():
             return retrieve_strict_rules(
-                course_query, query.week,
+                course_vector, query.week,
                 top_k=retrieval_top_k,
                 threshold=params["rules_threshold"],
                 cumulative=params["cumulative"],
@@ -186,7 +201,7 @@ def run_retrieval(query: QueryInput) -> RetrievalResult:
     if cpp_query:
         def _fetch_guidelines():
             return retrieve_guidelines(
-                cpp_query,
+                cpp_vector,
                 top_k=guidelines_top_k,
                 threshold=params["guidelines_threshold"],
             )

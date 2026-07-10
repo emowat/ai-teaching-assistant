@@ -13,7 +13,7 @@ from rag.course_registry import (
     resolve_course_route,
 )
 from rag.pipeline import run_retrieval
-from rag.schemas import AssistMode, CourseSource, QueryInput, RetrievalResult
+from rag.schemas import ASTFeatures, AssistMode, CourseSource, QueryInput, RetrievalResult
 from rag_eng.schemas import QueryPayload
 
 
@@ -189,19 +189,38 @@ def test_run_retrieval_uses_registry_collection_name(monkeypatch) -> None:
     )
     monkeypatch.setattr("rag.pipeline.build_course_query", lambda query: "dense query")
     monkeypatch.setattr("rag.pipeline.build_cpp_query", lambda query: "")
+    monkeypatch.setattr("rag.pipeline.embed_query", lambda text: [0.0])
+    monkeypatch.setattr(
+        "rag.pipeline.embed_queries", lambda texts: [[0.0] for _ in texts]
+    )
     monkeypatch.setattr(
         "rag.pipeline.retrieve_guidelines",
-        lambda dense_query, top_k, threshold: [],
+        lambda query_vector, top_k, threshold: [],
     )
 
-    def fake_semantic(dense_query, week, top_k=5, *, cumulative=False, collection_name):
+    def fake_semantic(
+        query_vector,
+        week,
+        top_k=5,
+        *,
+        cumulative=False,
+        collection_name,
+    ):
         captured["semantic_collection"] = collection_name
         return []
 
     def fake_rules(
-        dense_query, week, top_k=3, threshold=0.55, *, cumulative=False, collection_name
+        query_vector,
+        week,
+        top_k=3,
+        threshold=0.55,
+        *,
+        cumulative=False,
+        collection_name,
     ):
         captured["rules_collection"] = collection_name
+        return []
+
     monkeypatch.setattr("rag.pipeline.retrieve_semantic", fake_semantic)
     monkeypatch.setattr("rag.pipeline.retrieve_strict_rules", fake_rules)
     monkeypatch.setattr(
@@ -236,6 +255,96 @@ def test_run_retrieval_uses_registry_collection_name(monkeypatch) -> None:
     assert captured["rules_collection"] == "mit14_course"
 
 
+def test_run_retrieval_precomputes_query_vectors_before_parallel_calls(
+    monkeypatch,
+) -> None:
+    captured: dict[str, object] = {
+        "embed_queries_calls": [],
+        "embed_query_calls": [],
+        "semantic_vector": None,
+        "rules_vector": None,
+        "guidelines_vector": None,
+    }
+
+    monkeypatch.setattr(
+        "rag.course_registry.get_course_registry",
+        lambda: _stub_registry(),
+    )
+    monkeypatch.setattr("rag.pipeline.build_course_query", lambda query: "dense query")
+    monkeypatch.setattr("rag.pipeline.build_cpp_query", lambda query: "cpp hints")
+
+    def fake_embed_query(text: str):
+        embed_query_calls = captured["embed_query_calls"]
+        assert isinstance(embed_query_calls, list)
+        embed_query_calls.append(text)
+        return [float(len(text))]
+
+    def fake_embed_queries(texts: list[str]):
+        embed_queries_calls = captured["embed_queries_calls"]
+        assert isinstance(embed_queries_calls, list)
+        embed_queries_calls.append(list(texts))
+        return [[float(len(text))] for text in texts]
+
+    monkeypatch.setattr("rag.pipeline.embed_query", fake_embed_query)
+    monkeypatch.setattr("rag.pipeline.embed_queries", fake_embed_queries)
+
+    def fake_semantic(
+        query_vector,
+        week,
+        top_k=5,
+        *,
+        cumulative=False,
+        collection_name,
+    ):
+        captured["semantic_vector"] = query_vector
+        return []
+
+    def fake_rules(
+        query_vector,
+        week,
+        top_k=3,
+        threshold=0.55,
+        *,
+        cumulative=False,
+        collection_name,
+    ):
+        captured["rules_vector"] = query_vector
+        return []
+
+    def fake_guidelines(query_vector, top_k, threshold):
+        captured["guidelines_vector"] = query_vector
+        return []
+
+    monkeypatch.setattr("rag.pipeline.retrieve_semantic", fake_semantic)
+    monkeypatch.setattr("rag.pipeline.retrieve_strict_rules", fake_rules)
+    monkeypatch.setattr("rag.pipeline.retrieve_guidelines", fake_guidelines)
+    monkeypatch.setattr(
+        "rag.pipeline.merge_and_rerank",
+        lambda **kwargs: (None, [], [], [], []),
+    )
+    monkeypatch.setattr(
+        "rag.pipeline.build_retrieval_result",
+        lambda **kwargs: _stub_retrieval_result(),
+    )
+
+    run_retrieval(
+        QueryInput(
+            student_message="Why does this crash?",
+            week=3,
+            mode=AssistMode.HOMEWORK_ASSIST,
+            course_id="mit14",
+            course_source=CourseSource.MIT_14,
+            ast_features=ASTFeatures(has_pointer=True),
+        )
+    )
+
+    assert captured["embed_query_calls"] == []
+    assert captured["embed_queries_calls"] == [["dense query", "cpp hints"]]
+    assert captured["semantic_vector"] == [11.0]
+    assert captured["rules_vector"] == [11.0]
+    assert captured["guidelines_vector"] == [9.0]
+
+
 def test_run_retrieval_applies_rerank_strategy_controls(monkeypatch) -> None:
     captured: dict[str, int | float | str] = {}
 
@@ -245,15 +354,19 @@ def test_run_retrieval_applies_rerank_strategy_controls(monkeypatch) -> None:
     )
     monkeypatch.setattr("rag.pipeline.build_course_query", lambda query: "dense query")
     monkeypatch.setattr("rag.pipeline.build_cpp_query", lambda query: "cpp hints")
+    monkeypatch.setattr("rag.pipeline.embed_query", lambda text: [0.0])
+    monkeypatch.setattr(
+        "rag.pipeline.embed_queries", lambda texts: [[float(len(text))] for text in texts]
+    )
 
-    def fake_guidelines(dense_query, top_k, threshold):
+    def fake_guidelines(query_vector, top_k, threshold):
         captured["guidelines_top_k"] = top_k
         return []
 
     monkeypatch.setattr("rag.pipeline.retrieve_guidelines", fake_guidelines)
 
     def fake_semantic(
-        dense_query,
+        query_vector,
         week,
         top_k=5,
         *,
@@ -264,7 +377,7 @@ def test_run_retrieval_applies_rerank_strategy_controls(monkeypatch) -> None:
         return []
 
     def fake_rules(
-        dense_query,
+        query_vector,
         week,
         top_k=3,
         threshold=0.55,

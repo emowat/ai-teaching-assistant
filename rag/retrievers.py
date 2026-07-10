@@ -11,6 +11,9 @@ and in the new cloud-backed `rag_eng` service without changing call sites.
 """
 from __future__ import annotations
 
+from collections import OrderedDict
+from threading import Lock
+
 from qdrant_client.models import Filter
 
 from rag.schemas import DocCategory, RetrievedDoc, SourceDomain
@@ -21,6 +24,7 @@ from rag.runtime import create_qdrant_client, get_runtime_config
 # ---------------------------------------------------------------------------
 _client = None
 _model = None
+_model_lock = Lock()
 _LEGACY_SOURCE_DOMAIN_ALIASES: dict[str, SourceDomain] = {
     "cpp_reference": SourceDomain.CPP_CORE_GUIDELINES,
 }
@@ -38,12 +42,65 @@ def _get_client():
 def _get_model():
     global _model
     if _model is None:
-        # The model name is configurable so the service layer can override the
-        # embedding backend without rewriting retrieval code.
-        from sentence_transformers import SentenceTransformer
+        # The first load is protected by a lock because the pipeline can warm
+        # up retrieval in parallel with multiple worker threads.
+        with _model_lock:
+            if _model is None:
+                # The model name is configurable so the service layer can
+                # override the embedding backend without rewriting retrieval
+                # code.
+                from sentence_transformers import SentenceTransformer
 
-        _model = SentenceTransformer(get_runtime_config().embedding_model)
+                _model = SentenceTransformer(get_runtime_config().embedding_model)
     return _model
+
+
+# ---------------------------------------------------------------------------
+# Query embedding (shared, cached, batched)
+# ---------------------------------------------------------------------------
+# Embedding is the dominant CPU cost of retrieval. The pipeline now computes
+# vectors once before dispatching the parallel Qdrant lanes. This helper keeps
+# repeated queries cheap and batches cache misses into a single model forward
+# pass so the worker threads stay focused on I/O.
+_EMBED_CACHE_MAX = 512
+_embed_cache: "OrderedDict[str, list[float]]" = OrderedDict()
+_embed_cache_lock = Lock()
+
+
+def embed_queries(texts: list[str]) -> list[list[float]]:
+    """Encode query strings into Qdrant-ready vectors, cached and batched."""
+    results: list[list[float] | None] = [None] * len(texts)
+    miss_positions: OrderedDict[str, list[int]] = OrderedDict()
+
+    with _embed_cache_lock:
+        for index, text in enumerate(texts):
+            cached = _embed_cache.get(text)
+            if cached is not None:
+                _embed_cache.move_to_end(text)
+                results[index] = cached
+            else:
+                miss_positions.setdefault(text, []).append(index)
+
+    if miss_positions:
+        unique_misses = list(miss_positions.keys())
+        vectors = _get_model().encode(unique_misses)
+
+        with _embed_cache_lock:
+            for text, vector in zip(unique_misses, vectors):
+                vector_list = vector.tolist()
+                for position in miss_positions[text]:
+                    results[position] = vector_list
+                _embed_cache[text] = vector_list
+                _embed_cache.move_to_end(text)
+            while len(_embed_cache) > _EMBED_CACHE_MAX:
+                _embed_cache.popitem(last=False)
+
+    return [vector for vector in results if vector is not None]
+
+
+def embed_query(text: str) -> list[float]:
+    """Encode a single query string into a Qdrant-ready vector (cached)."""
+    return embed_queries([text])[0]
 
 
 def close_client() -> None:
@@ -187,7 +244,7 @@ def _rules_filter(week: int, *, cumulative: bool = False) -> Filter:
 # ---------------------------------------------------------------------------
 
 def retrieve_semantic(
-    dense_query: str,
+    query_vector: list[float],
     week: int,
     top_k: int = 5,
     *,
@@ -195,10 +252,7 @@ def retrieve_semantic(
     collection_name: str,
 ) -> list[RetrievedDoc]:
     """Vector similarity search. cumulative=True → weeks 1..X; False → exact week."""
-    model = _get_model()
     client = _get_client()
-
-    query_vector = model.encode(dense_query).tolist()
 
     hits = client.query_points(
         # Semantic retrieval shares the same collection as the other lanes; the
@@ -220,7 +274,7 @@ def retrieve_semantic(
 # ---------------------------------------------------------------------------
 
 def retrieve_strict_rules(
-    dense_query: str,
+    query_vector: list[float],
     week: int,
     top_k: int = 3,
     threshold: float = 0.55,
@@ -229,10 +283,7 @@ def retrieve_strict_rules(
     collection_name: str,
 ) -> list[RetrievedDoc]:
     """Vector search for Strict_Rules. cumulative=True → weeks 1..X; False → exact week."""
-    model = _get_model()
     client = _get_client()
-
-    query_vector = model.encode(dense_query).tolist()
 
     hits = client.query_points(
         # Thresholding keeps low-similarity rules from leaking into the
@@ -255,7 +306,7 @@ def retrieve_strict_rules(
 # ---------------------------------------------------------------------------
 
 def retrieve_guidelines(
-    dense_query: str,
+    query_vector: list[float],
     top_k: int = 3,
     threshold: float = 0.5,
 ) -> list[RetrievedDoc]:
@@ -265,10 +316,7 @@ def retrieve_guidelines(
     via a dedicated collection so that the syllabus-bound course search is never
     polluted by advanced C++ concepts from outside the current week.
     """
-    model = _get_model()
     client = _get_client()
-
-    query_vector = model.encode(dense_query).tolist()
 
     hits = client.query_points(
         collection_name=get_runtime_config().collection_guidelines,
@@ -315,7 +363,7 @@ def _harvard_rules_filter(week: int, *, cumulative: bool = False) -> Filter:
 
 
 def retrieve_harvard(
-    dense_query: str,
+    query_vector: list[float],
     week: int,
     top_k: int = 5,
     *,
@@ -323,10 +371,7 @@ def retrieve_harvard(
     collection_name: str,
 ) -> list[RetrievedDoc]:
     """Vector similarity search against the Harvard CS50 collection."""
-    model = _get_model()
     client = _get_client()
-
-    query_vector = model.encode(dense_query).tolist()
 
     hits = client.query_points(
         collection_name=collection_name,
@@ -342,7 +387,7 @@ def retrieve_harvard(
 
 
 def retrieve_harvard_rules(
-    dense_query: str,
+    query_vector: list[float],
     week: int,
     top_k: int = 3,
     threshold: float = 0.55,
@@ -351,10 +396,7 @@ def retrieve_harvard_rules(
     collection_name: str,
 ) -> list[RetrievedDoc]:
     """Vector search for Strict_Rules within the Harvard CS50 collection."""
-    model = _get_model()
     client = _get_client()
-
-    query_vector = model.encode(dense_query).tolist()
 
     hits = client.query_points(
         collection_name=collection_name,
