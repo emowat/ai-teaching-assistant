@@ -83,7 +83,9 @@ Scores:
 - `Summary_...json` - summary with macro pass rate, micro pass rate, and the three drift numbers
   (`total_drift_rate`, `qaulity_decline_rate`, `code_leak_rate`). 
 
-   `total_drift_rate`= `qaulity_decline_rate`+ `code_leak_rate`
+   `total_drift_rate`= fraction of conversation that declined in quality OR leaked (or both) counted once
+   `qaulity_decline_rate`=  fraction of the conversation that declined in quality
+   `code_leak_rate`=  fraction of the conversation with at least one turn judge flagged code leak.
 
 Review sheets:
 - `Log_disagreements.csv` - the turns where the plain code checks and the the judge disagree. Use this to find false-positives and false-negatives. 
@@ -120,3 +122,5 @@ drifted means the quality of the output started to degrade by 15%
 
 
 If you need to change the rubric, edit the text in `prompts.py`.
+
+Log_model_eval py and notebook are working copies ignore. 

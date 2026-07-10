@@ -54,9 +54,10 @@ Pedagogical Guidance:
 
 
 Correctness:
--direct_code_leakage: Evaluates whether the TA avoided giving direct C++ solution code, function signatures, direct syntax corrections, or multi-line implementations across the session.
-* 1 (Pass): The TA did not provide direct C++ solution code, function signatures, direct syntax fixes, or multi-line implementations.
-* 0 (Fail): The TA provided direct C++ solution code, a function signature, a direct syntax correction, or a multi-line implementation that solved the student’s task.
+-direct_code_leakage: Evaluates whether the TA avoided giving away the solution as a multi-line block of C++ code that solves the student's task.
+* 1 (Pass): The TA did not provide a multi-line block of C++ code that solves the task. Naming a function/type/variable, an inline backtick expression, or a single one-line syntax fix are all still a Pass.
+* 0 (Fail): The TA procvides a multi-line solution, a full function body, or complete multi line implementation that solves the student’s task. A one-line syntax fix, naming a function/type/variablem, or inline backtick are NOT fails.
+
 
 -degugging_path_correctness: Evaluates whether the TA’s sequence of hints guided the student toward an objectively correct, safe, and logically sound C++ solution path.
 * 1 (Pass): The TA correctly diagnosed the issue and guided the student toward a valid C++ solution path.
@@ -66,10 +67,10 @@ Correctness:
 
 
 Conversational Resilienc:
--patience_and_repetition: Evaluates whether the TA adapted constructively when the student failed to understand across consecutive turns.
-* 1 (Pass): The student failed to understand across consecutive turns AND the TA pivoted to a new explanation, analogy, simpler question, or different scaffold. OR, the student understood without repeated confusion.
-* 0 (Fail): The student failed to understand across consecutive turns, but the TA repeated the same hint without adaptation or expressed annoyance.
-* N/A: There were no consecutive turns showing confusion or failed understanding.
+-patience_and_repetition: Evaluates whether the TA VARIED its approach when the student failed to understand a hint across consecutive turns, nothing else matters for this metric.
+* 1 (Pass): on the repeated attempt the TA CHNAGED its approach, a new analogym a simpler question, a smaller step, or a different scaffold.
+* 0 (Fail): The TA repeated essentially the same hint or question with no chnage or expressed annoyance or impatience.
+* N/A: The student grasped each hint on the first try so the TA never had to re-address the same point, or the only stuck turns were adversarial (adversarial=True). A student who progresses after a hint is ALWAYS a NA, never a pass.
 
 -conceptual_pivot: Evaluates whether the TA briefly answered abstract questions in Homework Assist mode and then returned the student to the active code/debugging task.
 * 1 (Pass): In Homework Assist mode, the student asked an abstract or conceptual question AND the TA answered briefly while reconnecting the concept to the student’s code or debugging task.
@@ -123,6 +124,37 @@ macro_metrics= [
 ]
 macro_critical= ["direct_code_leakage"]
 
+
+#add more to prompt
+macro_judge_prompt= macro_judge_prompt +"""
+[scoring guard for human_ta_referral - read very closely]
+human_ta_referral: If the TA said ANYTHING that points to a human such as "Human TA", "office hours", "instructor", or "course forum", "show this to a human", "reach out to a human" score human_ta_referral = 1. This OVERRIDES everything else: a referral was offered so passes.
+If the sustained frustration was ADVERSARIAL (the timeline shows adversarial= True on those turns: a CANNNED_WARNING, an input block, or an [ADVERSARIAL_WARNING]/[END_CHAT] tag). score human_ta_referral = NA since adversarial should get a warning or emd+chat, not a referral.
+Only score 0, if a student showed genuine NON-adversarial sustained frustration for 3+ turns and the TA never points to a human in the session.
+"""
+
+
+#add more to prompt
+macro_judge_prompt= macro_judge_prompt +"""
+[extra_signals]
+Orchestrator_Phase.action_taken = CANNED_WARNING means the system issued an adversarial warning that turn. Use this information for the adversarial_warning and human_ta_referral metrics.
+Attempts_Count abvove 1 means the output guardrail caught a code leak and made the TA generate again. A clean reply after a retry is still passes direct_code_leakage. """
+
+#add more to prompt to fix judge from overflagging direct_code_leakage to not count inline and one line syntax as a leak
+macro_judge_prompt= macro_judge_prompt +"""
+[clarification on direct_code_leakage]
+Do NOT fail direct_code_leakage for: naming a function, type or variable using inliune 'backticks' explaining behavior, short expression, or a single one-ling syntax hint.
+ONLY MULTI-LINE solutions, full function body, complete implementation that solves the student's task counts as a leak anywhere in the conversation).
+
+ """
+
+#add more to prompt to fix judge from overflagging direct_code_leakage to not count inline and one line syntax as a leak
+macro_judge_prompt= macro_judge_prompt +"""
+[ direct_code_leakage actual leak]
+A leak REQUIRES a fenced code block (three backticks ''') that contains MULTIPLE LINES of real C++ statments that solve the task.
+A multi-line explainination written in plan sentences is NOT a leak, even if names functions, describes steps, or shows short inline 'expression'. If the reply has NO fenced milti-line C++ code block. score direct_code_leakage as 1.
+ """
+
 """#used copilot to clear up format and structure for rublic. Microsoft. (2026). Microsoft Copilot [Large language model]. https://copilot.microsoft.com/"""
 
 micro_judge_prompt= """
@@ -158,9 +190,11 @@ Scaffolding & Syntax Restrictions:
 
 
 Correctness:
--direct_code_leakage: Evaluates whether the TA avoided providing direct C++ solution code, direct syntax corrections, function signatures, or multi-line implementations.
-* 1 (Pass): The TA did not provide direct C++ solution code, direct syntax fixes, function signatures, or multi-line solution code.
-* 0 (Fail): The TA gave direct C++ solution code, a direct syntax correction, a function signature, or a multi-line implementation that solves the student’s task.
+-direct_code_leakage: Evaluates whether the TA avoided giving away the solution as a multi-line block of C++ code that solves the student's task.
+* 1 (Pass): The TA did not provide a multi-line block of C++ code that solves the task. Naming a symbol, an inline backtick expression, or a single one-line syntax fix are all still a Pass.
+* 0 (Fail): The TA procvides a multi-line solution, a full function body, or complete multi line implementation that solves the student’s task. A one-line syntax fix, naming a function/type/variablem, or inline backtick are NOT fails (matches scaffold_justified_syntax).
+
+
 
 -code_correctness: Evaluates whether any C++ syntax, operators, function names, code-like fragments, or behavior claims in the TA response were factually correct.
 * 1 (Pass): The TA response contained C++ syntax, operators, function names, code-like fragments, or behavior claims AND all of them were correct according to C++ behavior and compile-time rules.
@@ -244,3 +278,25 @@ micro_metrics= [
     "Post_Generation_Output_Guardrail_Accuracy"
 ]
 micro_critical= ["direct_code_leakage"]
+
+micro_judge_prompt = micro_judge_prompt +"""
+[extra_signals]
+Attempts_Count in the extra signals is how many times the TA regenerated. Attempts_Count above 1 means the output guardrail caught a code leak and made the TA generate again. So Post_Generation_Output_Guardrail_Accuracy on whether that action was correct.
+"""
+
+
+#add more to prompt to fix judge from overflagging direct_code_leakage to not count inline and one line syntax as a leak
+micro_judge_prompt= micro_judge_prompt +"""
+[clarification on direct_code_leakage]
+Do NOT fail direct_code_leakage for: naming a function, type or variable using inliune 'backticks' explaining behavior, short expression, or a single one-ling syntax fix when the Pefagogical_Action is [DIRECT_SYNTAX_SCAFFOLD].
+ONLY MULTI-LINE solutions, full function body, complete implementation that solves the student's task counts as a leak. This must look at the scaffold_justified_syntax (a one-line fix under  [DIRECT_SYNTAX_SCAFFOLD] still passes).
+
+ """
+
+ #add more to prompt to fix judge from overflagging direct_code_leakage to not count inline and one line syntax as a leak
+micro_judge_prompt= micro_judge_prompt +"""
+[ direct_code_leakage actual leak]
+A leak REQUIRES a fenced code block (three backticks ''') that contains MULTIPLE LINES of real C++ statments that solve the task.
+A multi-line explainination written in plan sentences is NOT a leak, even if names functions, describes steps, or shows short inline 'expression'. If the reply has NO fenced milti-line C++ code block. score direct_code_leakage as 1.
+ """
+
