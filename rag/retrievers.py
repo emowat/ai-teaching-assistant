@@ -11,6 +11,9 @@ and in the new cloud-backed `rag_eng` service without changing call sites.
 """
 from __future__ import annotations
 
+import threading
+from collections import OrderedDict
+
 from qdrant_client.models import Filter
 
 from rag.schemas import DocCategory, RetrievedDoc, SourceDomain
@@ -44,6 +47,62 @@ def _get_model():
 
         _model = SentenceTransformer(get_runtime_config().embedding_model)
     return _model
+
+
+# ---------------------------------------------------------------------------
+# Query embedding (shared, cached, batched)
+# ---------------------------------------------------------------------------
+# Embedding a query with bge-large-en-v1.5 is the dominant CPU cost of a
+# retrieval. Two optimizations live here rather than in each retriever:
+#   1. An LRU cache serves repeated query strings for free.
+#   2. Cache-miss strings are encoded in a single batched forward pass.
+# Pulling embedding out of the retrievers also lets the pipeline encode once,
+# up front, so the same vector is reused across lanes instead of every lane
+# running its own (previously concurrent) model.encode().
+_EMBED_CACHE_MAX = 512
+_embed_cache: "OrderedDict[str, list[float]]" = OrderedDict()
+_embed_cache_lock = threading.Lock()
+
+
+def embed_queries(texts: list[str]) -> list[list[float]]:
+    """Encode query strings into Qdrant-ready vectors, cached and batched.
+
+    Returned vectors are in the same order as ``texts``. Repeated strings within
+    the batch are encoded only once.
+    """
+    results: list[list[float] | None] = [None] * len(texts)
+    # Map each cache-miss string to every position it occupies in the input.
+    miss_positions: "OrderedDict[str, list[int]]" = OrderedDict()
+
+    with _embed_cache_lock:
+        for i, text in enumerate(texts):
+            cached = _embed_cache.get(text)
+            if cached is not None:
+                _embed_cache.move_to_end(text)  # mark as recently used
+                results[i] = cached
+            else:
+                miss_positions.setdefault(text, []).append(i)
+
+    if miss_positions:
+        unique_misses = list(miss_positions.keys())
+        # One batched forward pass for all misses, on this thread only.
+        vectors = _get_model().encode(unique_misses)
+        with _embed_cache_lock:
+            for text, vector in zip(unique_misses, vectors):
+                vector_list = vector.tolist()
+                for pos in miss_positions[text]:
+                    results[pos] = vector_list
+                _embed_cache[text] = vector_list
+                _embed_cache.move_to_end(text)
+            while len(_embed_cache) > _EMBED_CACHE_MAX:
+                _embed_cache.popitem(last=False)  # evict least-recently-used
+
+    return [vector for vector in results if vector is not None]
+
+
+def embed_query(text: str) -> list[float]:
+    """Encode a single query string into a Qdrant-ready vector (cached)."""
+    return embed_queries([text])[0]
 
 
 def close_client() -> None:
@@ -187,7 +246,7 @@ def _rules_filter(week: int, *, cumulative: bool = False) -> Filter:
 # ---------------------------------------------------------------------------
 
 def retrieve_semantic(
-    dense_query: str,
+    query_vector: list[float],
     week: int,
     top_k: int = 5,
     *,
@@ -195,10 +254,7 @@ def retrieve_semantic(
     collection_name: str,
 ) -> list[RetrievedDoc]:
     """Vector similarity search. cumulative=True → weeks 1..X; False → exact week."""
-    model = _get_model()
     client = _get_client()
-
-    query_vector = model.encode(dense_query).tolist()
 
     hits = client.query_points(
         # Semantic retrieval shares the same collection as the other lanes; the
@@ -220,7 +276,7 @@ def retrieve_semantic(
 # ---------------------------------------------------------------------------
 
 def retrieve_strict_rules(
-    dense_query: str,
+    query_vector: list[float],
     week: int,
     top_k: int = 3,
     threshold: float = 0.55,
@@ -229,10 +285,7 @@ def retrieve_strict_rules(
     collection_name: str,
 ) -> list[RetrievedDoc]:
     """Vector search for Strict_Rules. cumulative=True → weeks 1..X; False → exact week."""
-    model = _get_model()
     client = _get_client()
-
-    query_vector = model.encode(dense_query).tolist()
 
     hits = client.query_points(
         # Thresholding keeps low-similarity rules from leaking into the
@@ -255,7 +308,7 @@ def retrieve_strict_rules(
 # ---------------------------------------------------------------------------
 
 def retrieve_guidelines(
-    dense_query: str,
+    query_vector: list[float],
     top_k: int = 3,
     threshold: float = 0.5,
 ) -> list[RetrievedDoc]:
@@ -265,10 +318,7 @@ def retrieve_guidelines(
     via a dedicated collection so that the syllabus-bound course search is never
     polluted by advanced C++ concepts from outside the current week.
     """
-    model = _get_model()
     client = _get_client()
-
-    query_vector = model.encode(dense_query).tolist()
 
     hits = client.query_points(
         collection_name=get_runtime_config().collection_guidelines,
@@ -315,7 +365,7 @@ def _harvard_rules_filter(week: int, *, cumulative: bool = False) -> Filter:
 
 
 def retrieve_harvard(
-    dense_query: str,
+    query_vector: list[float],
     week: int,
     top_k: int = 5,
     *,
@@ -323,10 +373,7 @@ def retrieve_harvard(
     collection_name: str,
 ) -> list[RetrievedDoc]:
     """Vector similarity search against the Harvard CS50 collection."""
-    model = _get_model()
     client = _get_client()
-
-    query_vector = model.encode(dense_query).tolist()
 
     hits = client.query_points(
         collection_name=collection_name,
@@ -342,7 +389,7 @@ def retrieve_harvard(
 
 
 def retrieve_harvard_rules(
-    dense_query: str,
+    query_vector: list[float],
     week: int,
     top_k: int = 3,
     threshold: float = 0.55,
@@ -351,10 +398,7 @@ def retrieve_harvard_rules(
     collection_name: str,
 ) -> list[RetrievedDoc]:
     """Vector search for Strict_Rules within the Harvard CS50 collection."""
-    model = _get_model()
     client = _get_client()
-
-    query_vector = model.encode(dense_query).tolist()
 
     hits = client.query_points(
         collection_name=collection_name,

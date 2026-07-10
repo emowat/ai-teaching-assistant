@@ -189,9 +189,15 @@ def test_run_retrieval_uses_registry_collection_name(monkeypatch) -> None:
     )
     monkeypatch.setattr("rag.pipeline.build_course_query", lambda query: "dense query")
     monkeypatch.setattr("rag.pipeline.build_cpp_query", lambda query: "")
+    # Embedding now happens in the pipeline (not inside the retrievers), so stub
+    # it out to avoid loading the real SentenceTransformer model in tests.
+    monkeypatch.setattr("rag.pipeline.embed_query", lambda text: [0.0])
+    monkeypatch.setattr(
+        "rag.pipeline.embed_queries", lambda texts: [[0.0] for _ in texts]
+    )
     monkeypatch.setattr(
         "rag.pipeline.retrieve_guidelines",
-        lambda dense_query, top_k, threshold: [],
+        lambda query_vector, top_k, threshold: [],
     )
 
     def fake_semantic(dense_query, week, top_k=5, *, cumulative=False, collection_name):
@@ -245,8 +251,14 @@ def test_run_retrieval_applies_rerank_strategy_controls(monkeypatch) -> None:
     )
     monkeypatch.setattr("rag.pipeline.build_course_query", lambda query: "dense query")
     monkeypatch.setattr("rag.pipeline.build_cpp_query", lambda query: "cpp hints")
+    # Embedding now happens in the pipeline (not inside the retrievers), so stub
+    # it out to avoid loading the real SentenceTransformer model in tests.
+    monkeypatch.setattr("rag.pipeline.embed_query", lambda text: [0.0])
+    monkeypatch.setattr(
+        "rag.pipeline.embed_queries", lambda texts: [[0.0] for _ in texts]
+    )
 
-    def fake_guidelines(dense_query, top_k, threshold):
+    def fake_guidelines(query_vector, top_k, threshold):
         captured["guidelines_top_k"] = top_k
         return []
 
