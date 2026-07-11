@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 import re
 import uuid
+from types import SimpleNamespace
 
 import pytest
 
@@ -17,6 +18,7 @@ from rag_eng.schemas import (
     AdminUserCreate,
     ProfessorTeachingPlanUpdate,
     ProfessorTeachingPlanWeekCreate,
+    ProfessorTeachingPlanWeekReferenceCreate,
     ProfessorTeachingPlanWeekUpdate,
     ProfessorSectionAnalytics,
     SectionLaunchConfig,
@@ -37,6 +39,7 @@ class _State:
     launch_configs: dict[str, list[dict[str, object]]]
     teaching_plans: dict[str, dict[str, object]]
     teaching_plan_weeks: dict[str, dict[str, object]]
+    teaching_plan_week_references: dict[str, dict[str, object]]
     tutor_sessions: list[dict[str, object]]
 
 
@@ -200,6 +203,27 @@ class _FakeCursor:
             record.get("student_visibility_status", "hidden"),
             record.get("available_from"),
             record.get("available_until"),
+            record["created_at"],
+            record["updated_at"],
+        )
+
+    def _teaching_plan_week_reference_row(
+        self,
+        record: dict[str, object],
+    ) -> tuple[object, ...]:
+        return (
+            record["reference_id"],
+            record["week_id"],
+            record["section_id"],
+            record.get("title", ""),
+            record.get("reference_type", "course_doc"),
+            record.get("url", ""),
+            record.get("course_document_key", ""),
+            record.get("notes", ""),
+            record.get("enabled", True),
+            record.get("include_in_prompt", True),
+            record.get("include_in_retrieval", False),
+            record.get("sort_order", 0),
             record["created_at"],
             record["updated_at"],
         )
@@ -681,6 +705,18 @@ class _FakeCursor:
             return
 
         if sql.startswith(
+            "SELECT r.reference_id, r.week_id, r.section_id, r.title, r.reference_type, r.url, r.course_document_key, r.notes, r.enabled, r.include_in_prompt, r.include_in_retrieval, r.sort_order, r.created_at, r.updated_at FROM teaching_plan_week_references AS r INNER JOIN teaching_plan_weeks AS tw ON tw.week_id = r.week_id WHERE tw.teaching_plan_id = %s ORDER BY tw.week_number ASC, r.sort_order ASC, r.reference_id ASC"
+        ):
+            teaching_plan_id = str(params[0])
+            rows = [
+                self._teaching_plan_week_reference_row(record)
+                for record in self.state.teaching_plan_week_references.values()
+                if str(record["teaching_plan_id"]) == teaching_plan_id
+            ]
+            self._rows = rows
+            return
+
+        if sql.startswith(
             "SELECT week_id FROM teaching_plan_weeks WHERE teaching_plan_id = %s AND week_number = %s"
         ):
             teaching_plan_id, week_number = params
@@ -948,6 +984,7 @@ def _state() -> _State:
         launch_configs={},
         teaching_plans={},
         teaching_plan_weeks={},
+        teaching_plan_week_references={},
         tutor_sessions=[],
     )
 
@@ -1486,6 +1523,153 @@ def test_professor_teaching_plan_lifecycle(
         runtime=_runtime(),
     )
     assert archived.status == "archived"
+
+
+def test_professor_teaching_plan_loads_week_references_and_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _state()
+    state.users["prof-1"] = _user(
+        user_id="prof-1",
+        email="prof@example.edu",
+        display_name="Professor",
+        primary_role="professor",
+        status="active",
+        cognito_sub="sub-prof",
+    )
+    state.sections["mit14-fall-001"] = _section(
+        section_id="mit14-fall-001",
+        display_name="MIT 6.0014 Section A",
+    )
+    state.memberships[("mit14-fall-001", "prof-1")] = _membership(
+        section_id="mit14-fall-001",
+        user_id="prof-1",
+        role_in_section="professor",
+    )
+    state.section_instruction_settings["mit14-fall-001"] = {
+        "section_id": "mit14-fall-001",
+        "student_access_enabled": True,
+        "week_resolution_mode": "manual",
+        "manual_current_week_number": 1,
+        "teaching_plan_prompt_enabled": True,
+        "references_prompt_enabled": True,
+        "references_retrieval_enabled": True,
+        "created_at": NOW,
+        "updated_at": NOW,
+    }
+    _patch_connection(monkeypatch, state)
+    monkeypatch.setattr(
+        app_registry,
+        "get_runtime_policy_config",
+        lambda: SimpleNamespace(
+            teaching_plan_orchestration=SimpleNamespace(
+                enabled=True,
+                homework_assist_only=True,
+                require_published_plan=True,
+                require_open_week=True,
+            ),
+            references_orchestration=SimpleNamespace(enabled=True),
+        ),
+    )
+
+    app_registry.upsert_professor_section_teaching_plan(
+        CurrentUser(
+            cognito_sub="sub-prof",
+            email="prof@example.edu",
+            primary_role="professor",
+        ),
+        "mit14-fall-001",
+        ProfessorTeachingPlanUpdate(
+            title="Pointer Safety and Memory Basics",
+            summary="Week-by-week plan for the first half of the course.",
+        ),
+        runtime=_runtime(),
+    )
+    with_week = app_registry.create_professor_section_teaching_plan_week(
+        CurrentUser(
+            cognito_sub="sub-prof",
+            email="prof@example.edu",
+            primary_role="professor",
+        ),
+        "mit14-fall-001",
+        ProfessorTeachingPlanWeekCreate(
+            week_number=1,
+            title="C Basics",
+            topic="Functions, variables, and memory",
+            learning_objectives=["Understand pointer basics", "Trace a simple program"],
+            instructional_guidance="Keep examples short and concrete.",
+            status="published",
+            student_visibility_status="open",
+        ),
+        runtime=_runtime(),
+    )
+    app_registry.update_professor_section_teaching_plan_week(
+        CurrentUser(
+            cognito_sub="sub-prof",
+            email="prof@example.edu",
+            primary_role="professor",
+        ),
+        "mit14-fall-001",
+        with_week.weeks[0].week_id,
+        ProfessorTeachingPlanWeekUpdate(
+            status="published",
+            student_visibility_status="open",
+        ),
+        runtime=_runtime(),
+    )
+    app_registry.publish_professor_section_teaching_plan(
+        CurrentUser(
+            cognito_sub="sub-prof",
+            email="prof@example.edu",
+            primary_role="professor",
+        ),
+        "mit14-fall-001",
+        runtime=_runtime(),
+    )
+    week_id = with_week.weeks[0].week_id
+    teaching_plan_id = state.teaching_plans["mit14-fall-001"]["teaching_plan_id"]
+    reference_payload = ProfessorTeachingPlanWeekReferenceCreate(
+        title="Lecture notes",
+        reference_type="course_doc",
+        course_document_key="raw/rag_sources/week-1-notes.md",
+        notes="Read before trying the homework.",
+        include_in_prompt=True,
+        include_in_retrieval=False,
+        sort_order=0,
+    )
+    state.teaching_plan_week_references["ref-1"] = {
+        "reference_id": "ref-1",
+        "week_id": week_id,
+        "section_id": "mit14-fall-001",
+        "teaching_plan_id": teaching_plan_id,
+        **reference_payload.model_dump(),
+        "created_at": NOW,
+        "updated_at": NOW,
+    }
+
+    plan = app_registry.get_professor_section_teaching_plan(
+        CurrentUser(
+            cognito_sub="sub-prof",
+            email="prof@example.edu",
+            primary_role="professor",
+        ),
+        "mit14-fall-001",
+        runtime=_runtime(),
+    )
+    assert plan.weeks[0].references[0].title == "Lecture notes"
+    assert plan.weeks[0].references[0].course_document_key == "raw/rag_sources/week-1-notes.md"
+
+    context = app_registry.get_section_instructional_context(
+        "mit14-fall-001",
+        mode="Homework Assist",
+        week=1,
+        runtime=_runtime(),
+    )
+    assert context["references"]["week_reference_count"] == 1
+    assert context["references"]["prompt_reference_count"] == 1
+    assert context["references"]["applied"] is True
+    assert "Section_Week_References" in context["prompt_block"]
+    assert "Lecture notes" in context["prompt_block"]
 
 
 def test_professor_instruction_settings_round_trip(

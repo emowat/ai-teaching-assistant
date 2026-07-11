@@ -134,6 +134,23 @@ CREATE TABLE IF NOT EXISTS teaching_plan_weeks (
   UNIQUE (teaching_plan_id, week_number)
 );
 
+CREATE TABLE IF NOT EXISTS teaching_plan_week_references (
+  reference_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  week_id uuid NOT NULL REFERENCES teaching_plan_weeks(week_id) ON DELETE CASCADE,
+  section_id text NOT NULL REFERENCES sections(section_id) ON DELETE CASCADE,
+  title text NOT NULL,
+  reference_type text NOT NULL CHECK (reference_type IN ('course_doc', 'external_link', 'assignment', 'reading', 'tooling')),
+  url text NOT NULL DEFAULT '',
+  course_document_key text NOT NULL DEFAULT '',
+  notes text NOT NULL DEFAULT '',
+  enabled boolean NOT NULL DEFAULT TRUE,
+  include_in_prompt boolean NOT NULL DEFAULT TRUE,
+  include_in_retrieval boolean NOT NULL DEFAULT FALSE,
+  sort_order integer NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE INDEX IF NOT EXISTS users_email_idx
   ON users (email);
 
@@ -160,6 +177,12 @@ CREATE INDEX IF NOT EXISTS teaching_plans_section_id_status_idx
 
 CREATE INDEX IF NOT EXISTS teaching_plan_weeks_plan_id_week_number_idx
   ON teaching_plan_weeks (teaching_plan_id, week_number);
+
+CREATE INDEX IF NOT EXISTS teaching_plan_week_references_week_id_enabled_sort_idx
+  ON teaching_plan_week_references (week_id, enabled, sort_order, reference_id);
+
+CREATE INDEX IF NOT EXISTS teaching_plan_week_references_section_id_week_id_idx
+  ON teaching_plan_week_references (section_id, week_id);
 
 CREATE TABLE IF NOT EXISTS ingestion_jobs (
   job_id text PRIMARY KEY,

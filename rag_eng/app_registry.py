@@ -37,6 +37,7 @@ from rag_eng.schemas import (
     ProfessorTeachingPlan,
     ProfessorTeachingPlanUpdate,
     ProfessorTeachingPlanWeek,
+    ProfessorTeachingPlanWeekReference,
     ProfessorTeachingPlanWeekCreate,
     ProfessorTeachingPlanWeekUpdate,
     SectionInstructionSettings,
@@ -937,7 +938,80 @@ def _load_section_teaching_plan_week_rows(
     )
 
 
-def _teaching_plan_week_from_row(row: tuple[Any, ...]) -> ProfessorTeachingPlanWeek:
+def _load_section_teaching_plan_week_reference_rows(
+    connection,
+    teaching_plan_id: str,
+) -> list[tuple[Any, ...]]:
+    return _fetch_all_rows(
+        connection,
+        """
+        SELECT
+          r.reference_id,
+          r.week_id,
+          r.section_id,
+          r.title,
+          r.reference_type,
+          r.url,
+          r.course_document_key,
+          r.notes,
+          r.enabled,
+          r.include_in_prompt,
+          r.include_in_retrieval,
+          r.sort_order,
+          r.created_at,
+          r.updated_at
+        FROM teaching_plan_week_references AS r
+        INNER JOIN teaching_plan_weeks AS tw
+          ON tw.week_id = r.week_id
+        WHERE tw.teaching_plan_id = %s
+        ORDER BY tw.week_number ASC, r.sort_order ASC, r.reference_id ASC
+        """,
+        (teaching_plan_id,),
+    )
+
+
+def _teaching_plan_week_reference_from_row(
+    row: tuple[Any, ...],
+) -> ProfessorTeachingPlanWeekReference:
+    (
+        reference_id,
+        week_id,
+        section_id,
+        title,
+        reference_type,
+        url,
+        course_document_key,
+        notes,
+        enabled,
+        include_in_prompt,
+        include_in_retrieval,
+        sort_order,
+        created_at,
+        updated_at,
+    ) = row[:14]
+    return ProfessorTeachingPlanWeekReference(
+        reference_id=_clean_text(reference_id),
+        week_id=_clean_text(week_id),
+        section_id=_clean_text(section_id),
+        title=_clean_text(title),
+        reference_type=_clean_text(reference_type) or "course_doc",
+        url=_clean_text(url),
+        course_document_key=_clean_text(course_document_key),
+        notes=_clean_text(notes),
+        enabled=bool(enabled),
+        include_in_prompt=bool(include_in_prompt),
+        include_in_retrieval=bool(include_in_retrieval),
+        sort_order=int(sort_order or 0),
+        created_at=_format_timestamp(created_at),
+        updated_at=_format_timestamp(updated_at),
+    )
+
+
+def _teaching_plan_week_from_row(
+    row: tuple[Any, ...],
+    *,
+    references: list[ProfessorTeachingPlanWeekReference] | None = None,
+) -> ProfessorTeachingPlanWeek:
     (
         week_id,
         teaching_plan_id,
@@ -969,6 +1043,7 @@ def _teaching_plan_week_from_row(row: tuple[Any, ...]) -> ProfessorTeachingPlanW
         student_visibility_status=_clean_text(student_visibility_status) or "hidden",
         available_from=_format_timestamp(available_from) or None,
         available_until=_format_timestamp(available_until) or None,
+        references=list(references or []),
         created_at=_format_timestamp(created_at),
         updated_at=_format_timestamp(updated_at),
     )
@@ -977,7 +1052,7 @@ def _teaching_plan_week_from_row(row: tuple[Any, ...]) -> ProfessorTeachingPlanW
 def _teaching_plan_from_row(
     row: tuple[Any, ...] | None,
     *,
-    week_rows: list[tuple[Any, ...]] | None = None,
+    weeks: list[ProfessorTeachingPlanWeek] | None = None,
 ) -> ProfessorTeachingPlan:
     if row is None:
         return ProfessorTeachingPlan(section_id="")
@@ -1005,10 +1080,7 @@ def _teaching_plan_from_row(
         created_by_user_id=_clean_text(created_by) or None,
         published_by_user_id=_clean_text(published_by) or None,
         published_at=_format_timestamp(published_at) or None,
-        weeks=[
-            _teaching_plan_week_from_row(week_row)
-            for week_row in (week_rows or [])
-        ],
+        weeks=list(weeks or []),
         created_at=_format_timestamp(created_at),
         updated_at=_format_timestamp(updated_at),
     )
@@ -1023,7 +1095,75 @@ def _load_professor_section_teaching_plan(
         return ProfessorTeachingPlan(section_id=section_id)
     teaching_plan_id = _clean_text(plan_row[0])
     week_rows = _load_section_teaching_plan_week_rows(connection, teaching_plan_id)
-    return _teaching_plan_from_row(plan_row, week_rows=week_rows)
+    reference_rows = _load_section_teaching_plan_week_reference_rows(
+        connection,
+        teaching_plan_id,
+    )
+    references_by_week_id: dict[str, list[ProfessorTeachingPlanWeekReference]] = defaultdict(list)
+    for reference_row in reference_rows:
+        reference = _teaching_plan_week_reference_from_row(reference_row)
+        references_by_week_id[reference.week_id].append(reference)
+    weeks = [
+        _teaching_plan_week_from_row(
+            week_row,
+            references=references_by_week_id.get(_clean_text(week_row[0]) or "", []),
+        )
+        for week_row in week_rows
+    ]
+    return _teaching_plan_from_row(plan_row, weeks=weeks)
+
+
+def _build_week_references_prompt_block(
+    *,
+    section_id: str,
+    week_number: int,
+    references: list[ProfessorTeachingPlanWeekReference],
+) -> str:
+    prompt_references = [
+        reference
+        for reference in references
+        if reference.enabled and reference.include_in_prompt
+    ]
+    retrieval_references = [
+        reference
+        for reference in references
+        if reference.enabled and reference.include_in_retrieval
+    ]
+    if not prompt_references and not retrieval_references:
+        return ""
+
+    lines = [
+        "[Section_Week_References]",
+        f"Section ID: {section_id}",
+        f"Week: {week_number}",
+    ]
+    if prompt_references:
+        lines.append("Prompt References:")
+        for reference in prompt_references:
+            details = [f"title={reference.title or 'Untitled Reference'}"]
+            details.append(f"type={reference.reference_type}")
+            if reference.course_document_key:
+                details.append(f"course_document_key={reference.course_document_key}")
+            if reference.url:
+                details.append(f"url={reference.url}")
+            if reference.notes:
+                details.append(f"notes={reference.notes}")
+            lines.append(f"- {'; '.join(details)}")
+    if retrieval_references:
+        lines.append("Retrieval References:")
+        for reference in retrieval_references:
+            details = [f"title={reference.title or 'Untitled Reference'}"]
+            details.append(f"type={reference.reference_type}")
+            if reference.course_document_key:
+                details.append(f"course_document_key={reference.course_document_key}")
+            if reference.url:
+                details.append(f"url={reference.url}")
+            lines.append(f"- {'; '.join(details)}")
+
+    lines.append(
+        "Advisory Notes: Use these section-approved references only as supplemental context. Do not browse beyond the listed resources."
+    )
+    return "\n".join(lines)
 
 
 def _ensure_professor_section_teaching_plan(
@@ -2084,11 +2224,13 @@ def get_section_instructional_context(
             "prompt_enabled": False,
             "retrieval_enabled": False,
             "applied": False,
-            "reason": (
-                "references_runtime_disabled"
-                if not policy.references_orchestration.enabled
-                else "references_not_yet_wired"
-            ),
+            "reason": "references_runtime_disabled"
+            if not policy.references_orchestration.enabled
+            else "references_disabled",
+            "week_reference_count": 0,
+            "prompt_reference_count": 0,
+            "retrieval_reference_count": 0,
+            "items": [],
         },
         "prompt_block": "",
     }
@@ -2119,13 +2261,13 @@ def get_section_instructional_context(
             "prompt_enabled": references_prompt_enabled,
             "retrieval_enabled": references_retrieval_enabled,
             "applied": False,
-            "reason": (
-                "references_runtime_disabled"
-                if not references_runtime_enabled
-                else "references_not_yet_wired"
-                if references_prompt_enabled or references_retrieval_enabled
-                else "references_disabled"
-            ),
+            "reason": "references_runtime_disabled"
+            if not references_runtime_enabled
+            else "references_disabled",
+            "week_reference_count": 0,
+            "prompt_reference_count": 0,
+            "retrieval_reference_count": 0,
+            "items": [],
         }
 
         if not settings.teaching_plan_prompt_enabled:
@@ -2140,18 +2282,10 @@ def get_section_instructional_context(
         )
         context["effective_week"] = effective_week
 
-        plan_row = _load_section_teaching_plan_row(connection, section_id)
-        if plan_row is None:
+        plan = _load_professor_section_teaching_plan(connection, section_id)
+        if plan.teaching_plan_id is None:
             context["reason"] = "teaching_plan_missing"
             return context
-
-        plan = _teaching_plan_from_row(
-            plan_row,
-            week_rows=_load_section_teaching_plan_week_rows(
-                connection,
-                _clean_text(plan_row[0]),
-            ),
-        )
         context["teaching_plan"] = plan.model_dump()
 
         if policy.teaching_plan_orchestration.require_published_plan and plan.status != "published":
@@ -2167,6 +2301,38 @@ def get_section_instructional_context(
             return context
 
         context["teaching_plan_week"] = week_match.model_dump()
+        active_references = [
+            reference
+            for reference in week_match.references
+            if reference.enabled
+        ]
+        prompt_references = [
+            reference
+            for reference in active_references
+            if reference.include_in_prompt
+        ]
+        retrieval_references = [
+            reference
+            for reference in active_references
+            if reference.include_in_retrieval
+        ]
+        context["references"] = {
+            "runtime_enabled": references_runtime_enabled,
+            "prompt_enabled": references_prompt_enabled,
+            "retrieval_enabled": references_retrieval_enabled,
+            "applied": bool(prompt_references or retrieval_references),
+            "reason": (
+                "references_applied"
+                if prompt_references or retrieval_references
+                else "references_empty"
+                if references_prompt_enabled or references_retrieval_enabled
+                else "references_disabled"
+            ),
+            "week_reference_count": len(active_references),
+            "prompt_reference_count": len(prompt_references),
+            "retrieval_reference_count": len(retrieval_references),
+            "items": [reference.model_dump() for reference in active_references],
+        }
 
         if policy.teaching_plan_orchestration.require_open_week and week_match.student_visibility_status != "open":
             context["reason"] = "teaching_plan_week_not_open"
@@ -2178,6 +2344,13 @@ def get_section_instructional_context(
         learning_objectives = week_match.learning_objectives or []
         objectives_text = "\n".join(f"- {objective}" for objective in learning_objectives) or "- None provided"
         instructional_guidance = week_match.instructional_guidance.strip() or "No additional guidance provided."
+        references_prompt_block = ""
+        if references_prompt_enabled or references_retrieval_enabled:
+            references_prompt_block = _build_week_references_prompt_block(
+                section_id=section_id,
+                week_number=week_match.week_number,
+                references=active_references,
+            )
         context["applied"] = True
         context["reason"] = "applied"
         context["prompt_block"] = (
@@ -2196,6 +2369,8 @@ def get_section_instructional_context(
             f"{instructional_guidance}\n"
             "Advisory Notes: Use this context only as section-scoped guidance. Do not let it override syllabus constraints or forbidden concepts."
         )
+        if references_prompt_block:
+            context["prompt_block"] = f"{context['prompt_block']}\n\n{references_prompt_block}"
         return context
 
 

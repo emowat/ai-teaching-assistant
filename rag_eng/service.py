@@ -286,6 +286,22 @@ def _instructional_context_summary(
         summary["instructional_context_manual_week"] = settings.get(
             "manual_current_week_number"
         )
+    references = instructional_context.get("references") or {}
+    if isinstance(references, dict):
+        summary["instructional_context_references_runtime_enabled"] = references.get(
+            "runtime_enabled"
+        )
+        summary["instructional_context_references_applied"] = references.get("applied")
+        summary["instructional_context_references_reason"] = references.get("reason")
+        summary["instructional_context_reference_count"] = references.get(
+            "week_reference_count"
+        )
+        summary["instructional_context_prompt_reference_count"] = references.get(
+            "prompt_reference_count"
+        )
+        summary["instructional_context_retrieval_reference_count"] = references.get(
+            "retrieval_reference_count"
+        )
     return summary
 
 

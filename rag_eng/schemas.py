@@ -20,6 +20,7 @@ SectionMembershipRole = Literal["professor", "ta", "student"]
 TeachingPlanStatus = Literal["draft", "published", "archived"]
 WeekVisibilityStatus = Literal["hidden", "open", "closed"]
 WeekResolutionMode = Literal["manual", "date_driven"]
+WeekReferenceType = Literal["course_doc", "external_link", "assignment", "reading", "tooling"]
 RERANK_STRATEGY_CHOICES: tuple[str, ...] = (
     "similarity",
     "mmr_0.5",
@@ -422,6 +423,26 @@ class ProfessorTeachingPlanWeek(BaseModel):
     student_visibility_status: WeekVisibilityStatus = "hidden"
     available_from: str | None = None
     available_until: str | None = None
+    references: list["ProfessorTeachingPlanWeekReference"] = Field(default_factory=list)
+    created_at: str = ""
+    updated_at: str = ""
+
+
+class ProfessorTeachingPlanWeekReference(BaseModel):
+    """Professor-facing reference attached to a Teaching Plan week."""
+
+    reference_id: str
+    week_id: str
+    section_id: str
+    title: str = ""
+    reference_type: WeekReferenceType = "course_doc"
+    url: str = ""
+    course_document_key: str = ""
+    notes: str = ""
+    enabled: bool = True
+    include_in_prompt: bool = True
+    include_in_retrieval: bool = False
+    sort_order: int = 0
     created_at: str = ""
     updated_at: str = ""
 
@@ -498,6 +519,53 @@ class ProfessorTeachingPlanWeekUpdate(BaseModel):
         ):
             raise ValueError("At least one week field must be provided.")
         return self
+
+
+class ProfessorTeachingPlanWeekReferenceCreate(BaseModel):
+    """Payload used to create a reference within a Teaching Plan week."""
+
+    title: str = Field(min_length=1)
+    reference_type: WeekReferenceType = "course_doc"
+    url: str = ""
+    course_document_key: str = ""
+    notes: str = ""
+    enabled: bool = True
+    include_in_prompt: bool = True
+    include_in_retrieval: bool = False
+    sort_order: int = 0
+
+
+class ProfessorTeachingPlanWeekReferenceUpdate(BaseModel):
+    """Payload used to update a reference within a Teaching Plan week."""
+
+    title: str | None = None
+    reference_type: WeekReferenceType | None = None
+    url: str | None = None
+    course_document_key: str | None = None
+    notes: str | None = None
+    enabled: bool | None = None
+    include_in_prompt: bool | None = None
+    include_in_retrieval: bool | None = None
+    sort_order: int | None = None
+
+    @model_validator(mode="after")
+    def _validate_non_empty_update(self) -> "ProfessorTeachingPlanWeekReferenceUpdate":
+        if (
+            self.title is None
+            and self.reference_type is None
+            and self.url is None
+            and self.course_document_key is None
+            and self.notes is None
+            and self.enabled is None
+            and self.include_in_prompt is None
+            and self.include_in_retrieval is None
+            and self.sort_order is None
+        ):
+            raise ValueError("At least one reference field must be provided.")
+        return self
+
+
+ProfessorTeachingPlanWeek.model_rebuild()
 
 
 class SectionInstructionSettings(BaseModel):
