@@ -43,6 +43,7 @@ import { Avatar, Btn, Card, Stat, Tag } from "../design/atoms";
 import { chartTooltipStyle, D, mono } from "../design/tokens";
 import { Sidebar } from "../components/Sidebar";
 import { TopBar } from "../components/TopBar";
+import { TeachingPlanWeekReferencesEditor } from "../components/professor/TeachingPlanWeekReferencesEditor";
 import type { AppView } from "../types/navigation";
 import { getWeekLaunchUrl, isWeekLaunchReady } from "../data/codespaces";
 
@@ -690,6 +691,20 @@ export function ProfessorDashboard({
       return {
         ...current,
         weeks: current.weeks.map((week) => (week.week_id === weekId ? { ...week, ...patch } : week)),
+      };
+    });
+  };
+
+  const replaceTeachingPlanWeek = (nextWeek: ProfessorTeachingPlanWeek) => {
+    setTeachingPlan((current) => {
+      if (!current) {
+        return current;
+      }
+      return {
+        ...current,
+        weeks: current.weeks.map((week) =>
+          week.week_id === nextWeek.week_id ? nextWeek : week,
+        ),
       };
     });
   };
@@ -1478,6 +1493,13 @@ export function ProfessorDashboard({
                           />
                         </label>
                       </div>
+
+                      <TeachingPlanWeekReferencesEditor
+                        sectionId={selectedSectionId ?? ""}
+                        week={week}
+                        accessToken={accessToken}
+                        onWeekUpdated={replaceTeachingPlanWeek}
+                      />
 
                       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
                         <div style={{ fontSize: 11, color: D.muted }}>

@@ -44,10 +44,12 @@ from rag_eng.app_registry import (
     list_admin_sections,
     list_admin_users,
     create_professor_section_teaching_plan_week,
+    create_professor_section_teaching_plan_week_reference,
     get_professor_section_analytics,
     list_professor_section_launch_configs,
     get_professor_section_teaching_plan,
     get_professor_section_teaching_plan_week,
+    list_professor_section_teaching_plan_week_references,
     list_professor_section_students,
     list_professor_sections,
     require_student_section_access,
@@ -61,6 +63,8 @@ from rag_eng.app_registry import (
     update_admin_user,
     delete_professor_section_teaching_plan_week,
     update_professor_section_teaching_plan_week,
+    delete_professor_section_teaching_plan_week_reference,
+    update_professor_section_teaching_plan_week_reference,
     update_section_membership,
 )
 from rag_eng.course_admin import (
@@ -123,6 +127,9 @@ from rag_eng.schemas import (
     ProfessorTeachingPlanUpdate,
     ProfessorTeachingPlanWeek,
     ProfessorTeachingPlanWeekCreate,
+    ProfessorTeachingPlanWeekReference,
+    ProfessorTeachingPlanWeekReferenceCreate,
+    ProfessorTeachingPlanWeekReferenceUpdate,
     ProfessorTeachingPlanWeekUpdate,
     SectionInstructionSettings,
     SectionInstructionSettingsUpdate,
@@ -1003,6 +1010,90 @@ def create_app() -> FastAPI:
     ) -> ProfessorTeachingPlan:
         try:
             return delete_professor_section_teaching_plan_week(current_user, section_id, week_id)
+        except Exception as exc:
+            raise _app_registry_http_error(exc) from exc
+
+    @app.get(
+        "/professor/sections/{section_id}/teaching-plan/weeks/{week_id}/references",
+        response_model=list[ProfessorTeachingPlanWeekReference],
+        dependencies=[Depends(require_authenticated_user)],
+    )
+    def professor_list_section_teaching_plan_week_references(
+        section_id: str,
+        week_id: str,
+        current_user=Depends(require_authenticated_user),
+    ) -> list[ProfessorTeachingPlanWeekReference]:
+        try:
+            return list_professor_section_teaching_plan_week_references(
+                current_user,
+                section_id,
+                week_id,
+            )
+        except Exception as exc:
+            raise _app_registry_http_error(exc) from exc
+
+    @app.post(
+        "/professor/sections/{section_id}/teaching-plan/weeks/{week_id}/references",
+        response_model=ProfessorTeachingPlanWeek,
+        dependencies=[Depends(require_authenticated_user)],
+    )
+    def professor_create_section_teaching_plan_week_reference(
+        section_id: str,
+        week_id: str,
+        payload: ProfessorTeachingPlanWeekReferenceCreate,
+        current_user=Depends(require_authenticated_user),
+    ) -> ProfessorTeachingPlanWeek:
+        try:
+            return create_professor_section_teaching_plan_week_reference(
+                current_user,
+                section_id,
+                week_id,
+                payload,
+            )
+        except Exception as exc:
+            raise _app_registry_http_error(exc) from exc
+
+    @app.patch(
+        "/professor/sections/{section_id}/teaching-plan/weeks/{week_id}/references/{reference_id}",
+        response_model=ProfessorTeachingPlanWeek,
+        dependencies=[Depends(require_authenticated_user)],
+    )
+    def professor_update_section_teaching_plan_week_reference(
+        section_id: str,
+        week_id: str,
+        reference_id: str,
+        payload: ProfessorTeachingPlanWeekReferenceUpdate,
+        current_user=Depends(require_authenticated_user),
+    ) -> ProfessorTeachingPlanWeek:
+        try:
+            return update_professor_section_teaching_plan_week_reference(
+                current_user,
+                section_id,
+                week_id,
+                reference_id,
+                payload,
+            )
+        except Exception as exc:
+            raise _app_registry_http_error(exc) from exc
+
+    @app.delete(
+        "/professor/sections/{section_id}/teaching-plan/weeks/{week_id}/references/{reference_id}",
+        response_model=ProfessorTeachingPlanWeek,
+        dependencies=[Depends(require_authenticated_user)],
+    )
+    def professor_delete_section_teaching_plan_week_reference(
+        section_id: str,
+        week_id: str,
+        reference_id: str,
+        current_user=Depends(require_authenticated_user),
+    ) -> ProfessorTeachingPlanWeek:
+        try:
+            return delete_professor_section_teaching_plan_week_reference(
+                current_user,
+                section_id,
+                week_id,
+                reference_id,
+            )
         except Exception as exc:
             raise _app_registry_http_error(exc) from exc
 

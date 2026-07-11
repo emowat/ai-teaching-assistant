@@ -38,8 +38,10 @@ from rag_eng.schemas import (
     ProfessorTeachingPlanUpdate,
     ProfessorTeachingPlanWeek,
     ProfessorTeachingPlanWeekReference,
+    ProfessorTeachingPlanWeekReferenceCreate,
     ProfessorTeachingPlanWeekCreate,
     ProfessorTeachingPlanWeekUpdate,
+    ProfessorTeachingPlanWeekReferenceUpdate,
     SectionInstructionSettings,
     SectionInstructionSettingsUpdate,
     SectionLaunchConfig,
@@ -970,6 +972,42 @@ def _load_section_teaching_plan_week_reference_rows(
     )
 
 
+def _load_section_teaching_plan_week_reference_rows_for_week(
+    connection,
+    section_id: str,
+    week_id: str,
+) -> list[tuple[Any, ...]]:
+    return _fetch_all_rows(
+        connection,
+        """
+        SELECT
+          r.reference_id,
+          r.week_id,
+          r.section_id,
+          r.title,
+          r.reference_type,
+          r.url,
+          r.course_document_key,
+          r.notes,
+          r.enabled,
+          r.include_in_prompt,
+          r.include_in_retrieval,
+          r.sort_order,
+          r.created_at,
+          r.updated_at
+        FROM teaching_plan_week_references AS r
+        INNER JOIN teaching_plan_weeks AS tw
+          ON tw.week_id = r.week_id
+        INNER JOIN teaching_plans AS tp
+          ON tp.teaching_plan_id = tw.teaching_plan_id
+        WHERE tp.section_id = %s
+          AND tw.week_id = %s
+        ORDER BY r.sort_order ASC, r.reference_id ASC
+        """,
+        (section_id, week_id),
+    )
+
+
 def _teaching_plan_week_reference_from_row(
     row: tuple[Any, ...],
 ) -> ProfessorTeachingPlanWeekReference:
@@ -1111,6 +1149,52 @@ def _load_professor_section_teaching_plan(
         for week_row in week_rows
     ]
     return _teaching_plan_from_row(plan_row, weeks=weeks)
+
+
+def _load_professor_section_teaching_plan_week(
+    connection,
+    section_id: str,
+    week_id: str,
+) -> ProfessorTeachingPlanWeek | None:
+    row = _fetch_one_row(
+        connection,
+        """
+        SELECT
+          tw.week_id,
+          tw.teaching_plan_id,
+          tw.week_number,
+          tw.title,
+          tw.topic,
+          tw.start_date,
+          tw.end_date,
+          tw.learning_objectives,
+          tw.instructional_guidance,
+          tw.status,
+          tw.student_visibility_status,
+          tw.available_from,
+          tw.available_until,
+          tw.created_at,
+          tw.updated_at
+        FROM teaching_plan_weeks AS tw
+        INNER JOIN teaching_plans AS tp ON tp.teaching_plan_id = tw.teaching_plan_id
+        WHERE tp.section_id = %s
+          AND tw.week_id = %s
+        """,
+        (section_id, week_id),
+    )
+    if row is None:
+        return None
+
+    reference_rows = _load_section_teaching_plan_week_reference_rows_for_week(
+        connection,
+        section_id,
+        week_id,
+    )
+    references = [
+        _teaching_plan_week_reference_from_row(reference_row)
+        for reference_row in reference_rows
+    ]
+    return _teaching_plan_week_from_row(row, references=references)
 
 
 def _build_week_references_prompt_block(
@@ -2451,6 +2535,48 @@ def create_professor_section_teaching_plan_week(
         return _load_professor_section_teaching_plan(connection, section_id)
 
 
+def list_professor_section_teaching_plan_week_references(
+    current_user: CurrentUser,
+    section_id: str,
+    week_id: str,
+    *,
+    runtime: AppRegistryRuntimeConfig | None = None,
+) -> list[ProfessorTeachingPlanWeekReference]:
+    runtime = runtime or load_app_registry_runtime_config()
+    database_url = _require_database_url(runtime)
+    require_section_membership(
+        current_user,
+        section_id,
+        allowed_roles={"professor", "ta"},
+        runtime=runtime,
+    )
+
+    with _connect_postgres(database_url, runtime.connect_timeout_seconds) as connection:
+        week_row = _fetch_one_row(
+            connection,
+            """
+            SELECT tw.week_id
+            FROM teaching_plan_weeks AS tw
+            INNER JOIN teaching_plans AS tp ON tp.teaching_plan_id = tw.teaching_plan_id
+            WHERE tp.section_id = %s
+              AND tw.week_id = %s
+            """,
+            (section_id, week_id),
+        )
+        if week_row is None:
+            raise LookupError(f"Week {week_id} was not found for section {section_id}.")
+        reference_rows = _load_section_teaching_plan_week_reference_rows_for_week(
+            connection,
+            section_id,
+            week_id,
+        )
+
+    return [
+        _teaching_plan_week_reference_from_row(reference_row)
+        for reference_row in reference_rows
+    ]
+
+
 def get_professor_section_teaching_plan_week(
     current_user: CurrentUser,
     section_id: str,
@@ -2468,25 +2594,35 @@ def get_professor_section_teaching_plan_week(
     )
 
     with _connect_postgres(database_url, runtime.connect_timeout_seconds) as connection:
-        row = _fetch_one_row(
+        row = _load_professor_section_teaching_plan_week(connection, section_id, week_id)
+
+    if row is None:
+        raise LookupError(f"Week {week_id} was not found for section {section_id}.")
+    return row
+
+
+def create_professor_section_teaching_plan_week_reference(
+    current_user: CurrentUser,
+    section_id: str,
+    week_id: str,
+    payload: ProfessorTeachingPlanWeekReferenceCreate,
+    *,
+    runtime: AppRegistryRuntimeConfig | None = None,
+) -> ProfessorTeachingPlanWeek:
+    runtime = runtime or load_app_registry_runtime_config()
+    database_url = _require_database_url(runtime)
+    require_section_membership(
+        current_user,
+        section_id,
+        allowed_roles={"professor", "ta"},
+        runtime=runtime,
+    )
+
+    with _connect_postgres(database_url, runtime.connect_timeout_seconds) as connection:
+        week_row = _fetch_one_row(
             connection,
             """
-            SELECT
-              tw.week_id,
-              tw.teaching_plan_id,
-              tw.week_number,
-              tw.title,
-              tw.topic,
-              tw.start_date,
-              tw.end_date,
-              tw.learning_objectives,
-              tw.instructional_guidance,
-              tw.status,
-              tw.student_visibility_status,
-              tw.available_from,
-              tw.available_until,
-              tw.created_at,
-              tw.updated_at
+            SELECT tw.week_id
             FROM teaching_plan_weeks AS tw
             INNER JOIN teaching_plans AS tp ON tp.teaching_plan_id = tw.teaching_plan_id
             WHERE tp.section_id = %s
@@ -2494,10 +2630,189 @@ def get_professor_section_teaching_plan_week(
             """,
             (section_id, week_id),
         )
+        if week_row is None:
+            raise LookupError(f"Week {week_id} was not found for section {section_id}.")
 
-    if row is None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO teaching_plan_week_references (
+                  reference_id,
+                  week_id,
+                  section_id,
+                  title,
+                  reference_type,
+                  url,
+                  course_document_key,
+                  notes,
+                  enabled,
+                  include_in_prompt,
+                  include_in_retrieval,
+                  sort_order
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    str(uuid.uuid4()),
+                    week_id,
+                    section_id,
+                    _clean_text(payload.title),
+                    _clean_text(payload.reference_type) or "course_doc",
+                    _clean_text(payload.url),
+                    _clean_text(payload.course_document_key),
+                    _clean_text(payload.notes),
+                    bool(payload.enabled),
+                    bool(payload.include_in_prompt),
+                    bool(payload.include_in_retrieval),
+                    int(payload.sort_order or 0),
+                ),
+            )
+
+        plan_week = _load_professor_section_teaching_plan_week(connection, section_id, week_id)
+
+    if plan_week is None:
         raise LookupError(f"Week {week_id} was not found for section {section_id}.")
-    return _teaching_plan_week_from_row(row)
+    return plan_week
+
+
+def update_professor_section_teaching_plan_week_reference(
+    current_user: CurrentUser,
+    section_id: str,
+    week_id: str,
+    reference_id: str,
+    payload: ProfessorTeachingPlanWeekReferenceUpdate,
+    *,
+    runtime: AppRegistryRuntimeConfig | None = None,
+) -> ProfessorTeachingPlanWeek:
+    runtime = runtime or load_app_registry_runtime_config()
+    database_url = _require_database_url(runtime)
+    require_section_membership(
+        current_user,
+        section_id,
+        allowed_roles={"professor", "ta"},
+        runtime=runtime,
+    )
+
+    fields: list[str] = []
+    values: list[Any] = []
+    if payload.title is not None:
+        fields.append("title = %s")
+        values.append(_clean_text(payload.title))
+    if payload.reference_type is not None:
+        fields.append("reference_type = %s")
+        values.append(_clean_text(payload.reference_type))
+    if payload.url is not None:
+        fields.append("url = %s")
+        values.append(_clean_text(payload.url))
+    if payload.course_document_key is not None:
+        fields.append("course_document_key = %s")
+        values.append(_clean_text(payload.course_document_key))
+    if payload.notes is not None:
+        fields.append("notes = %s")
+        values.append(_clean_text(payload.notes))
+    if payload.enabled is not None:
+        fields.append("enabled = %s")
+        values.append(bool(payload.enabled))
+    if payload.include_in_prompt is not None:
+        fields.append("include_in_prompt = %s")
+        values.append(bool(payload.include_in_prompt))
+    if payload.include_in_retrieval is not None:
+        fields.append("include_in_retrieval = %s")
+        values.append(bool(payload.include_in_retrieval))
+    if payload.sort_order is not None:
+        fields.append("sort_order = %s")
+        values.append(int(payload.sort_order))
+
+    if not fields:
+        raise ValueError("At least one reference field must be provided.")
+
+    with _connect_postgres(database_url, runtime.connect_timeout_seconds) as connection:
+        existing = _fetch_one_row(
+            connection,
+            """
+            SELECT r.reference_id
+            FROM teaching_plan_week_references AS r
+            INNER JOIN teaching_plan_weeks AS tw ON tw.week_id = r.week_id
+            INNER JOIN teaching_plans AS tp ON tp.teaching_plan_id = tw.teaching_plan_id
+            WHERE tp.section_id = %s
+              AND tw.week_id = %s
+              AND r.reference_id = %s
+            """,
+            (section_id, week_id, reference_id),
+        )
+        if existing is None:
+            raise LookupError(
+                f"Reference {reference_id} was not found for week {week_id} in section {section_id}."
+            )
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                UPDATE teaching_plan_week_references
+                SET {", ".join(fields)},
+                    updated_at = now()
+                WHERE reference_id = %s
+                """,
+                tuple(values + [reference_id]),
+            )
+
+        plan_week = _load_professor_section_teaching_plan_week(connection, section_id, week_id)
+
+    if plan_week is None:
+        raise LookupError(f"Week {week_id} was not found for section {section_id}.")
+    return plan_week
+
+
+def delete_professor_section_teaching_plan_week_reference(
+    current_user: CurrentUser,
+    section_id: str,
+    week_id: str,
+    reference_id: str,
+    *,
+    runtime: AppRegistryRuntimeConfig | None = None,
+) -> ProfessorTeachingPlanWeek:
+    runtime = runtime or load_app_registry_runtime_config()
+    database_url = _require_database_url(runtime)
+    require_section_membership(
+        current_user,
+        section_id,
+        allowed_roles={"professor", "ta"},
+        runtime=runtime,
+    )
+
+    with _connect_postgres(database_url, runtime.connect_timeout_seconds) as connection:
+        existing = _fetch_one_row(
+            connection,
+            """
+            SELECT r.reference_id
+            FROM teaching_plan_week_references AS r
+            INNER JOIN teaching_plan_weeks AS tw ON tw.week_id = r.week_id
+            INNER JOIN teaching_plans AS tp ON tp.teaching_plan_id = tw.teaching_plan_id
+            WHERE tp.section_id = %s
+              AND tw.week_id = %s
+              AND r.reference_id = %s
+            """,
+            (section_id, week_id, reference_id),
+        )
+        if existing is None:
+            raise LookupError(
+                f"Reference {reference_id} was not found for week {week_id} in section {section_id}."
+            )
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                DELETE FROM teaching_plan_week_references
+                WHERE reference_id = %s
+                """,
+                (reference_id,),
+            )
+
+        plan_week = _load_professor_section_teaching_plan_week(connection, section_id, week_id)
+
+    if plan_week is None:
+        raise LookupError(f"Week {week_id} was not found for section {section_id}.")
+    return plan_week
 
 
 def update_professor_section_teaching_plan_week(

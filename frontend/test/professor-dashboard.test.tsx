@@ -14,11 +14,15 @@ import {
 import {
   archiveProfessorTeachingPlan,
   createProfessorTeachingPlanWeek,
+  createProfessorTeachingPlanWeekReference,
   deleteProfessorTeachingPlanWeek,
+  deleteProfessorTeachingPlanWeekReference,
   getProfessorTeachingPlan,
+  listProfessorTeachingPlanWeekReferences,
   publishProfessorTeachingPlan,
   saveProfessorTeachingPlan,
   updateProfessorTeachingPlanWeek,
+  updateProfessorTeachingPlanWeekReference,
 } from "../src/api/teachingPlanApi";
 import {
   getProfessorSectionInstructionSettings,
@@ -39,11 +43,15 @@ vi.mock("../src/api/sectionLaunchConfigsApi", () => ({
 vi.mock("../src/api/teachingPlanApi", () => ({
   archiveProfessorTeachingPlan: vi.fn(),
   createProfessorTeachingPlanWeek: vi.fn(),
+  createProfessorTeachingPlanWeekReference: vi.fn(),
   deleteProfessorTeachingPlanWeek: vi.fn(),
+  deleteProfessorTeachingPlanWeekReference: vi.fn(),
   getProfessorTeachingPlan: vi.fn(),
+  listProfessorTeachingPlanWeekReferences: vi.fn(),
   publishProfessorTeachingPlan: vi.fn(),
   saveProfessorTeachingPlan: vi.fn(),
   updateProfessorTeachingPlanWeek: vi.fn(),
+  updateProfessorTeachingPlanWeekReference: vi.fn(),
 }));
 
 vi.mock("../src/api/sectionInstructionSettingsApi", () => ({
@@ -63,8 +71,20 @@ const mockedSaveProfessorTeachingPlan = vi.mocked(saveProfessorTeachingPlan);
 const mockedPublishProfessorTeachingPlan = vi.mocked(publishProfessorTeachingPlan);
 const mockedArchiveProfessorTeachingPlan = vi.mocked(archiveProfessorTeachingPlan);
 const mockedCreateProfessorTeachingPlanWeek = vi.mocked(createProfessorTeachingPlanWeek);
+const mockedCreateProfessorTeachingPlanWeekReference = vi.mocked(
+  createProfessorTeachingPlanWeekReference,
+);
 const mockedUpdateProfessorTeachingPlanWeek = vi.mocked(updateProfessorTeachingPlanWeek);
+const mockedUpdateProfessorTeachingPlanWeekReference = vi.mocked(
+  updateProfessorTeachingPlanWeekReference,
+);
 const mockedDeleteProfessorTeachingPlanWeek = vi.mocked(deleteProfessorTeachingPlanWeek);
+const mockedDeleteProfessorTeachingPlanWeekReference = vi.mocked(
+  deleteProfessorTeachingPlanWeekReference,
+);
+const mockedListProfessorTeachingPlanWeekReferences = vi.mocked(
+  listProfessorTeachingPlanWeekReferences,
+);
 const mockedGetProfessorSectionInstructionSettings = vi.mocked(
   getProfessorSectionInstructionSettings,
 );
@@ -84,8 +104,12 @@ describe("ProfessorDashboard", () => {
     mockedPublishProfessorTeachingPlan.mockReset();
     mockedArchiveProfessorTeachingPlan.mockReset();
     mockedCreateProfessorTeachingPlanWeek.mockReset();
+    mockedCreateProfessorTeachingPlanWeekReference.mockReset();
     mockedUpdateProfessorTeachingPlanWeek.mockReset();
+    mockedUpdateProfessorTeachingPlanWeekReference.mockReset();
     mockedDeleteProfessorTeachingPlanWeek.mockReset();
+    mockedDeleteProfessorTeachingPlanWeekReference.mockReset();
+    mockedListProfessorTeachingPlanWeekReferences.mockReset();
     mockedGetProfessorSectionInstructionSettings.mockReset();
     mockedUpdateProfessorSectionInstructionSettings.mockReset();
     mockedGetProfessorSectionAnalytics.mockResolvedValue({
@@ -374,9 +398,8 @@ describe("ProfessorDashboard", () => {
 
     expect(await screen.findByLabelText("Teaching section")).toHaveValue("mit14-fall-001");
     expect(await screen.findByText("Section controls")).toBeInTheDocument();
-    expect(screen.getByText("open to students")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByLabelText("Open to students"));
+    fireEvent.click(screen.getAllByRole("checkbox")[0]);
     fireEvent.change(screen.getByLabelText("Week resolution mode"), {
       target: { value: "date_driven" },
     });
@@ -444,6 +467,7 @@ describe("ProfessorDashboard", () => {
           learning_objectives: ["Trace pointer lifetimes"],
           instructional_guidance: "Keep it concrete.",
           status: "draft",
+          references: [],
           created_at: "2026-06-20T00:00:00Z",
           updated_at: "2026-06-20T00:00:00Z",
         },
@@ -473,6 +497,7 @@ describe("ProfessorDashboard", () => {
           learning_objectives: ["Trace pointer lifetimes"],
           instructional_guidance: "Keep it concrete.",
           status: "draft",
+          references: [],
           created_at: "2026-06-20T00:00:00Z",
           updated_at: "2026-06-20T00:00:00Z",
         },
@@ -502,6 +527,7 @@ describe("ProfessorDashboard", () => {
           learning_objectives: ["Trace pointer lifetimes"],
           instructional_guidance: "Keep it concrete.",
           status: "draft",
+          references: [],
           created_at: "2026-06-20T00:00:00Z",
           updated_at: "2026-06-20T00:00:00Z",
         },
@@ -516,6 +542,7 @@ describe("ProfessorDashboard", () => {
           learning_objectives: [],
           instructional_guidance: "",
           status: "draft",
+          references: [],
           created_at: "2026-06-20T00:00:00Z",
           updated_at: "2026-06-20T00:00:00Z",
         },
@@ -545,6 +572,7 @@ describe("ProfessorDashboard", () => {
           learning_objectives: ["Trace pointer lifetimes"],
           instructional_guidance: "Keep it concrete.",
           status: "draft",
+          references: [],
           created_at: "2026-06-20T00:00:00Z",
           updated_at: "2026-06-20T00:00:00Z",
         },
@@ -621,6 +649,244 @@ describe("ProfessorDashboard", () => {
         "mit14-fall-001",
         "access-token-1",
         expect.objectContaining({ week_number: 2 }),
+      );
+    });
+  });
+
+  it("renders week references and persists reference updates", async () => {
+    mockedListProfessorSections.mockResolvedValue([
+      {
+        section_id: "mit14-fall-001",
+        course_id: "mit14",
+        course_display_name: "MIT 6.0014",
+        display_name: "Section A",
+        term: "Fall 2026",
+        is_active: true,
+        professor_count: 1,
+        ta_count: 0,
+        student_count: 1,
+        created_at: "2026-07-08T00:00:00Z",
+        updated_at: "2026-07-08T00:00:00Z",
+      },
+    ]);
+    mockedListProfessorSectionLaunchConfigs.mockResolvedValue([]);
+    mockedListProfessorSectionStudents.mockResolvedValue([]);
+    mockedGetProfessorTeachingPlan.mockResolvedValue({
+      teaching_plan_id: "plan-1",
+      section_id: "mit14-fall-001",
+      version: 1,
+      status: "draft",
+      title: "Pointer Safety",
+      summary: "Week-by-week plan",
+      created_by_user_id: "prof-1",
+      published_by_user_id: null,
+      published_at: null,
+      weeks: [
+        {
+          week_id: "week-1",
+          teaching_plan_id: "plan-1",
+          week_number: 1,
+          title: "C Basics",
+          topic: "Pointers",
+          start_date: null,
+          end_date: null,
+          learning_objectives: ["Trace pointer lifetimes"],
+          instructional_guidance: "Keep it concrete.",
+          status: "draft",
+          student_visibility_status: "hidden",
+          available_from: null,
+          available_until: null,
+          references: [
+            {
+              reference_id: "ref-1",
+              week_id: "week-1",
+              section_id: "mit14-fall-001",
+              title: "Lecture notes",
+              reference_type: "course_doc",
+              url: "",
+              course_document_key: "raw/rag_sources/week-1-notes.md",
+              notes: "Read before trying the homework.",
+              enabled: true,
+              include_in_prompt: true,
+              include_in_retrieval: false,
+              sort_order: 0,
+              created_at: "2026-06-20T00:00:00Z",
+              updated_at: "2026-06-20T00:00:00Z",
+            },
+          ],
+          created_at: "2026-06-20T00:00:00Z",
+          updated_at: "2026-06-20T00:00:00Z",
+        },
+      ],
+      created_at: "2026-06-20T00:00:00Z",
+      updated_at: "2026-06-20T00:00:00Z",
+    });
+    mockedUpdateProfessorTeachingPlanWeekReference.mockResolvedValue({
+      teaching_plan_id: "plan-1",
+      section_id: "mit14-fall-001",
+      version: 1,
+      status: "draft",
+      title: "Pointer Safety",
+      summary: "Week-by-week plan",
+      created_by_user_id: "prof-1",
+      published_by_user_id: null,
+      published_at: null,
+      weeks: [
+        {
+          week_id: "week-1",
+          teaching_plan_id: "plan-1",
+          week_number: 1,
+          title: "C Basics",
+          topic: "Pointers",
+          start_date: null,
+          end_date: null,
+          learning_objectives: ["Trace pointer lifetimes"],
+          instructional_guidance: "Keep it concrete.",
+          status: "draft",
+          student_visibility_status: "hidden",
+          available_from: null,
+          available_until: null,
+          references: [
+            {
+              reference_id: "ref-1",
+              week_id: "week-1",
+              section_id: "mit14-fall-001",
+              title: "Updated lecture notes",
+              reference_type: "course_doc",
+              url: "",
+              course_document_key: "raw/rag_sources/week-1-notes.md",
+              notes: "Now includes pointers and ownership.",
+              enabled: true,
+              include_in_prompt: true,
+              include_in_retrieval: true,
+              sort_order: 0,
+              created_at: "2026-06-20T00:00:00Z",
+              updated_at: "2026-06-20T00:00:00Z",
+            },
+          ],
+          created_at: "2026-06-20T00:00:00Z",
+          updated_at: "2026-06-20T00:00:00Z",
+        },
+      ],
+      created_at: "2026-06-20T00:00:00Z",
+      updated_at: "2026-06-20T00:00:00Z",
+    });
+    mockedCreateProfessorTeachingPlanWeekReference.mockResolvedValue({
+      teaching_plan_id: "plan-1",
+      section_id: "mit14-fall-001",
+      version: 1,
+      status: "draft",
+      title: "Pointer Safety",
+      summary: "Week-by-week plan",
+      created_by_user_id: "prof-1",
+      published_by_user_id: null,
+      published_at: null,
+      weeks: [
+        {
+          week_id: "week-1",
+          teaching_plan_id: "plan-1",
+          week_number: 1,
+          title: "C Basics",
+          topic: "Pointers",
+          start_date: null,
+          end_date: null,
+          learning_objectives: ["Trace pointer lifetimes"],
+          instructional_guidance: "Keep it concrete.",
+          status: "draft",
+          student_visibility_status: "hidden",
+          available_from: null,
+          available_until: null,
+          references: [
+            {
+              reference_id: "ref-1",
+              week_id: "week-1",
+              section_id: "mit14-fall-001",
+              title: "Updated lecture notes",
+              reference_type: "course_doc",
+              url: "",
+              course_document_key: "raw/rag_sources/week-1-notes.md",
+              notes: "Now includes pointers and ownership.",
+              enabled: true,
+              include_in_prompt: true,
+              include_in_retrieval: true,
+              sort_order: 0,
+              created_at: "2026-06-20T00:00:00Z",
+              updated_at: "2026-06-20T00:00:00Z",
+            },
+            {
+              reference_id: "ref-2",
+              week_id: "week-1",
+              section_id: "mit14-fall-001",
+              title: "Assignment brief",
+              reference_type: "assignment",
+              url: "",
+              course_document_key: "",
+              notes: "Optional practice task.",
+              enabled: true,
+              include_in_prompt: true,
+              include_in_retrieval: false,
+              sort_order: 1,
+              created_at: "2026-06-20T00:00:00Z",
+              updated_at: "2026-06-20T00:00:00Z",
+            },
+          ],
+          created_at: "2026-06-20T00:00:00Z",
+          updated_at: "2026-06-20T00:00:00Z",
+        },
+      ],
+      created_at: "2026-06-20T00:00:00Z",
+      updated_at: "2026-06-20T00:00:00Z",
+    });
+
+    render(
+      <ProfessorDashboard
+        onNavigate={vi.fn()}
+        allowedViews={["professor"]}
+        onSignOut={vi.fn()}
+        accessToken="access-token-1"
+      />,
+    );
+
+    expect(await screen.findByLabelText("Teaching section")).toHaveValue("mit14-fall-001");
+
+    screen.getByRole("button", { name: /teaching plan/i }).click();
+
+    expect(await screen.findByText("Week references")).toBeInTheDocument();
+    expect(screen.getByText("Lecture notes")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Reference title"), {
+      target: { value: "Updated lecture notes" },
+    });
+    fireEvent.click(screen.getAllByLabelText("Include in retrieval")[0]);
+    fireEvent.click(screen.getByRole("button", { name: /save reference/i }));
+
+    await waitFor(() => {
+      expect(mockedUpdateProfessorTeachingPlanWeekReference).toHaveBeenCalledWith(
+        "mit14-fall-001",
+        "week-1",
+        "ref-1",
+        "access-token-1",
+        expect.objectContaining({
+          title: "Updated lecture notes",
+          include_in_retrieval: true,
+        }),
+      );
+    });
+
+    fireEvent.change(screen.getByLabelText("New reference title"), {
+      target: { value: "Assignment brief" },
+    });
+    fireEvent.change(screen.getByLabelText("New reference sort order"), {
+      target: { value: "1" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /add reference/i }));
+
+    await waitFor(() => {
+      expect(mockedCreateProfessorTeachingPlanWeekReference).toHaveBeenCalledWith(
+        "mit14-fall-001",
+        "week-1",
+        "access-token-1",
+        expect.objectContaining({ title: "Assignment brief", sort_order: 1 }),
       );
     });
   });

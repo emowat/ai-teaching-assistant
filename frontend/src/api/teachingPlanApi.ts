@@ -2,6 +2,29 @@ import { apiDelete, apiGet, apiPatch, apiPost } from "./client.ts";
 
 export type TeachingPlanStatus = "draft" | "published" | "archived";
 export type SectionWeekVisibilityStatus = "hidden" | "open" | "closed";
+export type WeekReferenceType =
+  | "course_doc"
+  | "external_link"
+  | "assignment"
+  | "reading"
+  | "tooling";
+
+export interface ProfessorTeachingPlanWeekReference {
+  reference_id: string;
+  week_id: string;
+  section_id: string;
+  title: string;
+  reference_type: WeekReferenceType;
+  url: string;
+  course_document_key: string;
+  notes: string;
+  enabled: boolean;
+  include_in_prompt: boolean;
+  include_in_retrieval: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
 
 export interface ProfessorTeachingPlanWeek {
   week_id: string;
@@ -17,6 +40,7 @@ export interface ProfessorTeachingPlanWeek {
   student_visibility_status?: SectionWeekVisibilityStatus;
   available_from?: string | null;
   available_until?: string | null;
+  references: ProfessorTeachingPlanWeekReference[];
   created_at: string;
   updated_at: string;
 }
@@ -69,12 +93,48 @@ export interface ProfessorTeachingPlanWeekUpdatePayload {
   available_until?: string | null;
 }
 
+export interface ProfessorTeachingPlanWeekReferenceCreatePayload {
+  title: string;
+  reference_type?: WeekReferenceType;
+  url?: string;
+  course_document_key?: string;
+  notes?: string;
+  enabled?: boolean;
+  include_in_prompt?: boolean;
+  include_in_retrieval?: boolean;
+  sort_order?: number;
+}
+
+export interface ProfessorTeachingPlanWeekReferenceUpdatePayload {
+  title?: string;
+  reference_type?: WeekReferenceType;
+  url?: string;
+  course_document_key?: string;
+  notes?: string;
+  enabled?: boolean;
+  include_in_prompt?: boolean;
+  include_in_retrieval?: boolean;
+  sort_order?: number;
+}
+
 function teachingPlanPath(sectionId: string): string {
   return `/professor/sections/${encodeURIComponent(sectionId)}/teaching-plan`;
 }
 
 function teachingPlanWeekPath(sectionId: string, weekId: string): string {
   return `${teachingPlanPath(sectionId)}/weeks/${encodeURIComponent(weekId)}`;
+}
+
+function teachingPlanWeekReferencesPath(sectionId: string, weekId: string): string {
+  return `${teachingPlanWeekPath(sectionId, weekId)}/references`;
+}
+
+function teachingPlanWeekReferencePath(
+  sectionId: string,
+  weekId: string,
+  referenceId: string,
+): string {
+  return `${teachingPlanWeekReferencesPath(sectionId, weekId)}/${encodeURIComponent(referenceId)}`;
 }
 
 export function getProfessorTeachingPlan(
@@ -157,4 +217,54 @@ export function getProfessorTeachingPlanWeek(
   accessToken: string,
 ): Promise<ProfessorTeachingPlanWeek> {
   return apiGet<ProfessorTeachingPlanWeek>(teachingPlanWeekPath(sectionId, weekId), accessToken);
+}
+
+export function listProfessorTeachingPlanWeekReferences(
+  sectionId: string,
+  weekId: string,
+  accessToken: string,
+): Promise<ProfessorTeachingPlanWeekReference[]> {
+  return apiGet<ProfessorTeachingPlanWeekReference[]>(
+    teachingPlanWeekReferencesPath(sectionId, weekId),
+    accessToken,
+  );
+}
+
+export function createProfessorTeachingPlanWeekReference(
+  sectionId: string,
+  weekId: string,
+  accessToken: string,
+  payload: ProfessorTeachingPlanWeekReferenceCreatePayload,
+): Promise<ProfessorTeachingPlanWeek> {
+  return apiPost<ProfessorTeachingPlanWeekReferenceCreatePayload, ProfessorTeachingPlanWeek>(
+    teachingPlanWeekReferencesPath(sectionId, weekId),
+    payload,
+    accessToken,
+  );
+}
+
+export function updateProfessorTeachingPlanWeekReference(
+  sectionId: string,
+  weekId: string,
+  referenceId: string,
+  accessToken: string,
+  payload: ProfessorTeachingPlanWeekReferenceUpdatePayload,
+): Promise<ProfessorTeachingPlanWeek> {
+  return apiPatch<ProfessorTeachingPlanWeekReferenceUpdatePayload, ProfessorTeachingPlanWeek>(
+    teachingPlanWeekReferencePath(sectionId, weekId, referenceId),
+    payload,
+    accessToken,
+  );
+}
+
+export function deleteProfessorTeachingPlanWeekReference(
+  sectionId: string,
+  weekId: string,
+  referenceId: string,
+  accessToken: string,
+): Promise<ProfessorTeachingPlanWeek> {
+  return apiDelete<ProfessorTeachingPlanWeek>(
+    teachingPlanWeekReferencePath(sectionId, weekId, referenceId),
+    accessToken,
+  );
 }

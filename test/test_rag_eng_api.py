@@ -21,6 +21,7 @@ from rag_eng.schemas import (
     ProfessorSectionSummary,
     ProfessorTeachingPlan,
     ProfessorTeachingPlanWeek,
+    ProfessorTeachingPlanWeekReference,
     SectionInstructionSettings,
     SectionLaunchConfig,
     QueryResponse,
@@ -1251,6 +1252,33 @@ def test_professor_teaching_plan_routes_return_live_data(
         created_at="2026-06-20T00:00:00+00:00",
         updated_at="2026-06-20T00:00:00+00:00",
     )
+    reference = ProfessorTeachingPlanWeekReference(
+        reference_id="ref-1",
+        week_id="week-1",
+        section_id="mit14-fall-001",
+        title="Lecture notes",
+        reference_type="course_doc",
+        course_document_key="raw/rag_sources/week-1-notes.md",
+        notes="Read before trying the homework.",
+        enabled=True,
+        include_in_prompt=True,
+        include_in_retrieval=False,
+        sort_order=0,
+        created_at="2026-06-20T00:00:00+00:00",
+        updated_at="2026-06-20T00:00:00+00:00",
+    )
+    updated_reference = ProfessorTeachingPlanWeekReference(
+        **{**reference.model_dump(), "title": "Updated lecture notes", "notes": "Now includes pointers and ownership.", "include_in_retrieval": True}
+    )
+    week_with_reference = ProfessorTeachingPlanWeek(
+        **{**week.model_dump(), "references": [reference]}
+    )
+    updated_week_with_reference = ProfessorTeachingPlanWeek(
+        **{**week.model_dump(), "references": [updated_reference]}
+    )
+    empty_week = ProfessorTeachingPlanWeek(
+        **{**week.model_dump(), "references": []}
+    )
 
     monkeypatch.setattr("rag_eng.api.get_professor_section_teaching_plan", lambda *args, **kwargs: plan)
     monkeypatch.setattr(
@@ -1313,7 +1341,26 @@ def test_professor_teaching_plan_routes_return_live_data(
             updated_at="2026-06-20T00:00:00+00:00",
         ),
     )
-    monkeypatch.setattr("rag_eng.api.get_professor_section_teaching_plan_week", lambda *args, **kwargs: week)
+    monkeypatch.setattr(
+        "rag_eng.api.get_professor_section_teaching_plan_week",
+        lambda *args, **kwargs: week_with_reference,
+    )
+    monkeypatch.setattr(
+        "rag_eng.api.list_professor_section_teaching_plan_week_references",
+        lambda *args, **kwargs: [reference],
+    )
+    monkeypatch.setattr(
+        "rag_eng.api.create_professor_section_teaching_plan_week_reference",
+        lambda *args, **kwargs: week_with_reference,
+    )
+    monkeypatch.setattr(
+        "rag_eng.api.update_professor_section_teaching_plan_week_reference",
+        lambda *args, **kwargs: updated_week_with_reference,
+    )
+    monkeypatch.setattr(
+        "rag_eng.api.delete_professor_section_teaching_plan_week_reference",
+        lambda *args, **kwargs: empty_week,
+    )
     monkeypatch.setattr(
         "rag_eng.api.update_professor_section_teaching_plan_week",
         lambda *args, **kwargs: ProfessorTeachingPlan(
@@ -1368,6 +1415,32 @@ def test_professor_teaching_plan_routes_return_live_data(
         get_week_response = client.get(
             "/professor/sections/mit14-fall-001/teaching-plan/weeks/week-1"
         )
+        list_references_response = client.get(
+            "/professor/sections/mit14-fall-001/teaching-plan/weeks/week-1/references"
+        )
+        create_reference_response = client.post(
+            "/professor/sections/mit14-fall-001/teaching-plan/weeks/week-1/references",
+            json={
+                "title": "Lecture notes",
+                "reference_type": "course_doc",
+                "course_document_key": "raw/rag_sources/week-1-notes.md",
+                "notes": "Read before trying the homework.",
+                "include_in_prompt": True,
+                "include_in_retrieval": False,
+                "sort_order": 0,
+            },
+        )
+        patch_reference_response = client.patch(
+            "/professor/sections/mit14-fall-001/teaching-plan/weeks/week-1/references/ref-1",
+            json={
+                "title": "Updated lecture notes",
+                "notes": "Now includes pointers and ownership.",
+                "include_in_retrieval": True,
+            },
+        )
+        delete_reference_response = client.delete(
+            "/professor/sections/mit14-fall-001/teaching-plan/weeks/week-1/references/ref-1"
+        )
         patch_week_response = client.patch(
             "/professor/sections/mit14-fall-001/teaching-plan/weeks/week-1",
             json={"topic": "Pointers and stack memory"},
@@ -1384,6 +1457,10 @@ def test_professor_teaching_plan_routes_return_live_data(
     assert publish_response.status_code == 200
     assert create_week_response.status_code == 200
     assert get_week_response.status_code == 200
+    assert list_references_response.status_code == 200
+    assert create_reference_response.status_code == 200
+    assert patch_reference_response.status_code == 200
+    assert delete_reference_response.status_code == 200
     assert patch_week_response.status_code == 200
     assert delete_week_response.status_code == 200
     assert archive_response.status_code == 200
@@ -1391,6 +1468,10 @@ def test_professor_teaching_plan_routes_return_live_data(
     assert post_response.json()["title"] == "Pointer Safety"
     assert publish_response.json()["status"] == "published"
     assert get_week_response.json()["title"] == "C Basics"
+    assert list_references_response.json()[0]["title"] == "Lecture notes"
+    assert create_reference_response.json()["references"][0]["title"] == "Lecture notes"
+    assert patch_reference_response.json()["references"][0]["title"] == "Updated lecture notes"
+    assert delete_reference_response.json()["references"] == []
     assert patch_week_response.json()["weeks"][0]["topic"] == "Pointers and stack memory"
     assert delete_week_response.json()["weeks"] == []
 

@@ -19,6 +19,7 @@ from rag_eng.schemas import (
     ProfessorTeachingPlanUpdate,
     ProfessorTeachingPlanWeekCreate,
     ProfessorTeachingPlanWeekReferenceCreate,
+    ProfessorTeachingPlanWeekReferenceUpdate,
     ProfessorTeachingPlanWeekUpdate,
     ProfessorSectionAnalytics,
     SectionLaunchConfig,
@@ -874,6 +875,95 @@ class _FakeCursor:
                 self.rowcount = 1
             return
 
+        if sql.startswith(
+            "SELECT r.reference_id, r.week_id, r.section_id, r.title, r.reference_type, r.url, r.course_document_key, r.notes, r.enabled, r.include_in_prompt, r.include_in_retrieval, r.sort_order, r.created_at, r.updated_at FROM teaching_plan_week_references AS r INNER JOIN teaching_plan_weeks AS tw ON tw.week_id = r.week_id INNER JOIN teaching_plans AS tp ON tp.teaching_plan_id = tw.teaching_plan_id WHERE tp.section_id = %s AND tw.week_id = %s ORDER BY r.sort_order ASC, r.reference_id ASC"
+        ):
+            section_id, week_id = map(str, params)
+            rows = [
+                self._teaching_plan_week_reference_row(record)
+                for record in self.state.teaching_plan_week_references.values()
+                if str(record["section_id"]) == section_id and str(record["week_id"]) == week_id
+            ]
+            self._rows = sorted(rows, key=lambda row: (int(row[11]), str(row[0])))
+            return
+
+        if sql.startswith(
+            "SELECT r.reference_id FROM teaching_plan_week_references AS r INNER JOIN teaching_plan_weeks AS tw ON tw.week_id = r.week_id INNER JOIN teaching_plans AS tp ON tp.teaching_plan_id = tw.teaching_plan_id WHERE tp.section_id = %s AND tw.week_id = %s AND r.reference_id = %s"
+        ):
+            section_id, week_id, reference_id = map(str, params)
+            record = self.state.teaching_plan_week_references.get(reference_id)
+            if (
+                record is not None
+                and str(record["section_id"]) == section_id
+                and str(record["week_id"]) == week_id
+            ):
+                self._rows = [(reference_id,)]
+            return
+
+        if sql.startswith(
+            "INSERT INTO teaching_plan_week_references ( reference_id, week_id, section_id, title, reference_type, url, course_document_key, notes, enabled, include_in_prompt, include_in_retrieval, sort_order ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
+        ):
+            (
+                reference_id,
+                week_id,
+                section_id,
+                title,
+                reference_type,
+                url,
+                course_document_key,
+                notes,
+                enabled,
+                include_in_prompt,
+                include_in_retrieval,
+                sort_order,
+            ) = params
+            week_record = self.state.teaching_plan_weeks.get(str(week_id))
+            teaching_plan_id = None
+            if week_record is not None:
+                teaching_plan_id = str(week_record["teaching_plan_id"])
+            self.state.teaching_plan_week_references[str(reference_id)] = {
+                "reference_id": str(reference_id),
+                "week_id": str(week_id),
+                "section_id": str(section_id),
+                "teaching_plan_id": teaching_plan_id,
+                "title": str(title),
+                "reference_type": str(reference_type),
+                "url": str(url),
+                "course_document_key": str(course_document_key),
+                "notes": str(notes),
+                "enabled": bool(enabled),
+                "include_in_prompt": bool(include_in_prompt),
+                "include_in_retrieval": bool(include_in_retrieval),
+                "sort_order": int(sort_order),
+                "created_at": NOW,
+                "updated_at": NOW,
+            }
+            self.rowcount = 1
+            return
+
+        if sql.startswith("UPDATE teaching_plan_week_references SET"):
+            reference_id = str(params[-1])
+            record = self.state.teaching_plan_week_references.get(reference_id)
+            if record is None:
+                return
+            columns = [
+                match
+                for match in re.findall(r"(\w+)\s*=\s*%s", sql)
+                if match != "updated_at"
+            ]
+            for column, value in zip(columns, params[:-1]):
+                record[column] = value
+            record["updated_at"] = NOW
+            self.rowcount = 1
+            return
+
+        if sql.startswith("DELETE FROM teaching_plan_week_references WHERE reference_id = %s"):
+            reference_id = str(params[0])
+            if reference_id in self.state.teaching_plan_week_references:
+                del self.state.teaching_plan_week_references[reference_id]
+                self.rowcount = 1
+            return
+
         if sql.startswith("DELETE FROM section_launch_configs WHERE section_id = %s"):
             section_id = str(params[0])
             removed = len(self.state.launch_configs.get(section_id, []))
@@ -1670,6 +1760,141 @@ def test_professor_teaching_plan_loads_week_references_and_context(
     assert context["references"]["applied"] is True
     assert "Section_Week_References" in context["prompt_block"]
     assert "Lecture notes" in context["prompt_block"]
+
+
+def test_professor_teaching_plan_week_reference_crud_round_trip(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _state()
+    state.users["prof-1"] = _user(
+        user_id="prof-1",
+        email="prof@example.edu",
+        display_name="Professor",
+        primary_role="professor",
+        status="active",
+        cognito_sub="sub-prof",
+    )
+    state.sections["mit14-fall-001"] = _section(
+        section_id="mit14-fall-001",
+        display_name="MIT 6.0014 Section A",
+    )
+    state.memberships[("mit14-fall-001", "prof-1")] = _membership(
+        section_id="mit14-fall-001",
+        user_id="prof-1",
+        role_in_section="professor",
+    )
+    _patch_connection(monkeypatch, state)
+
+    app_registry.upsert_professor_section_teaching_plan(
+        CurrentUser(
+            cognito_sub="sub-prof",
+            email="prof@example.edu",
+            primary_role="professor",
+        ),
+        "mit14-fall-001",
+        ProfessorTeachingPlanUpdate(
+            title="Pointer Safety and Memory Basics",
+            summary="Week-by-week plan for the first half of the course.",
+        ),
+        runtime=_runtime(),
+    )
+    created = app_registry.create_professor_section_teaching_plan_week(
+        CurrentUser(
+            cognito_sub="sub-prof",
+            email="prof@example.edu",
+            primary_role="professor",
+        ),
+        "mit14-fall-001",
+        ProfessorTeachingPlanWeekCreate(
+            week_number=1,
+            title="C Basics",
+            topic="Functions, variables, and memory",
+            learning_objectives=["Understand pointer basics"],
+            instructional_guidance="Keep examples short and concrete.",
+            status="draft",
+            student_visibility_status="hidden",
+        ),
+        runtime=_runtime(),
+    )
+
+    created_week_id = created.weeks[0].week_id
+    listed_before = app_registry.list_professor_section_teaching_plan_week_references(
+        CurrentUser(
+            cognito_sub="sub-prof",
+            email="prof@example.edu",
+            primary_role="professor",
+        ),
+        "mit14-fall-001",
+        created_week_id,
+        runtime=_runtime(),
+    )
+    assert listed_before == []
+
+    created_week = app_registry.create_professor_section_teaching_plan_week_reference(
+        CurrentUser(
+            cognito_sub="sub-prof",
+            email="prof@example.edu",
+            primary_role="professor",
+        ),
+        "mit14-fall-001",
+        created_week_id,
+        ProfessorTeachingPlanWeekReferenceCreate(
+            title="Lecture notes",
+            reference_type="course_doc",
+            course_document_key="raw/rag_sources/week-1-notes.md",
+            notes="Read before trying the homework.",
+            include_in_prompt=True,
+            include_in_retrieval=False,
+            sort_order=0,
+        ),
+        runtime=_runtime(),
+    )
+    assert len(created_week.references) == 1
+    assert created_week.references[0].title == "Lecture notes"
+
+    listed_after_create = app_registry.list_professor_section_teaching_plan_week_references(
+        CurrentUser(
+            cognito_sub="sub-prof",
+            email="prof@example.edu",
+            primary_role="professor",
+        ),
+        "mit14-fall-001",
+        created_week_id,
+        runtime=_runtime(),
+    )
+    assert listed_after_create[0].course_document_key == "raw/rag_sources/week-1-notes.md"
+
+    updated_week = app_registry.update_professor_section_teaching_plan_week_reference(
+        CurrentUser(
+            cognito_sub="sub-prof",
+            email="prof@example.edu",
+            primary_role="professor",
+        ),
+        "mit14-fall-001",
+        created_week_id,
+        created_week.references[0].reference_id,
+        ProfessorTeachingPlanWeekReferenceUpdate(
+            title="Updated lecture notes",
+            notes="Now includes pointers and ownership.",
+            include_in_retrieval=True,
+        ),
+        runtime=_runtime(),
+    )
+    assert updated_week.references[0].title == "Updated lecture notes"
+    assert updated_week.references[0].include_in_retrieval is True
+
+    deleted_week = app_registry.delete_professor_section_teaching_plan_week_reference(
+        CurrentUser(
+            cognito_sub="sub-prof",
+            email="prof@example.edu",
+            primary_role="professor",
+        ),
+        "mit14-fall-001",
+        created_week_id,
+        created_week.references[0].reference_id,
+        runtime=_runtime(),
+    )
+    assert deleted_week.references == []
 
 
 def test_professor_instruction_settings_round_trip(

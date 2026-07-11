@@ -28,7 +28,7 @@ There are three auth patterns in the service today:
 | `GET /api/student/bootstrap`, `POST /api/student/chat`, `POST /api/student/telemetry`, `POST /api/student/feedback` | Cognito bearer token + active Aurora section membership; admin/professor roles may enter the student surface for mimic/smoke flows through active student, professor, or TA memberships |
 | `GET /professor/sections/{section_id}/launch-configs`, `PUT /professor/sections/{section_id}/launch-configs` | Cognito bearer token + active professor/TA membership for the section |
 | `GET /professor/sections/{section_id}/analytics` | Cognito bearer token + active professor/TA membership for the section |
-| `GET /professor/sections/{section_id}/teaching-plan`, `POST /professor/sections/{section_id}/teaching-plan`, `POST /professor/sections/{section_id}/teaching-plan/publish`, `POST /professor/sections/{section_id}/teaching-plan/archive`, `POST /professor/sections/{section_id}/teaching-plan/weeks`, `GET /professor/sections/{section_id}/teaching-plan/weeks/{week_id}`, `PATCH /professor/sections/{section_id}/teaching-plan/weeks/{week_id}`, `DELETE /professor/sections/{section_id}/teaching-plan/weeks/{week_id}` | Cognito bearer token + active professor/TA membership for the section |
+| `GET /professor/sections/{section_id}/teaching-plan`, `POST /professor/sections/{section_id}/teaching-plan`, `POST /professor/sections/{section_id}/teaching-plan/publish`, `POST /professor/sections/{section_id}/teaching-plan/archive`, `POST /professor/sections/{section_id}/teaching-plan/weeks`, `GET /professor/sections/{section_id}/teaching-plan/weeks/{week_id}`, `PATCH /professor/sections/{section_id}/teaching-plan/weeks/{week_id}`, `DELETE /professor/sections/{section_id}/teaching-plan/weeks/{week_id}`, `GET /professor/sections/{section_id}/teaching-plan/weeks/{week_id}/references`, `POST /professor/sections/{section_id}/teaching-plan/weeks/{week_id}/references`, `PATCH /professor/sections/{section_id}/teaching-plan/weeks/{week_id}/references/{reference_id}`, `DELETE /professor/sections/{section_id}/teaching-plan/weeks/{week_id}/references/{reference_id}` | Cognito bearer token + active professor/TA membership for the section |
 | most `/admin/*` routes | admin Cognito bearer token or `X-Admin-Token` |
 | `POST /admin/index/ensure`, `POST /admin/index/rebuild` | `X-Admin-Token` only |
 
@@ -100,6 +100,10 @@ routes accept either auth style.
 | `GET` | `/professor/sections/{section_id}/teaching-plan/weeks/{week_id}` | bearer | read one Teaching Plan week |
 | `PATCH` | `/professor/sections/{section_id}/teaching-plan/weeks/{week_id}` | bearer | update one Teaching Plan week |
 | `DELETE` | `/professor/sections/{section_id}/teaching-plan/weeks/{week_id}` | bearer | delete one Teaching Plan week |
+| `GET` | `/professor/sections/{section_id}/teaching-plan/weeks/{week_id}/references` | bearer | list week references |
+| `POST` | `/professor/sections/{section_id}/teaching-plan/weeks/{week_id}/references` | bearer | add a week reference |
+| `PATCH` | `/professor/sections/{section_id}/teaching-plan/weeks/{week_id}/references/{reference_id}` | bearer | update a week reference |
+| `DELETE` | `/professor/sections/{section_id}/teaching-plan/weeks/{week_id}/references/{reference_id}` | bearer | delete a week reference |
 | `POST` | `/api/diagnostics/input-guardrail` | none | public pre-RAG input-guardrail probe |
 | `POST` | `/api/diagnostics/rag` | none | public RAG-stage probe |
 | `POST` | `/api/diagnostics/output-guardrail` | none | public post-LLM guardrail probe |

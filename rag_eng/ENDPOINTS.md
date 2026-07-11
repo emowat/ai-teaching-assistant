@@ -92,6 +92,10 @@ and staff smoke flows.
 | `GET` | `/professor/sections/{section_id}/teaching-plan/weeks/{week_id}` | load one Teaching Plan week |
 | `PATCH` | `/professor/sections/{section_id}/teaching-plan/weeks/{week_id}` | update one Teaching Plan week |
 | `DELETE` | `/professor/sections/{section_id}/teaching-plan/weeks/{week_id}` | delete one Teaching Plan week |
+| `GET` | `/professor/sections/{section_id}/teaching-plan/weeks/{week_id}/references` | list week references |
+| `POST` | `/professor/sections/{section_id}/teaching-plan/weeks/{week_id}/references` | add a week reference |
+| `PATCH` | `/professor/sections/{section_id}/teaching-plan/weeks/{week_id}/references/{reference_id}` | update a week reference |
+| `DELETE` | `/professor/sections/{section_id}/teaching-plan/weeks/{week_id}/references/{reference_id}` | delete a week reference |
 
 Example bootstrap call:
 
@@ -126,6 +130,13 @@ curl -sS "$BASE_URL/api/student/chat" \
   "stream": false
 }
 JSON
+```
+
+Example professor week-reference list call:
+
+```bash
+curl -sS "$BASE_URL/professor/sections/mit14-fall-001/teaching-plan/weeks/week-1/references" \
+  -H "Authorization: Bearer $COGNITO_ACCESS_TOKEN" | jq .
 ```
 
 Example student telemetry call:
