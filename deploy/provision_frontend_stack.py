@@ -389,6 +389,7 @@ def _build_distribution_config(
                     },
                 },
                 "Compress": True,
+                "SmoothStreaming": False,
                 "CachePolicyId": cache_disabled_id,
                 "OriginRequestPolicyId": origin_request_policy_id,
             }
@@ -565,39 +566,134 @@ def _update_distribution(
     oac_id: str,
     spa_function_arn: str,
 ) -> dict[str, str]:
-    current = cloudfront.get_distribution_config(Id=distribution_id)
-    etag = current["ETag"]
-    distribution_config = copy.deepcopy(current["DistributionConfig"])
-
-    for origin in distribution_config.get("Origins", {}).get("Items", []):
-        if origin.get("Id") == "rag-eng-alb":
-            origin.setdefault("CustomOriginConfig", {})[
-                "OriginProtocolPolicy"
-            ] = config.frontend_web.cloudfront.origin_protocol_policy
-            break
-    else:
-        raise RuntimeError("Unable to find rag-eng-alb origin in CloudFront config.")
-
-    default_behavior = distribution_config.get("DefaultCacheBehavior")
-    if not isinstance(default_behavior, dict):
-        raise RuntimeError("Unable to find default cache behavior in CloudFront config.")
-    default_behavior.update(_cloudfront_function_association(spa_function_arn))
-
-    distribution_config["CallerReference"] = current["DistributionConfig"][
-        "CallerReference"
-    ]
-
-    response = cloudfront.update_distribution(
-        Id=distribution_id,
-        IfMatch=etag,
-        DistributionConfig=distribution_config,
+    # Fetch the managed policy IDs needed to rebuild CacheBehaviors.
+    cache_disabled_id = _find_managed_policy_id(
+        cloudfront,
+        policy_kind="cache",
+        policy_name=MANAGED_CACHE_POLICY_NAMES["disabled"],
     )
-    distribution = response["Distribution"]
-    return {
-        "id": distribution["Id"],
-        "domain_name": distribution["DomainName"],
-        "status": distribution["Status"],
+    cache_optimized_id = _find_managed_policy_id(
+        cloudfront,
+        policy_kind="cache",
+        policy_name=MANAGED_CACHE_POLICY_NAMES["cached"],
+    )
+    origin_request_policy_id = _find_managed_policy_id(
+        cloudfront,
+        policy_kind="origin_request",
+        policy_name=MANAGED_ORIGIN_REQUEST_POLICY_NAMES[
+            "all_viewer_except_host_header"
+        ],
+    )
+
+    # Build the desired CacheBehaviors list from deployment.yaml.
+    frontend = config.frontend_web
+    _empty_trusted = {"Enabled": False, "Quantity": 0}
+    _empty_lambda = {"Quantity": 0}
+    _empty_functions = {"Quantity": 0}
+    _grpc_off = {"Enabled": False}
+
+    api_behaviors = []
+    for path_pattern in frontend.cloudfront.api_path_patterns:
+        api_behaviors.append(
+            {
+                "PathPattern": path_pattern,
+                "TargetOriginId": "rag-eng-alb",
+                "TrustedSigners": _empty_trusted,
+                "TrustedKeyGroups": _empty_trusted,
+                "ViewerProtocolPolicy": "redirect-to-https",
+                "AllowedMethods": {
+                    "Quantity": 7,
+                    "Items": [
+                        "GET", "HEAD", "OPTIONS",
+                        "PUT", "POST", "PATCH", "DELETE",
+                    ],
+                    "CachedMethods": {
+                        "Quantity": 2,
+                        "Items": ["GET", "HEAD"],
+                    },
+                },
+                "SmoothStreaming": False,
+                "Compress": True,
+                "LambdaFunctionAssociations": _empty_lambda,
+                "FunctionAssociations": _empty_functions,
+                "FieldLevelEncryptionId": "",
+                "CachePolicyId": cache_disabled_id,
+                "OriginRequestPolicyId": origin_request_policy_id,
+                "GrpcConfig": _grpc_off,
+            }
+        )
+    assets_behavior = {
+        "PathPattern": "/assets/*",
+        "TargetOriginId": "frontend-s3",
+        "TrustedSigners": _empty_trusted,
+        "TrustedKeyGroups": _empty_trusted,
+        "ViewerProtocolPolicy": "redirect-to-https",
+        "AllowedMethods": {
+            "Quantity": 2,
+            "Items": ["GET", "HEAD"],
+            "CachedMethods": {"Quantity": 2, "Items": ["GET", "HEAD"]},
+        },
+        "SmoothStreaming": False,
+        "Compress": True,
+        "LambdaFunctionAssociations": _empty_lambda,
+        "FunctionAssociations": _empty_functions,
+        "FieldLevelEncryptionId": "",
+        "CachePolicyId": cache_optimized_id,
+        "GrpcConfig": _grpc_off,
     }
+    desired_behaviors = [assets_behavior] + api_behaviors
+
+    # Retry once on PreconditionFailed — transient if a recent invalidation
+    # bumped the ETag between our get_distribution_config and update_distribution.
+    for attempt in range(2):
+        current = cloudfront.get_distribution_config(Id=distribution_id)
+        etag = current["ETag"]
+
+        # Use the live config as the base so we preserve Logging, WAF,
+        # WebACLId, and any other live settings we don't manage.
+        distribution_config = copy.deepcopy(current["DistributionConfig"])
+
+        # Sync CacheBehaviors from deployment.yaml.
+        distribution_config["CacheBehaviors"] = {
+            "Quantity": len(desired_behaviors),
+            "Items": desired_behaviors,
+        }
+
+        # Update ALB origin protocol policy.
+        for origin in distribution_config.get("Origins", {}).get("Items", []):
+            if origin.get("Id") == "rag-eng-alb":
+                origin.setdefault("CustomOriginConfig", {})[
+                    "OriginProtocolPolicy"
+                ] = frontend.cloudfront.origin_protocol_policy
+                break
+
+        # Update the SPA CloudFront Function on the default behavior.
+        default_behavior = distribution_config.get("DefaultCacheBehavior")
+        if isinstance(default_behavior, dict):
+            default_behavior.update(_cloudfront_function_association(spa_function_arn))
+
+        try:
+            response = cloudfront.update_distribution(
+                Id=distribution_id,
+                IfMatch=etag,
+                DistributionConfig=distribution_config,
+            )
+            distribution = response["Distribution"]
+            return {
+                "id": distribution["Id"],
+                "domain_name": distribution["DomainName"],
+                "status": distribution["Status"],
+            }
+        except ClientError as exc:
+            code = exc.response.get("Error", {}).get("Code", "")
+            if code == "PreconditionFailed" and attempt == 0:
+                print(
+                    "  [warn] CloudFront ETag was stale (PreconditionFailed) — "
+                    "retrying with fresh ETag …"
+                )
+                continue
+            raise
+    raise RuntimeError("_update_distribution: exhausted retries")  # unreachable
 
 
 def _ensure_distribution(
