@@ -38,6 +38,8 @@ from rag_eng.schemas import (
     ProfessorTeachingPlanWeek,
     ProfessorTeachingPlanWeekCreate,
     ProfessorTeachingPlanWeekUpdate,
+    SectionInstructionSettings,
+    SectionInstructionSettingsUpdate,
     SectionLaunchConfig,
     SectionMembershipSummary,
 )
@@ -292,6 +294,35 @@ def _student_section_from_row(
     )
 
 
+def _section_instruction_settings_from_row(
+    row: tuple[Any, ...],
+) -> SectionInstructionSettings:
+    (
+        section_id,
+        student_access_enabled,
+        week_resolution_mode,
+        manual_current_week_number,
+        teaching_plan_prompt_enabled,
+        references_prompt_enabled,
+        references_retrieval_enabled,
+        created_at,
+        updated_at,
+    ) = row[:9]
+    return SectionInstructionSettings(
+        section_id=_clean_text(section_id),
+        student_access_enabled=bool(student_access_enabled),
+        week_resolution_mode=_clean_text(week_resolution_mode) or "manual",
+        manual_current_week_number=(
+            int(manual_current_week_number) if manual_current_week_number is not None else None
+        ),
+        teaching_plan_prompt_enabled=bool(teaching_plan_prompt_enabled),
+        references_prompt_enabled=bool(references_prompt_enabled),
+        references_retrieval_enabled=bool(references_retrieval_enabled),
+        created_at=_format_timestamp(created_at),
+        updated_at=_format_timestamp(updated_at),
+    )
+
+
 def _fetch_one_row(connection, query: str, params: tuple[Any, ...]) -> tuple[Any, ...] | None:
     with connection.cursor() as cursor:
         cursor.execute(query, params)
@@ -499,6 +530,30 @@ def _load_section_by_id(connection, section_id: str) -> tuple[Any, ...] | None:
     )
 
 
+def _load_section_instruction_settings_row(
+    connection,
+    section_id: str,
+) -> tuple[Any, ...] | None:
+    return _fetch_one_row(
+        connection,
+        """
+        SELECT
+          section_id,
+          student_access_enabled,
+          week_resolution_mode,
+          manual_current_week_number,
+          teaching_plan_prompt_enabled,
+          references_prompt_enabled,
+          references_retrieval_enabled,
+          created_at,
+          updated_at
+        FROM section_instruction_settings
+        WHERE section_id = %s
+        """,
+        (section_id,),
+    )
+
+
 def _load_section_memberships_by_section(
     connection,
     section_id: str,
@@ -688,10 +743,12 @@ def _load_student_section_rows(
         FROM section_memberships AS sm
         INNER JOIN sections AS s ON s.section_id = sm.section_id
         INNER JOIN courses AS c ON c.course_id = s.course_id
+        LEFT JOIN section_instruction_settings AS sis ON sis.section_id = s.section_id
         WHERE sm.user_id = %s
           AND sm.role_in_section = 'student'
           AND sm.status = 'active'
           AND s.is_active = TRUE
+          AND COALESCE(sis.student_access_enabled, TRUE) = TRUE
         ORDER BY s.section_id ASC
         """
     else:
@@ -709,10 +766,12 @@ def _load_student_section_rows(
         FROM section_memberships AS sm
         INNER JOIN sections AS s ON s.section_id = sm.section_id
         INNER JOIN courses AS c ON c.course_id = s.course_id
+        LEFT JOIN section_instruction_settings AS sis ON sis.section_id = s.section_id
         WHERE sm.user_id = %s
           AND sm.role_in_section IN ('student', 'professor', 'ta')
           AND sm.status = 'active'
           AND s.is_active = TRUE
+          AND COALESCE(sis.student_access_enabled, TRUE) = TRUE
         ORDER BY s.section_id ASC
         """
     return _fetch_all_rows(connection, sql, (user_id,))
@@ -830,6 +889,9 @@ def _load_section_teaching_plan_week_rows(
           learning_objectives,
           instructional_guidance,
           status,
+          student_visibility_status,
+          available_from,
+          available_until,
           created_at,
           updated_at
         FROM teaching_plan_weeks
@@ -852,9 +914,12 @@ def _teaching_plan_week_from_row(row: tuple[Any, ...]) -> ProfessorTeachingPlanW
         learning_objectives,
         instructional_guidance,
         status,
+        student_visibility_status,
+        available_from,
+        available_until,
         created_at,
         updated_at,
-    ) = row[:12]
+    ) = row[:15]
     return ProfessorTeachingPlanWeek(
         week_id=_clean_text(week_id),
         teaching_plan_id=_clean_text(teaching_plan_id),
@@ -866,6 +931,9 @@ def _teaching_plan_week_from_row(row: tuple[Any, ...]) -> ProfessorTeachingPlanW
         learning_objectives=_json_list_from_value(learning_objectives),
         instructional_guidance=_clean_text(instructional_guidance),
         status=_clean_text(status) or "draft",
+        student_visibility_status=_clean_text(student_visibility_status) or "hidden",
+        available_from=_format_timestamp(available_from) or None,
+        available_until=_format_timestamp(available_until) or None,
         created_at=_format_timestamp(created_at),
         updated_at=_format_timestamp(updated_at),
     )
@@ -1080,6 +1148,31 @@ def require_section_membership(
     if _clean_text(status) != "active" or _clean_text(role_in_section) not in allowed:
         raise MembershipAccessDeniedError(
             f"User does not have an active permitted membership for section {section_id}."
+        )
+    return app_user
+
+
+def require_student_section_access(
+    current_user: CurrentUser,
+    section_id: str,
+    *,
+    runtime: AppRegistryRuntimeConfig | None = None,
+) -> dict[str, Any]:
+    """Ensure a student-surface request is allowed for the requested section."""
+    runtime = runtime or load_app_registry_runtime_config()
+    database_url = _require_database_url(runtime)
+    app_user = require_section_membership(
+        current_user,
+        section_id,
+        allowed_roles=student_surface_allowed_roles(current_user.primary_role),
+        runtime=runtime,
+    )
+
+    with _connect_postgres(database_url, runtime.connect_timeout_seconds) as connection:
+        row = _load_section_instruction_settings_row(connection, section_id)
+    if row is not None and not bool(row[1]):
+        raise MembershipAccessDeniedError(
+            f"Student access is paused for section {section_id}."
         )
     return app_user
 
@@ -1842,6 +1935,93 @@ def archive_professor_section_teaching_plan(
         return _load_professor_section_teaching_plan(connection, section_id)
 
 
+def get_professor_section_instruction_settings(
+    current_user: CurrentUser,
+    section_id: str,
+    *,
+    runtime: AppRegistryRuntimeConfig | None = None,
+) -> SectionInstructionSettings:
+    runtime = runtime or load_app_registry_runtime_config()
+    database_url = _require_database_url(runtime)
+    require_section_membership(
+        current_user,
+        section_id,
+        allowed_roles={"professor", "ta"},
+        runtime=runtime,
+    )
+
+    with _connect_postgres(database_url, runtime.connect_timeout_seconds) as connection:
+        row = _load_section_instruction_settings_row(connection, section_id)
+
+    if row is None:
+        return SectionInstructionSettings(section_id=section_id)
+    return _section_instruction_settings_from_row(row)
+
+
+def upsert_professor_section_instruction_settings(
+    current_user: CurrentUser,
+    section_id: str,
+    payload: SectionInstructionSettingsUpdate,
+    *,
+    runtime: AppRegistryRuntimeConfig | None = None,
+) -> SectionInstructionSettings:
+    runtime = runtime or load_app_registry_runtime_config()
+    database_url = _require_database_url(runtime)
+    require_section_membership(
+        current_user,
+        section_id,
+        allowed_roles={"professor", "ta"},
+        runtime=runtime,
+    )
+
+    with _connect_postgres(database_url, runtime.connect_timeout_seconds) as connection:
+        current_row = _load_section_instruction_settings_row(connection, section_id)
+        settings = (
+            _section_instruction_settings_from_row(current_row)
+            if current_row is not None
+            else SectionInstructionSettings(section_id=section_id)
+        )
+        merged = settings.model_dump()
+        merged.update(payload.model_dump(exclude_unset=True))
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO section_instruction_settings (
+                  section_id,
+                  student_access_enabled,
+                  week_resolution_mode,
+                  manual_current_week_number,
+                  teaching_plan_prompt_enabled,
+                  references_prompt_enabled,
+                  references_retrieval_enabled
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (section_id) DO UPDATE SET
+                  student_access_enabled = EXCLUDED.student_access_enabled,
+                  week_resolution_mode = EXCLUDED.week_resolution_mode,
+                  manual_current_week_number = EXCLUDED.manual_current_week_number,
+                  teaching_plan_prompt_enabled = EXCLUDED.teaching_plan_prompt_enabled,
+                  references_prompt_enabled = EXCLUDED.references_prompt_enabled,
+                  references_retrieval_enabled = EXCLUDED.references_retrieval_enabled,
+                  updated_at = now()
+                """,
+                (
+                    section_id,
+                    bool(merged["student_access_enabled"]),
+                    _clean_text(merged["week_resolution_mode"]) or "manual",
+                    merged["manual_current_week_number"],
+                    bool(merged["teaching_plan_prompt_enabled"]),
+                    bool(merged["references_prompt_enabled"]),
+                    bool(merged["references_retrieval_enabled"]),
+                ),
+            )
+
+    with _connect_postgres(database_url, runtime.connect_timeout_seconds) as connection:
+        row = _load_section_instruction_settings_row(connection, section_id)
+    return _section_instruction_settings_from_row(row) if row is not None else SectionInstructionSettings(section_id=section_id)
+
+
 def create_professor_section_teaching_plan_week(
     current_user: CurrentUser,
     section_id: str,
@@ -1892,9 +2072,12 @@ def create_professor_section_teaching_plan_week(
                   end_date,
                   learning_objectives,
                   instructional_guidance,
-                  status
+                  status,
+                  student_visibility_status,
+                  available_from,
+                  available_until
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s)
                 """,
                 (
                     str(uuid.uuid4()),
@@ -1907,6 +2090,9 @@ def create_professor_section_teaching_plan_week(
                     json.dumps(payload.learning_objectives or []),
                     _clean_text(payload.instructional_guidance),
                     _clean_text(payload.status) or "draft",
+                    _clean_text(payload.student_visibility_status) or "hidden",
+                    payload.available_from or None,
+                    payload.available_until or None,
                 ),
             )
 
@@ -1944,6 +2130,9 @@ def get_professor_section_teaching_plan_week(
               tw.learning_objectives,
               tw.instructional_guidance,
               tw.status,
+              tw.student_visibility_status,
+              tw.available_from,
+              tw.available_until,
               tw.created_at,
               tw.updated_at
             FROM teaching_plan_weeks AS tw
@@ -2002,6 +2191,15 @@ def update_professor_section_teaching_plan_week(
     if payload.status is not None:
         fields.append("status = %s")
         values.append(_clean_text(payload.status))
+    if payload.student_visibility_status is not None:
+        fields.append("student_visibility_status = %s")
+        values.append(_clean_text(payload.student_visibility_status))
+    if payload.available_from is not None:
+        fields.append("available_from = %s")
+        values.append(payload.available_from or None)
+    if payload.available_until is not None:
+        fields.append("available_until = %s")
+        values.append(payload.available_until or None)
 
     if not fields:
         raise ValueError("At least one week field must be provided.")

@@ -50,10 +50,13 @@ from rag_eng.app_registry import (
     list_professor_section_students,
     list_professor_sections,
     require_section_membership,
+    require_student_section_access,
     sync_application_user,
     replace_professor_section_launch_configs,
     publish_professor_section_teaching_plan,
+    get_professor_section_instruction_settings,
     upsert_professor_section_teaching_plan,
+    upsert_professor_section_instruction_settings,
     student_surface_allowed_roles,
     update_admin_section,
     update_admin_user,
@@ -122,6 +125,8 @@ from rag_eng.schemas import (
     ProfessorTeachingPlanWeek,
     ProfessorTeachingPlanWeekCreate,
     ProfessorTeachingPlanWeekUpdate,
+    SectionInstructionSettings,
+    SectionInstructionSettingsUpdate,
     SectionLaunchConfig,
     OutputGuardrailDiagnosticResponse,
     OutputGuardrailReviewRequest,
@@ -796,6 +801,35 @@ def create_app() -> FastAPI:
             raise _app_registry_http_error(exc) from exc
 
     @app.get(
+        "/professor/sections/{section_id}/instruction-settings",
+        response_model=SectionInstructionSettings,
+        dependencies=[Depends(require_authenticated_user)],
+    )
+    def professor_get_section_instruction_settings(
+        section_id: str,
+        current_user=Depends(require_authenticated_user),
+    ) -> SectionInstructionSettings:
+        try:
+            return get_professor_section_instruction_settings(current_user, section_id)
+        except Exception as exc:
+            raise _app_registry_http_error(exc) from exc
+
+    @app.patch(
+        "/professor/sections/{section_id}/instruction-settings",
+        response_model=SectionInstructionSettings,
+        dependencies=[Depends(require_authenticated_user)],
+    )
+    def professor_update_section_instruction_settings(
+        section_id: str,
+        payload: SectionInstructionSettingsUpdate,
+        current_user=Depends(require_authenticated_user),
+    ) -> SectionInstructionSettings:
+        try:
+            return upsert_professor_section_instruction_settings(current_user, section_id, payload)
+        except Exception as exc:
+            raise _app_registry_http_error(exc) from exc
+
+    @app.get(
         "/professor/sections/{section_id}/teaching-plan",
         response_model=ProfessorTeachingPlan,
         dependencies=[Depends(require_authenticated_user)],
@@ -1243,10 +1277,9 @@ def create_app() -> FastAPI:
             )
 
         try:
-            app_user = require_section_membership(
+            app_user = require_student_section_access(
                 current_user,
                 payload.section_id,
-                allowed_roles=student_surface_allowed_roles(current_user.primary_role),
             )
         except Exception as exc:
             raise _app_registry_http_error(exc) from exc
@@ -1295,10 +1328,9 @@ def create_app() -> FastAPI:
             )
 
         try:
-            app_user = require_section_membership(
+            app_user = require_student_section_access(
                 current_user,
                 payload.section_id,
-                allowed_roles=student_surface_allowed_roles(current_user.primary_role),
             )
         except Exception as exc:
             raise _app_registry_http_error(exc) from exc
@@ -1343,10 +1375,9 @@ def create_app() -> FastAPI:
             )
 
         try:
-            app_user = require_section_membership(
+            app_user = require_student_section_access(
                 current_user,
                 payload.section_id,
-                allowed_roles=student_surface_allowed_roles(current_user.primary_role),
             )
         except Exception as exc:
             raise _app_registry_http_error(exc) from exc

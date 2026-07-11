@@ -1,6 +1,7 @@
 import { apiDelete, apiGet, apiPatch, apiPost } from "./client.ts";
 
 export type TeachingPlanStatus = "draft" | "published" | "archived";
+export type SectionWeekVisibilityStatus = "hidden" | "open" | "closed";
 
 export interface ProfessorTeachingPlanWeek {
   week_id: string;
@@ -13,6 +14,9 @@ export interface ProfessorTeachingPlanWeek {
   learning_objectives: string[];
   instructional_guidance: string;
   status: TeachingPlanStatus;
+  student_visibility_status?: SectionWeekVisibilityStatus;
+  available_from?: string | null;
+  available_until?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -46,6 +50,9 @@ export interface ProfessorTeachingPlanWeekCreatePayload {
   learning_objectives?: string[];
   instructional_guidance?: string;
   status?: TeachingPlanStatus;
+  student_visibility_status?: SectionWeekVisibilityStatus;
+  available_from?: string | null;
+  available_until?: string | null;
 }
 
 export interface ProfessorTeachingPlanWeekUpdatePayload {
@@ -57,6 +64,9 @@ export interface ProfessorTeachingPlanWeekUpdatePayload {
   learning_objectives?: string[];
   instructional_guidance?: string;
   status?: TeachingPlanStatus;
+  student_visibility_status?: SectionWeekVisibilityStatus;
+  available_from?: string | null;
+  available_until?: string | null;
 }
 
 function teachingPlanPath(sectionId: string): string {

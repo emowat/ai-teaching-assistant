@@ -309,7 +309,10 @@ def build_gradio_app(settings: Settings | None = None) -> gr.Blocks:
     """Single Gradio app with diagnostic tabs, mounted once at /gradio."""
     runtime = settings or get_settings()
 
-    with gr.Blocks(title="Backend Diagnostic Console") as demo:
+    # Disable Gradio's background analytics/version-check thread so app
+    # construction stays deterministic in tests and does not start extra network
+    # work in the production console.
+    with gr.Blocks(title="Backend Diagnostic Console", analytics_enabled=False) as demo:
         gr.Markdown("# Backend Diagnostic Console")
 
         with gr.Tab("Input Guardrail"):

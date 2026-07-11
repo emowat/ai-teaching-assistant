@@ -33,6 +33,7 @@ class _State:
     users: dict[str, dict[str, object]]
     sections: dict[str, dict[str, object]]
     memberships: dict[tuple[str, str], dict[str, object]]
+    section_instruction_settings: dict[str, dict[str, object]]
     launch_configs: dict[str, list[dict[str, object]]]
     teaching_plans: dict[str, dict[str, object]]
     teaching_plan_weeks: dict[str, dict[str, object]]
@@ -195,6 +196,22 @@ class _FakeCursor:
             record.get("learning_objectives", []),
             record.get("instructional_guidance", ""),
             record.get("status", "draft"),
+            record.get("student_visibility_status", "hidden"),
+            record.get("available_from"),
+            record.get("available_until"),
+            record["created_at"],
+            record["updated_at"],
+        )
+
+    def _section_instruction_settings_row(self, record: dict[str, object]) -> tuple[object, ...]:
+        return (
+            record["section_id"],
+            record.get("student_access_enabled", True),
+            record.get("week_resolution_mode", "manual"),
+            record.get("manual_current_week_number"),
+            record.get("teaching_plan_prompt_enabled", False),
+            record.get("references_prompt_enabled", False),
+            record.get("references_retrieval_enabled", False),
             record["created_at"],
             record["updated_at"],
         )
@@ -450,7 +467,7 @@ class _FakeCursor:
             return
 
         if sql.startswith(
-            "SELECT s.section_id, s.course_id, c.display_name, s.display_name, s.term, s.is_active, sm.status, s.created_at, s.updated_at FROM section_memberships AS sm INNER JOIN sections AS s ON s.section_id = sm.section_id INNER JOIN courses AS c ON c.course_id = s.course_id WHERE sm.user_id = %s AND sm.role_in_section = 'student' AND sm.status = 'active' AND s.is_active = TRUE ORDER BY s.section_id ASC"
+            "SELECT s.section_id, s.course_id, c.display_name, s.display_name, s.term, s.is_active, sm.status, s.created_at, s.updated_at FROM section_memberships AS sm INNER JOIN sections AS s ON s.section_id = sm.section_id INNER JOIN courses AS c ON c.course_id = s.course_id LEFT JOIN section_instruction_settings AS sis ON sis.section_id = s.section_id WHERE sm.user_id = %s AND sm.role_in_section = 'student' AND sm.status = 'active' AND s.is_active = TRUE AND COALESCE(sis.student_access_enabled, TRUE) = TRUE ORDER BY s.section_id ASC"
         ):
             user_id = str(params[0])
             rows = [
@@ -460,12 +477,18 @@ class _FakeCursor:
                 and str(membership["role_in_section"]) == "student"
                 and str(membership["status"]) == "active"
                 and bool(self.state.sections[str(membership["section_id"])]["is_active"])
+                and bool(
+                    self.state.section_instruction_settings.get(
+                        str(membership["section_id"]),
+                        {},
+                    ).get("student_access_enabled", True)
+                )
             ]
             self._rows = sorted(rows, key=lambda row: str(row[0]))
             return
 
         if sql.startswith(
-            "SELECT s.section_id, s.course_id, c.display_name, s.display_name, s.term, s.is_active, sm.status, s.created_at, s.updated_at FROM section_memberships AS sm INNER JOIN sections AS s ON s.section_id = sm.section_id INNER JOIN courses AS c ON c.course_id = s.course_id WHERE sm.user_id = %s AND sm.role_in_section IN ('student', 'professor', 'ta') AND sm.status = 'active' AND s.is_active = TRUE ORDER BY s.section_id ASC"
+            "SELECT s.section_id, s.course_id, c.display_name, s.display_name, s.term, s.is_active, sm.status, s.created_at, s.updated_at FROM section_memberships AS sm INNER JOIN sections AS s ON s.section_id = sm.section_id INNER JOIN courses AS c ON c.course_id = s.course_id LEFT JOIN section_instruction_settings AS sis ON sis.section_id = s.section_id WHERE sm.user_id = %s AND sm.role_in_section IN ('student', 'professor', 'ta') AND sm.status = 'active' AND s.is_active = TRUE AND COALESCE(sis.student_access_enabled, TRUE) = TRUE ORDER BY s.section_id ASC"
         ):
             user_id = str(params[0])
             rows = [
@@ -475,6 +498,12 @@ class _FakeCursor:
                 and str(membership["status"]) == "active"
                 and bool(self.state.sections[str(membership["section_id"])]["is_active"])
                 and str(membership["role_in_section"]) in {"student", "professor", "ta"}
+                and bool(
+                    self.state.section_instruction_settings.get(
+                        str(membership["section_id"]),
+                        {},
+                    ).get("student_access_enabled", True)
+                )
             ]
             self._rows = sorted(rows, key=lambda row: str(row[0]))
             return
@@ -527,6 +556,50 @@ class _FakeCursor:
             record = self.state.sections.get(section_id)
             if record is not None:
                 self._rows = [self._section_row(record)]
+            return
+
+        if sql.startswith(
+            "SELECT section_id, student_access_enabled, week_resolution_mode, manual_current_week_number, teaching_plan_prompt_enabled, references_prompt_enabled, references_retrieval_enabled, created_at, updated_at FROM section_instruction_settings WHERE section_id = %s"
+        ):
+            section_id = str(params[0])
+            record = self.state.section_instruction_settings.get(section_id)
+            if record is not None:
+                self._rows = [self._section_instruction_settings_row(record)]
+            return
+
+        if sql.startswith(
+            "INSERT INTO section_instruction_settings ( section_id, student_access_enabled, week_resolution_mode, manual_current_week_number, teaching_plan_prompt_enabled, references_prompt_enabled, references_retrieval_enabled ) VALUES (%s, %s, %s, %s, %s, %s, %s) ON CONFLICT (section_id) DO UPDATE SET student_access_enabled = EXCLUDED.student_access_enabled, week_resolution_mode = EXCLUDED.week_resolution_mode, manual_current_week_number = EXCLUDED.manual_current_week_number, teaching_plan_prompt_enabled = EXCLUDED.teaching_plan_prompt_enabled, references_prompt_enabled = EXCLUDED.references_prompt_enabled, references_retrieval_enabled = EXCLUDED.references_retrieval_enabled, updated_at = now()"
+        ):
+            (
+                section_id,
+                student_access_enabled,
+                week_resolution_mode,
+                manual_current_week_number,
+                teaching_plan_prompt_enabled,
+                references_prompt_enabled,
+                references_retrieval_enabled,
+            ) = params
+            record = self.state.section_instruction_settings.get(str(section_id))
+            if record is None:
+                self.state.section_instruction_settings[str(section_id)] = {
+                    "section_id": str(section_id),
+                    "student_access_enabled": bool(student_access_enabled),
+                    "week_resolution_mode": str(week_resolution_mode),
+                    "manual_current_week_number": manual_current_week_number,
+                    "teaching_plan_prompt_enabled": bool(teaching_plan_prompt_enabled),
+                    "references_prompt_enabled": bool(references_prompt_enabled),
+                    "references_retrieval_enabled": bool(references_retrieval_enabled),
+                    "created_at": NOW,
+                    "updated_at": NOW,
+                }
+            else:
+                record["student_access_enabled"] = bool(student_access_enabled)
+                record["week_resolution_mode"] = str(week_resolution_mode)
+                record["manual_current_week_number"] = manual_current_week_number
+                record["teaching_plan_prompt_enabled"] = bool(teaching_plan_prompt_enabled)
+                record["references_prompt_enabled"] = bool(references_prompt_enabled)
+                record["references_retrieval_enabled"] = bool(references_retrieval_enabled)
+                record["updated_at"] = NOW
             return
 
         if sql.startswith(
@@ -594,7 +667,7 @@ class _FakeCursor:
             return
 
         if sql.startswith(
-            "SELECT week_id, teaching_plan_id, week_number, title, topic, start_date, end_date, learning_objectives, instructional_guidance, status, created_at, updated_at FROM teaching_plan_weeks WHERE teaching_plan_id = %s ORDER BY week_number ASC, week_id ASC"
+            "SELECT week_id, teaching_plan_id, week_number, title, topic, start_date, end_date, learning_objectives, instructional_guidance, status, student_visibility_status, available_from, available_until, created_at, updated_at FROM teaching_plan_weeks WHERE teaching_plan_id = %s ORDER BY week_number ASC, week_id ASC"
         ):
             teaching_plan_id = str(params[0])
             rows = [
@@ -616,7 +689,7 @@ class _FakeCursor:
             return
 
         if sql.startswith(
-            "SELECT tw.week_id, tw.teaching_plan_id, tw.week_number, tw.title, tw.topic, tw.start_date, tw.end_date, tw.learning_objectives, tw.instructional_guidance, tw.status, tw.created_at, tw.updated_at FROM teaching_plan_weeks AS tw INNER JOIN teaching_plans AS tp ON tp.teaching_plan_id = tw.teaching_plan_id WHERE tp.section_id = %s AND tw.week_id = %s"
+            "SELECT tw.week_id, tw.teaching_plan_id, tw.week_number, tw.title, tw.topic, tw.start_date, tw.end_date, tw.learning_objectives, tw.instructional_guidance, tw.status, tw.student_visibility_status, tw.available_from, tw.available_until, tw.created_at, tw.updated_at FROM teaching_plan_weeks AS tw INNER JOIN teaching_plans AS tp ON tp.teaching_plan_id = tw.teaching_plan_id WHERE tp.section_id = %s AND tw.week_id = %s"
         ):
             section_id, week_id = map(str, params)
             record = self.state.teaching_plan_weeks.get(week_id)
@@ -694,7 +767,7 @@ class _FakeCursor:
             return
 
         if sql.startswith(
-            "INSERT INTO teaching_plan_weeks ( week_id, teaching_plan_id, week_number, title, topic, start_date, end_date, learning_objectives, instructional_guidance, status ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)"
+            "INSERT INTO teaching_plan_weeks ( week_id, teaching_plan_id, week_number, title, topic, start_date, end_date, learning_objectives, instructional_guidance, status, student_visibility_status, available_from, available_until ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s)"
         ):
             (
                 week_id,
@@ -707,6 +780,9 @@ class _FakeCursor:
                 learning_objectives,
                 instructional_guidance,
                 status,
+                student_visibility_status,
+                available_from,
+                available_until,
             ) = params
             section_id = None
             for plan in self.state.teaching_plans.values():
@@ -725,6 +801,9 @@ class _FakeCursor:
                 "learning_objectives": learning_objectives,
                 "instructional_guidance": str(instructional_guidance),
                 "status": str(status),
+                "student_visibility_status": str(student_visibility_status),
+                "available_from": available_from,
+                "available_until": available_until,
                 "created_at": NOW,
                 "updated_at": NOW,
             }
@@ -863,6 +942,7 @@ def _state() -> _State:
         users={},
         sections={},
         memberships={},
+        section_instruction_settings={},
         launch_configs={},
         teaching_plans={},
         teaching_plan_weeks={},
@@ -1406,6 +1486,65 @@ def test_professor_teaching_plan_lifecycle(
     assert archived.status == "archived"
 
 
+def test_professor_instruction_settings_round_trip(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _state()
+    state.users["prof-1"] = _user(
+        user_id="prof-1",
+        email="prof@example.edu",
+        display_name="Professor",
+        primary_role="professor",
+        status="active",
+        cognito_sub="sub-prof",
+    )
+    state.sections["mit14-fall-001"] = _section(
+        section_id="mit14-fall-001",
+        display_name="MIT 6.0014 Section A",
+    )
+    state.memberships[("mit14-fall-001", "prof-1")] = _membership(
+        section_id="mit14-fall-001",
+        user_id="prof-1",
+        role_in_section="professor",
+    )
+    _patch_connection(monkeypatch, state)
+
+    defaults = app_registry.get_professor_section_instruction_settings(
+        CurrentUser(
+            cognito_sub="sub-prof",
+            email="prof@example.edu",
+            primary_role="professor",
+        ),
+        "mit14-fall-001",
+        runtime=_runtime(),
+    )
+    assert defaults.student_access_enabled is True
+    assert defaults.week_resolution_mode == "manual"
+    assert defaults.manual_current_week_number is None
+
+    updated = app_registry.upsert_professor_section_instruction_settings(
+        CurrentUser(
+            cognito_sub="sub-prof",
+            email="prof@example.edu",
+            primary_role="professor",
+        ),
+        "mit14-fall-001",
+        app_registry.SectionInstructionSettingsUpdate(
+            student_access_enabled=False,
+            week_resolution_mode="date_driven",
+            manual_current_week_number=3,
+            teaching_plan_prompt_enabled=True,
+            references_prompt_enabled=True,
+            references_retrieval_enabled=True,
+        ),
+        runtime=_runtime(),
+    )
+    assert updated.student_access_enabled is False
+    assert updated.week_resolution_mode == "date_driven"
+    assert updated.manual_current_week_number == 3
+    assert state.section_instruction_settings["mit14-fall-001"]["student_access_enabled"] is False
+
+
 def test_professor_launch_config_routes_allow_ta_membership(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1474,6 +1613,51 @@ def test_professor_launch_config_routes_allow_ta_membership(
 
     assert listed[0].launch_id == "codespaces"
     assert updated[0].label == "Codespaces for TA"
+
+
+def test_get_student_bootstrap_respects_paused_student_access(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _state()
+    state.users["student-1"] = _user(
+        user_id="student-1",
+        email="student@example.edu",
+        display_name="Student",
+        primary_role="student",
+        status="active",
+        cognito_sub="sub-student",
+    )
+    state.sections["mit14-fall-001"] = _section(
+        section_id="mit14-fall-001",
+        display_name="MIT 6.0014 Section A",
+    )
+    state.memberships[("mit14-fall-001", "student-1")] = _membership(
+        section_id="mit14-fall-001",
+        user_id="student-1",
+        role_in_section="student",
+    )
+    state.section_instruction_settings["mit14-fall-001"] = {
+        "section_id": "mit14-fall-001",
+        "student_access_enabled": False,
+        "week_resolution_mode": "manual",
+        "manual_current_week_number": None,
+        "teaching_plan_prompt_enabled": False,
+        "references_prompt_enabled": False,
+        "references_retrieval_enabled": False,
+        "created_at": NOW,
+        "updated_at": NOW,
+    }
+    _patch_connection(monkeypatch, state)
+
+    with pytest.raises(app_registry.MembershipAccessDeniedError):
+        app_registry.get_student_bootstrap(
+            CurrentUser(
+                cognito_sub="sub-student",
+                email="student@example.edu",
+                primary_role="student",
+            ),
+            runtime=_runtime(),
+        )
 
 
 def test_get_student_bootstrap_includes_launch_configs(

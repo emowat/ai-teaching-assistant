@@ -72,6 +72,18 @@ CREATE TABLE IF NOT EXISTS section_memberships (
   PRIMARY KEY (section_id, user_id)
 );
 
+CREATE TABLE IF NOT EXISTS section_instruction_settings (
+  section_id text PRIMARY KEY REFERENCES sections(section_id) ON DELETE CASCADE,
+  student_access_enabled boolean NOT NULL DEFAULT TRUE,
+  week_resolution_mode text NOT NULL DEFAULT 'manual' CHECK (week_resolution_mode IN ('manual', 'date_driven')),
+  manual_current_week_number integer,
+  teaching_plan_prompt_enabled boolean NOT NULL DEFAULT FALSE,
+  references_prompt_enabled boolean NOT NULL DEFAULT FALSE,
+  references_retrieval_enabled boolean NOT NULL DEFAULT FALSE,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS section_launch_configs (
   section_id text NOT NULL REFERENCES sections(section_id) ON DELETE CASCADE,
   launch_id text NOT NULL,
@@ -111,6 +123,9 @@ CREATE TABLE IF NOT EXISTS teaching_plan_weeks (
   learning_objectives jsonb NOT NULL DEFAULT '[]'::jsonb,
   instructional_guidance text NOT NULL DEFAULT '',
   status text NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'published', 'archived')),
+  student_visibility_status text NOT NULL DEFAULT 'hidden',
+  available_from timestamptz,
+  available_until timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (teaching_plan_id, week_number)
@@ -130,6 +145,9 @@ CREATE INDEX IF NOT EXISTS section_memberships_user_id_status_idx
 
 CREATE INDEX IF NOT EXISTS section_memberships_section_id_role_status_idx
   ON section_memberships (section_id, role_in_section, status);
+
+CREATE INDEX IF NOT EXISTS section_instruction_settings_section_id_idx
+  ON section_instruction_settings (section_id);
 
 CREATE INDEX IF NOT EXISTS section_launch_configs_section_id_enabled_sort_idx
   ON section_launch_configs (section_id, enabled, sort_order, launch_id);
@@ -254,6 +272,15 @@ ALTER TABLE tutor_turn_snapshots
 
 ALTER TABLE telemetry_events
   ADD COLUMN IF NOT EXISTS app_user_id uuid;
+
+ALTER TABLE teaching_plan_weeks
+  ADD COLUMN IF NOT EXISTS student_visibility_status text NOT NULL DEFAULT 'hidden';
+
+ALTER TABLE teaching_plan_weeks
+  ADD COLUMN IF NOT EXISTS available_from timestamptz;
+
+ALTER TABLE teaching_plan_weeks
+  ADD COLUMN IF NOT EXISTS available_until timestamptz;
 
 INSERT INTO courses (course_id, course_source, collection_name, display_name, is_active)
 VALUES

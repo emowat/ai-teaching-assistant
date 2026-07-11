@@ -51,6 +51,19 @@ def test_build_gradio_app_smoke() -> None:
         assert "_refresh_pipeline_route" in fn_names
 
 
+def test_build_gradio_app_disables_analytics_thread(monkeypatch) -> None:
+    monkeypatch.setenv("GRADIO_ANALYTICS_ENABLED", "True")
+
+    def _boom(*_args, **_kwargs):
+        raise AssertionError("gradio analytics thread should not start")
+
+    monkeypatch.setattr("gradio.blocks.threading.Thread", _boom)
+
+    app = build_gradio_app()
+
+    assert app is not None
+
+
 def test_build_gradio_app_defers_live_status_fetches(monkeypatch) -> None:
     def _boom(*_args, **_kwargs):
         raise AssertionError("live status fetch should not run during app construction")

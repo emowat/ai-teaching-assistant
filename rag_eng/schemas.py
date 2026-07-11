@@ -18,6 +18,8 @@ UserStatus = Literal["invited", "active", "disabled"]
 SectionMembershipStatus = Literal["invited", "active", "dropped", "disabled"]
 SectionMembershipRole = Literal["professor", "ta", "student"]
 TeachingPlanStatus = Literal["draft", "published", "archived"]
+WeekVisibilityStatus = Literal["hidden", "open", "closed"]
+WeekResolutionMode = Literal["manual", "date_driven"]
 RERANK_STRATEGY_CHOICES: tuple[str, ...] = (
     "similarity",
     "mmr_0.5",
@@ -416,6 +418,9 @@ class ProfessorTeachingPlanWeek(BaseModel):
     learning_objectives: list[str] = Field(default_factory=list)
     instructional_guidance: str = ""
     status: TeachingPlanStatus = "draft"
+    student_visibility_status: WeekVisibilityStatus = "hidden"
+    available_from: str | None = None
+    available_until: str | None = None
     created_at: str = ""
     updated_at: str = ""
 
@@ -455,6 +460,9 @@ class ProfessorTeachingPlanWeekCreate(BaseModel):
     learning_objectives: list[str] = Field(default_factory=list)
     instructional_guidance: str = ""
     status: TeachingPlanStatus = "draft"
+    student_visibility_status: WeekVisibilityStatus = "hidden"
+    available_from: str | None = None
+    available_until: str | None = None
 
 
 class ProfessorTeachingPlanWeekUpdate(BaseModel):
@@ -468,6 +476,9 @@ class ProfessorTeachingPlanWeekUpdate(BaseModel):
     learning_objectives: list[str] | None = None
     instructional_guidance: str | None = None
     status: TeachingPlanStatus | None = None
+    student_visibility_status: WeekVisibilityStatus | None = None
+    available_from: str | None = None
+    available_until: str | None = None
 
     @model_validator(mode="after")
     def _validate_non_empty_update(self) -> "ProfessorTeachingPlanWeekUpdate":
@@ -480,8 +491,49 @@ class ProfessorTeachingPlanWeekUpdate(BaseModel):
             and self.learning_objectives is None
             and self.instructional_guidance is None
             and self.status is None
+            and self.student_visibility_status is None
+            and self.available_from is None
+            and self.available_until is None
         ):
             raise ValueError("At least one week field must be provided.")
+        return self
+
+
+class SectionInstructionSettings(BaseModel):
+    """Professor-facing section instruction controls stored in Aurora."""
+
+    section_id: str
+    student_access_enabled: bool = True
+    week_resolution_mode: WeekResolutionMode = "manual"
+    manual_current_week_number: int | None = None
+    teaching_plan_prompt_enabled: bool = False
+    references_prompt_enabled: bool = False
+    references_retrieval_enabled: bool = False
+    created_at: str = ""
+    updated_at: str = ""
+
+
+class SectionInstructionSettingsUpdate(BaseModel):
+    """Payload used to update section instruction controls in Aurora."""
+
+    student_access_enabled: bool | None = None
+    week_resolution_mode: WeekResolutionMode | None = None
+    manual_current_week_number: int | None = Field(default=None, ge=1)
+    teaching_plan_prompt_enabled: bool | None = None
+    references_prompt_enabled: bool | None = None
+    references_retrieval_enabled: bool | None = None
+
+    @model_validator(mode="after")
+    def _validate_non_empty_update(self) -> "SectionInstructionSettingsUpdate":
+        if (
+            self.student_access_enabled is None
+            and self.week_resolution_mode is None
+            and self.manual_current_week_number is None
+            and self.teaching_plan_prompt_enabled is None
+            and self.references_prompt_enabled is None
+            and self.references_retrieval_enabled is None
+        ):
+            raise ValueError("At least one section instruction field must be provided.")
         return self
 
 

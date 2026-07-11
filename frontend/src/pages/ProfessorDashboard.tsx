@@ -32,6 +32,13 @@ import {
   type ProfessorTeachingPlan,
   type ProfessorTeachingPlanWeek,
 } from "../api/teachingPlanApi";
+import {
+  getProfessorSectionInstructionSettings,
+  updateProfessorSectionInstructionSettings,
+  type SectionInstructionSettings,
+  type SectionWeekVisibilityStatus,
+  type SectionWeekResolutionMode,
+} from "../api/sectionInstructionSettingsApi";
 import { Avatar, Btn, Card, Stat, Tag } from "../design/atoms";
 import { chartTooltipStyle, D, mono } from "../design/tokens";
 import { Sidebar } from "../components/Sidebar";
@@ -106,6 +113,13 @@ function splitObjectives(value: string): string[] {
     .filter(Boolean);
 }
 
+function dateInputValue(value: string | null | undefined): string {
+  if (!value) {
+    return "";
+  }
+  return value.slice(0, 10);
+}
+
 export function ProfessorDashboard({
   onNavigate,
   allowedViews,
@@ -122,6 +136,8 @@ export function ProfessorDashboard({
   const [launchConfigsSectionId, setLaunchConfigsSectionId] = useState<string | null>(null);
   const [teachingPlan, setTeachingPlan] = useState<ProfessorTeachingPlan | null>(null);
   const [teachingPlanSectionId, setTeachingPlanSectionId] = useState<string | null>(null);
+  const [sectionSettings, setSectionSettings] = useState<SectionInstructionSettings | null>(null);
+  const [sectionSettingsSectionId, setSectionSettingsSectionId] = useState<string | null>(null);
   const [loadingSections, setLoadingSections] = useState(true);
   const [studentFetchComplete, setStudentFetchComplete] = useState(false);
   const [analyticsFetchComplete, setAnalyticsFetchComplete] = useState(false);
@@ -132,9 +148,12 @@ export function ProfessorDashboard({
   const [launchConfigStatus, setLaunchConfigStatus] = useState<string | null>(null);
   const [teachingPlanError, setTeachingPlanError] = useState<string | null>(null);
   const [teachingPlanStatus, setTeachingPlanStatus] = useState<string | null>(null);
+  const [sectionSettingsError, setSectionSettingsError] = useState<string | null>(null);
+  const [sectionSettingsStatus, setSectionSettingsStatus] = useState<string | null>(null);
   const [savingLaunchConfigs, setSavingLaunchConfigs] = useState(false);
   const [savingTeachingPlan, setSavingTeachingPlan] = useState(false);
   const [savingTeachingPlanWeekId, setSavingTeachingPlanWeekId] = useState<string | null>(null);
+  const [savingSectionSettings, setSavingSectionSettings] = useState(false);
   const [creatingTeachingPlanWeek, setCreatingTeachingPlanWeek] = useState(false);
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   const selectedSection = useMemo(
@@ -157,6 +176,10 @@ export function ProfessorDashboard({
     () => (teachingPlanSectionId === selectedSectionId ? teachingPlan : null),
     [selectedSectionId, teachingPlan, teachingPlanSectionId],
   );
+  const activeSectionSettings = useMemo(
+    () => (sectionSettingsSectionId === selectedSectionId ? sectionSettings : null),
+    [sectionSettings, sectionSettingsSectionId, selectedSectionId],
+  );
   const readyLaunchConfigCount = useMemo(
     () =>
       activeLaunchConfigs.reduce(
@@ -178,6 +201,12 @@ export function ProfessorDashboard({
       accessToken &&
       teachingPlanSectionId !== selectedSectionId &&
       !teachingPlanError
+  );
+  const loadingSectionSettings = Boolean(
+    selectedSectionId &&
+      accessToken &&
+      sectionSettingsSectionId !== selectedSectionId &&
+      !sectionSettingsError
   );
   const loadingStudents = Boolean(selectedSectionId) && !studentFetchComplete && !studentError;
 
@@ -223,6 +252,33 @@ export function ProfessorDashboard({
         if (!cancelled) {
           setLaunchConfigError(err.message);
           setLaunchConfigsSectionId(selectedSectionId);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken, selectedSectionId]);
+
+  useEffect(() => {
+    if (!selectedSectionId || !accessToken) {
+      return;
+    }
+
+    let cancelled = false;
+
+    void getProfessorSectionInstructionSettings(selectedSectionId, accessToken)
+      .then((nextSettings) => {
+        if (cancelled) return;
+        setSectionSettings(nextSettings);
+        setSectionSettingsSectionId(selectedSectionId);
+        setSectionSettingsStatus(null);
+      })
+      .catch((err: Error) => {
+        if (!cancelled) {
+          setSectionSettings(null);
+          setSectionSettingsSectionId(selectedSectionId);
+          setSectionSettingsError(err.message);
         }
       });
 
@@ -332,6 +388,10 @@ export function ProfessorDashboard({
     setTeachingPlanSectionId(null);
     setTeachingPlanError(null);
     setTeachingPlanStatus(null);
+    setSectionSettings(null);
+    setSectionSettingsSectionId(null);
+    setSectionSettingsError(null);
+    setSectionSettingsStatus(null);
   };
 
   const rosterSummary = selectedSection
@@ -536,6 +596,9 @@ export function ProfessorDashboard({
         learning_objectives: [],
         instructional_guidance: "",
         status: "draft",
+        student_visibility_status: "hidden",
+        available_from: null,
+        available_until: null,
       });
       setTeachingPlan(updated);
       setTeachingPlanSectionId(selectedSectionId);
@@ -572,6 +635,9 @@ export function ProfessorDashboard({
           learning_objectives: week.learning_objectives,
           instructional_guidance: week.instructional_guidance,
           status: week.status,
+          student_visibility_status: week.student_visibility_status,
+          available_from: week.available_from,
+          available_until: week.available_until,
         }
       );
       setTeachingPlan(updated);
@@ -626,6 +692,51 @@ export function ProfessorDashboard({
         weeks: current.weeks.map((week) => (week.week_id === weekId ? { ...week, ...patch } : week)),
       };
     });
+  };
+
+  const updateSectionSettingsDraft = (
+    patch: Partial<SectionInstructionSettings>
+  ) => {
+    setSectionSettings((current) => {
+      if (!current) {
+        return current;
+      }
+      return { ...current, ...patch };
+    });
+  };
+
+  const saveSectionSettings = async () => {
+    if (!selectedSectionId || !activeSectionSettings) {
+      return;
+    }
+
+    setSavingSectionSettings(true);
+    setSectionSettingsError(null);
+    setSectionSettingsStatus(null);
+
+    try {
+      const updated = await updateProfessorSectionInstructionSettings(
+        selectedSectionId,
+        accessToken,
+        {
+          student_access_enabled: activeSectionSettings.student_access_enabled,
+          week_resolution_mode: activeSectionSettings.week_resolution_mode,
+          manual_current_week_number: activeSectionSettings.manual_current_week_number,
+          teaching_plan_prompt_enabled: activeSectionSettings.teaching_plan_prompt_enabled,
+          references_prompt_enabled: activeSectionSettings.references_prompt_enabled,
+          references_retrieval_enabled: activeSectionSettings.references_retrieval_enabled,
+        }
+      );
+      setSectionSettings(updated);
+      setSectionSettingsSectionId(selectedSectionId);
+      setSectionSettingsStatus("Saved section instruction settings.");
+    } catch (err) {
+      setSectionSettingsError(
+        err instanceof Error ? err.message : "Unable to save section instruction settings."
+      );
+    } finally {
+      setSavingSectionSettings(false);
+    }
   };
 
   return (
@@ -768,15 +879,165 @@ export function ProfessorDashboard({
                   </Tag>
                 </div>
               </Card>
-              <Card>
-                <div style={{ fontSize: 12, color: D.muted, marginBottom: 6 }}>Current section</div>
-                <div style={{ fontSize: 14, fontWeight: 600 }}>
-                  {selectedSection ? selectedSection.section_id : "No section selected"}
+              <Card style={{ display: "grid", gap: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                  <div>
+                    <div style={{ fontSize: 12, color: D.muted, marginBottom: 6 }}>
+                      Section controls
+                    </div>
+                    <div style={{ fontSize: 14, fontWeight: 600 }}>
+                      {selectedSection ? selectedSection.section_id : "No section selected"}
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <Tag color={activeSectionSettings?.student_access_enabled ? D.green : D.red}>
+                      {activeSectionSettings?.student_access_enabled
+                        ? "open to students"
+                        : "student access paused"}
+                    </Tag>
+                    <Tag color={D.blue}>
+                      {activeSectionSettings?.week_resolution_mode ?? "manual"}
+                    </Tag>
+                    <Tag color={D.orange}>
+                      week{" "}
+                      {activeSectionSettings?.manual_current_week_number
+                        ? activeSectionSettings.manual_current_week_number
+                        : "unset"}
+                    </Tag>
+                  </div>
                 </div>
-                <div style={{ fontSize: 12, color: D.dim, marginTop: 4 }}>
-                  {selectedSection
-                    ? `${selectedSection.course_id} · ${selectedSection.course_display_name} · ${selectedSection.term || "n/a"}`
-                    : "Choose a section from the selector above."}
+                <div style={{ fontSize: 12, color: D.dim, lineHeight: 1.6 }}>
+                  These settings control when students can use this section and which professor
+                  instructional signals are considered active.
+                </div>
+                {sectionSettingsError && (
+                  <Card style={{ color: D.red, fontSize: 12 }}>{sectionSettingsError}</Card>
+                )}
+                {sectionSettingsStatus && (
+                  <Card style={{ color: D.green, fontSize: 12 }}>{sectionSettingsStatus}</Card>
+                )}
+                {loadingSectionSettings ? (
+                  <div style={{ fontSize: 12, color: D.muted }}>Loading section controls...</div>
+                ) : (
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                      gap: 12,
+                    }}
+                  >
+                    <label style={{ display: "grid", gap: 6 }}>
+                      <span style={{ fontSize: 12, color: D.muted }}>Student access</span>
+                      <label
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          fontSize: 13,
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={activeSectionSettings?.student_access_enabled ?? true}
+                          onChange={(event) =>
+                            updateSectionSettingsDraft({
+                              student_access_enabled: event.target.checked,
+                            })
+                          }
+                        />
+                        Open to students
+                      </label>
+                    </label>
+                    <label style={{ display: "grid", gap: 6 }}>
+                      <span style={{ fontSize: 12, color: D.muted }}>Week resolution mode</span>
+                      <select
+                        value={activeSectionSettings?.week_resolution_mode ?? "manual"}
+                        onChange={(event) =>
+                          updateSectionSettingsDraft({
+                            week_resolution_mode: event.target.value as SectionWeekResolutionMode,
+                          })
+                        }
+                        style={inputStyle}
+                      >
+                        <option value="manual">Manual</option>
+                        <option value="date_driven">Date driven</option>
+                      </select>
+                    </label>
+                    <label style={{ display: "grid", gap: 6 }}>
+                      <span style={{ fontSize: 12, color: D.muted }}>Manual current week</span>
+                      <input
+                        type="number"
+                        min={1}
+                        value={activeSectionSettings?.manual_current_week_number ?? ""}
+                        onChange={(event) =>
+                          updateSectionSettingsDraft({
+                            manual_current_week_number: event.target.value
+                              ? Number(event.target.value)
+                              : null,
+                          })
+                        }
+                        style={inputStyle}
+                      />
+                    </label>
+                    <label style={{ display: "grid", gap: 6 }}>
+                      <span style={{ fontSize: 12, color: D.muted }}>
+                        Teaching plan prompt context
+                      </span>
+                      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+                        <input
+                          type="checkbox"
+                          checked={activeSectionSettings?.teaching_plan_prompt_enabled ?? false}
+                          onChange={(event) =>
+                            updateSectionSettingsDraft({
+                              teaching_plan_prompt_enabled: event.target.checked,
+                            })
+                          }
+                        />
+                        Include published plan in prompt
+                      </label>
+                    </label>
+                    <label style={{ display: "grid", gap: 6 }}>
+                      <span style={{ fontSize: 12, color: D.muted }}>References prompt context</span>
+                      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+                        <input
+                          type="checkbox"
+                          checked={activeSectionSettings?.references_prompt_enabled ?? false}
+                          onChange={(event) =>
+                            updateSectionSettingsDraft({
+                              references_prompt_enabled: event.target.checked,
+                            })
+                          }
+                        />
+                        Include section references in prompt
+                      </label>
+                    </label>
+                    <label style={{ display: "grid", gap: 6 }}>
+                      <span style={{ fontSize: 12, color: D.muted }}>
+                        References retrieval context
+                      </span>
+                      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+                        <input
+                          type="checkbox"
+                          checked={activeSectionSettings?.references_retrieval_enabled ?? false}
+                          onChange={(event) =>
+                            updateSectionSettingsDraft({
+                              references_retrieval_enabled: event.target.checked,
+                            })
+                          }
+                        />
+                        Allow references in retrieval
+                      </label>
+                    </label>
+                  </div>
+                )}
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                  <Btn
+                    small
+                    onClick={() => void saveSectionSettings()}
+                    disabled={!selectedSectionId || savingSectionSettings || loadingSectionSettings}
+                  >
+                    {savingSectionSettings ? "Saving..." : "Save controls"}
+                  </Btn>
                 </div>
               </Card>
             </div>
@@ -1163,6 +1424,60 @@ export function ProfessorDashboard({
                           style={{ ...inputStyle, resize: "vertical", minHeight: 100 }}
                         />
                       </label>
+
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                          gap: 10,
+                        }}
+                      >
+                        <label style={{ display: "grid", gap: 6 }}>
+                          <span style={{ fontSize: 12, color: D.muted }}>
+                            Student visibility status
+                          </span>
+                          <select
+                            value={week.student_visibility_status ?? "hidden"}
+                            onChange={(event) =>
+                              updateTeachingPlanWeekDraft(week.week_id, {
+                                student_visibility_status: event.target
+                                  .value as SectionWeekVisibilityStatus,
+                              })
+                            }
+                            style={inputStyle}
+                          >
+                            <option value="hidden">Hidden</option>
+                            <option value="open">Open</option>
+                            <option value="closed">Closed</option>
+                          </select>
+                        </label>
+                        <label style={{ display: "grid", gap: 6 }}>
+                          <span style={{ fontSize: 12, color: D.muted }}>Available from</span>
+                          <input
+                            type="date"
+                            value={dateInputValue(week.available_from)}
+                            onChange={(event) =>
+                              updateTeachingPlanWeekDraft(week.week_id, {
+                                available_from: event.target.value || null,
+                              })
+                            }
+                            style={inputStyle}
+                          />
+                        </label>
+                        <label style={{ display: "grid", gap: 6 }}>
+                          <span style={{ fontSize: 12, color: D.muted }}>Available until</span>
+                          <input
+                            type="date"
+                            value={dateInputValue(week.available_until)}
+                            onChange={(event) =>
+                              updateTeachingPlanWeekDraft(week.week_id, {
+                                available_until: event.target.value || null,
+                              })
+                            }
+                            style={inputStyle}
+                          />
+                        </label>
+                      </div>
 
                       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
                         <div style={{ fontSize: 11, color: D.muted }}>

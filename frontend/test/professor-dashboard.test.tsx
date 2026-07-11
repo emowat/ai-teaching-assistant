@@ -20,6 +20,10 @@ import {
   saveProfessorTeachingPlan,
   updateProfessorTeachingPlanWeek,
 } from "../src/api/teachingPlanApi";
+import {
+  getProfessorSectionInstructionSettings,
+  updateProfessorSectionInstructionSettings,
+} from "../src/api/sectionInstructionSettingsApi";
 
 vi.mock("../src/api/professorSectionsApi", () => ({
   getProfessorSectionAnalytics: vi.fn(),
@@ -42,6 +46,11 @@ vi.mock("../src/api/teachingPlanApi", () => ({
   updateProfessorTeachingPlanWeek: vi.fn(),
 }));
 
+vi.mock("../src/api/sectionInstructionSettingsApi", () => ({
+  getProfessorSectionInstructionSettings: vi.fn(),
+  updateProfessorSectionInstructionSettings: vi.fn(),
+}));
+
 const mockedListProfessorSections = vi.mocked(listProfessorSections);
 const mockedGetProfessorSectionAnalytics = vi.mocked(getProfessorSectionAnalytics);
 const mockedListProfessorSectionStudents = vi.mocked(listProfessorSectionStudents);
@@ -56,6 +65,12 @@ const mockedArchiveProfessorTeachingPlan = vi.mocked(archiveProfessorTeachingPla
 const mockedCreateProfessorTeachingPlanWeek = vi.mocked(createProfessorTeachingPlanWeek);
 const mockedUpdateProfessorTeachingPlanWeek = vi.mocked(updateProfessorTeachingPlanWeek);
 const mockedDeleteProfessorTeachingPlanWeek = vi.mocked(deleteProfessorTeachingPlanWeek);
+const mockedGetProfessorSectionInstructionSettings = vi.mocked(
+  getProfessorSectionInstructionSettings,
+);
+const mockedUpdateProfessorSectionInstructionSettings = vi.mocked(
+  updateProfessorSectionInstructionSettings,
+);
 
 describe("ProfessorDashboard", () => {
   beforeEach(() => {
@@ -71,6 +86,8 @@ describe("ProfessorDashboard", () => {
     mockedCreateProfessorTeachingPlanWeek.mockReset();
     mockedUpdateProfessorTeachingPlanWeek.mockReset();
     mockedDeleteProfessorTeachingPlanWeek.mockReset();
+    mockedGetProfessorSectionInstructionSettings.mockReset();
+    mockedUpdateProfessorSectionInstructionSettings.mockReset();
     mockedGetProfessorSectionAnalytics.mockResolvedValue({
       section: {
         section_id: "mit14-fall-001",
@@ -123,6 +140,17 @@ describe("ProfessorDashboard", () => {
       weeks: [],
       created_at: "",
       updated_at: "",
+    });
+    mockedGetProfessorSectionInstructionSettings.mockResolvedValue({
+      section_id: "mit14-fall-001",
+      student_access_enabled: true,
+      week_resolution_mode: "manual",
+      manual_current_week_number: 2,
+      teaching_plan_prompt_enabled: true,
+      references_prompt_enabled: false,
+      references_retrieval_enabled: false,
+      created_at: "2026-06-20T00:00:00Z",
+      updated_at: "2026-06-20T00:00:00Z",
     });
   });
 
@@ -302,6 +330,78 @@ describe("ProfessorDashboard", () => {
     expect(
       screen.getByText(/Live Aurora-backed analytics for the selected section\./i),
     ).toBeInTheDocument();
+  });
+
+  it("shows section instruction controls and saves student access settings", async () => {
+    mockedListProfessorSections.mockResolvedValue([
+      {
+        section_id: "mit14-fall-001",
+        course_id: "mit14",
+        course_display_name: "MIT 6.0014",
+        display_name: "Section A",
+        term: "Fall 2026",
+        is_active: true,
+        professor_count: 1,
+        ta_count: 0,
+        student_count: 1,
+        created_at: "2026-07-08T00:00:00Z",
+        updated_at: "2026-07-08T00:00:00Z",
+      },
+    ]);
+    mockedListProfessorSectionLaunchConfigs.mockResolvedValue([]);
+    mockedListProfessorSectionStudents.mockResolvedValue([]);
+
+    mockedUpdateProfessorSectionInstructionSettings.mockResolvedValue({
+      section_id: "mit14-fall-001",
+      student_access_enabled: false,
+      week_resolution_mode: "date_driven",
+      manual_current_week_number: 4,
+      teaching_plan_prompt_enabled: false,
+      references_prompt_enabled: true,
+      references_retrieval_enabled: true,
+      created_at: "2026-07-08T00:00:00Z",
+      updated_at: "2026-07-08T00:00:00Z",
+    });
+
+    render(
+      <ProfessorDashboard
+        onNavigate={vi.fn()}
+        allowedViews={["professor"]}
+        onSignOut={vi.fn()}
+        accessToken="access-token-1"
+      />,
+    );
+
+    expect(await screen.findByLabelText("Teaching section")).toHaveValue("mit14-fall-001");
+    expect(await screen.findByText("Section controls")).toBeInTheDocument();
+    expect(screen.getByText("open to students")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText("Open to students"));
+    fireEvent.change(screen.getByLabelText("Week resolution mode"), {
+      target: { value: "date_driven" },
+    });
+    fireEvent.change(screen.getByLabelText("Manual current week"), {
+      target: { value: "4" },
+    });
+    fireEvent.click(screen.getByLabelText("Include published plan in prompt"));
+    fireEvent.click(screen.getByLabelText("Include section references in prompt"));
+    fireEvent.click(screen.getByLabelText("Allow references in retrieval"));
+    fireEvent.click(screen.getByRole("button", { name: /save controls/i }));
+
+    await waitFor(() => {
+      expect(mockedUpdateProfessorSectionInstructionSettings).toHaveBeenCalledWith(
+        "mit14-fall-001",
+        "access-token-1",
+        expect.objectContaining({
+          student_access_enabled: false,
+          week_resolution_mode: "date_driven",
+          manual_current_week_number: 4,
+          teaching_plan_prompt_enabled: false,
+          references_prompt_enabled: true,
+          references_retrieval_enabled: true,
+        }),
+      );
+    });
   });
 
   it("shows a teaching plan editor and persists plan and week updates", async () => {

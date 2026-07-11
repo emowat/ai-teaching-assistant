@@ -21,6 +21,7 @@ from rag_eng.schemas import (
     ProfessorSectionSummary,
     ProfessorTeachingPlan,
     ProfessorTeachingPlanWeek,
+    SectionInstructionSettings,
     SectionLaunchConfig,
     QueryResponse,
     StudentBootstrapEndpoints,
@@ -1385,6 +1386,69 @@ def test_professor_teaching_plan_routes_return_live_data(
     assert get_week_response.json()["title"] == "C Basics"
     assert patch_week_response.json()["weeks"][0]["topic"] == "Pointers and stack memory"
     assert delete_week_response.json()["weeks"] == []
+
+
+def test_professor_instruction_settings_routes_return_live_data(
+    monkeypatch, client: TestClient
+) -> None:
+    client.app.dependency_overrides[require_authenticated_user] = lambda: CurrentUser(
+        cognito_sub="prof-sub",
+        email="prof@example.edu",
+        primary_role="professor",
+    )
+
+    settings = SectionInstructionSettings(
+        section_id="mit14-fall-001",
+        student_access_enabled=True,
+        week_resolution_mode="manual",
+        manual_current_week_number=2,
+        teaching_plan_prompt_enabled=True,
+        references_prompt_enabled=False,
+        references_retrieval_enabled=False,
+        created_at="2026-06-20T00:00:00+00:00",
+        updated_at="2026-06-20T00:00:00+00:00",
+    )
+
+    monkeypatch.setattr(
+        "rag_eng.api.get_professor_section_instruction_settings",
+        lambda *args, **kwargs: settings,
+    )
+    monkeypatch.setattr(
+        "rag_eng.api.upsert_professor_section_instruction_settings",
+        lambda current_user, section_id, payload: SectionInstructionSettings(
+            section_id=section_id,
+            student_access_enabled=bool(payload.student_access_enabled),
+            week_resolution_mode=payload.week_resolution_mode or "manual",
+            manual_current_week_number=payload.manual_current_week_number,
+            teaching_plan_prompt_enabled=bool(payload.teaching_plan_prompt_enabled),
+            references_prompt_enabled=bool(payload.references_prompt_enabled),
+            references_retrieval_enabled=bool(payload.references_retrieval_enabled),
+            created_at="2026-06-20T00:00:00+00:00",
+            updated_at="2026-06-20T00:00:00+00:00",
+        ),
+    )
+
+    try:
+        get_response = client.get("/professor/sections/mit14-fall-001/instruction-settings")
+        patch_response = client.patch(
+            "/professor/sections/mit14-fall-001/instruction-settings",
+            json={
+                "student_access_enabled": False,
+                "week_resolution_mode": "date_driven",
+                "manual_current_week_number": 4,
+                "teaching_plan_prompt_enabled": False,
+                "references_prompt_enabled": True,
+                "references_retrieval_enabled": True,
+            },
+        )
+    finally:
+        client.app.dependency_overrides.clear()
+
+    assert get_response.status_code == 200
+    assert patch_response.status_code == 200
+    assert get_response.json()["student_access_enabled"] is True
+    assert patch_response.json()["week_resolution_mode"] == "date_driven"
+    assert patch_response.json()["manual_current_week_number"] == 4
 
 
 def test_admin_ensure_returns_500_on_service_exception(
