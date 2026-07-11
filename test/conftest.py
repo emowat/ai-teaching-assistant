@@ -4,6 +4,7 @@ import os
 import pytest
 
 os.environ["GUARDRAILS_LOG_ONLY"] = "false"
+os.environ["RAG_ENG_MOUNT_GRADIO"] = "false"
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:

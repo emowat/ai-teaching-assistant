@@ -42,6 +42,28 @@ RETRIEVAL_PRESET_CONFIGS: dict[str, tuple[int, str]] = {
 }
 
 
+def _loading_html(message: str) -> str:
+    return (
+        "<div style='display:flex;align-items:center;min-height:52px;padding:12px 16px;"
+        "border-radius:12px;border:1px solid rgba(148,163,184,.18);"
+        "background:rgba(15,23,42,.45);color:#cbd5e1;font-size:14px;'>"
+        f"{message}"
+        "</div>"
+    )
+
+
+def _loading_route_badge(message: str) -> str:
+    return (
+        "<div style='display:inline-flex;align-items:center;gap:8px;"
+        "padding:8px 12px;border-radius:999px;border:1px solid rgba(148,163,184,.35);"
+        "background:rgba(15,23,42,.55);font-size:13px;color:#94a3b8;'>"
+        "<span style='width:10px;height:10px;border-radius:999px;background:#94a3b8;"
+        "display:inline-block;box-shadow:0 0 6px rgba(148,163,184,.6);'></span>"
+        f"<span>{message}</span>"
+        "</div>"
+    )
+
+
 def _post_json(url: str, payload: dict) -> dict:
     body = json.dumps(payload).encode("utf-8")
     req = request.Request(
@@ -295,7 +317,9 @@ def build_gradio_app(settings: Settings | None = None) -> gr.Blocks:
                 "Pre-RAG input screening for the student's raw question. "
                 "Use this tab to inspect the rule pass/block decision and the CodeBERT score."
             )
-            ig_status = gr.HTML(value=format_input_guardrail_status_html(fetch_input_guardrail_status()))
+            ig_status = gr.HTML(
+                value=_loading_html("Input guardrail status will load on page open.")
+            )
             ig_refresh = gr.Button("Refresh status", variant="secondary")
             with gr.Row():
                 ig_student = gr.Textbox(
@@ -321,6 +345,7 @@ def build_gradio_app(settings: Settings | None = None) -> gr.Blocks:
             ig_final = gr.Textbox(label="Blocked Response", lines=8)
             ig_raw = gr.Code(label="Raw JSON response", language="json")
             ig_result = gr.Textbox(label="Guardrail status", interactive=False)
+            demo.load(fn=_refresh_input_guardrail_status, outputs=ig_status)
             ig_refresh.click(
                 fn=_refresh_input_guardrail_status,
                 outputs=ig_status,
@@ -411,7 +436,6 @@ def build_gradio_app(settings: Settings | None = None) -> gr.Blocks:
                 f"`deploy-custom-model-to-sagemaker-ai.sh invoke`.  \n"
                 f"Endpoint: **{runtime.sagemaker_endpoint}**"
             )
-            sm_lights = gr.HTML(value=_refresh_sagemaker_status())
             sm_refresh = gr.Button("Refresh status", variant="secondary")
             gr.Markdown("### Direct invoke")
             sm_prompt = gr.Textbox(
@@ -425,6 +449,10 @@ def build_gradio_app(settings: Settings | None = None) -> gr.Blocks:
                 sm_cancel = gr.Button("Cancel request", variant="stop")
             sm_response = gr.Textbox(label="Model response", lines=16)
             sm_status = gr.Textbox(label="Invoke status", interactive=False)
+            sm_lights = gr.HTML(
+                value=_loading_html("SageMaker status will load on page open.")
+            )
+            demo.load(fn=_refresh_sagemaker_status, outputs=sm_lights)
             sm_refresh.click(fn=_refresh_sagemaker_status, outputs=sm_lights)
             sm_invoke_event = sm_invoke.click(
                 fn=_sagemaker_invoke,
@@ -451,8 +479,10 @@ def build_gradio_app(settings: Settings | None = None) -> gr.Blocks:
                 "Direct invoke for the configured non-SageMaker chat route.  \n"
                 "Use this tab to exercise the active Bedrock/OpenAI/Ollama model without the SageMaker endpoint."
             )
-            fm_route_badge = gr.HTML(value=_refresh_foundation_model_route_badge())
-            fm_route = gr.Markdown(value=_refresh_foundation_model_route())
+            fm_route_badge = gr.HTML(
+                value=_loading_route_badge("Foundation model route will load on page open.")
+            )
+            fm_route = gr.Markdown(value="Current chat route: **loading...**")
             fm_refresh = gr.Button("Refresh route", variant="secondary")
             gr.Markdown("### Direct invoke")
             fm_prompt = gr.Textbox(
@@ -466,6 +496,8 @@ def build_gradio_app(settings: Settings | None = None) -> gr.Blocks:
                 fm_cancel = gr.Button("Cancel request", variant="stop")
             fm_response = gr.Textbox(label="Model response", lines=16)
             fm_status = gr.Textbox(label="Invoke status", interactive=False)
+            demo.load(fn=_refresh_foundation_model_route_badge, outputs=fm_route_badge)
+            demo.load(fn=_refresh_foundation_model_route, outputs=fm_route)
             fm_refresh.click(
                 fn=_refresh_foundation_model_route_badge,
                 outputs=fm_route_badge,
@@ -531,8 +563,9 @@ def build_gradio_app(settings: Settings | None = None) -> gr.Blocks:
                 "Full extension-style pipeline: context extraction → input guardrails → RAG → prompt budget → inference → output guardrails."
             )
             with gr.Row():
-                pp_route = gr.Markdown(value=_refresh_pipeline_route())
+                pp_route = gr.Markdown(value="Current runtime routes: **loading...**")
                 pp_route_refresh = gr.Button("Refresh route", variant="secondary")
+            demo.load(fn=_refresh_pipeline_route, outputs=pp_route)
             with gr.Row():
                 pp_question = gr.Textbox(
                     label="Student Question",

@@ -156,6 +156,7 @@ def test_openapi_exposes_query_schema_examples(client: TestClient) -> None:
 
 
 def test_gradio_page_uses_public_origin_for_asset_urls(monkeypatch) -> None:
+    monkeypatch.setenv("RAG_ENG_MOUNT_GRADIO", "true")
     monkeypatch.setenv("GRADIO_ROOT_PATH", "/gradio")
     monkeypatch.setenv("GRADIO_PUBLIC_ORIGIN", "https://example.com")
     monkeypatch.setattr("rag_eng.ui.fetch_input_guardrail_status", lambda: object())

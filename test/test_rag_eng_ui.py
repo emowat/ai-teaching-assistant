@@ -51,6 +51,21 @@ def test_build_gradio_app_smoke() -> None:
         assert "_refresh_pipeline_route" in fn_names
 
 
+def test_build_gradio_app_defers_live_status_fetches(monkeypatch) -> None:
+    def _boom(*_args, **_kwargs):
+        raise AssertionError("live status fetch should not run during app construction")
+
+    monkeypatch.setattr("rag_eng.ui.fetch_input_guardrail_status", _boom)
+    monkeypatch.setattr("rag_eng.ui.fetch_sagemaker_status", _boom)
+    monkeypatch.setattr("rag_eng.ui.describe_chat_route", _boom)
+    monkeypatch.setattr("rag_eng.ui.describe_runtime_routes", _boom)
+
+    app = build_gradio_app()
+
+    assert app is not None
+    assert hasattr(app, "fns")
+
+
 def test_refresh_sagemaker_status_renders_current_status(monkeypatch) -> None:
     status = SageMakerStatus(
         endpoint_name="test-endpoint",

@@ -336,6 +336,11 @@ def _public_diagnostic_response(response: dict[str, Any]) -> dict[str, Any]:
     return public_response
 
 
+def _should_mount_gradio() -> bool:
+    value = os.getenv("RAG_ENG_MOUNT_GRADIO", "true").strip().lower()
+    return value in {"1", "true", "yes", "on"}
+
+
 def create_app() -> FastAPI:
     """Create the FastAPI app for the RAG service."""
     settings = get_settings()
@@ -1845,6 +1850,9 @@ def create_app() -> FastAPI:
             traceback.print_exc()
             raise HTTPException(status_code=500, detail=f"Database query failed: {exc}") from exc
 
-    from rag_eng.ui import mount_gradio_consoles
+    if _should_mount_gradio():
+        from rag_eng.ui import mount_gradio_consoles
 
-    return mount_gradio_consoles(app)
+        return mount_gradio_consoles(app)
+
+    return app

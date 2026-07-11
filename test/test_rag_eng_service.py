@@ -4,9 +4,7 @@ import asyncio
 import json
 from types import SimpleNamespace
 
-import pytest
-from fastapi.testclient import TestClient
-
+from rag_eng.api import ChatRequest
 from rag_eng.api import create_app
 from rag_eng.config import (
     InferenceConfig,
@@ -279,6 +277,39 @@ def _blocked_input_guardrail_result() -> dict[str, object]:
     }
 
 
+def _passing_input_guardrail_result() -> dict[str, object]:
+    return {
+        "stage": "input_guardrail",
+        "action": "pass",
+        "safe": True,
+        "blocked": False,
+        "wouldBlock": False,
+        "violation_type": "none",
+        "severity": "",
+        "evidence": "rules passed",
+        "final_answer": "",
+        "version": "input_guardrail_v1_rules+input_codebert_v1",
+        "latency_ms": 1,
+        "rules": {
+            "action": "PASS",
+            "flag_reason": None,
+            "processed_input": "How do I iterate?",
+            "confidence": 0.1,
+            "latency_ms": 1,
+            "version": "input_guardrail_v1_rules",
+        },
+        "model": {
+            "enabled": True,
+            "available": False,
+            "decision": "pass",
+            "score": None,
+            "pass_below": 0.3,
+            "block_above": 0.7,
+            "checkpoint_dir": "/tmp/input_guardrail",
+        },
+    }
+
+
 class _FakeTelemetryStore:
     def __init__(self) -> None:
         self.started: list[TraceContext] = []
@@ -339,12 +370,7 @@ class _FakeTelemetryStore:
         return True
 
 
-@pytest.fixture()
-def client() -> TestClient:
-    return TestClient(create_app())
-
-
-def test_chat_endpoint_accepts_simple_message(monkeypatch, client: TestClient) -> None:
+def test_chat_endpoint_accepts_simple_message(monkeypatch) -> None:
     async def fake_run_chat(
         messages,
         model_name,
@@ -366,16 +392,27 @@ def test_chat_endpoint_accepts_simple_message(monkeypatch, client: TestClient) -
 
     monkeypatch.setattr("rag_eng.api.run_chat", fake_run_chat)
 
-    response = client.post(
-        "/api/chat",
-        json={
-            "model": "codingrabbit",
-            "messages": [{"role": "user", "content": "Why does my pointer segfault?"}],
-        },
+    app = create_app()
+    chat_route = next(
+        route for route in app.routes if getattr(route, "path", None) == "/api/chat"
     )
 
-    assert response.status_code == 200
-    assert "pointer" in response.json()["message"]["content"].lower()
+    response = asyncio.run(
+        chat_route.endpoint(
+            ChatRequest(
+                model="codingrabbit",
+                messages=[
+                    {
+                        "role": "user",
+                        "content": "Why does my pointer segfault?",
+                    }
+                ],
+            ),
+            settings=SimpleNamespace(),
+        )
+    )
+
+    assert "pointer" in response["message"]["content"].lower()
 
 
 def test_run_chat_forwards_course_id_to_query_payload(monkeypatch) -> None:
@@ -1442,6 +1479,10 @@ def test_run_chat_mid_stream_code_leakage_triggers_erase_and_retry(
     monkeypatch.setattr(
         "rag_eng.service.run_retrieval",
         lambda query: SimpleNamespace(formatted_context="[ctx]"),
+    )
+    monkeypatch.setattr(
+        "rag_eng.service.evaluate_input_guardrail",
+        lambda **kwargs: _passing_input_guardrail_result(),
     )
     # Post-stream guardrails pass (safe) — leakage is caught mid-stream by regex
     monkeypatch.setattr(
