@@ -115,6 +115,50 @@ def test_update_distribution_uses_http_only_origin_policy(tmp_path) -> None:
         def __init__(self) -> None:
             self.update_kwargs = None
 
+        def list_cache_policies(self, **kwargs):
+            assert kwargs["Type"] == "managed"
+            return {
+                "CachePolicyList": {
+                    "Items": [
+                        {
+                            "CachePolicy": {
+                                "Id": "cache-disabled",
+                                "CachePolicyConfig": {
+                                    "Name": "Managed-CachingDisabled"
+                                },
+                            }
+                        },
+                        {
+                            "CachePolicy": {
+                                "Id": "cache-optimized",
+                                "CachePolicyConfig": {
+                                    "Name": "Managed-CachingOptimized"
+                                },
+                            }
+                        },
+                    ],
+                    "IsTruncated": False,
+                }
+            }
+
+        def list_origin_request_policies(self, **kwargs):
+            assert kwargs["Type"] == "managed"
+            return {
+                "OriginRequestPolicyList": {
+                    "Items": [
+                        {
+                            "OriginRequestPolicy": {
+                                "Id": "origin-request-policy",
+                                "OriginRequestPolicyConfig": {
+                                    "Name": "Managed-AllViewerExceptHostHeader"
+                                },
+                            }
+                        }
+                    ],
+                    "IsTruncated": False,
+                }
+            }
+
         def get_distribution_config(self, **kwargs):
             assert kwargs["Id"] == "DIST123"
             return {

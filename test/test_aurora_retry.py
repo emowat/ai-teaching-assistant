@@ -9,8 +9,10 @@ from rag_eng.config import (
     AuroraRetryProfileConfig,
     ChatLogExportConfig,
     InputGuardrailOrchestrationConfig,
+    ReferencesOrchestrationConfig,
     RuntimeGuardrailPenaltyConfig,
     RuntimePolicyConfig,
+    TeachingPlanOrchestrationConfig,
 )
 from rag_eng.aurora_retry import (
     INTERACTIVE_RETRY_PROFILE,
@@ -46,6 +48,17 @@ def test_get_retry_profile_prefers_runtime_policy_config(monkeypatch) -> None:
             end_chat_threshold=2,
             session_termination_enabled=True,
             penalty=RuntimeGuardrailPenaltyConfig(enabled=True, amount=5),
+        ),
+        teaching_plan_orchestration=TeachingPlanOrchestrationConfig(
+            enabled=False,
+            homework_assist_only=True,
+            require_published_plan=True,
+            require_open_week=True,
+        ),
+        references_orchestration=ReferencesOrchestrationConfig(
+            enabled=False,
+            homework_assist_only=True,
+            retrieval_enabled=False,
         ),
         aurora_retry=AuroraRetryConfig(
             interactive=AuroraRetryProfileConfig(
