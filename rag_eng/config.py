@@ -123,8 +123,25 @@ class ChatLogExportConfig:
 
 
 @dataclass(frozen=True)
+class TeachingPlanOrchestrationConfig:
+    enabled: bool
+    homework_assist_only: bool
+    require_published_plan: bool
+    require_open_week: bool
+
+
+@dataclass(frozen=True)
+class ReferencesOrchestrationConfig:
+    enabled: bool
+    homework_assist_only: bool
+    retrieval_enabled: bool
+
+
+@dataclass(frozen=True)
 class RuntimePolicyConfig:
     input_guardrail_orchestration: InputGuardrailOrchestrationConfig
+    teaching_plan_orchestration: TeachingPlanOrchestrationConfig
+    references_orchestration: ReferencesOrchestrationConfig
     aurora_retry: AuroraRetryConfig
     chat_log_export: ChatLogExportConfig
 
@@ -336,6 +353,10 @@ def load_runtime_policy_config(path: Path | None = None) -> RuntimePolicyConfig:
         runtime_raw.get("input_guardrail_orchestration", {})
     )
     penalty_raw = _mapping_or_empty(orchestration_raw.get("penalty", {}))
+    teaching_plan_raw = _mapping_or_empty(
+        runtime_raw.get("teaching_plan_orchestration", {})
+    )
+    references_raw = _mapping_or_empty(runtime_raw.get("references_orchestration", {}))
     aurora_raw = _mapping_or_empty(runtime_raw.get("aurora_retry", {}))
     interactive_raw = _mapping_or_empty(aurora_raw.get("interactive", {}))
     reliable_raw = _mapping_or_empty(aurora_raw.get("reliable", {}))
@@ -353,6 +374,32 @@ def load_runtime_policy_config(path: Path | None = None) -> RuntimePolicyConfig:
             penalty=RuntimeGuardrailPenaltyConfig(
                 enabled=_bool_or_default(penalty_raw.get("enabled"), True),
                 amount=int(penalty_raw.get("amount", 5)),
+            ),
+        ),
+        teaching_plan_orchestration=TeachingPlanOrchestrationConfig(
+            enabled=_bool_or_default(teaching_plan_raw.get("enabled"), False),
+            homework_assist_only=_bool_or_default(
+                teaching_plan_raw.get("homework_assist_only"),
+                True,
+            ),
+            require_published_plan=_bool_or_default(
+                teaching_plan_raw.get("require_published_plan"),
+                True,
+            ),
+            require_open_week=_bool_or_default(
+                teaching_plan_raw.get("require_open_week"),
+                True,
+            ),
+        ),
+        references_orchestration=ReferencesOrchestrationConfig(
+            enabled=_bool_or_default(references_raw.get("enabled"), False),
+            homework_assist_only=_bool_or_default(
+                references_raw.get("homework_assist_only"),
+                True,
+            ),
+            retrieval_enabled=_bool_or_default(
+                references_raw.get("retrieval_enabled"),
+                False,
             ),
         ),
         aurora_retry=AuroraRetryConfig(

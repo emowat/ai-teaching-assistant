@@ -15,6 +15,15 @@ runtime:
     penalty:
       enabled: true
       amount: 5
+  teaching_plan_orchestration:
+    enabled: false
+    homework_assist_only: true
+    require_published_plan: true
+    require_open_week: true
+  references_orchestration:
+    enabled: false
+    homework_assist_only: true
+    retrieval_enabled: false
   aurora_retry:
     interactive:
       connect_timeout_seconds: 3

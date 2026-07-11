@@ -283,6 +283,7 @@ def build_turn_snapshot(
     retrieval_latency_ms: int | None = None,
     policy_snapshot: dict[str, Any] | None = None,
     orchestrator_context: dict[str, Any] | None = None,
+    instructional_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     guardrail = None
     if generation_attempts:
@@ -356,4 +357,6 @@ def build_turn_snapshot(
     }
     if policy_snapshot is not None:
         snapshot["policy_snapshot"] = policy_snapshot
+    if instructional_context is not None:
+        snapshot["instructional_context_phase"] = instructional_context
     return snapshot

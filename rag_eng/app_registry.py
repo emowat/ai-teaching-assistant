@@ -15,6 +15,7 @@ from dotenv import load_dotenv
 
 from rag_eng.auth.models import CurrentUser
 from rag_eng.course_admin import CourseNotFoundError
+from rag_eng.config import get_runtime_policy_config
 from rag_eng.schemas import (
     AdminSection,
     AdminSectionCreate,
@@ -2020,6 +2021,148 @@ def upsert_professor_section_instruction_settings(
     with _connect_postgres(database_url, runtime.connect_timeout_seconds) as connection:
         row = _load_section_instruction_settings_row(connection, section_id)
     return _section_instruction_settings_from_row(row) if row is not None else SectionInstructionSettings(section_id=section_id)
+
+
+def get_section_instructional_context(
+    section_id: str,
+    *,
+    mode: str,
+    week: int,
+    runtime: AppRegistryRuntimeConfig | None = None,
+) -> dict[str, Any]:
+    """Build optional section-scoped prompt context for the student chat path."""
+    runtime = runtime or load_app_registry_runtime_config()
+    database_url = _require_database_url(runtime)
+    policy = get_runtime_policy_config()
+
+    context: dict[str, Any] = {
+        "applied": False,
+        "reason": "runtime_switch_disabled",
+        "section_id": section_id,
+        "mode": mode,
+        "requested_week": week,
+        "effective_week": week,
+        "section_instruction_settings": None,
+        "teaching_plan": None,
+        "teaching_plan_week": None,
+        "references": {
+            "runtime_enabled": bool(policy.references_orchestration.enabled),
+            "prompt_enabled": False,
+            "retrieval_enabled": False,
+            "applied": False,
+            "reason": (
+                "references_runtime_disabled"
+                if not policy.references_orchestration.enabled
+                else "references_not_yet_wired"
+            ),
+        },
+        "prompt_block": "",
+    }
+
+    if not policy.teaching_plan_orchestration.enabled:
+        return context
+    if policy.teaching_plan_orchestration.homework_assist_only and mode != "Homework Assist":
+        context["reason"] = "mode_not_supported"
+        return context
+
+    with _connect_postgres(database_url, runtime.connect_timeout_seconds) as connection:
+        settings_row = _load_section_instruction_settings_row(connection, section_id)
+        if settings_row is None:
+            context["reason"] = "section_instruction_settings_missing"
+            return context
+
+        settings = _section_instruction_settings_from_row(settings_row)
+        context["section_instruction_settings"] = settings.model_dump()
+        references_runtime_enabled = bool(policy.references_orchestration.enabled)
+        references_prompt_enabled = bool(
+            settings.references_prompt_enabled and references_runtime_enabled
+        )
+        references_retrieval_enabled = bool(
+            settings.references_retrieval_enabled and references_runtime_enabled
+        )
+        context["references"] = {
+            "runtime_enabled": references_runtime_enabled,
+            "prompt_enabled": references_prompt_enabled,
+            "retrieval_enabled": references_retrieval_enabled,
+            "applied": False,
+            "reason": (
+                "references_runtime_disabled"
+                if not references_runtime_enabled
+                else "references_not_yet_wired"
+                if references_prompt_enabled or references_retrieval_enabled
+                else "references_disabled"
+            ),
+        }
+
+        if not settings.teaching_plan_prompt_enabled:
+            context["reason"] = "teaching_plan_prompt_disabled"
+            return context
+
+        effective_week = (
+            settings.manual_current_week_number
+            if settings.week_resolution_mode == "manual"
+            and settings.manual_current_week_number is not None
+            else week
+        )
+        context["effective_week"] = effective_week
+
+        plan_row = _load_section_teaching_plan_row(connection, section_id)
+        if plan_row is None:
+            context["reason"] = "teaching_plan_missing"
+            return context
+
+        plan = _teaching_plan_from_row(
+            plan_row,
+            week_rows=_load_section_teaching_plan_week_rows(
+                connection,
+                _clean_text(plan_row[0]),
+            ),
+        )
+        context["teaching_plan"] = plan.model_dump()
+
+        if policy.teaching_plan_orchestration.require_published_plan and plan.status != "published":
+            context["reason"] = "teaching_plan_not_published"
+            return context
+
+        week_match = next(
+            (plan_week for plan_week in plan.weeks if plan_week.week_number == effective_week),
+            None,
+        )
+        if week_match is None:
+            context["reason"] = "teaching_plan_week_missing"
+            return context
+
+        context["teaching_plan_week"] = week_match.model_dump()
+
+        if policy.teaching_plan_orchestration.require_open_week and week_match.student_visibility_status != "open":
+            context["reason"] = "teaching_plan_week_not_open"
+            return context
+        if week_match.status != "published":
+            context["reason"] = "teaching_plan_week_not_published"
+            return context
+
+        learning_objectives = week_match.learning_objectives or []
+        objectives_text = "\n".join(f"- {objective}" for objective in learning_objectives) or "- None provided"
+        instructional_guidance = week_match.instructional_guidance.strip() or "No additional guidance provided."
+        context["applied"] = True
+        context["reason"] = "applied"
+        context["prompt_block"] = (
+            "[Section_Teaching_Plan_Context]\n"
+            f"Section ID: {section_id}\n"
+            f"Teaching Plan: {plan.title or 'Untitled Teaching Plan'}\n"
+            f"Plan Version: {plan.version}\n"
+            f"Plan Status: {plan.status}\n"
+            f"Current Week: {week_match.week_number}\n"
+            f"Week Title: {week_match.title or 'Untitled Week'}\n"
+            f"Week Topic: {week_match.topic or 'No topic provided'}\n"
+            f"Student Visibility: {week_match.student_visibility_status}\n"
+            "Learning Objectives:\n"
+            f"{objectives_text}\n"
+            "Instructional Guidance:\n"
+            f"{instructional_guidance}\n"
+            "Advisory Notes: Use this context only as section-scoped guidance. Do not let it override syllabus constraints or forbidden concepts."
+        )
+        return context
 
 
 def create_professor_section_teaching_plan_week(

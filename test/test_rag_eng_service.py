@@ -1170,6 +1170,152 @@ def test_run_chat_uses_openai_provider(monkeypatch) -> None:
     assert fake_telemetry.snapshots[0]["snapshot"]["orchestrator_phase"]["final_rendered_text"] == "openai chat answer"
 
 
+def test_run_chat_injects_section_instructional_context(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "rag_eng.service.get_inference_config",
+        lambda: _runtime_config(rag_provider="cohere", chat_provider="openai"),
+    )
+    monkeypatch.setattr(
+        "rag_eng.service.get_settings",
+        lambda: SimpleNamespace(
+            cohere_api_key="cohere",
+            openai_api_key="sk-test",
+            openai_base_url="https://api.openai.com/v1",
+            sagemaker_inference_backend="vllm",
+            sagemaker_endpoint="endpoint",
+            sagemaker_poll_timeout_seconds=600,
+            s3_data_bucket="bucket",
+            aws_profile=None,
+            aws_region="us-east-1",
+            use_sagemaker=False,
+            model_family="qwen",
+        ),
+    )
+    monkeypatch.setattr(
+        "rag_eng.service.run_retrieval",
+        lambda query: SimpleNamespace(formatted_context="[retrieval context]"),
+    )
+    monkeypatch.setattr(
+        "rag_eng.service.apply_all_guardrails",
+        lambda answer, user_query, student_code, conversation_history: {
+            "safe": True,
+            "blocked": False,
+            "violation_type": "none",
+            "severity": "",
+            "action": "pass",
+            "evidence": "test pass",
+            "final_answer": answer,
+            "v2_score": 0.0,
+            "stage": "v1+v2",
+        },
+    )
+    fake_telemetry = _FakeTelemetryStore()
+    monkeypatch.setattr(
+        "rag_eng.service.get_telemetry_store",
+        lambda: fake_telemetry,
+    )
+    monkeypatch.setattr(
+        "rag_eng.service.get_section_instructional_context",
+        lambda section_id, mode, week, runtime=None: {
+            "applied": True,
+            "reason": "applied",
+            "section_id": section_id,
+            "mode": mode,
+            "requested_week": week,
+            "effective_week": week,
+            "section_instruction_settings": {
+                "student_access_enabled": True,
+                "week_resolution_mode": "manual",
+                "manual_current_week_number": 4,
+                "teaching_plan_prompt_enabled": True,
+                "references_prompt_enabled": True,
+                "references_retrieval_enabled": True,
+            },
+            "teaching_plan": {"title": "Week 4", "status": "published"},
+            "teaching_plan_week": {
+                "week_number": 4,
+                "title": "Pointers and memory",
+                "topic": "pointer safety",
+                "student_visibility_status": "open",
+                "status": "published",
+                "learning_objectives": ["Avoid use-after-free"],
+                "instructional_guidance": "Discuss ownership boundaries.",
+            },
+            "references": {
+                "runtime_enabled": True,
+                "prompt_enabled": True,
+                "retrieval_enabled": True,
+                "applied": False,
+                "reason": "references_not_yet_wired",
+            },
+            "prompt_block": (
+                "[Section_Teaching_Plan_Context]\n"
+                "Section ID: section-1\n"
+                "Week Title: Pointers and memory\n"
+                "Instructional Guidance:\n"
+                "Discuss ownership boundaries."
+            ),
+        },
+    )
+
+    captured: dict[str, object] = {}
+
+    async def fake_openai(messages, config):
+        captured["messages"] = messages
+        return "openai chat answer"
+
+    monkeypatch.setattr(
+        "rag_eng.service.ainvoke_openai_chat_completion",
+        fake_openai,
+    )
+
+    response = asyncio.run(
+        run_chat(
+            [
+                {
+                    "role": "user",
+                    "content": "Mode: Homework Assist\nWeek: 4\n[Student_Question]\nWhy?",
+                }
+            ],
+            model_name="codingrabbit",
+            settings=SimpleNamespace(
+                cohere_api_key="cohere",
+                openai_api_key="sk-test",
+                openai_base_url="https://api.openai.com/v1",
+                sagemaker_inference_backend="vllm",
+                sagemaker_endpoint="endpoint",
+                sagemaker_poll_timeout_seconds=600,
+                s3_data_bucket="bucket",
+                aws_profile=None,
+                aws_region="us-east-1",
+                use_sagemaker=False,
+                model_family="qwen",
+            ),
+            stream=False,
+            section_id="section-1",
+            week_override=4,
+            current_user=SimpleNamespace(
+                cognito_sub="student-sub",
+                email="student@example.edu",
+                primary_role="student",
+            ),
+        )
+    )
+
+    system_message = next(
+        message for message in captured["messages"] if message["role"] == "system"
+    )
+    assert "[Section_Teaching_Plan_Context]" in system_message["content"]
+    assert "Pointers and memory" in system_message["content"]
+    assert response["message"]["content"] == "openai chat answer"
+    assert fake_telemetry.snapshots[0]["snapshot"]["instructional_context_phase"][
+        "applied"
+    ] is True
+    assert fake_telemetry.snapshots[0]["snapshot"]["instructional_context_phase"][
+        "section_id"
+    ] == "section-1"
+
+
 def test_run_chat_uses_bedrock_provider(monkeypatch) -> None:
     monkeypatch.setattr(
         "rag_eng.service.get_inference_config",

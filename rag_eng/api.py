@@ -49,7 +49,6 @@ from rag_eng.app_registry import (
     get_professor_section_teaching_plan_week,
     list_professor_section_students,
     list_professor_sections,
-    require_section_membership,
     require_student_section_access,
     sync_application_user,
     replace_professor_section_launch_configs,
@@ -57,7 +56,6 @@ from rag_eng.app_registry import (
     get_professor_section_instruction_settings,
     upsert_professor_section_teaching_plan,
     upsert_professor_section_instruction_settings,
-    student_surface_allowed_roles,
     update_admin_section,
     update_admin_user,
     delete_professor_section_teaching_plan_week,
@@ -1291,6 +1289,7 @@ def create_app() -> FastAPI:
                 settings=settings,
                 stream=payload.stream,
                 course_id=payload.course_id,
+                week_override=payload.week,
                 session_id=payload.session_id,
                 request_id=payload.request_id,
                 turn_id=payload.turn_id,
@@ -1300,6 +1299,7 @@ def create_app() -> FastAPI:
                 rerank_strategy=payload.rerank_strategy,
                 user_sub=current_user.cognito_sub,
                 app_user_id=app_user["user_id"],
+                current_user=current_user,
             )
             if payload.stream:
                 return StreamingResponse(result, media_type="application/x-ndjson")

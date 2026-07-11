@@ -191,6 +191,17 @@ def test_load_runtime_policy_config_reads_nested_sections(tmp_path: Path) -> Non
                 "bucket": "codingrabbit-data-dev",
                 "connect_timeout_seconds": 11,
             },
+            "teaching_plan_orchestration": {
+                "enabled": True,
+                "homework_assist_only": False,
+                "require_published_plan": False,
+                "require_open_week": False,
+            },
+            "references_orchestration": {
+                "enabled": True,
+                "homework_assist_only": False,
+                "retrieval_enabled": True,
+            },
         }
     }
 
@@ -213,6 +224,13 @@ def test_load_runtime_policy_config_reads_nested_sections(tmp_path: Path) -> Non
     assert policy.chat_log_export.prefix == "eval/custom"
     assert policy.chat_log_export.bucket == "codingrabbit-data-dev"
     assert policy.chat_log_export.connect_timeout_seconds == 11
+    assert policy.teaching_plan_orchestration.enabled is True
+    assert policy.teaching_plan_orchestration.homework_assist_only is False
+    assert policy.teaching_plan_orchestration.require_published_plan is False
+    assert policy.teaching_plan_orchestration.require_open_week is False
+    assert policy.references_orchestration.enabled is True
+    assert policy.references_orchestration.homework_assist_only is False
+    assert policy.references_orchestration.retrieval_enabled is True
 
 
 def test_model_route_config_allows_sagemaker_without_model() -> None:

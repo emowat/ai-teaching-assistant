@@ -696,14 +696,13 @@ def test_student_chat_endpoint_stamps_student_identity(
 
     captured: dict[str, object] = {}
 
-    def fake_require_section_membership(
+    def fake_require_section_access(
         current_user,
         section_id,
-        allowed_roles=None,
         runtime=None,
     ):
         captured["section_id"] = section_id
-        captured["allowed_roles"] = allowed_roles
+        captured["current_user_role"] = getattr(current_user, "primary_role", None)
         return {"user_id": "user-1"}
 
     async def fake_run_chat(
@@ -712,6 +711,7 @@ def test_student_chat_endpoint_stamps_student_identity(
         settings,
         stream=False,
         course_id=None,
+        week_override=None,
         session_id=None,
         request_id=None,
         turn_id=None,
@@ -721,15 +721,18 @@ def test_student_chat_endpoint_stamps_student_identity(
         rerank_strategy=None,
         user_sub=None,
         app_user_id=None,
+        current_user=None,
         telemetry_store=None,
     ):
         captured["user_sub"] = user_sub
         captured["app_user_id"] = app_user_id
         captured["section_id_from_chat"] = section_id
         captured["request_id"] = request_id
+        captured["week_override"] = week_override
+        captured["current_user_role"] = getattr(current_user, "primary_role", None)
         return {"message": {"content": "student response"}}
 
-    monkeypatch.setattr("rag_eng.api.require_section_membership", fake_require_section_membership)
+    monkeypatch.setattr("rag_eng.api.require_student_section_access", fake_require_section_access)
     monkeypatch.setattr("rag_eng.api.run_chat", fake_run_chat)
 
     try:
@@ -738,6 +741,7 @@ def test_student_chat_endpoint_stamps_student_identity(
             json={
                 "model": "codingrabbit-ta",
                 "course_id": "mit14",
+                "week": 4,
                 "section_id": "mit14-fall-001",
                 "session_id": "sess-1",
                 "request_id": "req-1",
@@ -751,10 +755,11 @@ def test_student_chat_endpoint_stamps_student_identity(
 
     assert response.status_code == 200
     assert captured["section_id"] == "mit14-fall-001"
-    assert captured["allowed_roles"] == {"student"}
+    assert captured["current_user_role"] == "student"
     assert captured["user_sub"] == "student-sub"
     assert captured["section_id_from_chat"] == "mit14-fall-001"
     assert captured["app_user_id"] == "user-1"
+    assert captured["week_override"] == 4
 
 
 def test_student_chat_endpoint_allows_staff_smoke_membership(
@@ -768,14 +773,13 @@ def test_student_chat_endpoint_allows_staff_smoke_membership(
 
     captured: dict[str, object] = {}
 
-    def fake_require_section_membership(
+    def fake_require_section_access(
         current_user,
         section_id,
-        allowed_roles=None,
         runtime=None,
     ):
         captured["section_id"] = section_id
-        captured["allowed_roles"] = allowed_roles
+        captured["current_user_role"] = getattr(current_user, "primary_role", None)
         return {"user_id": "user-1"}
 
     async def fake_run_chat(
@@ -784,6 +788,7 @@ def test_student_chat_endpoint_allows_staff_smoke_membership(
         settings,
         stream=False,
         course_id=None,
+        week_override=None,
         session_id=None,
         request_id=None,
         turn_id=None,
@@ -793,13 +798,15 @@ def test_student_chat_endpoint_allows_staff_smoke_membership(
         rerank_strategy=None,
         user_sub=None,
         app_user_id=None,
+        current_user=None,
         telemetry_store=None,
     ):
         captured["user_sub"] = user_sub
         captured["app_user_id"] = app_user_id
+        captured["week_override"] = week_override
         return {"message": {"content": "staff response"}}
 
-    monkeypatch.setattr("rag_eng.api.require_section_membership", fake_require_section_membership)
+    monkeypatch.setattr("rag_eng.api.require_student_section_access", fake_require_section_access)
     monkeypatch.setattr("rag_eng.api.run_chat", fake_run_chat)
 
     try:
@@ -808,6 +815,7 @@ def test_student_chat_endpoint_allows_staff_smoke_membership(
             json={
                 "model": "codingrabbit-ta",
                 "course_id": "mit14",
+                "week": 4,
                 "section_id": "mit14-fall-001",
                 "session_id": "sess-1",
                 "request_id": "req-1",
@@ -821,9 +829,10 @@ def test_student_chat_endpoint_allows_staff_smoke_membership(
 
     assert response.status_code == 200
     assert captured["section_id"] == "mit14-fall-001"
-    assert captured["allowed_roles"] == {"student", "professor", "ta"}
+    assert captured["current_user_role"] == "professor"
     assert captured["user_sub"] == "prof-sub"
     assert captured["app_user_id"] == "user-1"
+    assert captured["week_override"] == 4
 
 
 def test_student_telemetry_endpoint_records_aurora_identity(
@@ -842,18 +851,17 @@ def test_student_telemetry_endpoint_records_aurora_identity(
             captured.update(kwargs)
             return True
 
-    def fake_require_section_membership(
+    def fake_require_section_access(
         current_user,
         section_id,
-        allowed_roles=None,
         runtime=None,
     ):
         captured["section_id"] = section_id
-        captured["allowed_roles"] = allowed_roles
+        captured["current_user_role"] = getattr(current_user, "primary_role", None)
         return {"user_id": "user-1"}
 
     monkeypatch.setattr("rag_eng.api.TelemetryStore.from_env", lambda: _FakeTelemetryStore())
-    monkeypatch.setattr("rag_eng.api.require_section_membership", fake_require_section_membership)
+    monkeypatch.setattr("rag_eng.api.require_student_section_access", fake_require_section_access)
 
     try:
         response = client.post(
@@ -878,7 +886,7 @@ def test_student_telemetry_endpoint_records_aurora_identity(
 
     assert response.status_code == 200
     assert captured["section_id"] == "mit14-fall-001"
-    assert captured["allowed_roles"] == {"student"}
+    assert captured["current_user_role"] == "student"
     assert captured["session_id"] == "sess-1"
     assert captured["request_id"] == "req-1"
     assert captured["turn_id"] == "turn-1"
@@ -903,18 +911,17 @@ def test_student_feedback_endpoint_records_aurora_identity(
             captured.update(kwargs)
             return True
 
-    def fake_require_section_membership(
+    def fake_require_section_access(
         current_user,
         section_id,
-        allowed_roles=None,
         runtime=None,
     ):
         captured["section_id"] = section_id
-        captured["allowed_roles"] = allowed_roles
+        captured["current_user_role"] = getattr(current_user, "primary_role", None)
         return {"user_id": "user-1"}
 
     monkeypatch.setattr("rag_eng.api.TelemetryStore.from_env", lambda: _FakeTelemetryStore())
-    monkeypatch.setattr("rag_eng.api.require_section_membership", fake_require_section_membership)
+    monkeypatch.setattr("rag_eng.api.require_student_section_access", fake_require_section_access)
 
     try:
         response = client.post(
@@ -934,7 +941,7 @@ def test_student_feedback_endpoint_records_aurora_identity(
 
     assert response.status_code == 200
     assert captured["section_id"] == "mit14-fall-001"
-    assert captured["allowed_roles"] == {"student"}
+    assert captured["current_user_role"] == "student"
     assert captured["session_id"] == "sess-1"
     assert captured["message_index"] == 1
     assert captured["turn_id"] == "turn-1"

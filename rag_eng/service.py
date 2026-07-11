@@ -16,6 +16,8 @@ from rag.runtime import create_qdrant_client
 
 from rag.course_registry import get_course_registry_status, get_course_registry
 
+from rag_eng.app_registry import get_section_instructional_context
+from rag_eng.auth.models import CurrentUser
 from rag_eng.config import Settings, get_inference_config, get_settings
 from rag_eng.config import get_runtime_policy_config
 from rag_eng.indexing import ensure_index, rebuild_index
@@ -188,6 +190,17 @@ def _policy_snapshot() -> dict[str, Any]:
     return asdict(get_runtime_policy_config().input_guardrail_orchestration)
 
 
+def _instructional_policy_snapshot() -> dict[str, Any]:
+    """Serialize the active section instructional orchestration policy."""
+    policy = get_runtime_policy_config()
+    return {
+        "teaching_plan_orchestration": asdict(
+            policy.teaching_plan_orchestration
+        ),
+        "references_orchestration": asdict(policy.references_orchestration),
+    }
+
+
 def _input_guardrail_flag_reason(input_guardrail_result: dict[str, Any] | None) -> str:
     rules = (input_guardrail_result or {}).get("rules") or {}
     if isinstance(rules, dict):
@@ -232,6 +245,91 @@ def _build_orchestrator_context(
         ),
         "final_rendered_text": answer,
     }
+
+
+def _instructional_context_summary(
+    instructional_context: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Summarize section-owned instructional context for telemetry."""
+    if instructional_context is None:
+        return {
+            "instructional_context_applied": False,
+            "instructional_context_reason": "not_requested",
+        }
+    summary = {
+        "instructional_context_applied": bool(
+            instructional_context.get("applied")
+        ),
+        "instructional_context_reason": instructional_context.get("reason"),
+        "instructional_context_section_id": instructional_context.get("section_id"),
+        "instructional_context_requested_week": instructional_context.get(
+            "requested_week"
+        ),
+        "instructional_context_effective_week": instructional_context.get(
+            "effective_week"
+        ),
+    }
+    settings = instructional_context.get("section_instruction_settings") or {}
+    if isinstance(settings, dict):
+        summary["instructional_context_teaching_plan_prompt_enabled"] = settings.get(
+            "teaching_plan_prompt_enabled"
+        )
+        summary["instructional_context_references_prompt_enabled"] = settings.get(
+            "references_prompt_enabled"
+        )
+        summary["instructional_context_references_retrieval_enabled"] = settings.get(
+            "references_retrieval_enabled"
+        )
+        summary["instructional_context_week_resolution_mode"] = settings.get(
+            "week_resolution_mode"
+        )
+        summary["instructional_context_manual_week"] = settings.get(
+            "manual_current_week_number"
+        )
+    return summary
+
+
+def _resolve_instructional_context(
+    *,
+    current_user: CurrentUser | None,
+    section_id: str | None,
+    mode: str,
+    week: int,
+) -> dict[str, Any] | None:
+    """Best-effort section instructional context lookup for authenticated chat."""
+    if current_user is None or not section_id:
+        return None
+
+    try:
+        return get_section_instructional_context(
+            section_id,
+            mode=mode,
+            week=week,
+        )
+    except Exception as exc:  # pragma: no cover - defensive fallback
+        logger.warning(
+            "Section instructional context lookup failed for section_id=%s: %s",
+            section_id,
+            exc,
+        )
+        return {
+            "applied": False,
+            "reason": f"lookup_failed:{type(exc).__name__}",
+            "section_id": section_id,
+            "mode": mode,
+            "requested_week": week,
+            "effective_week": week,
+            "section_instruction_settings": None,
+            "teaching_plan": None,
+            "teaching_plan_week": None,
+            "references": {
+                "prompt_enabled": False,
+                "retrieval_enabled": False,
+                "applied": False,
+                "reason": "lookup_failed",
+            },
+            "prompt_block": "",
+        }
 
 
 def _maybe_handle_orchestrator_short_circuit(
@@ -471,6 +569,7 @@ def _persist_turn_snapshot(
     retrieval_latency_ms: int | None = None,
     policy_snapshot: dict[str, Any] | None = None,
     orchestrator_context: dict[str, Any] | None = None,
+    instructional_context: dict[str, Any] | None = None,
 ) -> None:
     snapshot = build_turn_snapshot(
         trace=trace,
@@ -483,6 +582,7 @@ def _persist_turn_snapshot(
         retrieval_latency_ms=retrieval_latency_ms,
         policy_snapshot=policy_snapshot,
         orchestrator_context=orchestrator_context,
+        instructional_context=instructional_context,
     )
     telemetry_store.record_turn_snapshot(trace, snapshot)
 
@@ -1335,6 +1435,7 @@ async def run_chat(
     rerank_strategy: str | None = None,
     user_sub: str | None = None,
     app_user_id: str | None = None,
+    current_user: CurrentUser | None = None,
     telemetry_store: TelemetryStore | None = None,
 ) -> dict | AsyncIterator[bytes]:
     """Full chat pipeline: context extraction -> RAG -> prompt assembly -> inference."""
@@ -1342,6 +1443,15 @@ async def run_chat(
     # week_override from the request body (set in .vscode/settings.json) takes
     # priority over the regex-parsed week from message content.
     effective_week = week_override if week_override is not None else ctx["week"]
+    instructional_context = _resolve_instructional_context(
+        current_user=current_user,
+        section_id=section_id,
+        mode=ctx["mode"],
+        week=effective_week,
+    )
+    instructional_context_summary = _instructional_context_summary(
+        instructional_context
+    )
 
     query_kwargs: dict[str, object] = {
         "student_message": ctx["student_message"],
@@ -1412,6 +1522,7 @@ async def run_chat(
         "result_count": getattr(query, "result_count", None),
         "rerank_strategy": getattr(query, "rerank_strategy", None),
         **_input_guardrail_summary(input_guardrail),
+        **instructional_context_summary,
     }
     conversation_history = [
         message
@@ -1455,6 +1566,7 @@ async def run_chat(
             final_answer=answer,
             policy_snapshot=policy_snapshot,
             orchestrator_context=orchestration_result["orchestrator_context"],
+            instructional_context=instructional_context,
         )
         if stream:
             return _single_chunk_stream(payload)
@@ -1487,6 +1599,12 @@ async def run_chat(
         )
 
         rag_context = retrieval_result.formatted_context
+        if instructional_context and instructional_context.get("applied"):
+            prompt_block = str(instructional_context.get("prompt_block") or "").strip()
+            if prompt_block:
+                rag_context = (
+                    f"{rag_context}\n\n{prompt_block}" if rag_context else prompt_block
+                )
         generation_attempts = []
         base_api_messages = [m for m in messages if m.get("role") != "system"]
         max_attempts = 2
@@ -1635,6 +1753,7 @@ async def run_chat(
                         final_answer=answer,
                         retrieval_latency_ms=retrieval_latency_ms,
                         policy_snapshot=policy_snapshot,
+                        instructional_context=instructional_context,
                     )
                     break
 
@@ -1741,6 +1860,7 @@ async def run_chat(
                 final_answer=answer,
                 retrieval_latency_ms=retrieval_latency_ms,
                 policy_snapshot=policy_snapshot,
+                instructional_context=instructional_context,
             )
 
             return _chat_response_payload_with_guardrail(

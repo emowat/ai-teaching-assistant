@@ -154,6 +154,29 @@ def test_build_turn_snapshot_includes_policy_and_session_state() -> None:
             "session_termination_enabled": True,
             "penalty": {"enabled": True, "amount": 5},
         },
+        instructional_context={
+            "applied": True,
+            "reason": "applied",
+            "section_id": "week-6",
+            "mode": "Homework Assist",
+            "requested_week": 6,
+            "effective_week": 6,
+            "section_instruction_settings": {
+                "teaching_plan_prompt_enabled": True,
+                "references_prompt_enabled": True,
+                "references_retrieval_enabled": True,
+            },
+            "teaching_plan": {"title": "Week 6", "status": "published"},
+            "teaching_plan_week": {"week_number": 6, "status": "published"},
+            "references": {
+                "runtime_enabled": True,
+                "prompt_enabled": True,
+                "retrieval_enabled": True,
+                "applied": False,
+                "reason": "references_not_yet_wired",
+            },
+            "prompt_block": "[Section_Teaching_Plan_Context]\nWeek 6",
+        },
     )
 
     assert snapshot["policy_snapshot"]["penalty"]["amount"] == 5
@@ -165,6 +188,8 @@ def test_build_turn_snapshot_includes_policy_and_session_state() -> None:
     )
     assert snapshot["orchestrator_phase"]["action_taken"] == "CANNED_END_CHAT"
     assert snapshot["orchestrator_phase"]["final_rendered_text"].endswith("[END_CHAT]")
+    assert snapshot["instructional_context_phase"]["applied"] is True
+    assert snapshot["instructional_context_phase"]["section_id"] == "week-6"
 
 
 def test_build_turn_snapshot_for_guardrailed_generation() -> None:
