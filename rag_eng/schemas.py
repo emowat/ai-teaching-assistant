@@ -386,6 +386,7 @@ class StudentBootstrapUser(BaseModel):
     display_name: str = ""
     primary_role: AppPrimaryRole
     status: UserStatus
+    consent_status: str = "pending"
 
 
 class StudentBootstrapEndpoints(BaseModel):

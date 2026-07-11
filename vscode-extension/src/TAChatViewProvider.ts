@@ -22,6 +22,7 @@ import {
 
 export class TAChatViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'coding-rabbit.chatView';
+    private static readonly STARTING_CARROTS = 20;
     private _conversationHistory: {role: string, content: string, turnIndex?: number}[] = [];
     private _studyAssistBlankDoc: vscode.TextDocument | undefined = undefined;
     private _studyAssistPreviousEditor: vscode.Uri | undefined = undefined;
@@ -294,7 +295,7 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
 
     private get _carrots(): number {
         this._checkCarrotReset();
-        return this._context.workspaceState.get<number>('carrots', 100);
+        return this._context.workspaceState.get<number>('carrots', TAChatViewProvider.STARTING_CARROTS);
     }
 
     private set _carrots(value: number) {
@@ -304,7 +305,7 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
     private _checkCarrotReset() {
         const resetTime = this._context.workspaceState.get<number>('carrotsResetTime', 0);
         if (Date.now() > resetTime) {
-            this._context.workspaceState.update('carrots', 100);
+            this._context.workspaceState.update('carrots', TAChatViewProvider.STARTING_CARROTS);
             this._context.workspaceState.update('carrotsResetTime', Date.now() + 3600000);
         }
     }
@@ -467,6 +468,16 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
                 this._currentWebview.html = this._getStudentBootstrapLoadingHtml(snapshot);
                 return;
             }
+            // Consent gate: block chat until the student has explicitly agreed
+            const consentStatus = this._studentBootstrap.user.consent_status ?? 'pending';
+            if (consentStatus === 'withdrawn') {
+                this._currentWebview.html = this._getConsentWithdrawnHtml();
+                return;
+            }
+            if (consentStatus !== 'granted') {
+                this._currentWebview.html = this._getConsentHtml();
+                return;
+            }
             this._currentWebview.html = this._getHtmlForWebview(
                 this._carrots,
                 elapsed,
@@ -528,6 +539,24 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
                 }
                 case 'askTA': {
                     await this._handleAskTA(data.text, data.mode, webviewView);
+                    break;
+                }
+                case 'consentGrant': {
+                    // Student agreed to the consent form — POST to backend and refresh
+                    try {
+                        if (!this._studentBootstrap) { break; }
+                        const grantUrl = buildStudentApiUrl(resolveApiBaseUrl(), '/api/student/consent/grant');
+                        const res = await this._authService.fetch(grantUrl, { method: 'POST' });
+                        if (res.ok) {
+                            // Refresh bootstrap so consent_status becomes 'granted'
+                            await this._refreshStudentBootstrap(true);
+                        } else {
+                            const body = await res.text().catch(() => '');
+                            TAChatViewProvider.getOutputChannel().appendLine(`[Consent Grant Error]: ${res.status} ${body}`);
+                        }
+                    } catch (error) {
+                        TAChatViewProvider.getOutputChannel().appendLine(`[Consent Grant Error]: ${error}`);
+                    }
                     break;
                 }
                 case 'feedback': {
@@ -1354,6 +1383,13 @@ ${terminalOutput}`;
                     try {
                         const payload = JSON.parse(line);
                         if (payload.type === 'control' && payload.action === 'regenerate') {
+                            // Latch reward BEFORE wiping — the tag may be fully or partially
+                            // assembled in rawTaResponse if the backend split it across chunks
+                            // (e.g. "[DEBUG_" arrived, then regenerate fired before "IDEA_UNLOCKED]").
+                            // Matching without the closing ] handles the split-chunk edge case.
+                            if (rawTaResponse.includes('[DEBUG_IDEA_UNLOCKED')) {
+                                debugIdeaUnlocked = true;
+                            }
                             // Erase the leaked content in-place — reset the existing bubble
                             webviewView.webview.postMessage({ type: 'clearResponse', text: '*(Coding Rabbit is thinking...)*', turnIndex: currentTurnIndex });
                             rawTaResponse = "";
@@ -1404,6 +1440,10 @@ ${terminalOutput}`;
                         rawTaResponse = payload.message?.content || "";
                     } else {
                         rawTaResponse += payload.message?.content || "";
+                    }
+                    // Latch check on final flush — mirrors the in-loop check
+                    if (rawTaResponse.includes('[DEBUG_IDEA_UNLOCKED')) {
+                        debugIdeaUnlocked = true;
                     }
                 } catch(e) {}
             }
@@ -1502,6 +1542,8 @@ ${terminalOutput}`;
                             displayResponse += `\n\n*(Coding Rabbit got to eat a carrot! 🥕 You have ${this._carrots} carrots remaining this hour.)*`;
                         }
                         webviewView.webview.postMessage({ type: 'updateCarrots', count: this._carrots });
+                    } else {
+                        displayResponse += `\n\n*(Coding Rabbit 🐰 loves your insight!)*`;
                     }
                 }
                 
@@ -1858,6 +1900,178 @@ ${terminalOutput}`;
             vscode.postMessage({ type: 'studentBootstrapRetry' });
         });
     </script>
+</body>
+</html>`;
+    }
+
+    private _getConsentHtml(): string {
+        return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Consent Required \u2014 CodingRabbit</title>
+    <style>
+        body {
+            margin: 0; padding: 20px; box-sizing: border-box; min-height: 100vh;
+            font-family: var(--vscode-font-family);
+            color: var(--vscode-editor-foreground);
+            background:
+                radial-gradient(circle at top left, rgba(255,170,0,0.14), transparent 36%),
+                radial-gradient(circle at bottom right, rgba(0,150,255,0.12), transparent 28%),
+                var(--vscode-editor-background);
+        }
+        .shell {
+            max-width: 560px; margin: 0 auto; padding: 28px 24px;
+            border: 1px solid var(--vscode-widget-border); border-radius: 18px;
+            background: var(--vscode-sideBar-background);
+            box-shadow: 0 18px 48px rgba(0,0,0,0.18);
+        }
+        .rabbit { font-size: 36px; margin-bottom: 12px; }
+        h1 { margin: 0 0 8px; font-size: 20px; line-height: 1.2; }
+        .notice {
+            margin: 0 0 16px; padding: 14px; border-radius: 10px;
+            border: 1px solid var(--vscode-widget-border);
+            background: color-mix(in srgb, var(--vscode-editor-background) 60%, transparent);
+            font-size: 12px; line-height: 1.6;
+            color: var(--vscode-descriptionForeground);
+            max-height: 200px; overflow-y: auto;
+        }
+        .notice h2 { margin: 0 0 8px; font-size: 13px; color: var(--vscode-editor-foreground); }
+        .notice p { margin: 0 0 8px; }
+        .notice p:last-child { margin-bottom: 0; }
+        .notice ul { margin: 0 0 8px; padding-left: 18px; }
+        .notice li { margin-bottom: 4px; }
+        .checkbox-row {
+            display: flex; align-items: flex-start; gap: 10px;
+            margin-bottom: 18px; font-size: 13px; line-height: 1.5; cursor: pointer;
+        }
+        .checkbox-row input[type="checkbox"] {
+            margin-top: 2px; flex-shrink: 0;
+            accent-color: var(--vscode-button-background);
+        }
+        button {
+            width: 100%; padding: 12px 14px; border: none; border-radius: 12px;
+            background: var(--vscode-button-background);
+            color: var(--vscode-button-foreground);
+            font-weight: 600; font-size: 14px; cursor: pointer;
+            opacity: 0.4; transition: opacity 0.2s;
+        }
+        button.enabled { opacity: 1; }
+        button.enabled:hover { background: var(--vscode-button-hoverBackground); }
+        .small {
+            margin-top: 12px; font-size: 11px; line-height: 1.5;
+            color: var(--vscode-descriptionForeground); text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="shell">
+        <div class="rabbit">🐰</div>
+        <h1>Before we begin \u2014 your consent is required</h1>
+        <div class="notice">
+            <h2>Data Consent &amp; Privacy Notice</h2>
+            <p>This AI Teaching Assistant (<strong>CodingRabbit</strong>) is provided by your
+            instructor as an educational tool for this course. Please read this notice carefully
+            before proceeding.</p>
+
+            <h2>What we collect</h2>
+            <p>When you use CodingRabbit, the following data is recorded:</p>
+            <ul>
+                <li>The questions you ask and the AI\u2019s responses</li>
+                <li>Code visible in your editor at the time of each question</li>
+                <li>Usage metadata (timestamps, session identifiers, your course section)</li>
+                <li>Feedback ratings (thumbs up / down) you submit</li>
+            </ul>
+
+            <h2>How it is used</h2>
+            <p>Your data is used exclusively for educational purposes within this course:</p>
+            <ul>
+                <li>To provide you with AI tutoring tailored to your course material</li>
+                <li>To help instructors identify where students need additional support</li>
+                <li>To improve the quality of the assistant over time</li>
+            </ul>
+
+            <h2>Who has access</h2>
+            <p>Your instructor and authorized teaching staff for this course section have access
+            to your interaction records. Your data is never shared with third parties outside
+            your institution.</p>
+
+            <h2>Your rights (FERPA)</h2>
+            <p>Under the Family Educational Rights and Privacy Act (FERPA), your interaction
+            records are treated as education records. You have the right to request access to
+            your data by contacting your instructor or your institution\u2019s registrar.</p>
+
+            <h2>Withdrawal</h2>
+            <p>You may withdraw consent at any time from the CodingRabbit panel while your
+            session is active. Withdrawal is <strong>permanent and irreversible</strong> \u2014
+            once withdrawn, you cannot re-enroll in the AI tutoring service. Your data will
+            be deleted within 30 days of withdrawal, subject to your instructor\u2019s review
+            of any in-progress assessments.</p>
+
+            <p>If you have questions about this notice, contact your course instructor or
+            your institution\u2019s privacy office.</p>
+        </div>
+        <label class="checkbox-row">
+            <input type="checkbox" id="consentCheck">
+            <span>I have read and understood the above notice and I give my informed consent to participate.</span>
+        </label>
+        <button id="agreeBtn" disabled>I Agree \u2014 Continue to CodingRabbit</button>
+        <div class="small">You must check the box above to proceed. This consent is recorded with a timestamp.</div>
+    </div>
+    <script>
+        const vscode = acquireVsCodeApi();
+        const check = document.getElementById('consentCheck');
+        const btn = document.getElementById('agreeBtn');
+        check.addEventListener('change', () => {
+            btn.disabled = !check.checked;
+            btn.classList.toggle('enabled', check.checked);
+        });
+        btn.addEventListener('click', () => {
+            if (!check.checked) { return; }
+            btn.disabled = true;
+            btn.textContent = 'Recording your consent\u2026';
+            vscode.postMessage({ type: 'consentGrant' });
+        });
+    </script>
+</body>
+</html>`;
+    }
+
+    private _getConsentWithdrawnHtml(): string {
+        return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Access Unavailable \u2014 CodingRabbit</title>
+    <style>
+        body {
+            margin: 0; padding: 20px; box-sizing: border-box; min-height: 100vh;
+            font-family: var(--vscode-font-family);
+            color: var(--vscode-editor-foreground);
+            background: var(--vscode-editor-background);
+        }
+        .shell {
+            max-width: 560px; margin: 0 auto; padding: 28px 24px;
+            border: 1px solid var(--vscode-widget-border); border-radius: 18px;
+            background: var(--vscode-sideBar-background);
+        }
+        .icon { font-size: 36px; margin-bottom: 12px; }
+        h1 { margin: 0 0 10px; font-size: 18px; }
+        p { margin: 0 0 12px; font-size: 13px; line-height: 1.6; color: var(--vscode-descriptionForeground); }
+        p:last-child { margin-bottom: 0; }
+    </style>
+</head>
+<body>
+    <div class="shell">
+        <div class="icon">🔒</div>
+        <h1>CodingRabbit access is no longer available</h1>
+        <p>You have previously withdrawn your data consent. This action is permanent and
+        irreversible \u2014 access to the AI Teaching Assistant cannot be restored.</p>
+        <p>If you believe this is an error, please contact your course instructor or
+        teaching staff directly.</p>
+    </div>
 </body>
 </html>`;
     }

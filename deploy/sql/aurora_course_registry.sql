@@ -48,6 +48,9 @@ CREATE TABLE IF NOT EXISTS users (
   display_name text NOT NULL DEFAULT '',
   primary_role text NOT NULL CHECK (primary_role IN ('admin', 'professor', 'student')),
   status text NOT NULL DEFAULT 'invited' CHECK (status IN ('invited', 'active', 'disabled')),
+  consent_status text NOT NULL DEFAULT 'pending' CHECK (consent_status IN ('pending', 'granted', 'withdrawn')),
+  consent_granted_at timestamptz,
+  consent_withdrawn_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );

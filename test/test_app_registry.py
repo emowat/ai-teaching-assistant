@@ -58,6 +58,7 @@ class _FakeCursor:
             record.get("display_name", ""),
             record["primary_role"],
             record["status"],
+            record.get("consent_status", "pending"),
             record["created_at"],
             record["updated_at"],
         )
@@ -223,7 +224,7 @@ class _FakeCursor:
         self._rows = []
 
         if sql.startswith(
-            "SELECT user_id, cognito_sub, email, display_name, primary_role, status, created_at, updated_at FROM users WHERE cognito_sub = %s"
+            "SELECT user_id, cognito_sub, email, display_name, primary_role, status, consent_status, created_at, updated_at FROM users WHERE cognito_sub = %s"
         ):
             cognito_sub = str(params[0])
             for record in self.state.users.values():
@@ -233,7 +234,7 @@ class _FakeCursor:
             return
 
         if sql.startswith(
-            "SELECT user_id, cognito_sub, email, display_name, primary_role, status, created_at, updated_at FROM users WHERE lower(email) = lower(%s)"
+            "SELECT user_id, cognito_sub, email, display_name, primary_role, status, consent_status, created_at, updated_at FROM users WHERE lower(email) = lower(%s)"
         ):
             email = str(params[0]).casefold()
             for record in self.state.users.values():
@@ -243,7 +244,7 @@ class _FakeCursor:
             return
 
         if sql.startswith(
-            "SELECT user_id, cognito_sub, email, display_name, primary_role, status, created_at, updated_at FROM users WHERE user_id = %s"
+            "SELECT user_id, cognito_sub, email, display_name, primary_role, status, consent_status, created_at, updated_at FROM users WHERE user_id = %s"
         ):
             user_id = str(params[0])
             record = self.state.users.get(user_id)
@@ -252,7 +253,7 @@ class _FakeCursor:
             return
 
         if sql.startswith(
-            "SELECT user_id, cognito_sub, email, display_name, primary_role, status, created_at, updated_at FROM users ORDER BY email ASC"
+            "SELECT user_id, cognito_sub, email, display_name, primary_role, status, consent_status, created_at, updated_at FROM users ORDER BY email ASC"
         ):
             self._rows = [
                 self._user_row(record)
@@ -273,6 +274,7 @@ class _FakeCursor:
                 "display_name": str(display_name),
                 "primary_role": str(primary_role),
                 "status": str(status),
+                "consent_status": "pending",
                 "created_at": NOW,
                 "updated_at": NOW,
             }

@@ -153,9 +153,10 @@ def _user_summary_from_row(row: tuple[Any, ...]) -> dict[str, Any]:
         display_name,
         primary_role,
         status,
+        consent_status,
         created_at,
         updated_at,
-    ) = row[:8]
+    ) = row[:9]
     return {
         "user_id": str(user_id),
         "cognito_sub": str(cognito_sub) if cognito_sub is not None else None,
@@ -163,6 +164,7 @@ def _user_summary_from_row(row: tuple[Any, ...]) -> dict[str, Any]:
         "display_name": _clean_text(display_name),
         "primary_role": _clean_text(primary_role),
         "status": _clean_text(status),
+        "consent_status": _clean_text(consent_status) or "pending",
         "created_at": _format_timestamp(created_at),
         "updated_at": _format_timestamp(updated_at),
     }
@@ -455,6 +457,7 @@ def _load_user_by_id(connection, user_id: str) -> tuple[Any, ...] | None:
           display_name,
           primary_role,
           status,
+          consent_status,
           created_at,
           updated_at
         FROM users
@@ -475,6 +478,7 @@ def _load_user_by_email(connection, email: str) -> tuple[Any, ...] | None:
           display_name,
           primary_role,
           status,
+          consent_status,
           created_at,
           updated_at
         FROM users
@@ -495,6 +499,7 @@ def _load_user_by_cognito_sub(connection, cognito_sub: str) -> tuple[Any, ...] |
           display_name,
           primary_role,
           status,
+          consent_status,
           created_at,
           updated_at
         FROM users
@@ -508,6 +513,34 @@ def _assert_user_row(row: tuple[Any, ...] | None, cognito_sub: str) -> tuple[Any
     if row is None:
         raise AppUserNotFoundError(f"No application user exists for cognito_sub={cognito_sub}.")
     return row
+
+
+def grant_user_consent(
+    user_id: str,
+    *,
+    runtime: "AppRegistryRuntimeConfig | None" = None,
+) -> None:
+    """Mark a student's consent as granted in the users table.
+
+    Only transitions from 'pending' → 'granted'; no-ops if already granted.
+    Withdrawn consent is permanent and cannot be re-granted via this function.
+    """
+    runtime = runtime or load_app_registry_runtime_config()
+    database_url = _require_database_url(runtime)
+    with _connect_postgres(database_url, runtime.connect_timeout_seconds) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE users
+                SET consent_status = 'granted',
+                    consent_granted_at = now(),
+                    updated_at = now()
+                WHERE user_id = %s
+                  AND consent_status = 'pending'
+                """,
+                (user_id,),
+            )
+        connection.commit()
 
 
 def _load_section_by_id(connection, section_id: str) -> tuple[Any, ...] | None:
@@ -647,6 +680,7 @@ def _load_all_user_rows(connection) -> list[tuple[Any, ...]]:
           display_name,
           primary_role,
           status,
+          consent_status,
           created_at,
           updated_at
         FROM users
@@ -2499,7 +2533,9 @@ def get_student_bootstrap(
             display_name=_clean_text(app_user.get("display_name")),
             primary_role=_clean_text(app_user["primary_role"]),
             status=_clean_text(app_user["status"]),
+            consent_status=_clean_text(app_user.get("consent_status")) or "pending",
         ),
+
         sections=[
             _student_section_from_row(
                 row,
