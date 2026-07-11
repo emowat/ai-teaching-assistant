@@ -223,6 +223,7 @@ export class CognitoAuthService {
         }
     }
 
+
     private async _storeSession(session: CognitoTokenSession): Promise<void> {
         await this._context.secrets.store(AUTH_SESSION_KEY, JSON.stringify(session));
     }

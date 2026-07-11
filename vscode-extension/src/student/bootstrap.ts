@@ -26,6 +26,7 @@ export interface StudentBootstrapUser {
     display_name: string;
     primary_role: 'admin' | 'professor' | 'student';
     status: 'invited' | 'active' | 'disabled';
+    consent_status: 'pending' | 'granted' | 'withdrawn';
 }
 
 export interface StudentBootstrapEndpoints {

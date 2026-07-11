@@ -7,6 +7,7 @@ import re
 import subprocess
 import uuid
 import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import urlparse
 from typing import Any
@@ -346,10 +347,38 @@ def create_app() -> FastAPI:
         if parsed_origin.scheme and parsed_origin.netloc:
             public_origin_parts = (parsed_origin.scheme, parsed_origin.netloc)
 
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        """Run DB migrations on startup before serving any requests."""
+        try:
+            from rag_eng.telemetry import _connect_postgres
+            from rag_eng.chat_log_export import _resolve_database_url
+            database_url = _resolve_database_url(None)
+            if database_url:
+                with _connect_postgres(database_url, 10) as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "ALTER TABLE users ADD COLUMN IF NOT EXISTS consent_status text "
+                            "NOT NULL DEFAULT 'pending' "
+                            "CHECK (consent_status IN ('pending', 'granted', 'withdrawn'));"
+                        )
+                        cur.execute(
+                            "ALTER TABLE users ADD COLUMN IF NOT EXISTS consent_granted_at timestamptz;"
+                        )
+                        cur.execute(
+                            "ALTER TABLE users ADD COLUMN IF NOT EXISTS consent_withdrawn_at timestamptz;"
+                        )
+                    conn.commit()
+                logger.info("Startup migration: consent columns ensured.")
+        except Exception as exc:
+            logger.warning(f"Startup migration skipped or failed: {exc}")
+        yield
+
     app = FastAPI(
         title="rag_eng",
         description="AWS-ready FastAPI layer for the capstone RAG pipeline.",
         version="0.1.0",
+        lifespan=lifespan,
     )
 
     if settings.cors_origins:
@@ -404,6 +433,33 @@ def create_app() -> FastAPI:
     ) -> StudentBootstrapResponse:
         try:
             return get_student_bootstrap(current_user)
+        except Exception as exc:
+            raise _app_registry_http_error(exc) from exc
+
+    @app.post("/api/student/consent/grant")
+    def student_consent_grant(
+        current_user=Depends(require_student_surface_user),
+    ) -> dict:
+        """Grant consent for the authenticated student.
+
+        Transitions consent_status from 'pending' → 'granted'. No-ops if
+        already granted. Returns 403 if consent has been withdrawn — withdrawal
+        is permanent and cannot be reversed via this endpoint.
+        """
+        try:
+            app_user = sync_application_user(current_user)
+            if not app_user:
+                raise HTTPException(status_code=404, detail="No provisioned user found.")
+            if app_user.get("consent_status") == "withdrawn":
+                raise HTTPException(
+                    status_code=403,
+                    detail="Consent has been permanently withdrawn and cannot be re-granted.",
+                )
+            from rag_eng.app_registry import grant_user_consent
+            grant_user_consent(app_user["user_id"])
+            return {"success": True, "consent_status": "granted"}
+        except HTTPException:
+            raise
         except Exception as exc:
             raise _app_registry_http_error(exc) from exc
 
@@ -1067,10 +1123,19 @@ def create_app() -> FastAPI:
                 with connection.cursor() as cursor:
                     cursor.execute("ALTER TABLE courses ADD COLUMN IF NOT EXISTS syllabus_matrix TEXT;")
                     cursor.execute("ALTER TABLE courses ADD COLUMN IF NOT EXISTS style_guide TEXT;")
+                    # Consent columns (Issue 3 — mandatory opt-in)
+                    cursor.execute(
+                        "ALTER TABLE users ADD COLUMN IF NOT EXISTS consent_status text "
+                        "NOT NULL DEFAULT 'pending' "
+                        "CHECK (consent_status IN ('pending', 'granted', 'withdrawn'));"
+                    )
+                    cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS consent_granted_at timestamptz;")
+                    cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS consent_withdrawn_at timestamptz;")
                 connection.commit()
             return {"success": True, "message": "Migration complete."}
         except Exception as exc:
             raise HTTPException(status_code=500, detail=str(exc))
+
 
     @app.post(
         "/api/admin/restart",
