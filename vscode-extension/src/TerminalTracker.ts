@@ -72,9 +72,6 @@ export function trackTerminal(onActivity?: () => void) {
             } else {
                 currentInput += data;
             }
-            // Echo back to the terminal so the user sees what they typed, 
-            // since child_process doesn't automatically echo like a real PTY
-            writeEmitter.fire(data); 
             
             if (data !== '\r') {
                 bashProcess.stdin.write(data);
