@@ -28,3 +28,24 @@ echo "[TA Hook] Sent context: \$@"\n\
 
 # Set the default shell to bash
 ENV SHELL=/bin/bash
+
+# Create a non-root student user
+RUN useradd -ms /bin/bash student
+
+# 1. Establish the base extensions directory for the student user
+RUN mkdir -p /home/student/.vscode-server/extensions \
+    && chown -R student:student /home/student/.vscode-server
+
+# 2. Create the dummy Version 999 directories
+RUN mkdir -p /home/student/.vscode-server/extensions/github.copilot-999.0.0 \
+    && mkdir -p /home/student/.vscode-server/extensions/github.copilot-chat-999.0.0
+
+# 3. Plant the dummy package.json files so the server registers them as valid, but fails to activate them
+RUN echo '{"name": "copilot", "publisher": "github", "version": "999.0.0", "engines": {"vscode": "^1.0.0"}, "main": "index.js"}' > /home/student/.vscode-server/extensions/github.copilot-999.0.0/package.json \
+    && echo '{"name": "copilot-chat", "publisher": "github", "version": "999.0.0", "engines": {"vscode": "^1.0.0"}, "main": "index.js"}' > /home/student/.vscode-server/extensions/github.copilot-chat-999.0.0/package.json
+
+# 4. Lock them with root ownership and read/execute only so the student (and server) cannot delete them
+RUN chown -R root:root /home/student/.vscode-server/extensions/github.copilot-999.0.0 \
+    && chown -R root:root /home/student/.vscode-server/extensions/github.copilot-chat-999.0.0 \
+    && chmod -R 0555 /home/student/.vscode-server/extensions/github.copilot-999.0.0 \
+    && chmod -R 0555 /home/student/.vscode-server/extensions/github.copilot-chat-999.0.0

@@ -797,17 +797,6 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
             return;
         }
 
-        // 0. Hard Mode Enforcement
-        const copilot = vscode.extensions.getExtension('github.copilot');
-        const copilotChat = vscode.extensions.getExtension('github.copilot-chat');
-        if (copilot || copilotChat) {
-            webviewView.webview.postMessage({ 
-                type: 'addResponse', 
-                text: `[Hard Mode Enforced]\\n\\nGitHub Copilot is currently active! To prevent AI-generated solutions from bypassing the learning process, I am disabling my assistance.\\n\\nPlease disable or uninstall GitHub Copilot for this workspace to continue using the CodingRabbit.`, 
-                isThinking: false 
-            });
-            return;
-        }
 
         const selectedStudentSection = this._getSelectedStudentSection();
         if (!this._studentBootstrap || !selectedStudentSection) {

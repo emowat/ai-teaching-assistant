@@ -41,7 +41,7 @@
             "extensions": [
                 "ms-vscode.cpptools",
                 "ms-vscode.cpptools-extension-pack",
-                "/workspace/.devcontainer/coding-rabbit-0.1.0.vsix"
+                "/workspace/.devcontainer/coding-rabbit-0.2.0.vsix"
             ]
         }
     },
@@ -52,12 +52,6 @@
     // Run permissions needed if you intend to attach debuggers like GDB locally
     "runArgs": ["--cap-add=SYS_PTRACE", "--security-opt", "seccomp=unconfined"],
 
-    // Aggressively lock the extension directories BEFORE VS Code connects so it physically cannot install Copilot
-    "onCreateCommand": "mkdir -p ~/.vscode-server/extensions/github.copilot ~/.vscode-server/extensions/github.copilot-chat ~/.vscode-remote/extensions/github.copilot ~/.vscode-remote/extensions/github.copilot-chat && chmod 000 ~/.vscode-server/extensions/github.copilot ~/.vscode-server/extensions/github.copilot-chat ~/.vscode-remote/extensions/github.copilot ~/.vscode-remote/extensions/github.copilot-chat",
-
-    // Aggressively uninstall Copilot extensions after VS Code attaches by finding the hidden CLI executable
-    "postAttachCommand": "find ~/.vscode-server/bin -name 'code' -type f -executable -exec {} --uninstall-extension github.copilot --force \\; -exec {} --uninstall-extension github.copilot-chat --force \\; || true",
-
     // Mounts the student's repository directly to /workspace in the Linux container
     "workspaceFolder": "/workspace",
     "mounts": [
@@ -65,5 +59,6 @@
     ],
 
     // Ensures the user inside the container is root for easy workspace setup during testing
-    "remoteUser": "root"
+    "updateRemoteUserUID": false,
+    "remoteUser": "student"
 }
