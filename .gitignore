@@ -17,7 +17,6 @@ node_modules/
 out/
 .npm-cache/
 ast_test.log
-vscode-extension/media/wasm/
 # vim files
 *.swp
 

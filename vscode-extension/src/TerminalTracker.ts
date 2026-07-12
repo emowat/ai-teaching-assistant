@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import * as pty from 'node-pty';
+import { spawn } from 'child_process';
 
 export let terminalBuffer: string[] = [];
 export let lastExitCode: number | null = null;
@@ -11,19 +11,17 @@ export function trackTerminal(onActivity?: () => void) {
     // Inject the invisible ANSI hook to report the exact exit code of the last command
     customEnv['PROMPT_COMMAND'] = 'echo -ne "\\033]999;$?\\007"';
 
-    // Create a real bash PTY instead of a fragile child_process pipe
-    const bashProcess = pty.spawn('bash', [], {
-        name: 'xterm-color',
-        cols: 80,
-        rows: 30,
+    // Create a bash process using child_process instead of node-pty to avoid native binding crashes
+    const bashProcess = spawn('bash', ['-i'], {
         cwd: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.env.HOME || '',
         env: customEnv
     });
 
-    bashProcess.onData((data) => {
+    const handleData = (data: Buffer) => {
         if (onActivity) onActivity();
+        let str = data.toString();
         // Intercept our custom invisible hook for the exit code
-        const exitCodeMatch = data.match(/\x1b\]999;(\d+)\x07/);
+        const exitCodeMatch = str.match(/\x1b\]999;(\d+)\x07/);
         if (exitCodeMatch) {
             lastExitCode = parseInt(exitCodeMatch[1], 10);
             
@@ -32,18 +30,24 @@ export function trackTerminal(onActivity?: () => void) {
                 terminalBuffer.splice(0, terminalBuffer.length - 5);
             }
             // Strip the invisible code so it doesn't end up in the buffer or VS Code's renderer
-            data = data.replace(/\x1b\]999;\d+\x07/g, '');
+            str = str.replace(/\x1b\]999;\d+\x07/g, '');
         }
 
-        terminalBuffer.push(data);
+        terminalBuffer.push(str);
         if (terminalBuffer.length > 50) terminalBuffer.shift();
-        writeEmitter.fire(data);
-    });
+        
+        // Convert LFs to CRLFs for VS Code's xterm.js terminal
+        const formatted = str.replace(/\r?\n/g, '\r\n');
+        writeEmitter.fire(formatted);
+    };
 
-    bashProcess.onExit((e) => {
+    bashProcess.stdout.on('data', handleData);
+    bashProcess.stderr.on('data', handleData);
+
+    bashProcess.on('exit', (code) => {
         // Fallback for when the shell actually terminates
-        lastExitCode = e.exitCode;
-        writeEmitter.fire(`\r\n[Process exited with code ${e.exitCode}]\r\n`);
+        lastExitCode = code;
+        writeEmitter.fire(`\r\n[Process exited with code ${code}]\r\n`);
     });
 
     let currentInput = '';
@@ -62,12 +66,19 @@ export function trackTerminal(onActivity?: () => void) {
                     terminalBuffer.length = 0; // Wipe the LLM's terminal memory!
                 }
                 currentInput = '';
+                bashProcess.stdin.write('\n'); // Bash expects \n
             } else if (data === '\x7f') { // Backspace
                 currentInput = currentInput.slice(0, -1);
             } else {
                 currentInput += data;
             }
-            bashProcess.write(data);
+            // Echo back to the terminal so the user sees what they typed, 
+            // since child_process doesn't automatically echo like a real PTY
+            writeEmitter.fire(data); 
+            
+            if (data !== '\r') {
+                bashProcess.stdin.write(data);
+            }
         }
     };
 
