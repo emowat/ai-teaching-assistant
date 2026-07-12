@@ -44,6 +44,26 @@ export interface ProfessorSectionAnalytics {
   generated_at: string;
 }
 
+export interface ProfessorSectionStudentAnalyticsPoint {
+  day: string;
+  sessions: number;
+  turns: number;
+}
+
+export interface ProfessorSectionStudentAnalytics {
+  section: ProfessorSectionSummary;
+  student: ProfessorSectionStudent;
+  total_sessions: number;
+  total_turns: number;
+  sessions_last_7_days: number;
+  turns_last_7_days: number;
+  positive_feedback_count: number;
+  negative_feedback_count: number;
+  last_activity_at: string;
+  weekly_activity: ProfessorSectionStudentAnalyticsPoint[];
+  generated_at: string;
+}
+
 export interface ProfessorSectionStudentInvitePayload {
   email: string;
   display_name?: string;
@@ -91,4 +111,24 @@ export function getProfessorSectionAnalytics(
   tz = "America/Los_Angeles",
 ): Promise<ProfessorSectionAnalytics> {
   return apiGet<ProfessorSectionAnalytics>(professorSectionAnalyticsPath(sectionId, tz), accessToken);
+}
+
+export function professorSectionStudentAnalyticsPath(
+  sectionId: string,
+  studentUserId: string,
+  tz = "America/Los_Angeles",
+): string {
+  return `/professor/sections/${encodeURIComponent(sectionId)}/students/${encodeURIComponent(studentUserId)}/analytics?tz=${encodeURIComponent(tz)}`;
+}
+
+export function getProfessorSectionStudentAnalytics(
+  sectionId: string,
+  studentUserId: string,
+  accessToken: string,
+  tz = "America/Los_Angeles",
+): Promise<ProfessorSectionStudentAnalytics> {
+  return apiGet<ProfessorSectionStudentAnalytics>(
+    professorSectionStudentAnalyticsPath(sectionId, studentUserId, tz),
+    accessToken,
+  );
 }

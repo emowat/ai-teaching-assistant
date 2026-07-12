@@ -27,7 +27,7 @@ There are three auth patterns in the service today:
 | `GET /me`, `POST /run/compile` | Cognito bearer token |
 | `GET /api/student/bootstrap`, `POST /api/student/chat`, `POST /api/student/telemetry`, `POST /api/student/feedback` | Cognito bearer token + active Aurora section membership; admin/professor roles may enter the student surface for mimic/smoke flows through active student, professor, or TA memberships |
 | `GET /professor/sections/{section_id}/launch-configs`, `PUT /professor/sections/{section_id}/launch-configs` | Cognito bearer token + active professor/TA membership for the section |
-| `GET /professor/sections/{section_id}/analytics` | Cognito bearer token + active professor/TA membership for the section |
+| `GET /professor/sections/{section_id}/analytics`, `GET /professor/sections/{section_id}/students/{student_user_id}/analytics` | Cognito bearer token + active professor/TA membership for the section |
 | `GET /professor/sections/{section_id}/teaching-plan`, `POST /professor/sections/{section_id}/teaching-plan`, `POST /professor/sections/{section_id}/teaching-plan/publish`, `POST /professor/sections/{section_id}/teaching-plan/archive`, `POST /professor/sections/{section_id}/teaching-plan/weeks`, `GET /professor/sections/{section_id}/teaching-plan/weeks/{week_id}`, `PATCH /professor/sections/{section_id}/teaching-plan/weeks/{week_id}`, `DELETE /professor/sections/{section_id}/teaching-plan/weeks/{week_id}`, `GET /professor/sections/{section_id}/teaching-plan/weeks/{week_id}/references`, `POST /professor/sections/{section_id}/teaching-plan/weeks/{week_id}/references`, `PATCH /professor/sections/{section_id}/teaching-plan/weeks/{week_id}/references/{reference_id}`, `DELETE /professor/sections/{section_id}/teaching-plan/weeks/{week_id}/references/{reference_id}` | Cognito bearer token + active professor/TA membership for the section |
 | most `/admin/*` routes | admin Cognito bearer token or `X-Admin-Token` |
 | `POST /admin/index/ensure`, `POST /admin/index/rebuild` | `X-Admin-Token` only |
@@ -91,6 +91,7 @@ routes accept either auth style.
 | `POST` | `/api/student/feedback` | bearer | record authenticated student feedback with Aurora identity |
 | `GET` | `/professor/sections/{section_id}/launch-configs` | bearer | read section launch targets |
 | `GET` | `/professor/sections/{section_id}/analytics` | bearer | read section-scoped analytics |
+| `GET` | `/professor/sections/{section_id}/students/{student_user_id}/analytics` | bearer | read one student’s section analytics drill-down |
 | `PUT` | `/professor/sections/{section_id}/launch-configs` | bearer | replace section launch targets |
 | `GET` | `/professor/sections/{section_id}/teaching-plan` | bearer | load the section Teaching Plan |
 | `POST` | `/professor/sections/{section_id}/teaching-plan` | bearer | save Teaching Plan title / summary |

@@ -33,6 +33,8 @@ from rag_eng.schemas import (
     ProfessorSectionStudent,
     ProfessorSectionAnalytics,
     ProfessorSectionAnalyticsPoint,
+    ProfessorSectionStudentAnalytics,
+    ProfessorSectionStudentAnalyticsPoint,
     ProfessorSectionSummary,
     ProfessorSectionStudentInviteCreate,
     ProfessorTeachingPlan,
@@ -1986,6 +1988,224 @@ def get_professor_section_analytics(
         active_students_last_7_days=totals["active_students"],
         weekly_activity=weekly_activity,
         top_students=top_students,
+        generated_at=_format_timestamp(datetime.now(timezone.utc)),
+    )
+
+
+def get_professor_section_student_analytics(
+    current_user: CurrentUser,
+    section_id: str,
+    student_user_id: str,
+    *,
+    tz: str = "America/Los_Angeles",
+    runtime: AppRegistryRuntimeConfig | None = None,
+) -> ProfessorSectionStudentAnalytics:
+    """Return a student drill-down summary for one professor-managed section."""
+    runtime = runtime or load_app_registry_runtime_config()
+    database_url = _require_database_url(runtime)
+    require_section_membership(
+        current_user,
+        section_id,
+        allowed_roles={"professor", "ta"},
+        runtime=runtime,
+    )
+
+    import pytz
+
+    if tz not in pytz.all_timezones:
+        raise ValueError("Invalid timezone")
+
+    pt_tz = pytz.timezone(tz)
+    now = datetime.now(pt_tz)
+    timeline: dict[str, dict[str, int | str]] = {}
+    for days_ago in range(6, -1, -1):
+        day = (now - timedelta(days=days_ago)).strftime("%a")
+        timeline[day] = {"day": day, "sessions": 0, "turns": 0}
+
+    with _connect_postgres(database_url, runtime.connect_timeout_seconds) as connection:
+        section_row = _load_section_by_id(connection, section_id)
+        if section_row is None:
+            raise SectionNotFoundError(f"Section {section_id} was not found.")
+        membership_rows = _load_section_memberships_by_section(connection, section_id)
+        counts = {"professor": 0, "ta": 0, "student": 0}
+        for row in membership_rows:
+            role_in_section = _clean_text(row[5])
+            status = _clean_text(row[6])
+            if status == "active" and role_in_section in counts:
+                counts[role_in_section] += 1
+
+        student_row = _load_user_by_id(connection, student_user_id)
+        if student_row is None:
+            raise AppUserNotFoundError(f"User {student_user_id} was not found.")
+
+        membership_row = _fetch_one_row(
+            connection,
+            """
+            SELECT
+              sm.role_in_section,
+              sm.status
+            FROM section_memberships AS sm
+            WHERE sm.section_id = %s
+              AND sm.user_id = %s
+            """,
+            (section_id, student_user_id),
+        )
+        if membership_row is None:
+            raise MembershipNotFoundError(
+                f"Student {student_user_id} is not assigned to section {section_id}."
+            )
+
+        membership_role = _clean_text(membership_row[0])
+        membership_status = _clean_text(membership_row[1])
+        if membership_role != "student":
+            raise MembershipAccessDeniedError(
+                f"User {student_user_id} is not a student in section {section_id}."
+            )
+        if membership_status not in {"active", "invited"}:
+            raise MembershipAccessDeniedError(
+                f"Student {student_user_id} is not active in section {section_id}."
+            )
+
+        student_cognito_sub = _clean_text(student_row[1])
+        activity_identity = student_cognito_sub or student_user_id
+        activity_params = (activity_identity, student_user_id)
+
+        session_row = _fetch_one_row(
+            connection,
+            """
+            SELECT
+              COUNT(*) AS session_count,
+              MAX(last_seen_at) AS last_session_at
+            FROM tutor_sessions
+            WHERE section_id = %s
+              AND (user_sub = %s OR app_user_id::text = %s)
+            """,
+            (section_id, *activity_params),
+        )
+        turn_row = _fetch_one_row(
+            connection,
+            """
+            SELECT
+              COUNT(*) AS turn_count,
+              MAX(COALESCE(completed_at, updated_at, created_at)) AS last_turn_at
+            FROM tutor_turns
+            WHERE section_id = %s
+              AND (user_sub = %s OR app_user_id::text = %s)
+            """,
+            (section_id, *activity_params),
+        )
+        feedback_row = _fetch_one_row(
+            connection,
+            """
+            SELECT
+              COUNT(*) FILTER (
+                WHERE snapshot->'feedback'->>'thumbs_up' = 'positive'
+              ) AS positive_feedback_count,
+              COUNT(*) FILTER (
+                WHERE snapshot->'feedback'->>'thumbs_up' = 'negative'
+              ) AS negative_feedback_count,
+              MAX(updated_at) AS last_feedback_at
+            FROM tutor_turn_snapshots
+            WHERE section_id = %s
+              AND (user_sub = %s OR app_user_id::text = %s)
+            """,
+            (section_id, *activity_params),
+        )
+
+        daily_session_rows = _fetch_all_rows(
+            connection,
+            """
+            SELECT
+              TO_CHAR((last_seen_at AT TIME ZONE %s), 'Dy') AS day,
+              COUNT(*) AS sessions
+            FROM tutor_sessions
+            WHERE section_id = %s
+              AND (user_sub = %s OR app_user_id::text = %s)
+              AND last_seen_at >= (CURRENT_TIMESTAMP AT TIME ZONE %s)::DATE - INTERVAL '6 days'
+            GROUP BY DATE((last_seen_at AT TIME ZONE %s)), day
+            ORDER BY DATE((last_seen_at AT TIME ZONE %s)) ASC
+            """,
+            (tz, section_id, *activity_params, tz, tz, tz),
+        )
+        daily_turn_rows = _fetch_all_rows(
+            connection,
+            """
+            SELECT
+              TO_CHAR((COALESCE(completed_at, updated_at, created_at) AT TIME ZONE %s), 'Dy') AS day,
+              COUNT(*) AS turns
+            FROM tutor_turns
+            WHERE section_id = %s
+              AND (user_sub = %s OR app_user_id::text = %s)
+              AND COALESCE(completed_at, updated_at, created_at) >= (CURRENT_TIMESTAMP AT TIME ZONE %s)::DATE - INTERVAL '6 days'
+            GROUP BY DATE((COALESCE(completed_at, updated_at, created_at) AT TIME ZONE %s)), day
+            ORDER BY DATE((COALESCE(completed_at, updated_at, created_at) AT TIME ZONE %s)) ASC
+            """,
+            (tz, section_id, *activity_params, tz, tz, tz),
+        )
+
+    session_count = int(session_row[0]) if session_row and session_row[0] is not None else 0
+    last_session_at = session_row[1] if session_row else None
+    turn_count = int(turn_row[0]) if turn_row and turn_row[0] is not None else 0
+    last_turn_at = turn_row[1] if turn_row else None
+    positive_feedback_count = (
+        int(feedback_row[0]) if feedback_row and feedback_row[0] is not None else 0
+    )
+    negative_feedback_count = (
+        int(feedback_row[1]) if feedback_row and feedback_row[1] is not None else 0
+    )
+    last_feedback_at = feedback_row[2] if feedback_row and len(feedback_row) > 2 else None
+
+    last_activity_at = max(
+        [value for value in (last_session_at, last_turn_at, last_feedback_at) if value is not None],
+        default=None,
+    )
+
+    for day, sessions in daily_session_rows:
+        key = str(day)
+        if key in timeline:
+            timeline[key]["sessions"] = int(sessions)
+    for day, turns in daily_turn_rows:
+        key = str(day)
+        if key in timeline:
+            timeline[key]["turns"] = int(turns)
+
+    section_summary = ProfessorSectionSummary(
+        **_section_summary_from_row(section_row),
+        professor_count=counts["professor"],
+        ta_count=counts["ta"],
+        student_count=counts["student"],
+    )
+    student_summary = ProfessorSectionStudent(
+        user_id=_clean_text(student_row[0]),
+        cognito_sub=student_cognito_sub or None,
+        email=_clean_text(student_row[2]),
+        display_name=_clean_text(student_row[3]),
+        membership_status=membership_status,
+        role_in_section=membership_role,
+        session_count=session_count,
+        last_session_at=_format_timestamp(last_session_at or last_activity_at),
+    )
+
+    weekly_activity = [
+        ProfessorSectionStudentAnalyticsPoint(
+            day=str(values["day"]),
+            sessions=int(values["sessions"]),
+            turns=int(values["turns"]),
+        )
+        for values in timeline.values()
+    ]
+
+    return ProfessorSectionStudentAnalytics(
+        section=section_summary,
+        student=student_summary,
+        total_sessions=session_count,
+        total_turns=turn_count,
+        sessions_last_7_days=sum(int(values["sessions"]) for values in timeline.values()),
+        turns_last_7_days=sum(int(values["turns"]) for values in timeline.values()),
+        positive_feedback_count=positive_feedback_count,
+        negative_feedback_count=negative_feedback_count,
+        last_activity_at=_format_timestamp(last_activity_at),
+        weekly_activity=weekly_activity,
         generated_at=_format_timestamp(datetime.now(timezone.utc)),
     )
 

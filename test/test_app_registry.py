@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import re
 import uuid
 from types import SimpleNamespace
@@ -22,6 +22,7 @@ from rag_eng.schemas import (
     ProfessorTeachingPlanWeekReferenceUpdate,
     ProfessorTeachingPlanWeekUpdate,
     ProfessorSectionAnalytics,
+    ProfessorSectionStudentAnalytics,
     ProfessorSectionStudentInviteCreate,
     SectionLaunchConfig,
     StudentBootstrapResponse,
@@ -43,6 +44,8 @@ class _State:
     teaching_plan_weeks: dict[str, dict[str, object]]
     teaching_plan_week_references: dict[str, dict[str, object]]
     tutor_sessions: list[dict[str, object]]
+    tutor_turns: list[dict[str, object]]
+    tutor_turn_snapshots: list[dict[str, object]]
 
 
 class _FakeCursor:
@@ -161,6 +164,30 @@ class _FakeCursor:
             membership["status"],
             section["created_at"],
             section["updated_at"],
+        )
+
+    def _turn_row(self, record: dict[str, object]) -> tuple[object, ...]:
+        return (
+            record["turn_id"],
+            record["session_id"],
+            record.get("request_id", ""),
+            record.get("turn_index", 0),
+            record.get("user_sub"),
+            record.get("app_user_id"),
+            record.get("course_id"),
+            record.get("course_source", ""),
+            record.get("section_id"),
+            record.get("mode", ""),
+            record.get("week", 0),
+            record.get("status", "completed"),
+            record.get("model_provider", ""),
+            record.get("model_name", ""),
+            record.get("retrieval_doc_count", 0),
+            record.get("answer_chars", 0),
+            record.get("latency_ms", 0),
+            record.get("created_at"),
+            record.get("updated_at"),
+            record.get("completed_at"),
         )
 
     def _launch_config_row(self, record: dict[str, object]) -> tuple[object, ...]:
@@ -484,6 +511,112 @@ class _FakeCursor:
                     len({str(session.get("user_sub", "")) for session in sessions}),
                 )
             ]
+            return
+
+        if sql.startswith(
+            "SELECT COUNT(*) AS session_count, MAX(last_seen_at) AS last_session_at FROM tutor_sessions WHERE section_id = %s AND (user_sub = %s OR app_user_id::text = %s)"
+        ):
+            section_id, user_sub, user_id = map(str, params)
+            sessions = [
+                session
+                for session in self.state.tutor_sessions
+                if str(session.get("section_id", "")) == section_id
+                and (
+                    str(session.get("user_sub", "")) == user_sub
+                    or str(session.get("app_user_id", "")) == user_id
+                )
+            ]
+            if sessions:
+                self._rows = [(len(sessions), max(session["last_seen_at"] for session in sessions))]
+            else:
+                self._rows = [(0, None)]
+            return
+
+        if sql.startswith(
+            "SELECT COUNT(*) AS turn_count, MAX(COALESCE(completed_at, updated_at, created_at)) AS last_turn_at FROM tutor_turns WHERE section_id = %s AND (user_sub = %s OR app_user_id::text = %s)"
+        ):
+            section_id, user_sub, user_id = map(str, params)
+            turns = [
+                turn
+                for turn in self.state.tutor_turns
+                if str(turn.get("section_id", "")) == section_id
+                and (
+                    str(turn.get("user_sub", "")) == user_sub
+                    or str(turn.get("app_user_id", "")) == user_id
+                )
+            ]
+            if turns:
+                latest = max(
+                    turn.get("completed_at") or turn.get("updated_at") or turn.get("created_at")
+                    for turn in turns
+                )
+                self._rows = [(len(turns), latest)]
+            else:
+                self._rows = [(0, None)]
+            return
+
+        if sql.startswith(
+            "SELECT COUNT(*) FILTER ( WHERE snapshot->'feedback'->>'thumbs_up' = 'positive' ) AS positive_feedback_count, COUNT(*) FILTER ( WHERE snapshot->'feedback'->>'thumbs_up' = 'negative' ) AS negative_feedback_count, MAX(updated_at) AS last_feedback_at FROM tutor_turn_snapshots WHERE section_id = %s AND (user_sub = %s OR app_user_id::text = %s)"
+        ):
+            section_id, user_sub, user_id = map(str, params)
+            snapshots = [
+                snapshot
+                for snapshot in self.state.tutor_turn_snapshots
+                if str(snapshot.get("section_id", "")) == section_id
+                and (
+                    str(snapshot.get("user_sub", "")) == user_sub
+                    or str(snapshot.get("app_user_id", "")) == user_id
+                )
+            ]
+            positive = 0
+            negative = 0
+            last_feedback_at = None
+            for snapshot in snapshots:
+                feedback = dict(snapshot.get("snapshot", {})).get("feedback", {})
+                if feedback.get("thumbs_up") == "positive":
+                    positive += 1
+                if feedback.get("thumbs_up") == "negative":
+                    negative += 1
+                updated_at = snapshot.get("updated_at")
+                if updated_at is not None:
+                    last_feedback_at = max(last_feedback_at, updated_at) if last_feedback_at else updated_at
+            self._rows = [(positive, negative, last_feedback_at)]
+            return
+
+        if sql.startswith(
+            "SELECT TO_CHAR((last_seen_at AT TIME ZONE %s), 'Dy') AS day, COUNT(*) AS sessions FROM tutor_sessions WHERE section_id = %s AND (user_sub = %s OR app_user_id::text = %s) AND last_seen_at >= (CURRENT_TIMESTAMP AT TIME ZONE %s)::DATE - INTERVAL '6 days' GROUP BY DATE((last_seen_at AT TIME ZONE %s)), day ORDER BY DATE((last_seen_at AT TIME ZONE %s)) ASC"
+        ):
+            tz, section_id, user_sub, user_id, *_ = map(str, params)
+            by_day: dict[str, int] = {}
+            for session in self.state.tutor_sessions:
+                if str(session.get("section_id", "")) != section_id:
+                    continue
+                if not (
+                    str(session.get("user_sub", "")) == user_sub
+                    or str(session.get("app_user_id", "")) == user_id
+                ):
+                    continue
+                day = session["last_seen_at"].strftime("%a")
+                by_day[day] = by_day.get(day, 0) + 1
+            self._rows = sorted((day, sessions) for day, sessions in by_day.items())
+            return
+
+        if sql.startswith(
+            "SELECT TO_CHAR((COALESCE(completed_at, updated_at, created_at) AT TIME ZONE %s), 'Dy') AS day, COUNT(*) AS turns FROM tutor_turns WHERE section_id = %s AND (user_sub = %s OR app_user_id::text = %s) AND COALESCE(completed_at, updated_at, created_at) >= (CURRENT_TIMESTAMP AT TIME ZONE %s)::DATE - INTERVAL '6 days' GROUP BY DATE((COALESCE(completed_at, updated_at, created_at) AT TIME ZONE %s)), day ORDER BY DATE((COALESCE(completed_at, updated_at, created_at) AT TIME ZONE %s)) ASC"
+        ):
+            tz, section_id, user_sub, user_id, *_ = map(str, params)
+            by_day: dict[str, int] = {}
+            for turn in self.state.tutor_turns:
+                if str(turn.get("section_id", "")) != section_id:
+                    continue
+                if not (
+                    str(turn.get("user_sub", "")) == user_sub
+                    or str(turn.get("app_user_id", "")) == user_id
+                ):
+                    continue
+                day = (turn.get("completed_at") or turn.get("updated_at") or turn.get("created_at")).strftime("%a")
+                by_day[day] = by_day.get(day, 0) + 1
+            self._rows = sorted((day, turns) for day, turns in by_day.items())
             return
 
         if sql.startswith(
@@ -1047,6 +1180,15 @@ class _FakeCursor:
                 self._rows = [(record["role_in_section"], record["status"])]
             return
 
+        if sql.startswith(
+            "SELECT sm.role_in_section, sm.status FROM section_memberships AS sm WHERE sm.section_id = %s AND sm.user_id = %s"
+        ):
+            section_id, user_id = map(str, params)
+            record = self.state.memberships.get((section_id, user_id))
+            if record is not None:
+                self._rows = [(record["role_in_section"], record["status"])]
+            return
+
         raise AssertionError(f"Unexpected SQL: {sql}")
 
     def fetchall(self):
@@ -1093,6 +1235,8 @@ def _state() -> _State:
         teaching_plan_weeks={},
         teaching_plan_week_references={},
         tutor_sessions=[],
+        tutor_turns=[],
+        tutor_turn_snapshots=[],
     )
 
 
@@ -2418,3 +2562,138 @@ def test_professor_can_invite_student_into_assigned_section(
         for membership in state.memberships.values()
         if membership["user_id"] != "prof-1"
     )
+
+
+def test_professor_can_view_student_analytics_for_assigned_section(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _state()
+    state.users["prof-1"] = _user(
+        user_id="prof-1",
+        email="prof@example.edu",
+        display_name="Prof",
+        primary_role="professor",
+        status="active",
+        cognito_sub="sub-prof",
+    )
+    state.users["student-1"] = _user(
+        user_id="student-1",
+        email="student@example.edu",
+        display_name="Student",
+        primary_role="student",
+        status="active",
+        cognito_sub="sub-student",
+    )
+    state.sections["mit14-fall-001"] = _section(
+        section_id="mit14-fall-001",
+        display_name="MIT 6.0014 Section A",
+    )
+    state.memberships[("mit14-fall-001", "prof-1")] = _membership(
+        section_id="mit14-fall-001",
+        user_id="prof-1",
+        role_in_section="professor",
+    )
+    state.memberships[("mit14-fall-001", "student-1")] = _membership(
+        section_id="mit14-fall-001",
+        user_id="student-1",
+        role_in_section="student",
+    )
+    state.tutor_sessions.extend(
+        [
+            {
+                "session_id": "sess-1",
+                "user_sub": "sub-student",
+                "app_user_id": "student-1",
+                "section_id": "mit14-fall-001",
+                "last_seen_at": NOW,
+                "updated_at": NOW,
+            },
+            {
+                "session_id": "sess-2",
+                "user_sub": "sub-student",
+                "app_user_id": "student-1",
+                "section_id": "mit14-fall-001",
+                "last_seen_at": NOW - timedelta(days=1),
+                "updated_at": NOW - timedelta(days=1),
+            },
+        ]
+    )
+    state.tutor_turns.extend(
+        [
+            {
+                "turn_id": "turn-1",
+                "session_id": "sess-1",
+                "request_id": "req-1",
+                "turn_index": 1,
+                "user_sub": "sub-student",
+                "app_user_id": "student-1",
+                "section_id": "mit14-fall-001",
+                "created_at": NOW,
+                "updated_at": NOW,
+                "completed_at": NOW,
+            },
+            {
+                "turn_id": "turn-2",
+                "session_id": "sess-2",
+                "request_id": "req-2",
+                "turn_index": 2,
+                "user_sub": "sub-student",
+                "app_user_id": "student-1",
+                "section_id": "mit14-fall-001",
+                "created_at": NOW - timedelta(days=1),
+                "updated_at": NOW - timedelta(days=1),
+                "completed_at": NOW - timedelta(days=1),
+            },
+        ]
+    )
+    state.tutor_turn_snapshots.extend(
+        [
+            {
+                "turn_id": "turn-1",
+                "session_id": "sess-1",
+                "request_id": "req-1",
+                "turn_index": 1,
+                "user_sub": "sub-student",
+                "app_user_id": "student-1",
+                "section_id": "mit14-fall-001",
+                "snapshot": {"feedback": {"thumbs_up": "positive"}},
+                "created_at": NOW,
+                "updated_at": NOW,
+            },
+            {
+                "turn_id": "turn-2",
+                "session_id": "sess-2",
+                "request_id": "req-2",
+                "turn_index": 2,
+                "user_sub": "sub-student",
+                "app_user_id": "student-1",
+                "section_id": "mit14-fall-001",
+                "snapshot": {"feedback": {"thumbs_up": "negative"}},
+                "created_at": NOW - timedelta(days=1),
+                "updated_at": NOW - timedelta(days=1),
+            },
+        ]
+    )
+    _patch_connection(monkeypatch, state)
+
+    analytics = app_registry.get_professor_section_student_analytics(
+        CurrentUser(
+            cognito_sub="sub-prof",
+            email="prof@example.edu",
+            primary_role="professor",
+        ),
+        "mit14-fall-001",
+        "student-1",
+        runtime=_runtime(),
+    )
+
+    assert isinstance(analytics, ProfessorSectionStudentAnalytics)
+    assert analytics.section.section_id == "mit14-fall-001"
+    assert analytics.student.email == "student@example.edu"
+    assert analytics.total_sessions == 2
+    assert analytics.total_turns == 2
+    assert analytics.positive_feedback_count == 1
+    assert analytics.negative_feedback_count == 1
+    assert len(analytics.weekly_activity) == 7
+    assert sum(point.sessions for point in analytics.weekly_activity) == 2
+    assert sum(point.turns for point in analytics.weekly_activity) == 2

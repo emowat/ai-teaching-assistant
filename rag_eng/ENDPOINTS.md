@@ -83,6 +83,7 @@ and staff smoke flows.
 | `POST` | `/api/student/feedback` | authenticated student feedback surface that persists Aurora identity |
 | `GET` | `/professor/sections/{section_id}/launch-configs` | list launch targets for a professor-visible section |
 | `GET` | `/professor/sections/{section_id}/analytics` | read section-scoped usage analytics |
+| `GET` | `/professor/sections/{section_id}/students/{student_user_id}/analytics` | read one student’s section-scoped analytics drill-down |
 | `PUT` | `/professor/sections/{section_id}/launch-configs` | replace all launch targets for a section |
 | `GET` | `/professor/sections/{section_id}/teaching-plan` | load the section Teaching Plan |
 | `POST` | `/professor/sections/{section_id}/teaching-plan` | save the Teaching Plan title / summary |
@@ -152,6 +153,13 @@ curl -sS "$BASE_URL/professor/sections/mit14-fall-001/students" \
   "display_name": "New Student"
 }
 JSON
+```
+
+Example professor student analytics drill-down call:
+
+```bash
+curl -sS "$BASE_URL/professor/sections/mit14-fall-001/students/student-1/analytics?tz=America/Los_Angeles" \
+  -H "Authorization: Bearer $COGNITO_ACCESS_TOKEN" | jq .
 ```
 
 Example student telemetry call:

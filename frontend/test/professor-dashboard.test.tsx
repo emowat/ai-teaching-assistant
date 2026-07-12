@@ -2,7 +2,10 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ProfessorDashboard } from "../src/pages/ProfessorDashboard";
-import { getProfessorSectionAnalytics } from "../src/api/professorSectionsApi";
+import {
+  getProfessorSectionAnalytics,
+  getProfessorSectionStudentAnalytics,
+} from "../src/api/professorSectionsApi";
 import {
   listProfessorSectionLaunchConfigs,
   replaceProfessorSectionLaunchConfigs,
@@ -32,6 +35,7 @@ import {
 
 vi.mock("../src/api/professorSectionsApi", () => ({
   getProfessorSectionAnalytics: vi.fn(),
+  getProfessorSectionStudentAnalytics: vi.fn(),
   inviteProfessorSectionStudent: vi.fn(),
   listProfessorSections: vi.fn(),
   listProfessorSectionStudents: vi.fn(),
@@ -63,6 +67,9 @@ vi.mock("../src/api/sectionInstructionSettingsApi", () => ({
 
 const mockedListProfessorSections = vi.mocked(listProfessorSections);
 const mockedGetProfessorSectionAnalytics = vi.mocked(getProfessorSectionAnalytics);
+const mockedGetProfessorSectionStudentAnalytics = vi.mocked(
+  getProfessorSectionStudentAnalytics,
+);
 const mockedInviteProfessorSectionStudent = vi.mocked(inviteProfessorSectionStudent);
 const mockedListProfessorSectionStudents = vi.mocked(listProfessorSectionStudents);
 const mockedListProfessorSectionLaunchConfigs = vi.mocked(listProfessorSectionLaunchConfigs);
@@ -98,6 +105,7 @@ const mockedUpdateProfessorSectionInstructionSettings = vi.mocked(
 describe("ProfessorDashboard", () => {
   beforeEach(() => {
     mockedGetProfessorSectionAnalytics.mockReset();
+    mockedGetProfessorSectionStudentAnalytics.mockReset();
     mockedInviteProfessorSectionStudent.mockReset();
     mockedListProfessorSections.mockReset();
     mockedListProfessorSectionStudents.mockReset();
@@ -152,6 +160,43 @@ describe("ProfessorDashboard", () => {
           session_count: 3,
           last_session_at: "2026-07-08T01:02:03Z",
         },
+      ],
+      generated_at: "2026-07-08T00:00:00Z",
+    });
+    mockedGetProfessorSectionStudentAnalytics.mockResolvedValue({
+      section: {
+        section_id: "mit14-fall-001",
+        course_id: "mit14",
+        course_display_name: "MIT 6.0014",
+        display_name: "Section A",
+        term: "Fall 2026",
+        is_active: true,
+        professor_count: 1,
+        ta_count: 1,
+        student_count: 2,
+        created_at: "2026-07-08T00:00:00Z",
+        updated_at: "2026-07-08T00:00:00Z",
+      },
+      student: {
+        user_id: "student-1",
+        cognito_sub: "cognito-sub-1",
+        email: "ada@example.com",
+        display_name: "Ada Lovelace",
+        membership_status: "active",
+        role_in_section: "student",
+        session_count: 3,
+        last_session_at: "2026-07-08T01:02:03Z",
+      },
+      total_sessions: 3,
+      total_turns: 5,
+      sessions_last_7_days: 3,
+      turns_last_7_days: 5,
+      positive_feedback_count: 2,
+      negative_feedback_count: 1,
+      last_activity_at: "2026-07-08T01:02:03Z",
+      weekly_activity: [
+        { day: "Mon", sessions: 1, turns: 2 },
+        { day: "Tue", sessions: 2, turns: 3 },
       ],
       generated_at: "2026-07-08T00:00:00Z",
     });
@@ -271,11 +316,17 @@ describe("ProfessorDashboard", () => {
     expect(screen.getByText("ada@example.com")).toBeInTheDocument();
     expect(screen.getByText("3 sessions")).toBeInTheDocument();
 
-    screen.getByRole("button", { name: /analytics/i }).click();
+    fireEvent.click(screen.getAllByRole("button", { name: /view analytics/i })[0]);
 
     expect(await screen.findByText("Section analytics")).toBeInTheDocument();
-    expect(screen.getByText("// sessions_7d")).toBeInTheDocument();
-    expect(screen.getByText("Ada Lovelace")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /back to roster/i })).toBeInTheDocument();
+    expect(screen.getByText("student sessions in section")).toBeInTheDocument();
+    expect(screen.getByText("// student_drill_down")).toBeInTheDocument();
+    expect(mockedGetProfessorSectionStudentAnalytics).toHaveBeenCalledWith(
+      "mit14-fall-001",
+      "student-1",
+      "access-token-1",
+    );
   });
 
   it("invites a student and refreshes the roster with invited memberships", async () => {

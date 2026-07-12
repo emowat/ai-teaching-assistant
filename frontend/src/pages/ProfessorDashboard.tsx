@@ -11,10 +11,12 @@ import {
 import {
   inviteProfessorSectionStudent,
   getProfessorSectionAnalytics,
+  getProfessorSectionStudentAnalytics,
   listProfessorSectionStudents,
   listProfessorSections,
   type ProfessorSectionStudentInvitePayload,
   type ProfessorSectionAnalytics,
+  type ProfessorSectionStudentAnalytics,
   type ProfessorSectionStudent,
   type ProfessorSectionSummary,
 } from "../api/professorSectionsApi";
@@ -135,6 +137,11 @@ export function ProfessorDashboard({
   const [students, setStudents] = useState<ProfessorSectionStudent[]>([]);
   const [analytics, setAnalytics] = useState<ProfessorSectionAnalytics | null>(null);
   const [analyticsSectionId, setAnalyticsSectionId] = useState<string | null>(null);
+  const [studentAnalytics, setStudentAnalytics] = useState<ProfessorSectionStudentAnalytics | null>(
+    null,
+  );
+  const [studentAnalyticsSectionId, setStudentAnalyticsSectionId] = useState<string | null>(null);
+  const [studentAnalyticsStudentId, setStudentAnalyticsStudentId] = useState<string | null>(null);
   const [launchConfigs, setLaunchConfigs] = useState<SectionLaunchConfig[]>([]);
   const [launchConfigsSectionId, setLaunchConfigsSectionId] = useState<string | null>(null);
   const [teachingPlan, setTeachingPlan] = useState<ProfessorTeachingPlan | null>(null);
@@ -147,6 +154,7 @@ export function ProfessorDashboard({
   const [sectionError, setSectionError] = useState<string | null>(null);
   const [studentError, setStudentError] = useState<string | null>(null);
   const [analyticsError, setAnalyticsError] = useState<string | null>(null);
+  const [studentAnalyticsError, setStudentAnalyticsError] = useState<string | null>(null);
   const [launchConfigError, setLaunchConfigError] = useState<string | null>(null);
   const [launchConfigStatus, setLaunchConfigStatus] = useState<string | null>(null);
   const [teachingPlanError, setTeachingPlanError] = useState<string | null>(null);
@@ -159,6 +167,7 @@ export function ProfessorDashboard({
   const [savingSectionSettings, setSavingSectionSettings] = useState(false);
   const [creatingTeachingPlanWeek, setCreatingTeachingPlanWeek] = useState(false);
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
+  const [studentAnalyticsFetchComplete, setStudentAnalyticsFetchComplete] = useState(false);
   const [inviteStudentEmail, setInviteStudentEmail] = useState("");
   const [inviteStudentDisplayName, setInviteStudentDisplayName] = useState("");
   const [invitingStudent, setInvitingStudent] = useState(false);
@@ -179,6 +188,20 @@ export function ProfessorDashboard({
   const activeAnalytics = useMemo(
     () => (analyticsSectionId === selectedSectionId ? analytics : null),
     [analytics, analyticsSectionId, selectedSectionId],
+  );
+  const activeStudentAnalytics = useMemo(
+    () =>
+      studentAnalyticsSectionId === selectedSectionId &&
+      studentAnalyticsStudentId === selectedStudentId
+        ? studentAnalytics
+        : null,
+    [
+      selectedSectionId,
+      selectedStudentId,
+      studentAnalytics,
+      studentAnalyticsSectionId,
+      studentAnalyticsStudentId,
+    ],
   );
   const activeTeachingPlan = useMemo(
     () => (teachingPlanSectionId === selectedSectionId ? teachingPlan : null),
@@ -204,6 +227,10 @@ export function ProfessorDashboard({
       !launchConfigError
   );
   const loadingAnalytics = Boolean(selectedSectionId) && !analyticsFetchComplete && !analyticsError;
+  const loadingStudentAnalytics =
+    Boolean(selectedSectionId && selectedStudentId) &&
+    !studentAnalyticsFetchComplete &&
+    !studentAnalyticsError;
   const loadingTeachingPlan = Boolean(
     selectedSectionId &&
       accessToken &&
@@ -353,6 +380,40 @@ export function ProfessorDashboard({
   }, [accessToken, selectedSectionId]);
 
   useEffect(() => {
+    if (tab !== "analytics" || !selectedSectionId || !selectedStudentId || !accessToken) {
+      return;
+    }
+
+    let cancelled = false;
+    setStudentAnalyticsFetchComplete(false);
+    setStudentAnalyticsError(null);
+
+    void getProfessorSectionStudentAnalytics(selectedSectionId, selectedStudentId, accessToken)
+      .then((nextAnalytics) => {
+        if (cancelled) return;
+        setStudentAnalytics(nextAnalytics);
+        setStudentAnalyticsSectionId(selectedSectionId);
+        setStudentAnalyticsStudentId(selectedStudentId);
+        setStudentAnalyticsError(null);
+      })
+      .catch((err: Error) => {
+        if (!cancelled) {
+          setStudentAnalytics(null);
+          setStudentAnalyticsSectionId(selectedSectionId);
+          setStudentAnalyticsStudentId(selectedStudentId);
+          setStudentAnalyticsError(err.message);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setStudentAnalyticsFetchComplete(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken, selectedSectionId, selectedStudentId, tab]);
+
+  useEffect(() => {
     if (!selectedSectionId) {
       return;
     }
@@ -386,6 +447,11 @@ export function ProfessorDashboard({
     setSelectedStudentId(null);
     setStudentError(null);
     setStudentFetchComplete(false);
+    setStudentAnalytics(null);
+    setStudentAnalyticsSectionId(null);
+    setStudentAnalyticsStudentId(null);
+    setStudentAnalyticsError(null);
+    setStudentAnalyticsFetchComplete(false);
     setInviteStudentEmail("");
     setInviteStudentDisplayName("");
     setInvitingStudent(false);
@@ -799,6 +865,11 @@ export function ProfessorDashboard({
     } finally {
       setInvitingStudent(false);
     }
+  };
+
+  const openStudentAnalytics = (studentUserId: string) => {
+    setSelectedStudentId(studentUserId);
+    setTab("analytics");
   };
 
   return (
@@ -1690,8 +1761,19 @@ export function ProfessorDashboard({
                       <div style={{ fontSize: 13, fontWeight: 500 }}>{student.display_name}</div>
                       <div style={{ fontSize: 11, color: D.muted }}>{student.email}</div>
                     </div>
-                    <Tag color={D.green}>{student.session_count} sessions</Tag>
-                    <Tag color={D.blue}>{student.membership_status}</Tag>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <Tag color={D.green}>{student.session_count} sessions</Tag>
+                      <Tag color={D.blue}>{student.membership_status}</Tag>
+                      <Btn
+                        small
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          openStudentAnalytics(student.user_id);
+                        }}
+                      >
+                        View analytics
+                      </Btn>
+                    </div>
                   </Card>
                 ))}
               </div>
@@ -1770,6 +1852,116 @@ export function ProfessorDashboard({
                   </ResponsiveContainer>
                 )}
               </Card>
+              <Card style={{ marginBottom: 12 }}>
+                <div style={{ ...mono, fontSize: 11, color: D.muted, marginBottom: 14 }}>
+                  // student_drill_down
+                </div>
+                {studentAnalyticsError ? (
+                  <div style={{ color: D.red, fontSize: 12 }}>
+                    Student analytics failed to load: {studentAnalyticsError}
+                  </div>
+                ) : loadingStudentAnalytics ? (
+                  <div style={{ fontSize: 12, color: D.muted }}>Loading student drill-down...</div>
+                ) : activeStudentAnalytics ? (
+                  <div style={{ display: "grid", gap: 12 }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 12,
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <Avatar
+                        name={
+                          activeStudentAnalytics.student.display_name ||
+                          activeStudentAnalytics.student.email
+                        }
+                        size={36}
+                      />
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 15, fontWeight: 600 }}>
+                          {activeStudentAnalytics.student.display_name}
+                        </div>
+                        <div style={{ fontSize: 11, color: D.muted }}>
+                          {activeStudentAnalytics.student.email}
+                        </div>
+                        <div style={{ fontSize: 11, color: D.dim }}>
+                          {activeStudentAnalytics.student.membership_status} ·{" "}
+                          {activeStudentAnalytics.student.role_in_section}
+                        </div>
+                      </div>
+                      <div style={{ flex: 1 }} />
+                      <Btn small onClick={() => setTab("students")}>Back to roster</Btn>
+                    </div>
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                        gap: 12,
+                      }}
+                    >
+                      <Stat
+                        label="// sessions_7d"
+                        value={activeStudentAnalytics.sessions_last_7_days}
+                        sub="student sessions in section"
+                        color={D.orange}
+                      />
+                      <Stat
+                        label="// turns_7d"
+                        value={activeStudentAnalytics.turns_last_7_days}
+                        sub="student turns in section"
+                        color={D.blue}
+                      />
+                      <Stat
+                        label="// total_sessions"
+                        value={activeStudentAnalytics.total_sessions}
+                        sub="all time"
+                        color={D.green}
+                      />
+                      <Stat
+                        label="// total_turns"
+                        value={activeStudentAnalytics.total_turns}
+                        sub="all time"
+                        color={D.orange}
+                      />
+                      <Stat
+                        label="// feedback"
+                        value={`${activeStudentAnalytics.positive_feedback_count} / ${activeStudentAnalytics.negative_feedback_count}`}
+                        sub="positive / negative"
+                        color={D.blue}
+                      />
+                      <Stat
+                        label="// last_activity"
+                        value={activeStudentAnalytics.last_activity_at ? "recent" : "none"}
+                        sub={formatLastSession(activeStudentAnalytics.last_activity_at)}
+                        color={activeStudentAnalytics.last_activity_at ? D.green : D.muted}
+                      />
+                    </div>
+                    <div style={{ fontSize: 12, color: D.dim, lineHeight: 1.6 }}>
+                      The chart below shows the student’s own activity across the selected section.
+                    </div>
+                    <ResponsiveContainer width="100%" height={220}>
+                      <BarChart data={activeStudentAnalytics.weekly_activity}>
+                        <CartesianGrid strokeDasharray="3 3" stroke={D.border} />
+                        <XAxis
+                          dataKey="day"
+                          stroke={D.muted}
+                          tick={{ fontSize: 11, fill: D.muted }}
+                        />
+                        <YAxis stroke={D.muted} tick={{ fontSize: 11, fill: D.muted }} />
+                        <Tooltip {...chartTooltipStyle} />
+                        <Bar dataKey="sessions" fill={D.orange} radius={[3, 3, 0, 0]} name="sessions" />
+                        <Bar dataKey="turns" fill={D.blue} radius={[3, 3, 0, 0]} name="turns" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 12, color: D.dim }}>
+                    Pick a student from the roster to inspect individual activity.
+                  </div>
+                )}
+              </Card>
               <Card>
                 <div style={{ ...mono, fontSize: 11, color: D.muted, marginBottom: 14 }}>
                   // top_active_students
@@ -1794,8 +1986,16 @@ export function ProfessorDashboard({
                           <div style={{ fontSize: 13, fontWeight: 500 }}>{student.display_name}</div>
                           <div style={{ fontSize: 11, color: D.muted }}>{student.email}</div>
                         </div>
-                        <Tag color={D.orange}>{student.session_count} sessions</Tag>
-                        <Tag color={D.blue}>{student.membership_status}</Tag>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                          <Tag color={D.orange}>{student.session_count} sessions</Tag>
+                          <Tag color={D.blue}>{student.membership_status}</Tag>
+                          <Btn
+                            small
+                            onClick={() => openStudentAnalytics(student.user_id)}
+                          >
+                            View analytics
+                          </Btn>
+                        </div>
                       </Card>
                     ))}
                   </div>
