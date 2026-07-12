@@ -384,7 +384,8 @@ export class CognitoAuthService {
         const userPoolId = config.get<string>('cognitoUserPoolId')?.trim() || process.env.COGNITO_USER_POOL_ID?.trim();
         const clientId = config.get<string>('cognitoClientId')?.trim() || process.env.COGNITO_APP_CLIENT_ID?.trim();
         const scopesRaw = config.get<string>('cognitoScopes')?.trim() || process.env.COGNITO_SCOPES?.trim();
-        const redirectUri = config.get<string>('cognitoRedirectUri')?.trim() || process.env.COGNITO_REDIRECT_URI?.trim() || `vscode://${extensionId}/auth/callback`;
+        const isWeb = vscode.env.uiKind === vscode.UIKind.Web;
+        const redirectUri = config.get<string>('cognitoRedirectUri')?.trim() || process.env.COGNITO_REDIRECT_URI?.trim() || (isWeb ? 'https://www.codingrabbit.dev/auth/callback' : `vscode://${extensionId}/auth/callback`);
         const logoutUri = config.get<string>('cognitoLogoutUri')?.trim() || process.env.COGNITO_LOGOUT_URI?.trim() || `vscode://${extensionId}/auth/logout`;
 
         if (!domain || !region || !userPoolId || !clientId) {
