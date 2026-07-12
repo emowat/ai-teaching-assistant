@@ -1766,10 +1766,7 @@ export function ProfessorDashboard({
                       <Tag color={D.blue}>{student.membership_status}</Tag>
                       <Btn
                         small
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          openStudentAnalytics(student.user_id);
-                        }}
+                        onClick={() => openStudentAnalytics(student.user_id)}
                       >
                         View analytics
                       </Btn>
