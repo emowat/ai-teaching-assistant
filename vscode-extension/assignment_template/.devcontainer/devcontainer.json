@@ -55,5 +55,6 @@
 
     // Ensures the user inside the container is root for easy workspace setup during testing
     "updateRemoteUserUID": false,
+    "postStartCommand": "bash .devcontainer/block_copilot.sh",
     "remoteUser": "student"
 }
