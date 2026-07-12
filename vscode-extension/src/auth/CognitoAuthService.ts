@@ -77,7 +77,8 @@ export class CognitoAuthService {
             throw new Error('Cognito authentication is not configured.');
         }
 
-        const state = this._randomState();
+        const isWeb = vscode.env.uiKind === vscode.UIKind.Web;
+        const state = isWeb ? `vscode-${this._randomState()}` : this._randomState();
         const verifier = generateCodeVerifier();
         const challenge = generateCodeChallenge(verifier);
 
@@ -92,6 +93,32 @@ export class CognitoAuthService {
             this._pendingVerifier = undefined;
             this._setSnapshot({ status: 'error', message: 'Unable to open the browser for Cognito sign-in.' });
             throw new Error('Unable to open the browser for Cognito sign-in.');
+        }
+
+        if (isWeb) {
+            const manualCode = await vscode.window.showInputBox({
+                prompt: 'Please paste the authorization code from your browser',
+                ignoreFocusOut: true
+            });
+            
+            if (!manualCode) {
+                this._pendingState = undefined;
+                this._pendingVerifier = undefined;
+                this._setSnapshot({ status: 'error', message: 'Authentication cancelled (no code provided).' });
+                return;
+            }
+
+            try {
+                this._setSnapshot({ status: 'signing_in', message: 'Exchanging code for session...' });
+                const session = await this._exchangeCodeForSession(manualCode, verifier);
+                this._session = session;
+                await this._storeSession(session);
+                this._setSnapshot({ status: 'signed_in', expiresAt: session.expiresAt, message: undefined });
+            } catch (err) {
+                this._pendingState = undefined;
+                this._pendingVerifier = undefined;
+                this._setSnapshot({ status: 'error', message: err instanceof Error ? err.message : 'Unable to complete login.' });
+            }
         }
     }
 

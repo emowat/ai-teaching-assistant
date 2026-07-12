@@ -2,6 +2,7 @@ import { createRoot } from "react-dom/client";
 import { AuthProvider } from "react-oidc-context";
 import { createCognitoAuthConfig } from "./auth/cognitoConfig";
 import App from "./App.tsx";
+import { VSCodeAuthCallback } from "./pages/VSCodeAuthCallback";
 import "./index.css";
 
 // StrictMode disabled: it double-mounts AuthProvider in dev and breaks OIDC state handling.
@@ -12,13 +13,23 @@ if (window.location.pathname === "/logout") {
   window.history.replaceState({}, document.title, "/");
 }
 
-createRoot(document.getElementById("root")!).render(
-  <AuthProvider
-    {...cognitoAuthConfig}
-    onSigninCallback={() => {
-      window.history.replaceState({}, document.title, "/");
-    }}
-  >
-    <App />
-  </AuthProvider>
-);
+const urlParams = new URLSearchParams(window.location.search);
+const stateParam = urlParams.get("state");
+const codeParam = urlParams.get("code");
+
+if (stateParam?.startsWith("vscode-") && codeParam) {
+  createRoot(document.getElementById("root")!).render(
+    <VSCodeAuthCallback code={codeParam} />
+  );
+} else {
+  createRoot(document.getElementById("root")!).render(
+    <AuthProvider
+      {...cognitoAuthConfig}
+      onSigninCallback={() => {
+        window.history.replaceState({}, document.title, "/");
+      }}
+    >
+      <App />
+    </AuthProvider>
+  );
+}

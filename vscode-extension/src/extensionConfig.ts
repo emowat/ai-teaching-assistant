@@ -75,10 +75,11 @@ export function resolveCognitoAuthConfig(extensionId: string): CognitoAuthConfig
         return null;
     }
 
+    const isWeb = vscode.env.uiKind === vscode.UIKind.Web;
     const redirectUri =
         readWorkspaceString('cognitoRedirectUri') ??
         readEnvString(['COGNITO_REDIRECT_URI']) ??
-        buildDefaultExtensionCallback(extensionId, '/auth/callback');
+        (isWeb ? 'https://www.codingrabbit.dev/auth/callback' : buildDefaultExtensionCallback(extensionId, '/auth/callback'));
     const logoutUri =
         readWorkspaceString('cognitoLogoutUri') ??
         readEnvString(['COGNITO_LOGOUT_URI']) ??
