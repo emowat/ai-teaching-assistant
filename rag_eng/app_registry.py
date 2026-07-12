@@ -1930,17 +1930,24 @@ def get_professor_section_analytics(
         daily_rows = _fetch_all_rows(
             connection,
             """
-            SELECT
-              TO_CHAR((last_seen_at AT TIME ZONE %s), 'Dy') AS day,
-              COUNT(*) AS sessions,
-              COUNT(DISTINCT user_sub) AS active_students
-            FROM tutor_sessions
-            WHERE section_id = %s
-              AND last_seen_at >= (CURRENT_TIMESTAMP AT TIME ZONE %s)::DATE - INTERVAL '6 days'
-            GROUP BY DATE((last_seen_at AT TIME ZONE %s)), day
-            ORDER BY DATE((last_seen_at AT TIME ZONE %s)) ASC
+            WITH daily_sessions AS (
+              SELECT
+                DATE((last_seen_at AT TIME ZONE %s)) AS day_date,
+                TO_CHAR((last_seen_at AT TIME ZONE %s), 'Dy') AS day,
+                COUNT(*) AS sessions,
+                COUNT(DISTINCT user_sub) AS active_students
+              FROM tutor_sessions
+              WHERE section_id = %s
+                AND last_seen_at >= (CURRENT_TIMESTAMP AT TIME ZONE %s)::DATE - INTERVAL '6 days'
+              GROUP BY
+                DATE((last_seen_at AT TIME ZONE %s)),
+                TO_CHAR((last_seen_at AT TIME ZONE %s), 'Dy')
+            )
+            SELECT day, sessions, active_students
+            FROM daily_sessions
+            ORDER BY day_date ASC
             """,
-            (tz, section_id, tz, tz, tz),
+            (tz, tz, section_id, tz, tz, tz),
         )
         for day, sessions, active_students in daily_rows:
             key = str(day)
@@ -2115,32 +2122,46 @@ def get_professor_section_student_analytics(
         daily_session_rows = _fetch_all_rows(
             connection,
             """
-            SELECT
-              TO_CHAR((last_seen_at AT TIME ZONE %s), 'Dy') AS day,
-              COUNT(*) AS sessions
-            FROM tutor_sessions
-            WHERE section_id = %s
-              AND (user_sub = %s OR app_user_id::text = %s)
-              AND last_seen_at >= (CURRENT_TIMESTAMP AT TIME ZONE %s)::DATE - INTERVAL '6 days'
-            GROUP BY DATE((last_seen_at AT TIME ZONE %s)), day
-            ORDER BY DATE((last_seen_at AT TIME ZONE %s)) ASC
+            WITH daily_sessions AS (
+              SELECT
+                DATE((last_seen_at AT TIME ZONE %s)) AS day_date,
+                TO_CHAR((last_seen_at AT TIME ZONE %s), 'Dy') AS day,
+                COUNT(*) AS sessions
+              FROM tutor_sessions
+              WHERE section_id = %s
+                AND (user_sub = %s OR app_user_id::text = %s)
+                AND last_seen_at >= (CURRENT_TIMESTAMP AT TIME ZONE %s)::DATE - INTERVAL '6 days'
+              GROUP BY
+                DATE((last_seen_at AT TIME ZONE %s)),
+                TO_CHAR((last_seen_at AT TIME ZONE %s), 'Dy')
+            )
+            SELECT day, sessions
+            FROM daily_sessions
+            ORDER BY day_date ASC
             """,
-            (tz, section_id, *activity_params, tz, tz, tz),
+            (tz, tz, section_id, *activity_params, tz, tz, tz),
         )
         daily_turn_rows = _fetch_all_rows(
             connection,
             """
-            SELECT
-              TO_CHAR((COALESCE(completed_at, updated_at, created_at) AT TIME ZONE %s), 'Dy') AS day,
-              COUNT(*) AS turns
-            FROM tutor_turns
-            WHERE section_id = %s
-              AND (user_sub = %s OR app_user_id::text = %s)
-              AND COALESCE(completed_at, updated_at, created_at) >= (CURRENT_TIMESTAMP AT TIME ZONE %s)::DATE - INTERVAL '6 days'
-            GROUP BY DATE((COALESCE(completed_at, updated_at, created_at) AT TIME ZONE %s)), day
-            ORDER BY DATE((COALESCE(completed_at, updated_at, created_at) AT TIME ZONE %s)) ASC
+            WITH daily_turns AS (
+              SELECT
+                DATE((COALESCE(completed_at, updated_at, created_at) AT TIME ZONE %s)) AS day_date,
+                TO_CHAR((COALESCE(completed_at, updated_at, created_at) AT TIME ZONE %s), 'Dy') AS day,
+                COUNT(*) AS turns
+              FROM tutor_turns
+              WHERE section_id = %s
+                AND (user_sub = %s OR app_user_id::text = %s)
+                AND COALESCE(completed_at, updated_at, created_at) >= (CURRENT_TIMESTAMP AT TIME ZONE %s)::DATE - INTERVAL '6 days'
+              GROUP BY
+                DATE((COALESCE(completed_at, updated_at, created_at) AT TIME ZONE %s)),
+                TO_CHAR((COALESCE(completed_at, updated_at, created_at) AT TIME ZONE %s), 'Dy')
+            )
+            SELECT day, turns
+            FROM daily_turns
+            ORDER BY day_date ASC
             """,
-            (tz, section_id, *activity_params, tz, tz, tz),
+            (tz, tz, section_id, *activity_params, tz, tz, tz),
         )
 
     session_count = int(session_row[0]) if session_row and session_row[0] is not None else 0
