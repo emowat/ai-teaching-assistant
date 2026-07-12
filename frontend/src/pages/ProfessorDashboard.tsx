@@ -9,9 +9,11 @@ import {
   YAxis,
 } from "recharts";
 import {
+  inviteProfessorSectionStudent,
   getProfessorSectionAnalytics,
   listProfessorSectionStudents,
   listProfessorSections,
+  type ProfessorSectionStudentInvitePayload,
   type ProfessorSectionAnalytics,
   type ProfessorSectionStudent,
   type ProfessorSectionSummary,
@@ -157,6 +159,11 @@ export function ProfessorDashboard({
   const [savingSectionSettings, setSavingSectionSettings] = useState(false);
   const [creatingTeachingPlanWeek, setCreatingTeachingPlanWeek] = useState(false);
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
+  const [inviteStudentEmail, setInviteStudentEmail] = useState("");
+  const [inviteStudentDisplayName, setInviteStudentDisplayName] = useState("");
+  const [invitingStudent, setInvitingStudent] = useState(false);
+  const [inviteStudentError, setInviteStudentError] = useState<string | null>(null);
+  const [inviteStudentStatus, setInviteStudentStatus] = useState<string | null>(null);
   const selectedSection = useMemo(
     () => sections.find((section) => section.section_id === selectedSectionId) ?? null,
     [sections, selectedSectionId]
@@ -379,6 +386,11 @@ export function ProfessorDashboard({
     setSelectedStudentId(null);
     setStudentError(null);
     setStudentFetchComplete(false);
+    setInviteStudentEmail("");
+    setInviteStudentDisplayName("");
+    setInvitingStudent(false);
+    setInviteStudentError(null);
+    setInviteStudentStatus(null);
     setAnalytics(null);
     setAnalyticsSectionId(null);
     setAnalyticsError(null);
@@ -754,6 +766,41 @@ export function ProfessorDashboard({
     }
   };
 
+  const inviteStudent = async () => {
+    if (!selectedSectionId || !inviteStudentEmail.trim()) {
+      return;
+    }
+
+    setInvitingStudent(true);
+    setInviteStudentError(null);
+    setInviteStudentStatus(null);
+
+    const payload: ProfessorSectionStudentInvitePayload = {
+      email: inviteStudentEmail.trim(),
+      display_name: inviteStudentDisplayName.trim(),
+    };
+
+    try {
+      const nextStudents = await inviteProfessorSectionStudent(
+        selectedSectionId,
+        accessToken,
+        payload,
+      );
+      setStudents(nextStudents);
+      const invitedStudent = nextStudents.find(
+        (student) => student.email.toLowerCase() === payload.email.toLowerCase(),
+      );
+      setSelectedStudentId(invitedStudent?.user_id ?? nextStudents[0]?.user_id ?? null);
+      setInviteStudentEmail("");
+      setInviteStudentDisplayName("");
+      setInviteStudentStatus(`Invitation saved for ${payload.email}.`);
+    } catch (err) {
+      setInviteStudentError(err instanceof Error ? err.message : "Unable to invite student.");
+    } finally {
+      setInvitingStudent(false);
+    }
+  };
+
   return (
     <div
       style={{
@@ -953,6 +1000,7 @@ export function ProfessorDashboard({
                       >
                         <input
                           type="checkbox"
+                          aria-label="Open to students"
                           checked={activeSectionSettings?.student_access_enabled ?? true}
                           onChange={(event) =>
                             updateSectionSettingsDraft({
@@ -1001,6 +1049,7 @@ export function ProfessorDashboard({
                       <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
                         <input
                           type="checkbox"
+                          aria-label="Include published plan in prompt"
                           checked={activeSectionSettings?.teaching_plan_prompt_enabled ?? false}
                           onChange={(event) =>
                             updateSectionSettingsDraft({
@@ -1016,6 +1065,7 @@ export function ProfessorDashboard({
                       <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
                         <input
                           type="checkbox"
+                          aria-label="Include section references in prompt"
                           checked={activeSectionSettings?.references_prompt_enabled ?? false}
                           onChange={(event) =>
                             updateSectionSettingsDraft({
@@ -1033,6 +1083,7 @@ export function ProfessorDashboard({
                       <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
                         <input
                           type="checkbox"
+                          aria-label="Allow references in retrieval"
                           checked={activeSectionSettings?.references_retrieval_enabled ?? false}
                           onChange={(event) =>
                             updateSectionSettingsDraft({
@@ -1523,12 +1574,57 @@ export function ProfessorDashboard({
               <div style={{ fontSize: 18, fontWeight: 600 }}>
                 Students for {selectedSection ? selectedSection.display_name : "selected section"}{" "}
                 <Tag color={D.muted}>
-                  {loadingStudents ? "loading" : "active memberships only"}
+                  {loadingStudents ? "loading" : "student memberships"}
                 </Tag>
               </div>
               <Card style={{ fontSize: 12, color: D.muted, lineHeight: 1.7 }}>
-                This roster shows active student memberships for the selected section and includes
-                live session usage from Aurora-backed telemetry.
+                This roster shows student memberships for the selected section and includes live
+                session usage from Aurora-backed telemetry. Invites create invited Aurora users
+                that claim their account on first login.
+              </Card>
+              <Card style={{ display: "grid", gap: 12 }}>
+                <div style={{ fontSize: 14, fontWeight: 600 }}>Invite student</div>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                    gap: 12,
+                  }}
+                >
+                  <label style={{ display: "grid", gap: 6 }}>
+                    <span style={{ fontSize: 12, color: D.muted }}>Student email</span>
+                    <input
+                      value={inviteStudentEmail}
+                      onChange={(event) => setInviteStudentEmail(event.target.value)}
+                      placeholder="student@example.edu"
+                      style={inputStyle}
+                    />
+                  </label>
+                  <label style={{ display: "grid", gap: 6 }}>
+                    <span style={{ fontSize: 12, color: D.muted }}>Display name</span>
+                    <input
+                      value={inviteStudentDisplayName}
+                      onChange={(event) => setInviteStudentDisplayName(event.target.value)}
+                      placeholder="Optional"
+                      style={inputStyle}
+                    />
+                  </label>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                  <div style={{ fontSize: 12, color: D.dim, lineHeight: 1.6 }}>
+                    Creates or reuses the Aurora application user, then assigns an invited student
+                    membership to this section.
+                  </div>
+                  <Btn small onClick={() => void inviteStudent()} disabled={invitingStudent || !inviteStudentEmail.trim()}>
+                    {invitingStudent ? "Inviting..." : "Invite student"}
+                  </Btn>
+                </div>
+                {inviteStudentError && (
+                  <div style={{ fontSize: 12, color: D.red }}>{inviteStudentError}</div>
+                )}
+                {inviteStudentStatus && (
+                  <div style={{ fontSize: 12, color: D.green }}>{inviteStudentStatus}</div>
+                )}
               </Card>
               {studentError && <Card style={{ color: D.red, fontSize: 12 }}>{studentError}</Card>}
               {selectedStudent ? (
@@ -1573,7 +1669,9 @@ export function ProfessorDashboard({
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {loadingStudents && <div style={{ fontSize: 12, color: D.muted }}>Loading roster...</div>}
                 {!loadingStudents && students.length === 0 && (
-                  <div style={{ fontSize: 12, color: D.dim }}>No students found for this section.</div>
+                  <div style={{ fontSize: 12, color: D.dim }}>
+                    No student memberships found for this section.
+                  </div>
                 )}
                 {students.map((student) => (
                   <Card

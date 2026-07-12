@@ -40,6 +40,7 @@ from rag_eng.app_registry import (
     create_admin_section,
     create_admin_user,
     create_section_membership,
+    invite_professor_section_student,
     archive_professor_section_teaching_plan,
     list_admin_sections,
     list_admin_users,
@@ -121,6 +122,7 @@ from rag_eng.schemas import (
     IndexEnsureResponse,
     IndexRebuildResponse,
     ProfessorSectionStudent,
+    ProfessorSectionStudentInviteCreate,
     ProfessorSectionAnalytics,
     ProfessorSectionSummary,
     ProfessorTeachingPlan,
@@ -814,6 +816,21 @@ def create_app() -> FastAPI:
     ) -> list[ProfessorSectionStudent]:
         try:
             return list_professor_section_students(current_user, section_id)
+        except Exception as exc:
+            raise _app_registry_http_error(exc) from exc
+
+    @app.post(
+        "/professor/sections/{section_id}/students",
+        response_model=list[ProfessorSectionStudent],
+        dependencies=[Depends(require_authenticated_user)],
+    )
+    def professor_invite_section_student(
+        section_id: str,
+        payload: ProfessorSectionStudentInviteCreate,
+        current_user=Depends(require_authenticated_user),
+    ) -> list[ProfessorSectionStudent]:
+        try:
+            return invite_professor_section_student(current_user, section_id, payload)
         except Exception as exc:
             raise _app_registry_http_error(exc) from exc
 

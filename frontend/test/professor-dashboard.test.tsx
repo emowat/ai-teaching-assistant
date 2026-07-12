@@ -8,6 +8,7 @@ import {
   replaceProfessorSectionLaunchConfigs,
 } from "../src/api/sectionLaunchConfigsApi";
 import {
+  inviteProfessorSectionStudent,
   listProfessorSectionStudents,
   listProfessorSections,
 } from "../src/api/professorSectionsApi";
@@ -31,6 +32,7 @@ import {
 
 vi.mock("../src/api/professorSectionsApi", () => ({
   getProfessorSectionAnalytics: vi.fn(),
+  inviteProfessorSectionStudent: vi.fn(),
   listProfessorSections: vi.fn(),
   listProfessorSectionStudents: vi.fn(),
 }));
@@ -61,6 +63,7 @@ vi.mock("../src/api/sectionInstructionSettingsApi", () => ({
 
 const mockedListProfessorSections = vi.mocked(listProfessorSections);
 const mockedGetProfessorSectionAnalytics = vi.mocked(getProfessorSectionAnalytics);
+const mockedInviteProfessorSectionStudent = vi.mocked(inviteProfessorSectionStudent);
 const mockedListProfessorSectionStudents = vi.mocked(listProfessorSectionStudents);
 const mockedListProfessorSectionLaunchConfigs = vi.mocked(listProfessorSectionLaunchConfigs);
 const mockedReplaceProfessorSectionLaunchConfigs = vi.mocked(
@@ -95,6 +98,7 @@ const mockedUpdateProfessorSectionInstructionSettings = vi.mocked(
 describe("ProfessorDashboard", () => {
   beforeEach(() => {
     mockedGetProfessorSectionAnalytics.mockReset();
+    mockedInviteProfessorSectionStudent.mockReset();
     mockedListProfessorSections.mockReset();
     mockedListProfessorSectionStudents.mockReset();
     mockedListProfessorSectionLaunchConfigs.mockReset();
@@ -260,7 +264,7 @@ describe("ProfessorDashboard", () => {
       );
     });
 
-    screen.getByRole("button", { name: /students/i }).click();
+    fireEvent.click(screen.getByRole("button", { name: /students/i }));
 
     expect(await screen.findByText("Students for Section A")).toBeInTheDocument();
     expect(screen.getByText("Ada Lovelace")).toBeInTheDocument();
@@ -272,6 +276,94 @@ describe("ProfessorDashboard", () => {
     expect(await screen.findByText("Section analytics")).toBeInTheDocument();
     expect(screen.getByText("// sessions_7d")).toBeInTheDocument();
     expect(screen.getByText("Ada Lovelace")).toBeInTheDocument();
+  });
+
+  it("invites a student and refreshes the roster with invited memberships", async () => {
+    mockedListProfessorSections.mockResolvedValue([
+      {
+        section_id: "mit14-fall-001",
+        course_id: "mit14",
+        course_display_name: "MIT 6.0014",
+        display_name: "Section A",
+        term: "Fall 2026",
+        is_active: true,
+        professor_count: 1,
+        ta_count: 1,
+        student_count: 1,
+        created_at: "2026-07-08T00:00:00Z",
+        updated_at: "2026-07-08T00:00:00Z",
+      },
+    ]);
+    mockedListProfessorSectionLaunchConfigs.mockResolvedValue([]);
+    mockedListProfessorSectionStudents.mockResolvedValue([
+      {
+        user_id: "student-1",
+        cognito_sub: "cognito-sub-1",
+        email: "ada@example.com",
+        display_name: "Ada Lovelace",
+        membership_status: "active",
+        role_in_section: "student",
+        session_count: 3,
+        last_session_at: "2026-07-08T01:02:03Z",
+      },
+    ]);
+    mockedInviteProfessorSectionStudent.mockResolvedValue([
+      {
+        user_id: "student-1",
+        cognito_sub: "cognito-sub-1",
+        email: "ada@example.com",
+        display_name: "Ada Lovelace",
+        membership_status: "active",
+        role_in_section: "student",
+        session_count: 3,
+        last_session_at: "2026-07-08T01:02:03Z",
+      },
+      {
+        user_id: "student-2",
+        cognito_sub: null,
+        email: "new.student@example.edu",
+        display_name: "New Student",
+        membership_status: "invited",
+        role_in_section: "student",
+        session_count: 0,
+        last_session_at: "",
+      },
+    ]);
+
+    render(
+      <ProfessorDashboard
+        onNavigate={vi.fn()}
+        allowedViews={["professor"]}
+        onSignOut={vi.fn()}
+        accessToken="access-token-1"
+      />,
+    );
+
+    expect(await screen.findByLabelText("Teaching section")).toHaveValue("mit14-fall-001");
+    fireEvent.click(screen.getByRole("button", { name: /students/i }));
+    await screen.findByLabelText("Student email");
+
+    fireEvent.change(await screen.findByLabelText("Student email"), {
+      target: { value: "new.student@example.edu" },
+    });
+    fireEvent.change(screen.getByLabelText("Display name"), {
+      target: { value: "New Student" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /invite student/i }));
+
+    await waitFor(() => {
+      expect(mockedInviteProfessorSectionStudent).toHaveBeenCalledWith(
+        "mit14-fall-001",
+        "access-token-1",
+        expect.objectContaining({
+          email: "new.student@example.edu",
+          display_name: "New Student",
+        }),
+      );
+    });
+
+    expect((await screen.findAllByText("new.student@example.edu")).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("invited")).length).toBeGreaterThan(0);
   });
 
   it("shows launch configs and saves changes from the launches tab", async () => {
@@ -399,7 +491,7 @@ describe("ProfessorDashboard", () => {
     expect(await screen.findByLabelText("Teaching section")).toHaveValue("mit14-fall-001");
     expect(await screen.findByText("Section controls")).toBeInTheDocument();
 
-    fireEvent.click(screen.getAllByRole("checkbox")[0]);
+    fireEvent.click(await screen.findByLabelText("Open to students"));
     fireEvent.change(screen.getByLabelText("Week resolution mode"), {
       target: { value: "date_driven" },
     });

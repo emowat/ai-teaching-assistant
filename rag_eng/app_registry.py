@@ -34,6 +34,7 @@ from rag_eng.schemas import (
     ProfessorSectionAnalytics,
     ProfessorSectionAnalyticsPoint,
     ProfessorSectionSummary,
+    ProfessorSectionStudentInviteCreate,
     ProfessorTeachingPlan,
     ProfessorTeachingPlanUpdate,
     ProfessorTeachingPlanWeek,
@@ -715,10 +716,16 @@ def _load_user_membership_rows(connection) -> list[tuple[Any, ...]]:
     )
 
 
-def _load_student_rows_for_section(connection, section_id: str) -> list[tuple[Any, ...]]:
+def _load_student_rows_for_section(
+    connection,
+    section_id: str,
+    *,
+    include_inactive: bool = False,
+) -> list[tuple[Any, ...]]:
+    status_clause = "" if include_inactive else "AND sm.status = 'active'"
     return _fetch_all_rows(
         connection,
-        """
+        f"""
         SELECT
           u.user_id,
           u.cognito_sub,
@@ -741,8 +748,17 @@ def _load_student_rows_for_section(connection, section_id: str) -> list[tuple[An
         ) AS stats ON stats.user_sub = u.cognito_sub
         WHERE sm.section_id = %s
           AND sm.role_in_section = 'student'
-          AND sm.status = 'active'
-        ORDER BY u.display_name ASC, u.email ASC
+          {status_clause}
+        ORDER BY
+          CASE sm.status
+            WHEN 'active' THEN 0
+            WHEN 'invited' THEN 1
+            WHEN 'dropped' THEN 2
+            WHEN 'disabled' THEN 3
+            ELSE 4
+          END,
+          u.display_name ASC,
+          u.email ASC
         """,
         (section_id, section_id),
     )
@@ -2959,9 +2975,113 @@ def list_professor_section_students(
     )
 
     with _connect_postgres(database_url, runtime.connect_timeout_seconds) as connection:
-        rows = _load_student_rows_for_section(connection, section_id)
+        rows = _load_student_rows_for_section(connection, section_id, include_inactive=True)
 
     return [ProfessorSectionStudent.model_validate(_student_row_from_tuple(row)) for row in rows]
+
+
+def invite_professor_section_student(
+    current_user: CurrentUser,
+    section_id: str,
+    payload: ProfessorSectionStudentInviteCreate,
+    *,
+    runtime: AppRegistryRuntimeConfig | None = None,
+) -> list[ProfessorSectionStudent]:
+    """Invite or refresh a student membership for a professor-managed section."""
+    runtime = runtime or load_app_registry_runtime_config()
+    database_url = _require_database_url(runtime)
+    require_section_membership(
+        current_user,
+        section_id,
+        allowed_roles={"professor", "ta"},
+        runtime=runtime,
+    )
+
+    email = _normalize_email(payload.email)
+    display_name = _clean_text(payload.display_name)
+    if not email:
+        raise ValueError("email is required.")
+
+    with _connect_postgres(database_url, runtime.connect_timeout_seconds) as connection:
+        user_row = _load_user_by_email(connection, email)
+        if user_row is None:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO users (
+                      cognito_sub,
+                      email,
+                      display_name,
+                      primary_role,
+                      status
+                    )
+                    VALUES (NULL, %s, %s, %s, %s)
+                    RETURNING user_id
+                    """,
+                    (email, display_name, "student", "invited"),
+                )
+                user_id = str(cursor.fetchone()[0])
+        else:
+            user_id = str(user_row[0])
+            if _clean_text(user_row[5]) == "disabled":
+                raise AppUserDisabledError(f"User with email {email} is disabled.")
+            if display_name and _clean_text(user_row[3]) != display_name:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        UPDATE users
+                        SET display_name = %s,
+                            updated_at = now()
+                        WHERE user_id = %s
+                        """,
+                        (display_name, user_id),
+                    )
+
+        membership_row = _fetch_one_row(
+            connection,
+            """
+            SELECT role_in_section, status
+            FROM section_memberships
+            WHERE section_id = %s
+              AND user_id = %s
+            """,
+            (section_id, user_id),
+        )
+        if membership_row is None:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO section_memberships (
+                      section_id,
+                      user_id,
+                      role_in_section,
+                      status
+                    )
+                    VALUES (%s, %s, %s, %s)
+                    """,
+                    (section_id, user_id, "student", "invited"),
+                )
+        else:
+            existing_role = _clean_text(membership_row[0])
+            existing_status = _clean_text(membership_row[1])
+            if existing_role != "student":
+                raise MembershipConflictError(
+                    f"User {email} already has a non-student membership in section {section_id}."
+                )
+            if existing_status != "active":
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        UPDATE section_memberships
+                        SET status = 'invited',
+                            updated_at = now()
+                        WHERE section_id = %s
+                          AND user_id = %s
+                        """,
+                        (section_id, user_id),
+                    )
+
+    return list_professor_section_students(current_user, section_id, runtime=runtime)
 
 
 def get_student_bootstrap(

@@ -330,6 +330,13 @@ class ProfessorSectionStudent(BaseModel):
     last_session_at: str = ""
 
 
+class ProfessorSectionStudentInviteCreate(BaseModel):
+    """Payload used by a professor to invite a student into a section."""
+
+    email: str = Field(min_length=1)
+    display_name: str = ""
+
+
 class ProfessorSectionAnalyticsPoint(BaseModel):
     """Professor-facing daily activity point for a section."""
 

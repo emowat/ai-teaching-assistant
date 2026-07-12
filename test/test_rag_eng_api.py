@@ -1111,6 +1111,46 @@ def test_professor_section_routes_return_live_data(
     assert students_response.json()[0]["email"] == "student@example.edu"
 
 
+def test_professor_section_invite_route_returns_updated_roster(
+    monkeypatch, client: TestClient
+) -> None:
+    client.app.dependency_overrides[require_authenticated_user] = lambda: CurrentUser(
+        cognito_sub="prof-sub",
+        email="prof@example.edu",
+        primary_role="professor",
+    )
+    monkeypatch.setattr(
+        "rag_eng.api.invite_professor_section_student",
+        lambda current_user, section_id, payload: [
+            ProfessorSectionStudent(
+                user_id="student-1",
+                cognito_sub="student-sub",
+                email="student@example.edu",
+                display_name="Student",
+                membership_status="invited",
+                role_in_section="student",
+                session_count=0,
+                last_session_at="",
+            )
+        ],
+    )
+
+    try:
+        response = client.post(
+            "/professor/sections/mit14-fall-001/students",
+            json={
+                "email": "student@example.edu",
+                "display_name": "Student",
+            },
+        )
+    finally:
+        client.app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()[0]["membership_status"] == "invited"
+    assert response.json()[0]["email"] == "student@example.edu"
+
+
 def test_professor_section_analytics_route_returns_live_data(
     monkeypatch, client: TestClient
 ) -> None:

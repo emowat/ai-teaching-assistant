@@ -1,4 +1,4 @@
-import { apiGet } from "./client.ts";
+import { apiGet, apiPost } from "./client.ts";
 import type {
   SectionMembershipRole,
   SectionMembershipStatus,
@@ -44,6 +44,11 @@ export interface ProfessorSectionAnalytics {
   generated_at: string;
 }
 
+export interface ProfessorSectionStudentInvitePayload {
+  email: string;
+  display_name?: string;
+}
+
 export function professorSectionStudentsPath(sectionId: string): string {
   return `/professor/sections/${encodeURIComponent(sectionId)}/students`;
 }
@@ -66,6 +71,18 @@ export function listProfessorSectionStudents(
   accessToken: string
 ): Promise<ProfessorSectionStudent[]> {
   return apiGet<ProfessorSectionStudent[]>(professorSectionStudentsPath(sectionId), accessToken);
+}
+
+export function inviteProfessorSectionStudent(
+  sectionId: string,
+  accessToken: string,
+  payload: ProfessorSectionStudentInvitePayload,
+): Promise<ProfessorSectionStudent[]> {
+  return apiPost<ProfessorSectionStudentInvitePayload, ProfessorSectionStudent[]>(
+    professorSectionStudentsPath(sectionId),
+    payload,
+    accessToken,
+  );
 }
 
 export function getProfessorSectionAnalytics(

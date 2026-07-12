@@ -22,6 +22,7 @@ from rag_eng.schemas import (
     ProfessorTeachingPlanWeekReferenceUpdate,
     ProfessorTeachingPlanWeekUpdate,
     ProfessorSectionAnalytics,
+    ProfessorSectionStudentInviteCreate,
     SectionLaunchConfig,
     StudentBootstrapResponse,
 )
@@ -438,17 +439,33 @@ class _FakeCursor:
             ]
             return
 
-        if sql.startswith(
-            "SELECT u.user_id, u.cognito_sub, u.email, u.display_name, sm.status, sm.role_in_section, COALESCE(stats.session_count, 0) AS session_count, stats.last_session_at FROM section_memberships AS sm INNER JOIN users AS u ON u.user_id = sm.user_id LEFT JOIN ( SELECT user_sub, COUNT(*) AS session_count, MAX(last_seen_at) AS last_session_at FROM tutor_sessions WHERE section_id = %s GROUP BY user_sub ) AS stats ON stats.user_sub = u.cognito_sub WHERE sm.section_id = %s AND sm.role_in_section = 'student' AND sm.status = 'active' ORDER BY u.display_name ASC, u.email ASC"
+        if (
+            "FROM section_memberships AS sm INNER JOIN users AS u ON u.user_id = sm.user_id LEFT JOIN ("
+            in sql
+            and "sm.role_in_section = 'student'" in sql
+            and "COALESCE(stats.session_count, 0) AS session_count" in sql
         ):
             section_id = str(params[0])
+            include_inactive = "sm.status = 'active'" not in sql
             rows = [
                 self._student_row(membership)
                 for membership in self.state.memberships.values()
                 if str(membership["section_id"]) == section_id
                 and str(membership["role_in_section"]) == "student"
-                and str(membership["status"]) == "active"
+                and (include_inactive or str(membership["status"]) == "active")
             ]
+            rows.sort(
+                key=lambda row: (
+                    {
+                        "active": 0,
+                        "invited": 1,
+                        "dropped": 2,
+                        "disabled": 3,
+                    }.get(str(row[4]), 4),
+                    str(row[3]).casefold(),
+                    str(row[2]).casefold(),
+                )
+            )
             self._rows = rows
             return
 
@@ -2353,3 +2370,51 @@ def test_professor_section_analytics_uses_live_section_activity(
     assert analytics.active_students_last_7_days == 1
     assert len(analytics.weekly_activity) == 7
     assert analytics.top_students[0].email == "student@example.edu"
+
+
+def test_professor_can_invite_student_into_assigned_section(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _state()
+    state.users["prof-1"] = _user(
+        user_id="prof-1",
+        email="prof@example.edu",
+        display_name="Prof",
+        primary_role="professor",
+        status="active",
+        cognito_sub="sub-prof",
+    )
+    state.sections["mit14-fall-001"] = _section(
+        section_id="mit14-fall-001",
+        display_name="MIT 6.0014 Section A",
+    )
+    state.memberships[("mit14-fall-001", "prof-1")] = _membership(
+        section_id="mit14-fall-001",
+        user_id="prof-1",
+        role_in_section="professor",
+    )
+    _patch_connection(monkeypatch, state)
+
+    roster = app_registry.invite_professor_section_student(
+        CurrentUser(
+            cognito_sub="sub-prof",
+            email="prof@example.edu",
+            primary_role="professor",
+        ),
+        "mit14-fall-001",
+        ProfessorSectionStudentInviteCreate(
+            email="new.student@example.edu",
+            display_name="New Student",
+        ),
+        runtime=_runtime(),
+    )
+
+    assert any(student.email == "new.student@example.edu" for student in roster)
+    invited = next(student for student in roster if student.email == "new.student@example.edu")
+    assert invited.membership_status == "invited"
+    assert invited.role_in_section == "student"
+    assert any(
+        membership["status"] == "invited"
+        for membership in state.memberships.values()
+        if membership["user_id"] != "prof-1"
+    )

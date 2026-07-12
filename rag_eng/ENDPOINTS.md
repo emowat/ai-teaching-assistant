@@ -96,6 +96,7 @@ and staff smoke flows.
 | `POST` | `/professor/sections/{section_id}/teaching-plan/weeks/{week_id}/references` | add a week reference |
 | `PATCH` | `/professor/sections/{section_id}/teaching-plan/weeks/{week_id}/references/{reference_id}` | update a week reference |
 | `DELETE` | `/professor/sections/{section_id}/teaching-plan/weeks/{week_id}/references/{reference_id}` | delete a week reference |
+| `POST` | `/professor/sections/{section_id}/students` | invite or upsert a student membership for a section |
 
 Example bootstrap call:
 
@@ -137,6 +138,20 @@ Example professor week-reference list call:
 ```bash
 curl -sS "$BASE_URL/professor/sections/mit14-fall-001/teaching-plan/weeks/week-1/references" \
   -H "Authorization: Bearer $COGNITO_ACCESS_TOKEN" | jq .
+```
+
+Example professor student invite call:
+
+```bash
+curl -sS "$BASE_URL/professor/sections/mit14-fall-001/students" \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $COGNITO_ACCESS_TOKEN" \
+  -d @- <<'JSON' | jq .
+{
+  "email": "new.student@example.edu",
+  "display_name": "New Student"
+}
+JSON
 ```
 
 Example student telemetry call:
