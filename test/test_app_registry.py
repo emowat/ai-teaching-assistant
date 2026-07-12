@@ -583,12 +583,16 @@ class _FakeCursor:
             self._rows = [(positive, negative, last_feedback_at)]
             return
 
-        if sql.startswith(
-            "WITH daily_sessions AS ( SELECT DATE((last_seen_at AT TIME ZONE %s)) AS day_date, TO_CHAR((last_seen_at AT TIME ZONE %s), 'Dy') AS day, COUNT(*) AS sessions FROM tutor_sessions WHERE section_id = %s AND (user_sub = %s OR app_user_id::text = %s) AND last_seen_at >= (CURRENT_TIMESTAMP AT TIME ZONE %s)::DATE - INTERVAL '6 days' GROUP BY DATE((last_seen_at AT TIME ZONE %s)), TO_CHAR((last_seen_at AT TIME ZONE %s), 'Dy') ) SELECT day, sessions FROM daily_sessions ORDER BY day_date ASC"
+        if (
+            "WITH session_facts AS (" in sql
+            and "WITH daily_sessions AS (" not in sql
+            and "COUNT(*) AS sessions" in sql
+            and "TO_CHAR(day_date, 'Dy') AS day, sessions FROM daily_sessions ORDER BY day_date ASC"
+            in sql
         ):
-            section_id = str(params[2])
-            user_sub = str(params[3])
-            user_id = str(params[4])
+            section_id = str(params[1])
+            user_sub = str(params[2])
+            user_id = str(params[3])
             by_day: dict[str, int] = {}
             for session in self.state.tutor_sessions:
                 if str(session.get("section_id", "")) != section_id:
@@ -603,12 +607,15 @@ class _FakeCursor:
             self._rows = sorted((day, sessions) for day, sessions in by_day.items())
             return
 
-        if sql.startswith(
-            "WITH daily_turns AS ( SELECT DATE((COALESCE(completed_at, updated_at, created_at) AT TIME ZONE %s)) AS day_date, TO_CHAR((COALESCE(completed_at, updated_at, created_at) AT TIME ZONE %s), 'Dy') AS day, COUNT(*) AS turns FROM tutor_turns WHERE section_id = %s AND (user_sub = %s OR app_user_id::text = %s) AND COALESCE(completed_at, updated_at, created_at) >= (CURRENT_TIMESTAMP AT TIME ZONE %s)::DATE - INTERVAL '6 days' GROUP BY DATE((COALESCE(completed_at, updated_at, created_at) AT TIME ZONE %s)), TO_CHAR((COALESCE(completed_at, updated_at, created_at) AT TIME ZONE %s), 'Dy') ) SELECT day, turns FROM daily_turns ORDER BY day_date ASC"
+        if (
+            "WITH turn_facts AS (" in sql
+            and "COUNT(*) AS turns" in sql
+            and "TO_CHAR(day_date, 'Dy') AS day, turns FROM daily_turns ORDER BY day_date ASC"
+            in sql
         ):
-            section_id = str(params[2])
-            user_sub = str(params[3])
-            user_id = str(params[4])
+            section_id = str(params[1])
+            user_sub = str(params[2])
+            user_id = str(params[3])
             by_day: dict[str, int] = {}
             for turn in self.state.tutor_turns:
                 if str(turn.get("section_id", "")) != section_id:
@@ -623,10 +630,13 @@ class _FakeCursor:
             self._rows = sorted((day, turns) for day, turns in by_day.items())
             return
 
-        if sql.startswith(
-            "WITH daily_sessions AS ( SELECT DATE((last_seen_at AT TIME ZONE %s)) AS day_date, TO_CHAR((last_seen_at AT TIME ZONE %s), 'Dy') AS day, COUNT(*) AS sessions, COUNT(DISTINCT user_sub) AS active_students FROM tutor_sessions WHERE section_id = %s AND last_seen_at >= (CURRENT_TIMESTAMP AT TIME ZONE %s)::DATE - INTERVAL '6 days' GROUP BY DATE((last_seen_at AT TIME ZONE %s)), TO_CHAR((last_seen_at AT TIME ZONE %s), 'Dy') ) SELECT day, sessions, active_students FROM daily_sessions ORDER BY day_date ASC"
+        if (
+            "WITH session_facts AS (" in sql
+            and "COUNT(DISTINCT user_sub) AS active_students" in sql
+            and "TO_CHAR(day_date, 'Dy') AS day, sessions, active_students FROM daily_sessions ORDER BY day_date ASC"
+            in sql
         ):
-            section_id = str(params[2])
+            section_id = str(params[1])
             by_day: dict[str, dict[str, set[str] | int]] = {}
             for session in self.state.tutor_sessions:
                 if str(session.get("section_id", "")) != section_id:
