@@ -22,6 +22,7 @@ import { chartTooltipStyle, D, mono } from "../design/tokens";
 import { Sidebar, type SidebarTab } from "../components/Sidebar";
 import { TopBar } from "../components/TopBar";
 import { CourseManagementPanel } from "../components/admin/CourseManagementPanel";
+import { OfflineEvalsPanel } from "../components/admin/OfflineEvalsPanel";
 import { SectionManagementPanel } from "../components/admin/SectionManagementPanel";
 import { UserManagementPanel } from "../components/admin/UserManagementPanel";
 import { RagDocsPanel } from "../components/admin/RagDocsPanel";
@@ -185,6 +186,7 @@ const baseAdminTabs: SidebarTab[] = [
   { key: "courses", icon: "🎓", label: "Courses" },
   { key: "rag", icon: "📚", label: "RAG Docs" },
   { key: "stats", icon: "📊", label: "Evaluation" },
+  { key: "offline-evals", icon: "🧪", label: "Offline Evals" },
   { key: "feedback", icon: "💬", label: "Feedback" },
   { key: "models", icon: "🤖", label: "AI Models" },
 ];
@@ -749,7 +751,7 @@ export function AdminDashboard({
             </div>
           )}
 
-                    {activeTab === "stats" && (
+          {activeTab === "stats" && (
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
                 <div style={{ fontSize: 18, fontWeight: 600 }}>Live Operational Dashboard</div>
@@ -972,6 +974,10 @@ export function AdminDashboard({
                 </Card>
               </div>
             </div>
+          )}
+
+          {activeTab === "offline-evals" && (
+            <OfflineEvalsPanel accessToken={accessToken} />
           )}
 
           {activeTab === "feedback" && (

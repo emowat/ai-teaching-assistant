@@ -45,6 +45,10 @@ vi.mock("../src/components/admin/RagDocsPanel", () => ({
   RagDocsPanel: () => <div>Mock RAG Panel</div>,
 }));
 
+vi.mock("../src/components/admin/OfflineEvalsPanel", () => ({
+  OfflineEvalsPanel: () => <div>Mock Offline Evals Panel</div>,
+}));
+
 const mockedCheckGradioAvailable = vi.mocked(checkGradioAvailable);
 const mockedGetGradioUrl = vi.mocked(getGradioUrl);
 const mockedGetAdminLlmConfig = vi.mocked(getAdminLlmConfig);
@@ -162,6 +166,45 @@ describe("AdminDashboard", () => {
       expect(mockedGetAdminLlmConfig).toHaveBeenCalledWith("access-token-1");
       expect(mockedListAdminCourses).toHaveBeenCalledWith("access-token-1");
     });
+
+    fetchMock.mockRestore();
+  });
+
+  it("shows Offline Evals in the admin navigation and opens the eval panel", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        ready: true,
+        qdrant_configured: true,
+        course_registry_configured: true,
+        cohere_configured: true,
+        openai_configured: true,
+        bedrock_configured: true,
+        qdrant_reachable: true,
+        course_registry_reachable: true,
+        cohere_reachable: true,
+        openai_reachable: true,
+        bedrock_reachable: true,
+        message: "Ready.",
+      }),
+      text: async () => "",
+    } as Response);
+
+    render(
+      <AdminDashboard
+        onNavigate={vi.fn()}
+        allowedViews={["admin"]}
+        onSignOut={vi.fn()}
+        accessToken="access-token-1"
+      />,
+    );
+
+    expect(await screen.findByRole("button", { name: /offline evals/i })).toBeInTheDocument();
+
+    screen.getByRole("button", { name: /offline evals/i }).click();
+
+    expect(await screen.findByText("Mock Offline Evals Panel")).toBeInTheDocument();
 
     fetchMock.mockRestore();
   });
