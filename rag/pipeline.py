@@ -37,6 +37,10 @@ from rag.reranker import merge_and_rerank, CATEGORY_WEIGHTS, CATEGORY_WEIGHTS_CP
 from rag.context_assembler import build_retrieval_result
 
 
+# 15 workers = up to 3x5 conccurrent requests
+_retrieval_pool = ThreadPoolExecutor(max_workers=15)
+
+
 # ---------------------------------------------------------------------------
 # Mode-aware retrieval parameters
 # ---------------------------------------------------------------------------
@@ -205,17 +209,15 @@ def run_retrieval(query: QueryInput) -> RetrievalResult:
                 top_k=guidelines_top_k,
                 threshold=params["guidelines_threshold"],
             )
-        with ThreadPoolExecutor(max_workers=3) as pool:
-            f_sem = pool.submit(_fetch_semantic)
-            f_rules = pool.submit(_fetch_rules)
-            f_guidelines = pool.submit(_fetch_guidelines)
+        f_sem = _retrieval_pool.submit(_fetch_semantic)
+        f_rules = _retrieval_pool.submit(_fetch_rules)
+        f_guidelines = _retrieval_pool.submit(_fetch_guidelines)
         semantic = f_sem.result()
         rules = f_rules.result()
         guidelines = f_guidelines.result()
     else:
-        with ThreadPoolExecutor(max_workers=2) as pool:
-            f_sem = pool.submit(_fetch_semantic)
-            f_rules = pool.submit(_fetch_rules)
+        f_sem = _retrieval_pool.submit(_fetch_semantic)
+        f_rules = _retrieval_pool.submit(_fetch_rules)
         semantic = f_sem.result()
         rules = f_rules.result()
         guidelines = []
