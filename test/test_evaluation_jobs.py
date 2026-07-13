@@ -46,6 +46,15 @@ class _FakeEcsClient:
         }
 
 
+class _FakeLogsClient:
+    def __init__(self) -> None:
+        self.created_log_groups: list[str] = []
+
+    def create_log_group(self, *, logGroupName: str):
+        self.created_log_groups.append(logGroupName)
+        return {}
+
+
 def _runtime() -> EvaluationLaunchRuntimeConfig:
     return EvaluationLaunchRuntimeConfig(
         database_url="postgresql://example",
@@ -55,6 +64,7 @@ def _runtime() -> EvaluationLaunchRuntimeConfig:
         ecs_cluster="codingrabbit-rag-eng",
         ecs_task_definition="codingrabbit-evaluation-worker",
         ecs_container_name="evaluation-worker",
+        ecs_log_group="/ecs/codingrabbit-evaluation-worker",
         ecs_launch_type="FARGATE",
         ecs_platform_version="LATEST",
         ecs_assign_public_ip="ENABLED",
@@ -197,6 +207,7 @@ def test_launch_evaluation_run_submits_task_and_returns_summary(monkeypatch) -> 
     )
     runtime = _runtime()
     fake_ecs = _FakeEcsClient()
+    fake_logs = _FakeLogsClient()
     captured: dict[str, object] = {}
 
     monkeypatch.setattr(
@@ -213,6 +224,10 @@ def test_launch_evaluation_run_submits_task_and_returns_summary(monkeypatch) -> 
     monkeypatch.setattr(
         "rag_eng.evaluation_jobs.connect_postgres_with_retry",
         lambda *_args, **_kwargs: _FakeConnection(),
+    )
+    monkeypatch.setattr(
+        "rag_eng.evaluation_jobs._build_logs_client",
+        lambda **_kwargs: fake_logs,
     )
     monkeypatch.setattr(
         "rag_eng.evaluation_jobs._insert_run_row",
@@ -246,6 +261,7 @@ def test_launch_evaluation_run_submits_task_and_returns_summary(monkeypatch) -> 
     assert captured["insert"]["course_id"] == "mit14"
     assert captured["insert"]["section_id"] == "mit14-fall-001"
     assert captured["updates"][0]["status"] == "running"
+    assert fake_logs.created_log_groups == ["/ecs/codingrabbit-evaluation-worker"]
     assert fake_ecs.calls[0]["cluster"] == "codingrabbit-rag-eng"
     command = fake_ecs.calls[0]["overrides"]["containerOverrides"][0]["command"]
     assert "--evaluation-run-id" in command

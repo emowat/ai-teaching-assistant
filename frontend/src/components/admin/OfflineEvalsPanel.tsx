@@ -4,6 +4,7 @@ import { listAdminCourses, type AdminCourse } from "../../api/adminCoursesApi";
 import { listAdminSections, type AdminSection } from "../../api/adminSectionsApi";
 import {
   getAdminEvaluationConfig,
+  getAdminEvaluationOverview,
   launchAdminEvaluationRun,
   listAdminEvaluationRuns,
   type EvaluationJudgeProvider,

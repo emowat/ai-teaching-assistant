@@ -13,6 +13,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 import boto3
+from botocore.exceptions import ClientError
 from dotenv import load_dotenv
 
 from deploy.deployment_config import load_deploy_config
@@ -99,6 +100,20 @@ def _build_ecs_client(*, region: str, profile_name: str | None):
     return session.client("ecs")
 
 
+def _build_logs_client(*, region: str, profile_name: str | None):
+    session = boto3.Session(profile_name=profile_name, region_name=region)
+    return session.client("logs")
+
+
+def _ensure_log_group(client, *, log_group_name: str) -> None:
+    try:
+        client.create_log_group(logGroupName=log_group_name)
+    except ClientError as exc:
+        error_code = exc.response.get("Error", {}).get("Code")
+        if error_code != "ResourceAlreadyExistsException":
+            raise
+
+
 def _normalize_snapshot(snapshot: Any) -> dict[str, Any]:
     if isinstance(snapshot, dict):
         return dict(snapshot)
@@ -133,6 +148,7 @@ class EvaluationLaunchRuntimeConfig:
     ecs_cluster: str
     ecs_task_definition: str
     ecs_container_name: str
+    ecs_log_group: str
     ecs_launch_type: str
     ecs_platform_version: str
     ecs_assign_public_ip: str
@@ -174,6 +190,7 @@ def load_evaluation_launch_runtime_config(
         ecs_cluster=worker.cluster,
         ecs_task_definition=worker.task_definition,
         ecs_container_name=worker.container_name,
+        ecs_log_group=worker.log_group,
         ecs_launch_type=worker.launch_type,
         ecs_platform_version=worker.platform_version,
         ecs_assign_public_ip=worker.assign_public_ip,
@@ -1065,6 +1082,8 @@ def launch_evaluation_run(
         raise RuntimeError("Evaluation run database URL is not configured.")
     if not runtime.ecs_cluster or not runtime.ecs_task_definition:
         raise RuntimeError("Evaluation ECS runtime is not configured.")
+    if not runtime.ecs_log_group:
+        raise RuntimeError("Evaluation ECS log group is not configured.")
     if not runtime.ecs_subnet_ids or not runtime.ecs_security_group_ids:
         raise RuntimeError("Evaluation ECS runtime requires subnets and security groups.")
 
@@ -1137,6 +1156,10 @@ def launch_evaluation_run(
         region=runtime.aws_region,
         profile_name=runtime.aws_profile,
     )
+    logs_client = _build_logs_client(
+        region=runtime.aws_region,
+        profile_name=runtime.aws_profile,
+    )
     run_task_kwargs = {
         "cluster": runtime.ecs_cluster,
         "taskDefinition": runtime.ecs_task_definition,
@@ -1152,9 +1175,10 @@ def launch_evaluation_run(
                 "securityGroups": list(runtime.ecs_security_group_ids),
                 "assignPublicIp": runtime.ecs_assign_public_ip,
             }
-        }
+    }
 
     try:
+        _ensure_log_group(logs_client, log_group_name=runtime.ecs_log_group)
         ecs_response = client.run_task(**run_task_kwargs)
         ecs_summary = _run_task_response_to_dict(ecs_response)
         tasks = ecs_summary["tasks"]

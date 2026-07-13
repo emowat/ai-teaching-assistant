@@ -15,15 +15,33 @@ class _FakeSecretsManagerClient:
     def __init__(self, *, existing: dict[str, str] | None = None) -> None:
         self.exceptions = _FakeSecretsManagerExceptions()
         self._existing = dict(existing or {})
+        self._values: dict[str, str] = {}
         self.created_secrets: list[dict[str, str]] = []
         self.updated_secrets: list[dict[str, str]] = []
 
     def describe_secret(self, *, SecretId: str):
-        if SecretId not in self._existing:
-            raise self.exceptions.ResourceNotFoundException(SecretId)
-        return {"ARN": self._existing[SecretId]}
+        if SecretId not in self._existing and SecretId not in self._values:
+            if SecretId not in self._existing.values():
+                raise self.exceptions.ResourceNotFoundException(SecretId)
+        if SecretId in self._existing:
+            return {"ARN": self._existing[SecretId]}
+        for secret_name, secret_arn in self._existing.items():
+            if secret_arn == SecretId:
+                return {"ARN": secret_arn}
+        raise self.exceptions.ResourceNotFoundException(SecretId)
+
+    def get_secret_value(self, *, SecretId: str):
+        if SecretId in self._values:
+            return {"SecretString": self._values[SecretId]}
+        if SecretId in self._existing:
+            return {"SecretString": self._values.get(SecretId, "postgresql://live-secret")}
+        for secret_name, secret_arn in self._existing.items():
+            if secret_arn == SecretId:
+                return {"SecretString": self._values.get(secret_name, "postgresql://live-secret")}
+        raise self.exceptions.ResourceNotFoundException(SecretId)
 
     def put_secret_value(self, *, SecretId: str, SecretString: str):
+        self._values[SecretId] = SecretString
         self.updated_secrets.append(
             {"SecretId": SecretId, "SecretString": SecretString}
         )
@@ -31,6 +49,7 @@ class _FakeSecretsManagerClient:
     def create_secret(self, *, Name: str, SecretString: str, Description: str):
         arn = f"arn:aws:secretsmanager:us-east-1:123456789012:secret:{Name}"
         self._existing[Name] = arn
+        self._values[Name] = SecretString
         self.created_secrets.append(
             {
                 "Name": Name,
@@ -123,6 +142,14 @@ def test_ensure_task_role_writes_runtime_permissions() -> None:
         region="us-east-1",
         bucket_name="codingrabbit-data-dev",
         sagemaker_endpoint="codingrabbit-qwen-async",
+        evaluation_worker_cluster_name="codingrabbit-rag-eng",
+        evaluation_worker_task_definition="codingrabbit-evaluation-worker",
+        evaluation_worker_execution_role_arn=(
+            "arn:aws:iam::123456789012:role/codingrabbit-rag-eng-execution-role"
+        ),
+        evaluation_worker_task_role_arn=(
+            "arn:aws:iam::123456789012:role/codingrabbit-rag-eng-task"
+        ),
     )
 
     assert role_arn.endswith(":role/codingrabbit-rag-eng-task")
@@ -152,6 +179,28 @@ def test_ensure_task_role_writes_runtime_permissions() -> None:
         "aws-marketplace:Subscribe",
         "aws-marketplace:Unsubscribe",
         "aws-marketplace:ViewSubscriptions",
+    ]
+    assert statements["CreateEvaluationLogGroup"]["Action"] == [
+        "logs:CreateLogGroup",
+    ]
+
+    launch_policy = {
+        statement["Sid"]: statement
+        for statement in json.loads(client.put_policies[1]["PolicyDocument"])[
+            "Statement"
+        ]
+    }
+    assert launch_policy["RunEvaluationWorkerTask"]["Action"] == ["ecs:RunTask"]
+    assert launch_policy["RunEvaluationWorkerTask"]["Resource"] == [
+        "arn:aws:ecs:us-east-1:123456789012:cluster/codingrabbit-rag-eng",
+        "arn:aws:ecs:us-east-1:123456789012:task-definition/codingrabbit-evaluation-worker:*",
+    ]
+    assert launch_policy["PassEvaluationWorkerRoles"]["Action"] == [
+        "iam:PassRole",
+    ]
+    assert launch_policy["PassEvaluationWorkerRoles"]["Resource"] == [
+        "arn:aws:iam::123456789012:role/codingrabbit-rag-eng-execution-role",
+        "arn:aws:iam::123456789012:role/codingrabbit-rag-eng-task",
     ]
 
 
@@ -247,8 +296,11 @@ def test_resolve_secret_arns_loads_optional_values_when_env_present(
 
     monkeypatch.setenv("OPENAI_API_KEY", "new-openai-secret")
     monkeypatch.setenv("COHERE_API_KEY", "new-cohere-secret")
+    monkeypatch.setenv(
+        "COURSE_REGISTRY_DATABASE_URL",
+        "postgresql://stale-local-db-url",
+    )
     monkeypatch.delenv("QDRANT_API_KEY", raising=False)
-    monkeypatch.delenv("COURSE_REGISTRY_DATABASE_URL", raising=False)
     monkeypatch.setattr(
         provision,
         "_client",
@@ -276,6 +328,51 @@ def test_resolve_secret_arns_loads_optional_values_when_env_present(
         "codingrabbit/rag_eng/OPENAI_API_KEY",
         "codingrabbit/rag_eng/COHERE_API_KEY",
     }
+
+
+def test_resolve_secret_arns_uses_live_course_registry_secret_when_env_differs(
+    monkeypatch,
+) -> None:
+    fake_client = _FakeSecretsManagerClient(
+        existing={
+            "codingrabbit/rag_eng/COURSE_REGISTRY_DATABASE_URL": (
+                "arn:aws:secretsmanager:us-east-1:123456789012:secret:course-registry"
+            ),
+            "codingrabbit/rag_eng/QDRANT_API_KEY": (
+                "arn:aws:secretsmanager:us-east-1:123456789012:secret:qdrant"
+            ),
+        }
+    )
+    config = SimpleNamespace(
+        rag_eng_ecs=SimpleNamespace(
+            secret_arn_map={
+                "COURSE_REGISTRY_DATABASE_URL": "arn:aws:secretsmanager:us-east-1:123456789012:secret:course-registry",
+                "QDRANT_API_KEY": "arn:aws:secretsmanager:us-east-1:123456789012:secret:qdrant",
+            }
+        )
+    )
+
+    monkeypatch.setenv(
+        "COURSE_REGISTRY_DATABASE_URL",
+        "postgresql://stale-local-db-url",
+    )
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("COHERE_API_KEY", raising=False)
+    monkeypatch.delenv("QDRANT_API_KEY", raising=False)
+    monkeypatch.setattr(
+        provision,
+        "_client",
+        lambda *_args, **_kwargs: fake_client,
+    )
+
+    resolved = provision._resolve_secret_arns(config)
+
+    assert (
+        resolved["COURSE_REGISTRY_DATABASE_URL"]
+        == "arn:aws:secretsmanager:us-east-1:123456789012:secret:course-registry"
+    )
+    assert fake_client.created_secrets == []
+    assert fake_client.updated_secrets == []
 
 
 def test_ensure_listener_updates_when_target_group_changes() -> None:

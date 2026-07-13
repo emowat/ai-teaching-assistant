@@ -184,15 +184,6 @@ CREATE INDEX IF NOT EXISTS teaching_plan_week_references_week_id_enabled_sort_id
 CREATE INDEX IF NOT EXISTS teaching_plan_week_references_section_id_week_id_idx
   ON teaching_plan_week_references (section_id, week_id);
 
-CREATE INDEX IF NOT EXISTS evaluation_runs_status_created_at_idx
-  ON evaluation_runs (status, created_at DESC);
-
-CREATE INDEX IF NOT EXISTS evaluation_run_metrics_run_id_idx
-  ON evaluation_run_metrics (evaluation_run_id);
-
-CREATE INDEX IF NOT EXISTS evaluation_run_artifacts_run_id_idx
-  ON evaluation_run_artifacts (evaluation_run_id);
-
 CREATE TABLE IF NOT EXISTS ingestion_jobs (
   job_id text PRIMARY KEY,
   course_id text NOT NULL REFERENCES courses(course_id) ON DELETE CASCADE,
@@ -280,6 +271,15 @@ CREATE TABLE IF NOT EXISTS evaluation_run_artifacts (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+
+CREATE INDEX IF NOT EXISTS evaluation_runs_status_created_at_idx
+  ON evaluation_runs (status, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS evaluation_run_metrics_run_id_idx
+  ON evaluation_run_metrics (evaluation_run_id);
+
+CREATE INDEX IF NOT EXISTS evaluation_run_artifacts_run_id_idx
+  ON evaluation_run_artifacts (evaluation_run_id);
 
 CREATE TABLE IF NOT EXISTS tutor_sessions (
   session_id text PRIMARY KEY,

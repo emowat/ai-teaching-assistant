@@ -88,22 +88,22 @@ def test_load_sql_statements_reads_repo_bootstrap_file() -> None:
     assert statements[22].startswith(
         "CREATE INDEX IF NOT EXISTS teaching_plan_week_references_section_id_week_id_idx"
     )
-    assert statements[23].startswith(
-        "CREATE INDEX IF NOT EXISTS evaluation_runs_status_created_at_idx"
-    )
-    assert statements[24].startswith(
-        "CREATE INDEX IF NOT EXISTS evaluation_run_metrics_run_id_idx"
-    )
+    assert statements[23].startswith("CREATE TABLE IF NOT EXISTS ingestion_jobs")
+    assert statements[24].startswith("CREATE TABLE IF NOT EXISTS evaluation_runs")
     assert statements[25].startswith(
-        "CREATE INDEX IF NOT EXISTS evaluation_run_artifacts_run_id_idx"
-    )
-    assert statements[26].startswith("CREATE TABLE IF NOT EXISTS ingestion_jobs")
-    assert statements[27].startswith("CREATE TABLE IF NOT EXISTS evaluation_runs")
-    assert statements[28].startswith(
         "CREATE TABLE IF NOT EXISTS evaluation_run_metrics"
     )
-    assert statements[29].startswith(
+    assert statements[26].startswith(
         "CREATE TABLE IF NOT EXISTS evaluation_run_artifacts"
+    )
+    assert statements[27].startswith(
+        "CREATE INDEX IF NOT EXISTS evaluation_runs_status_created_at_idx"
+    )
+    assert statements[28].startswith(
+        "CREATE INDEX IF NOT EXISTS evaluation_run_metrics_run_id_idx"
+    )
+    assert statements[29].startswith(
+        "CREATE INDEX IF NOT EXISTS evaluation_run_artifacts_run_id_idx"
     )
     assert statements[30].startswith("CREATE TABLE IF NOT EXISTS tutor_sessions")
     assert statements[31].startswith("CREATE TABLE IF NOT EXISTS tutor_turns")

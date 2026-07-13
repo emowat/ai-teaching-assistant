@@ -131,6 +131,14 @@ def _ensure_secret(
         return response["ARN"]
 
 
+def _get_secret_value(client, *, secret_id: str) -> str:
+    response = client.get_secret_value(SecretId=secret_id)
+    secret_string = response.get("SecretString")
+    if not isinstance(secret_string, str) or not secret_string.strip():
+        raise RuntimeError(f"Secret {secret_id} does not contain a SecretString.")
+    return secret_string
+
+
 def _ensure_log_group(client, *, log_group_name: str) -> None:
     try:
         client.create_log_group(logGroupName=log_group_name)
@@ -424,6 +432,10 @@ def _ensure_task_role(
     region: str,
     bucket_name: str,
     sagemaker_endpoint: str,
+    evaluation_worker_cluster_name: str,
+    evaluation_worker_task_definition: str,
+    evaluation_worker_execution_role_arn: str,
+    evaluation_worker_task_role_arn: str,
 ) -> str:
     assume_role_policy = {
         "Version": "2012-10-17",
@@ -448,6 +460,10 @@ def _ensure_task_role(
     bucket_arn = f"arn:aws:s3:::{bucket_name}"
     endpoint_arn = (
         f"arn:aws:sagemaker:{region}:{account_id}:endpoint/{sagemaker_endpoint}"
+    )
+    worker_cluster_arn = f"arn:aws:ecs:{region}:{account_id}:cluster/{evaluation_worker_cluster_name}"
+    worker_task_definition_arn = (
+        f"arn:aws:ecs:{region}:{account_id}:task-definition/{evaluation_worker_task_definition}:*"
     )
     client.put_role_policy(
         RoleName=TASK_ROLE_NAME,
@@ -506,6 +522,47 @@ def _ensure_task_role(
                             "aws-marketplace:ViewSubscriptions",
                         ],
                         "Resource": ["*"],
+                    },
+                    {
+                        "Sid": "CreateEvaluationLogGroup",
+                        "Effect": "Allow",
+                        "Action": [
+                            "logs:CreateLogGroup",
+                        ],
+                        "Resource": ["*"],
+                    },
+                ],
+            }
+        ),
+    )
+    client.put_role_policy(
+        RoleName=TASK_ROLE_NAME,
+        PolicyName="codingrabbit-rag-eng-evaluation-launch",
+        PolicyDocument=json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Sid": "RunEvaluationWorkerTask",
+                        "Effect": "Allow",
+                        "Action": [
+                            "ecs:RunTask",
+                        ],
+                        "Resource": [
+                            worker_cluster_arn,
+                            worker_task_definition_arn,
+                        ],
+                    },
+                    {
+                        "Sid": "PassEvaluationWorkerRoles",
+                        "Effect": "Allow",
+                        "Action": [
+                            "iam:PassRole",
+                        ],
+                        "Resource": [
+                            evaluation_worker_execution_role_arn,
+                            evaluation_worker_task_role_arn,
+                        ],
                     },
                 ],
             }
@@ -641,6 +698,16 @@ def _resolve_secret_arns(config: DeployConfig) -> dict[str, str]:
     }
     for key in SECRET_ENV_KEYS:
         env_value = os.getenv(key, "").strip()
+        secret_arn = secret_arns.get(key)
+        if key == "COURSE_REGISTRY_DATABASE_URL" and secret_arn:
+            if env_value:
+                live_value = _get_secret_value(sm, secret_id=secret_arn)
+                if env_value != live_value:
+                    print(
+                        "WARNING: ignoring local COURSE_REGISTRY_DATABASE_URL "
+                        "because the live Secrets Manager value is authoritative."
+                    )
+            continue
         if env_value:
             secret_arns[key] = _ensure_secret(
                 sm,
@@ -649,11 +716,11 @@ def _resolve_secret_arns(config: DeployConfig) -> dict[str, str]:
                 description=descriptions[key],
             )
             continue
-        if key in REQUIRED_SECRET_ENV_KEYS and not secret_arns.get(key):
+        if key in REQUIRED_SECRET_ENV_KEYS and not secret_arn:
             raise RuntimeError(
                 f"{key} must be set before provisioning rag_eng or provided in deploy/deployment.yaml."
             )
-        if key in OPTIONAL_SECRET_ENV_KEYS and not secret_arns.get(key):
+        if key in OPTIONAL_SECRET_ENV_KEYS and not secret_arn:
             secret_arns.pop(key, None)
     return secret_arns
 
@@ -756,6 +823,18 @@ def provision_stack(config: DeployConfig) -> dict[str, Any]:
         region=region,
         bucket_name=bucket_name,
         sagemaker_endpoint=config.sagemaker.endpoint_name,
+        evaluation_worker_cluster_name=config.evaluation_worker.cluster,
+        evaluation_worker_task_definition=config.evaluation_worker.task_definition,
+        evaluation_worker_execution_role_arn=(
+            config.evaluation_worker.execution_role_arn
+            or config.rag_eng_ecs.execution_role_arn
+            or execution_role_arn
+        ),
+        evaluation_worker_task_role_arn=(
+            config.evaluation_worker.task_role_arn
+            or config.rag_eng_ecs.task_role_arn
+            or ""
+        ),
     )
 
     image_uri = _build_image_and_push(
