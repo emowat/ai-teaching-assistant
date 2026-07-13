@@ -1,0 +1,11 @@
+{
+  "eval_log": {
+    "judge_": "cohere",
+    "judge_model": "command-r-08-2024",
+    "macro_pass_rate": 1.0,
+    "micro_pass_rate": 1.0,
+    "total_drift_rate": 0.0,
+    "qaulity_decline_rate": 0.0,
+    "code_leak_rate": 0.0
+  }
+}

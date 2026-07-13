@@ -1,0 +1,11 @@
+{
+  "eval_log": {
+    "judge_": "openai",
+    "judge_model": "gpt-4o-mini",
+    "macro_pass_rate": 0.9148936170212766,
+    "micro_pass_rate": 0.8554216867469879,
+    "total_drift_rate": 0.043,
+    "qaulity_decline_rate": 0.043,
+    "code_leak_rate": 0.0
+  }
+}

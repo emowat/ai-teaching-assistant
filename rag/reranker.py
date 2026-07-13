@@ -83,6 +83,7 @@ def mmr_diversify(
         return docs
 
     selected: list[RetrievedDoc] = []
+    selected_sets: list[set[str]] = []
     remaining = list(docs)
 
     def _token_set(doc: RetrievedDoc) -> set[str]:
@@ -99,8 +100,8 @@ def mmr_diversify(
             for i, doc in enumerate(remaining):
                 relevance = doc.score
                 max_sim = max(
-                    _jaccard_sim(remaining_sets[i], _token_set(s))
-                    for s in selected
+                    _jaccard_sim(remaining_sets[i], s_set)
+                    for s_set in selected_sets
                 )
                 mmr = lambda_param * relevance - (1 - lambda_param) * max_sim
                 if mmr > best_score:
@@ -108,7 +109,7 @@ def mmr_diversify(
                     best_idx = i
 
         selected.append(remaining.pop(best_idx))
-        remaining_sets.pop(best_idx)
+        selected_sets.append(remaining_sets.pop(best_idx))
 
     return selected
 
@@ -117,7 +118,8 @@ def _jaccard_sim(a: set[str], b: set[str]) -> float:
     """Jaccard similarity between two token sets."""
     if not a or not b:
         return 0.0
-    return len(a & b) / len(a | b)
+    intersection = len(a & b)
+    return intersection / (len(a) + len(b) - intersection)
 
 
 # ---------------------------------------------------------------------------
