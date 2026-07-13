@@ -1,0 +1,11 @@
+{
+  "eval_log": {
+    "judge_": "bedrock",
+    "judge_model": "amazon.nova-2-lite-v1:0",
+    "macro_pass_rate": 0.9787234042553191,
+    "micro_pass_rate": 0.975609756097561,
+    "total_drift_rate": 0.0,
+    "qaulity_decline_rate": 0.0,
+    "code_leak_rate": 0.0
+  }
+}

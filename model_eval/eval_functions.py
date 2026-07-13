@@ -111,10 +111,25 @@ def pretty_print_jsonl(filename):
                 print(f"Error decoding JSON on line {i+1}")
 
 def build_context_(record):       #retrived chuck on the session
-  chuncks= record['backend_retrieval_phase'][ "retrieved_rag_chunks"]
+  brp= record.get("backend_retrieval_phase") or {} #adjustments to account for turn logs where backend_retrieval_phase is none
+  chuncks= brp.get("retrieved_rag_chunks") or []
   part= []
   for c in  chuncks:
     label= c.get( "label", "Chunk")
+    line= [ "[" + str(label) +"]" ]
+    for key, value in c.items():
+      if key == "label": continue
+      line.append(str( key) + ": " + str(value))
+    part.append(  "\n".join(line))
+  return "\n\n".join(part)
+
+def get_syllabus_chunks(record):
+  brp= record.get("backend_retrieval_phase") or {} #adjustments to account for turn logs where backend_retrieval_phase is none
+  chuncks= brp.get("retrieved_rag_chunks") or []
+  part= []
+  for c in  chuncks:
+    label= c.get( "label", "Chunk")
+    if str(label).lower() != "syllabus" and str(c.get("Source", "")).lower() != "syllabus_page": continue #keep syllabus only
     line= [ "[" + str(label) +"]" ]
     for key, value in c.items():
       if key == "label": continue
@@ -320,7 +335,7 @@ def build_micro_samples(dataset,  max_turns_per_convo=None):
             "turn_index": ta_count, #which turn this is
             "turn_id": r.get("turn_id"), #get log turn id with session id form final_eval_log format record
             "session_id": r.get("session_id"), #get log turn id with session id form final_eval_log format record
-            "problem_id": r['ide_context']['active_file'].replace(".cpp", ""),
+            "problem_id": (r['ide_context'].get('active_file') or"").replace(".cpp", ""),#adjust for turn logs format
             "student_code": r['ide_context'].get('raw_code_snippet') or "",
             "sys_prompt": rule_for(mode)+ '\n\n'+ context_, #rules +context
             "user_turn": get_user_turn(r), #student message to TA
@@ -329,6 +344,7 @@ def build_micro_samples(dataset,  max_turns_per_convo=None):
             "mode": mode, #mode status in session
             "raw_convo": convo, #raw convo
             "rag_context": context_ ,#RAG context
+            "syllabus_context": get_syllabus_chunks(r), #syllabus only chunks 
             "extra_signals": get_extra_log_signals(r), #additional signals
             "feedback": get_feedback(r), #feedback
             "frustration": get_frustration(r), #frustration
@@ -524,6 +540,29 @@ def convo_is_adversarial(raw_convo):
   return False
 
 
+#read jusge output model agnotic since beddrock return different content blocks 
+def _content_to_text(respond):
+  if isinstance(respond, Exception):
+    print(f"Error: {type(respond).__name__}- {respond}" ) #see error 
+    return ""
+  content= getattr(respond, "content", respond)
+  if isinstance(content, str):
+    return content
+  if isinstance(content, list):
+    parts=[]
+    for b in content:
+      if isinstance(b, dict):
+        parts.append(b.get("text", "")or b.get("content", ""))
+      else:
+        parts.append(str(b))
+    return "".join(parts)
+  return str(content)
+
+
+
+
+
+
 def run_marco_eval(samples, judge_model, judge_prompt):
   synethic_text__results=[ ] #store results
   print(f"evaluation on output....")
@@ -538,10 +577,14 @@ def run_marco_eval(samples, judge_model, judge_prompt):
             for score in samples]
 
   outputs= judge_model.batch(Prompts, config= {"max_concurrency": 8}, return_exceptions= True) #batch
+  _errors= [o for o in outputs if isinstance(o, Exception)]
+  if _errors:
+    print(f"Macro {len(_errors)}/{len(outputs)} judge failed: {type(_errors[0]).__name__}- {_errors[0]}")
+  
   empty_parse=0
 
   for i, score in  enumerate(samples) :
-    judge_output= "" if isinstance(outputs[i], Exception) else outputs[i].content
+    judge_output=_content_to_text(outputs[i]) #update to adopt to bedrock
 
     # judge_model.invoke(judge_model_prompt).content #get text output only
     result= get_json(judge_output) #get json output
@@ -588,13 +631,17 @@ def run_mirco_eval(samples, judge_model, judge_prompt):
                                                  input_action= score.get("input_action", "NA"),
                                                  output_action= score.get("output_action", "NA"),
                                                  extra_signals=score.get("extra_signals", ""), #add in extra signals
-                                                 Retrieved_Syllabus_Chunk="{Retrieved_Syllabus_Chunk}"
+                                                 Retrieved_Syllabus_Chunk=score.get("syllabus_context", "") #add syllabus chunks
                                                  ) for score in samples]
   outputs= judge_model.batch(prompts, config= {"max_concurrency": 8}, return_exceptions= True) #batch
+  _errors= [o for o in outputs if isinstance(o, Exception)]
+  if _errors:
+    print(f"Macro {len(_errors)}/{len(outputs)} judge failed: {type(_errors[0]).__name__}- {_errors[0]}")
+  
   empty_parse=0
 
   for i, score in  enumerate(samples) :
-    judge_output= "" if isinstance(outputs[i], Exception) else outputs[i].content #get text output only
+    judge_output=_content_to_text(outputs[i]) #update to adopt to bedrock
     result= get_json(judge_output) #get json output
     if not result: empty_parse += 1
 
