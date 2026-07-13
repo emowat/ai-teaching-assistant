@@ -25,7 +25,7 @@ from rag_eng.auth.dependencies import (
     require_authenticated_user,
     require_student_surface_user,
 )
-from rag_eng.auth.models import MeResponse
+from rag_eng.auth.models import CurrentUser, MeResponse
 from rag_eng.app_registry import (
     AppUserConflictError,
     AppUserDisabledError,
@@ -68,6 +68,13 @@ from rag_eng.app_registry import (
     delete_professor_section_teaching_plan_week_reference,
     update_professor_section_teaching_plan_week_reference,
     update_section_membership,
+)
+from rag_eng.evaluation_jobs import (
+    get_evaluation_config_payload,
+    get_evaluation_overview,
+    get_evaluation_run,
+    launch_evaluation_run,
+    list_evaluation_runs,
 )
 from rag_eng.course_admin import (
     CourseConflictError,
@@ -138,6 +145,8 @@ from rag_eng.schemas import (
     SectionInstructionSettings,
     SectionInstructionSettingsUpdate,
     SectionLaunchConfig,
+    EvaluationRunCreate,
+    EvaluationRunSummary,
     OutputGuardrailDiagnosticResponse,
     OutputGuardrailReviewRequest,
     QueryPayload,
@@ -294,6 +303,46 @@ def _require_admin_access(
         )
 
 
+def _require_admin_context(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_admin_bearer),
+    x_admin_token: str | None = Header(default=None),
+    settings: Settings = Depends(get_settings),
+) -> CurrentUser | None:
+    if settings.admin_token and x_admin_token == settings.admin_token:
+        return None
+
+    # Allow the static admin token to be passed as a Bearer token (for transitional frontend compatibility)
+    if settings.admin_token and credentials and credentials.scheme.lower() == "bearer":
+        if credentials.credentials == settings.admin_token:
+            return None
+
+    if credentials is None or credentials.scheme.lower() != "bearer":
+        logger.error(f"Missing admin credentials. credentials={credentials}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing admin credentials.",
+        )
+
+    try:
+        current_user = verify_cognito_access_token(credentials.credentials, settings)
+    except Exception:
+        import traceback
+
+        error_msg = traceback.format_exc()
+        logger.error(
+            f"Failed to verify cognito access token! Token was: {credentials.credentials[:20]}...\nException trace:\n{error_msg}"
+        )
+        raise
+
+    if current_user.primary_role != "admin":
+        logger.error(f"Insufficient role. Primary role: {current_user.primary_role}")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient role for this operation.",
+        )
+    return current_user
+
+
 def _runtime_config_payload() -> AdminLlmConfigResponse:
     settings = get_settings()
     runtime = get_inference_config()
@@ -341,6 +390,14 @@ def _app_registry_http_error(exc: Exception) -> HTTPException:
         return HTTPException(status_code=400, detail=str(exc))
     if isinstance(exc, CourseNotFoundError):
         return HTTPException(status_code=404, detail=str(exc))
+    return HTTPException(status_code=500, detail=str(exc))
+
+
+def _evaluation_http_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, LookupError):
+        return HTTPException(status_code=404, detail=str(exc))
+    if isinstance(exc, ValueError):
+        return HTTPException(status_code=400, detail=str(exc))
     return HTTPException(status_code=500, detail=str(exc))
 
 
@@ -1229,6 +1286,66 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except Exception as exc:
             raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    @app.get(
+        "/api/admin/evaluations/config",
+        dependencies=[Depends(_require_admin_access)],
+    )
+    def admin_get_evaluations_config() -> dict[str, Any]:
+        try:
+            return get_evaluation_config_payload()
+        except Exception as exc:
+            raise _evaluation_http_error(exc) from exc
+
+    @app.post(
+        "/api/admin/evaluations/runs",
+        response_model=EvaluationRunSummary,
+    )
+    def admin_launch_evaluation_run(
+        payload: EvaluationRunCreate,
+        current_user: CurrentUser | None = Depends(_require_admin_context),
+    ) -> EvaluationRunSummary:
+        try:
+            return launch_evaluation_run(payload, current_user=current_user)
+        except Exception as exc:
+            raise _evaluation_http_error(exc) from exc
+
+    @app.get(
+        "/api/admin/evaluations/runs",
+        response_model=list[EvaluationRunSummary],
+        dependencies=[Depends(_require_admin_access)],
+    )
+    def admin_list_evaluation_runs(
+        limit: int = Query(default=25, ge=1, le=100),
+        status: str | None = None,
+    ) -> list[EvaluationRunSummary]:
+        try:
+            return list_evaluation_runs(limit=limit, status=status)
+        except Exception as exc:
+            raise _evaluation_http_error(exc) from exc
+
+    @app.get(
+        "/api/admin/evaluations/runs/{run_id}",
+        response_model=EvaluationRunSummary,
+        dependencies=[Depends(_require_admin_access)],
+    )
+    def admin_get_evaluation_run(run_id: str) -> EvaluationRunSummary:
+        try:
+            return get_evaluation_run(run_id)
+        except Exception as exc:
+            raise _evaluation_http_error(exc) from exc
+
+    @app.get(
+        "/api/admin/evaluations/overview",
+        dependencies=[Depends(_require_admin_access)],
+    )
+    def admin_get_evaluation_overview(
+        limit: int = Query(default=25, ge=1, le=100),
+    ) -> dict[str, Any]:
+        try:
+            return get_evaluation_overview(limit=limit)
+        except Exception as exc:
+            raise _evaluation_http_error(exc) from exc
 
     @app.get(
         "/api/admin/llm/config",
