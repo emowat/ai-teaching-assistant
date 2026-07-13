@@ -21,7 +21,7 @@ Google Drive (fine-tuned Qwen)
 |---|---|---|
 | **Configuration** | `deploy/deployment.yaml` | Single source of truth for all deploy settings |
 | **Shell wrappers** (start here) | `deploy/scripts/*.sh` | Human-friendly entry points with `--help` |
-| **Python implementation** | `deploy/upload_model.py`, `deploy/deploy_sagemaker.py`, `deploy/deploy_ingestion_worker.py`, `deploy/deploy_rag_eng_ecs.py`, `deploy/provision_rag_eng_stack.py`, `deploy/sagemaker_io.py` | Download, S3 upload, SageMaker API calls, ECS task-definition helpers, rag_eng AWS provisioning, async payload helpers |
+| **Python implementation** | `deploy/upload_model.py`, `deploy/deploy_sagemaker.py`, `deploy/deploy_ingestion_worker.py`, `deploy/deploy_evaluation_worker.py`, `deploy/deploy_rag_eng_ecs.py`, `deploy/provision_rag_eng_stack.py`, `deploy/sagemaker_io.py` | Download, S3 upload, SageMaker API calls, ECS task-definition helpers, rag_eng AWS provisioning, async payload helpers |
 | **Application** | `rag_eng/inference.py` | Calls the live endpoint at request time |
 
 ---
@@ -53,6 +53,7 @@ export DEPLOY_CONFIG=/path/to/my-deployment.yaml
 | `inference_smoke_test` | `default_prompt`, `chat_template`, generation params | `invoke` smoke test |
 | `huggingface_packaging` | `required_files` | Validation before packaging |
 | `rag_eng` | `model_family`, `use_sagemaker`, `inference_backend` | Values to copy into `.env` after deploy |
+| `evaluation_worker` | `cluster`, `task_family`, `task_definition`, `container_name`, `launch_type`, `platform_version`, `assign_public_ip`, `subnet_ids`, `security_group_ids`, `image_uri`, `execution_role_arn`, `task_role_arn`, `cpu`, `memory`, `log_group`, `log_stream_prefix`, `environment`, `secret_arn_map` | ECS task-definition defaults for the offline evaluation worker |
 | `frontend_web` | `enabled`, `app_dir`, `dist_dir`, `bucket_name`, `bucket_prefix`, `default_root_object`, `spa_fallback_path`, `price_class`, `cloudfront`, `build` | Vite SPA build settings and S3 + CloudFront provisioning/publishing wiring |
 
 The `_reference` block at the bottom of `deployment.yaml` documents each field (also printed by `describe`).
@@ -312,6 +313,51 @@ export INGESTION_ECS_SUBNETS=subnet-123,subnet-456
 export INGESTION_ECS_SECURITY_GROUPS=sg-123
 export INGESTION_ECS_SECRET_ARNS_JSON='{"INGESTION_JOBS_DATABASE_URL":"arn:aws:secretsmanager:...","QDRANT_API_KEY":"arn:aws:secretsmanager:..."}'
 ```
+
+**Success output:** the helper prints the rendered task definition, the backend launch env fragment, or the ECS registration response, depending on the chosen action.
+
+---
+
+### `deploy-evaluation-worker.sh`
+
+**Purpose:** Describe, render, or register the ECS Fargate task definition used by the offline evaluation worker.
+
+The evaluation worker runs model-judging jobs on demand. It reuses the live app image and secrets, but launches as a separate one-off task family so runs stay isolated from the online `rag_eng` service.
+
+| Action | What it does |
+|---|---|
+| `describe` | Print the resolved ECS task-definition settings and any missing values |
+| `render-task-definition` | Emit the ECS task-definition JSON payload |
+| `render-backend-env` | Emit the backend `.env` fragment for `EVALUATION_WORKER_ECS_*` values |
+| `register-task-definition` | Register the task definition with ECS using boto3 |
+
+**Usage:**
+
+```bash
+./deploy/scripts/deploy-evaluation-worker.sh describe
+./deploy/scripts/deploy-evaluation-worker.sh render-task-definition
+./deploy/scripts/deploy-evaluation-worker.sh render-backend-env
+./deploy/scripts/deploy-evaluation-worker.sh register-task-definition
+```
+
+**Required worker settings:**
+
+| Variable | Description |
+|---|---|
+| `EVALUATION_WORKER_ECS_IMAGE_URI` | ECR image URI for the worker container |
+| `EVALUATION_WORKER_ECS_EXECUTION_ROLE_ARN` | ECS task execution role ARN |
+| `EVALUATION_WORKER_ECS_TASK_ROLE_ARN` | ECS task role ARN |
+| `EVALUATION_WORKER_ECS_TASK_FAMILY` | Task family name used for registration |
+| `EVALUATION_WORKER_ECS_TASK_DEFINITION` | Task definition name/ARN used by the launcher |
+| `EVALUATION_WORKER_ECS_CONTAINER_NAME` | Container name inside the task definition |
+| `EVALUATION_WORKER_ECS_SUBNETS` | Comma-separated ECS subnets for `run-task` |
+| `EVALUATION_WORKER_ECS_SECURITY_GROUPS` | Comma-separated ECS security groups for `run-task` |
+| `EVALUATION_WORKER_ECS_SECRET_ARNS_JSON` | Optional JSON map of secret env names to Secrets Manager ARNs |
+
+**Recommended secret mapping keys:**
+
+- `COURSE_REGISTRY_DATABASE_URL`
+- `OPENAI_API_KEY`
 
 **Success output:** the helper prints the rendered task definition, the backend launch env fragment, or the ECS registration response, depending on the chosen action.
 

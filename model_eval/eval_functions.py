@@ -15,7 +15,10 @@ import time
 import sys
 from statistics import NormalDist
 from math import sqrt
-from prompts import (macro_metrics, macro_critical, micro_metrics, micro_critical)
+try:
+  from .prompts import (macro_metrics, macro_critical, micro_metrics, micro_critical)
+except ImportError:
+  from prompts import (macro_metrics, macro_critical, micro_metrics, micro_critical)
 try:
     import matplotlib.pyplot as plt
 except Exception:
@@ -979,4 +982,3 @@ def score_spotcheck(sheet):
         "fp_rate": round( fp.sum()/ n, 3)
     })
   return pd.DataFrame(ro)
-

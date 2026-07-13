@@ -15,9 +15,27 @@ import json
 import glob
 import subprocess
 import pandas as pd
-import eval_functions as ef
+try:
+    from . import eval_functions as ef
+    from .prompts import (
+        macro_judge_prompt,
+        micro_judge_prompt,
+        micro_metrics,
+        macro_metrics,
+        macro_critical,
+        micro_critical,
+    )
+except ImportError:
+    import eval_functions as ef
+    from prompts import (
+        macro_judge_prompt,
+        micro_judge_prompt,
+        micro_metrics,
+        macro_metrics,
+        macro_critical,
+        micro_critical,
+    )
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from prompts import (macro_judge_prompt, micro_judge_prompt, micro_metrics, macro_metrics, macro_critical, micro_critical)
 
 
 from pathlib import Path

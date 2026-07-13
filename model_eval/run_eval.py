@@ -13,8 +13,26 @@ import os
 import json
 import glob
 import pandas as pd
-import eval_functions as ef
-from prompts import (macro_judge_prompt, micro_judge_prompt, micro_metrics, macro_metrics, macro_critical, micro_critical)
+try:
+    from . import eval_functions as ef
+    from .prompts import (
+        macro_judge_prompt,
+        micro_judge_prompt,
+        micro_metrics,
+        macro_metrics,
+        macro_critical,
+        micro_critical,
+    )
+except ImportError:
+    import eval_functions as ef
+    from prompts import (
+        macro_judge_prompt,
+        micro_judge_prompt,
+        micro_metrics,
+        macro_metrics,
+        macro_critical,
+        micro_critical,
+    )
 from langchain_openai import ChatOpenAI
 
 

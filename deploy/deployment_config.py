@@ -61,6 +61,24 @@ ENV_OVERRIDES: dict[str, str] = {
     "GUARDRAILS_LOG_ONLY": "rag_eng_ecs.environment.GUARDRAILS_LOG_ONLY",
     "RAG_ENG_ECS_ENV_JSON": "rag_eng_ecs.environment",
     "RAG_ENG_ECS_SECRET_ARNS_JSON": "rag_eng_ecs.secret_arn_map",
+    "EVALUATION_WORKER_ECS_CLUSTER": "evaluation_worker.cluster",
+    "EVALUATION_WORKER_ECS_TASK_FAMILY": "evaluation_worker.task_family",
+    "EVALUATION_WORKER_ECS_TASK_DEFINITION": "evaluation_worker.task_definition",
+    "EVALUATION_WORKER_ECS_CONTAINER_NAME": "evaluation_worker.container_name",
+    "EVALUATION_WORKER_ECS_LAUNCH_TYPE": "evaluation_worker.launch_type",
+    "EVALUATION_WORKER_ECS_PLATFORM_VERSION": "evaluation_worker.platform_version",
+    "EVALUATION_WORKER_ECS_ASSIGN_PUBLIC_IP": "evaluation_worker.assign_public_ip",
+    "EVALUATION_WORKER_ECS_SUBNETS": "evaluation_worker.subnet_ids",
+    "EVALUATION_WORKER_ECS_SECURITY_GROUPS": "evaluation_worker.security_group_ids",
+    "EVALUATION_WORKER_ECS_IMAGE_URI": "evaluation_worker.image_uri",
+    "EVALUATION_WORKER_ECS_EXECUTION_ROLE_ARN": "evaluation_worker.execution_role_arn",
+    "EVALUATION_WORKER_ECS_TASK_ROLE_ARN": "evaluation_worker.task_role_arn",
+    "EVALUATION_WORKER_ECS_CPU": "evaluation_worker.cpu",
+    "EVALUATION_WORKER_ECS_MEMORY": "evaluation_worker.memory",
+    "EVALUATION_WORKER_ECS_LOG_GROUP": "evaluation_worker.log_group",
+    "EVALUATION_WORKER_ECS_LOG_STREAM_PREFIX": "evaluation_worker.log_stream_prefix",
+    "EVALUATION_WORKER_ECS_ENV_JSON": "evaluation_worker.environment",
+    "EVALUATION_WORKER_ECS_SECRET_ARNS_JSON": "evaluation_worker.secret_arn_map",
     "FRONTEND_ENABLED": "frontend_web.enabled",
     "FRONTEND_APP_DIR": "frontend_web.app_dir",
     "FRONTEND_DIST_DIR": "frontend_web.dist_dir",
@@ -260,6 +278,28 @@ class RagEngEcsConfig:
 
 
 @dataclass
+class EvaluationWorkerConfig:
+    cluster: str
+    task_family: str
+    task_definition: str
+    container_name: str
+    launch_type: str
+    platform_version: str
+    assign_public_ip: str
+    subnet_ids: tuple[str, ...]
+    security_group_ids: tuple[str, ...]
+    image_uri: str | None
+    execution_role_arn: str | None
+    task_role_arn: str | None
+    cpu: int
+    memory: int
+    log_group: str
+    log_stream_prefix: str
+    environment: dict[str, str]
+    secret_arn_map: dict[str, str | None]
+
+
+@dataclass
 class FrontendCloudFrontConfig:
     distribution_id: str | None
     aliases: tuple[str, ...]
@@ -318,6 +358,7 @@ class DeployConfig:
     huggingface_packaging: HuggingFacePackagingConfig
     rag_eng: RagEngConfig
     rag_eng_ecs: RagEngEcsConfig
+    evaluation_worker: EvaluationWorkerConfig
     frontend_web: FrontendWebConfig
     _raw: dict[str, Any] = field(repr=False, default_factory=dict)
 
@@ -510,6 +551,7 @@ def load_deploy_config(path: str | Path | None = None) -> DeployConfig:
     hf = raw.get("huggingface_packaging", {})
     rag = raw.get("rag_eng", {})
     rag_ecs = raw.get("rag_eng_ecs", {})
+    evaluation_worker = raw.get("evaluation_worker", {})
     frontend = raw.get("frontend_web", {})
     frontend_cloudfront = frontend.get("cloudfront", {})
     frontend_build = frontend.get("build", {})
@@ -555,6 +597,25 @@ def load_deploy_config(path: str | Path | None = None) -> DeployConfig:
     rag_ecs_target_group_arn = rag_ecs.get("target_group_arn")
     if rag_ecs_target_group_arn in ("", "null", "none"):
         rag_ecs_target_group_arn = None
+
+    evaluation_worker_execution_role = evaluation_worker.get("execution_role_arn")
+    if evaluation_worker_execution_role in ("", "null", "none"):
+        evaluation_worker_execution_role = None
+
+    evaluation_worker_task_role = evaluation_worker.get("task_role_arn")
+    if evaluation_worker_task_role in ("", "null", "none"):
+        evaluation_worker_task_role = None
+
+    evaluation_worker_image_uri = evaluation_worker.get("image_uri")
+    if evaluation_worker_image_uri in ("", "null", "none"):
+        evaluation_worker_image_uri = None
+
+    evaluation_worker_environment = _as_str_mapping(
+        evaluation_worker.get("environment", {})
+    )
+    evaluation_worker_secret_arn_map = _as_optional_str_mapping(
+        evaluation_worker.get("secret_arn_map", {})
+    )
 
     frontend_certificate_arn = frontend_cloudfront.get("certificate_arn")
     if frontend_certificate_arn in ("", "null", "none"):
@@ -717,6 +778,64 @@ def load_deploy_config(path: str | Path | None = None) -> DeployConfig:
             environment=ecs_environment,
             secret_arn_map=ecs_secret_arn_map,
         ),
+        evaluation_worker=EvaluationWorkerConfig(
+            cluster=_str_or_default(
+                evaluation_worker.get("cluster"),
+                _str_or_default(rag_ecs.get("cluster"), ""),
+            ),
+            task_family=_str_or_default(
+                evaluation_worker.get("task_family"),
+                "codingrabbit-evaluation-worker",
+            ),
+            task_definition=_str_or_default(
+                evaluation_worker.get("task_definition"),
+                _str_or_default(
+                    evaluation_worker.get("task_family"),
+                    "codingrabbit-evaluation-worker",
+                ),
+            ),
+            container_name=_str_or_default(
+                evaluation_worker.get("container_name"),
+                "evaluation-worker",
+            ),
+            launch_type=_str_or_default(
+                evaluation_worker.get("launch_type"),
+                _str_or_default(rag_ecs.get("launch_type"), "FARGATE"),
+            ),
+            platform_version=_str_or_default(
+                evaluation_worker.get("platform_version"),
+                _str_or_default(rag_ecs.get("platform_version"), "LATEST"),
+            ),
+            assign_public_ip=_str_or_default(
+                evaluation_worker.get("assign_public_ip"),
+                _str_or_default(rag_ecs.get("assign_public_ip"), "ENABLED"),
+            ),
+            subnet_ids=_as_tuple_str_or_csv(
+                evaluation_worker.get("subnet_ids"),
+                _as_tuple_str_or_csv(rag_ecs.get("subnet_ids"), ()),
+            ),
+            security_group_ids=_as_tuple_str_or_csv(
+                evaluation_worker.get("security_group_ids"),
+                _as_tuple_str_or_csv(rag_ecs.get("security_group_ids"), ()),
+            ),
+            image_uri=evaluation_worker_image_uri or rag_ecs_image_uri,
+            execution_role_arn=(
+                evaluation_worker_execution_role or rag_ecs_execution_role
+            ),
+            task_role_arn=evaluation_worker_task_role or rag_ecs_task_role,
+            cpu=int(evaluation_worker.get("cpu", rag_ecs.get("cpu", 1024))),
+            memory=int(evaluation_worker.get("memory", rag_ecs.get("memory", 2048))),
+            log_group=_str_or_default(
+                evaluation_worker.get("log_group"),
+                "/ecs/codingrabbit-evaluation-worker",
+            ),
+            log_stream_prefix=_str_or_default(
+                evaluation_worker.get("log_stream_prefix"),
+                "ecs",
+            ),
+            environment=evaluation_worker_environment,
+            secret_arn_map=evaluation_worker_secret_arn_map,
+        ),
         frontend_web=FrontendWebConfig(
             enabled=_as_bool(frontend.get("enabled", False), False),
             app_dir=str(frontend.get("app_dir", "./frontend")),
@@ -834,6 +953,26 @@ def get_dotpath(cfg: DeployConfig, dot_path: str) -> Any:
         ),
         "rag_eng_ecs.log_group": cfg.rag_eng_ecs.log_group,
         "rag_eng_ecs.log_stream_prefix": cfg.rag_eng_ecs.log_stream_prefix,
+        "evaluation_worker.cluster": cfg.evaluation_worker.cluster,
+        "evaluation_worker.task_family": cfg.evaluation_worker.task_family,
+        "evaluation_worker.task_definition": cfg.evaluation_worker.task_definition,
+        "evaluation_worker.container_name": cfg.evaluation_worker.container_name,
+        "evaluation_worker.image_uri": cfg.evaluation_worker.image_uri or "",
+        "evaluation_worker.execution_role_arn": (
+            cfg.evaluation_worker.execution_role_arn or ""
+        ),
+        "evaluation_worker.task_role_arn": cfg.evaluation_worker.task_role_arn or "",
+        "evaluation_worker.launch_type": cfg.evaluation_worker.launch_type,
+        "evaluation_worker.platform_version": cfg.evaluation_worker.platform_version,
+        "evaluation_worker.assign_public_ip": cfg.evaluation_worker.assign_public_ip,
+        "evaluation_worker.subnet_ids": ",".join(cfg.evaluation_worker.subnet_ids),
+        "evaluation_worker.security_group_ids": ",".join(
+            cfg.evaluation_worker.security_group_ids
+        ),
+        "evaluation_worker.cpu": str(cfg.evaluation_worker.cpu),
+        "evaluation_worker.memory": str(cfg.evaluation_worker.memory),
+        "evaluation_worker.log_group": cfg.evaluation_worker.log_group,
+        "evaluation_worker.log_stream_prefix": cfg.evaluation_worker.log_stream_prefix,
         "frontend_web.enabled": str(cfg.frontend_web.enabled),
         "frontend_web.app_dir": cfg.frontend_web.app_dir,
         "frontend_web.dist_dir": cfg.frontend_web.dist_dir,
@@ -913,6 +1052,48 @@ def shell_export(cfg: DeployConfig | None = None) -> str:
         "DEPLOY_RAG_ENG_ECS_SUBNETS": ",".join(cfg.rag_eng_ecs.subnet_ids),
         "DEPLOY_RAG_ENG_ECS_SECURITY_GROUPS": ",".join(
             cfg.rag_eng_ecs.security_group_ids
+        ),
+        "DEPLOY_EVALUATION_WORKER_ECS_CLUSTER": cfg.evaluation_worker.cluster,
+        "DEPLOY_EVALUATION_WORKER_ECS_TASK_FAMILY": cfg.evaluation_worker.task_family,
+        "DEPLOY_EVALUATION_WORKER_ECS_TASK_DEFINITION": cfg.evaluation_worker.task_definition,
+        "DEPLOY_EVALUATION_WORKER_ECS_CONTAINER_NAME": cfg.evaluation_worker.container_name,
+        "DEPLOY_EVALUATION_WORKER_ECS_IMAGE_URI": cfg.evaluation_worker.image_uri or "",
+        "DEPLOY_EVALUATION_WORKER_ECS_EXECUTION_ROLE_ARN": (
+            cfg.evaluation_worker.execution_role_arn or ""
+        ),
+        "DEPLOY_EVALUATION_WORKER_ECS_TASK_ROLE_ARN": (
+            cfg.evaluation_worker.task_role_arn or ""
+        ),
+        "DEPLOY_EVALUATION_WORKER_ECS_LAUNCH_TYPE": cfg.evaluation_worker.launch_type,
+        "DEPLOY_EVALUATION_WORKER_ECS_PLATFORM_VERSION": (
+            cfg.evaluation_worker.platform_version
+        ),
+        "DEPLOY_EVALUATION_WORKER_ECS_ASSIGN_PUBLIC_IP": (
+            cfg.evaluation_worker.assign_public_ip
+        ),
+        "DEPLOY_EVALUATION_WORKER_ECS_SUBNETS": ",".join(
+            cfg.evaluation_worker.subnet_ids
+        ),
+        "DEPLOY_EVALUATION_WORKER_ECS_SECURITY_GROUPS": ",".join(
+            cfg.evaluation_worker.security_group_ids
+        ),
+        "DEPLOY_EVALUATION_WORKER_ECS_CPU": str(cfg.evaluation_worker.cpu),
+        "DEPLOY_EVALUATION_WORKER_ECS_MEMORY": str(cfg.evaluation_worker.memory),
+        "DEPLOY_EVALUATION_WORKER_ECS_LOG_GROUP": cfg.evaluation_worker.log_group,
+        "DEPLOY_EVALUATION_WORKER_ECS_LOG_STREAM_PREFIX": (
+            cfg.evaluation_worker.log_stream_prefix
+        ),
+        "DEPLOY_EVALUATION_WORKER_ECS_ENV_JSON": json.dumps(
+            cfg.evaluation_worker.environment,
+            sort_keys=True,
+        ),
+        "DEPLOY_EVALUATION_WORKER_ECS_SECRET_ARNS_JSON": json.dumps(
+            {
+                key: value
+                for key, value in cfg.evaluation_worker.secret_arn_map.items()
+                if value is not None
+            },
+            sort_keys=True,
         ),
         "DEPLOY_FRONTEND_ENABLED": str(cfg.frontend_web.enabled),
         "DEPLOY_FRONTEND_APP_DIR": cfg.frontend_web.app_dir,

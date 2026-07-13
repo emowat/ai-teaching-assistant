@@ -278,6 +278,55 @@ rag_eng_ecs:
     COURSE_REGISTRY_DATABASE_URL: "arn:aws:secretsmanager:us-east-1:976193240866:secret:codingrabbit/rag_eng/COURSE_REGISTRY_DATABASE_URL-4fLsHS"
 
 # -----------------------------------------------------------------------------
+# Evaluation worker (ECS/Fargate one-off offline eval runner)
+# -----------------------------------------------------------------------------
+evaluation_worker:
+  cluster: "codingrabbit-rag-eng"
+  task_family: "codingrabbit-evaluation-worker"
+  task_definition: "codingrabbit-evaluation-worker"
+  container_name: "evaluation-worker"
+  launch_type: "FARGATE"
+  platform_version: "LATEST"
+  assign_public_ip: "ENABLED"
+  subnet_ids:
+    - subnet-01b26a7b1a7f1b746
+    - subnet-0711779df65a14e9d
+  security_group_ids:
+    - sg-0ce5f60034441172a
+  image_uri: "976193240866.dkr.ecr.us-east-1.amazonaws.com/codingrabbit-rag-eng:latest"
+  execution_role_arn: "arn:aws:iam::976193240866:role/codingrabbit-rag-eng-execution-role"
+  task_role_arn: "arn:aws:iam::976193240866:role/codingrabbit-rag-eng-task"
+  cpu: 1024
+  memory: 2048
+  log_group: "/ecs/codingrabbit-evaluation-worker"
+  log_stream_prefix: "ecs"
+
+  # Keep the worker defaults explicit and safe: the backend launcher can still
+  # override provider/model/prefix per run when launching a task.
+  environment:
+    AWS_REGION: "us-east-1"
+    OPENAI_BASE_URL: "https://api.openai.com/v1"
+    S3_DATA_BUCKET: "codingrabbit-data-dev"
+    EVALUATION_DEFAULT_JUDGE_PROVIDER: "bedrock"
+    EVALUATION_DEFAULT_JUDGE_MODEL: "anthropic.claude-haiku-4-5"
+    EVALUATION_EXPORT_TZ: "America/Los_Angeles"
+    EVALUATION_WRITE_AURORA: "true"
+    EVALUATION_HOMEWORK_N: "100000"
+    EVALUATION_STUDY_N: "100000"
+    EVALUATION_JUDGE_TEMPERATURE: "0.0"
+    EVALUATION_JUDGE_TOP_P: "0.9"
+    EVALUATION_JUDGE_TIMEOUT_SECONDS: "120"
+    EVALUATION_JUDGE_MAX_CONCURRENCY: "8"
+    EVALUATION_JUDGE_MAX_TOKENS: "2048"
+    LOG_LEVEL: "INFO"
+
+  # The evaluation worker reuses the live app secret sources for the database
+  # and optional OpenAI judge path.
+  secret_arn_map:
+    OPENAI_API_KEY: "arn:aws:secretsmanager:us-east-1:976193240866:secret:codingrabbit/rag_eng/OPENAI_API_KEY-xH5rH5"
+    COURSE_REGISTRY_DATABASE_URL: "arn:aws:secretsmanager:us-east-1:976193240866:secret:codingrabbit/rag_eng/COURSE_REGISTRY_DATABASE_URL-4fLsHS"
+
+# -----------------------------------------------------------------------------
 # Frontend web app (S3 + CloudFront static hosting)
 # -----------------------------------------------------------------------------
 frontend_web:
