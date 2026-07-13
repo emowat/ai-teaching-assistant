@@ -36,6 +36,11 @@
                     "other": "off",
                     "comments": "off",
                     "strings": "off"
+                },
+
+                // 4. Natively force Markdown files to open in Preview mode rather than the raw text editor
+                "workbench.editorAssociations": {
+                    "*.md": "vscode.markdown.preview.editor"
                 }
             },
             "extensions": [
