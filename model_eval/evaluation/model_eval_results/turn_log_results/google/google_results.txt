@@ -1,0 +1,291 @@
+(venv) aa_pc@AAPC:~/ai-teaching-assistant/model_eval$ python3 run_eval.py
+No module named 'backend'
+found 7 jsonl files under eval
+loaded 83 log turns total
+[judge] = google, model=gemini-3.1-flash-lite, results_dir=evaluation/model_eval_results/turn_log_results/google
+buckets {'homework': 38, 'study': 5, 'adversarial': 4} slected: 47
+evaluation on output....
+[ 1 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 2 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 3 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 4 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 5 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 6 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 7 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 8 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 9 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 10 / 47] total_ratio_score= 0.8
+empty_parse: 0
+[ 11 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 12 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 13 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 14 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 15 / 47] total_ratio_score= 0.8
+empty_parse: 0
+[ 16 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 17 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 18 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 19 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 20 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 21 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 22 / 47] total_ratio_score= 0.8333333333333334
+empty_parse: 0
+[ 23 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 24 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 25 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 26 / 47] total_ratio_score= 0.8
+empty_parse: 0
+[ 27 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 28 / 47] total_ratio_score= 0.8
+empty_parse: 0
+[ 29 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 30 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 31 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 32 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 33 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 34 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 35 / 47] total_ratio_score= 0.8
+empty_parse: 0
+[ 36 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 37 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 38 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 39 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 40 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 41 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 42 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 43 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 44 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 45 / 47] total_ratio_score= 0.6666666666666666
+empty_parse: 0
+[ 46 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 47 / 47] total_ratio_score= 1.0
+empty_parse: 0
+evaluation on output....
+[ 1 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 2 / 83] total_ratio_score= 0.8571428571428571
+empty_parse: 0
+[ 3 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 4 / 83] total_ratio_score= 0.8333333333333334
+empty_parse: 0
+[ 5 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 6 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 7 / 83] total_ratio_score= 0.8571428571428571
+empty_parse: 0
+[ 8 / 83] total_ratio_score= 0.8571428571428571
+empty_parse: 0
+[ 9 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 10 / 83] total_ratio_score= 0.875
+empty_parse: 0
+[ 11 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 12 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 13 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 14 / 83] total_ratio_score= 0.8333333333333334
+empty_parse: 0
+[ 15 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 16 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 17 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 18 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 19 / 83] total_ratio_score= 0.875
+empty_parse: 0
+[ 20 / 83] total_ratio_score= 0.8
+empty_parse: 0
+[ 21 / 83] total_ratio_score= 0.8333333333333334
+empty_parse: 0
+[ 22 / 83] total_ratio_score= 0.8571428571428571
+empty_parse: 0
+[ 23 / 83] total_ratio_score= 0.875
+empty_parse: 0
+[ 24 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 25 / 83] total_ratio_score= 0.8333333333333334
+empty_parse: 0
+[ 26 / 83] total_ratio_score= 0.8571428571428571
+empty_parse: 0
+[ 27 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 28 / 83] total_ratio_score= 0.8571428571428571
+empty_parse: 0
+[ 29 / 83] total_ratio_score= 0.8571428571428571
+empty_parse: 0
+[ 30 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 31 / 83] total_ratio_score= 0.8333333333333334
+empty_parse: 0
+[ 32 / 83] total_ratio_score= 0.8571428571428571
+empty_parse: 0
+[ 33 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 34 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 35 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 36 / 83] total_ratio_score= 0.875
+empty_parse: 0
+[ 37 / 83] total_ratio_score= 0.8571428571428571
+empty_parse: 0
+[ 38 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 39 / 83] total_ratio_score= 0.875
+empty_parse: 0
+[ 40 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 41 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 42 / 83] total_ratio_score= 0.8571428571428571
+empty_parse: 0
+[ 43 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 44 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 45 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 46 / 83] total_ratio_score= 0.75
+empty_parse: 0
+[ 47 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 48 / 83] total_ratio_score= 0.875
+empty_parse: 0
+[ 49 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 50 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 51 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 52 / 83] total_ratio_score= 0.8333333333333334
+empty_parse: 0
+[ 53 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 54 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 55 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 56 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 57 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 58 / 83] total_ratio_score= 0.8571428571428571
+empty_parse: 0
+[ 59 / 83] total_ratio_score= 0.6666666666666666
+empty_parse: 0
+[ 60 / 83] total_ratio_score= 0.8
+empty_parse: 0
+[ 61 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 62 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 63 / 83] total_ratio_score= 0.8
+empty_parse: 0
+[ 64 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 65 / 83] total_ratio_score= 0.8571428571428571
+empty_parse: 0
+[ 66 / 83] total_ratio_score= 0.8571428571428571
+empty_parse: 0
+[ 67 / 83] total_ratio_score= 0.8571428571428571
+empty_parse: 0
+[ 68 / 83] total_ratio_score= 0.8571428571428571
+empty_parse: 0
+[ 69 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 70 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 71 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 72 / 83] total_ratio_score= 0.8571428571428571
+empty_parse: 0
+[ 73 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 74 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 75 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 76 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 77 / 83] total_ratio_score= 0.6666666666666666
+empty_parse: 0
+[ 78 / 83] total_ratio_score= 0.6666666666666666
+empty_parse: 0
+[ 79 / 83] total_ratio_score= 0.6666666666666666
+empty_parse: 0
+[ 80 / 83] total_ratio_score= 0.6666666666666666
+empty_parse: 0
+[ 81 / 83] total_ratio_score= 0.5
+empty_parse: 0
+[ 82 / 83] total_ratio_score= 0.6666666666666666
+empty_parse: 0
+[ 83 / 83] total_ratio_score= 1.0
+empty_parse: 0
+saved evaluation/model_eval_results/turn_log_results/google/Macro_eval_log_LLM-as-a-judge_c_plus_plus_dataset.json
+saved evaluation/model_eval_results/turn_log_results/google/Micro_eval_log_LLM-as-a-judge_c_plus_plus_dataset.json
+saved evaluation/model_eval_results/turn_log_results/google/Drift_eval_log_LLM-as-a-judge_c_plus_plus_dataset.json
+saved evaluation/model_eval_results/turn_log_results/google/Summary_LLM-as-a-judge_c_plus_plus_dataset.json
+{
+  "eval_log": {
+    "judge_": "google",
+    "judge_model": "gemini-3.1-flash-lite",
+    "macro_pass_rate": 0.9787234042553191,
+    "micro_pass_rate": 0.9036144578313253,
+    "total_drift_rate": 0.0,
+    "qaulity_decline_rate": 0.0,
+    "code_leak_rate": 0.0
+  }
+}
+saved 4 chart PNGS to evaluation/model_eval_results/turn_log_results/google
+                                   metric  checked  aggree_%  judge_false_negative  judge_false_positive  fn_rate  fp_rate
+                      direct_code_leakage       83      94.0                     5                     0    0.060      0.0
+                scaffold_justified_syntax       82      95.1                     4                     0    0.049      0.0
+Context_Utilization_Distractor_Resistance       60     100.0                     0                     0    0.000      0.0
+             visual_scaffolding_execution        2     100.0                     0                     0    0.000      0.0
+wrote spot-check-sheets
+(venv) aa_pc@AAPC:~/ai-teaching-assistant/model_eval$

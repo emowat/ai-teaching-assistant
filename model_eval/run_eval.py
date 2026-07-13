@@ -15,14 +15,12 @@ import glob
 import pandas as pd
 import eval_functions as ef
 from prompts import (macro_judge_prompt, micro_judge_prompt, micro_metrics, macro_metrics, macro_critical, micro_critical)
-from langchain_openai import ChatOpenAI
 
 
 from pathlib import Path
 from dotenv import load_dotenv
 ROOT_DIR= Path(__file__).resolve().parent
 load_dotenv(ROOT_DIR/".env")
-OPENAI_API_KEY= os.getenv("OPENAI_API_KEY")
 
 
 #load scecret form .env file
@@ -42,10 +40,40 @@ load_env()
 #config (override with enviroment variabels)
 
 EVAL_DIR= os.environ.get("EVAL_DIR", "eval")
-RESULTS_DIR= os.environ.get("RESULTS_DIR", "evaluation/model_eval_results/log_results")
+RESULTS_DIR= os.environ.get("RESULTS_DIR", "evaluation/model_eval_results/turn_log_results")
 DATASET_NAME= os.environ.get("DATASET_NAME", "eval_log")
-OPENAI_API_KEY= os.environ.get("OPENAI_API_KEY")
-model_=os.environ.get("MODEL", "gpt-4o-mini")
+
+
+#pick a judge  and model inside env
+judge_= os.environ.get("judge_", "openai").lower()
+Default_model= {
+    "openai": "gpt-4o-mini",        #https://developers.openai.com/api/docs/models/gpt-4o-mini
+    "cohere": "command-r-08-2024",  #https://docs.cohere.com/docs/command-r
+    "google": "gemini-3.1-flash-lite",      #https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash?authuser=1 and https://ai.google.dev/gemini-api/docs/models/gemini-2.5-flash-lite?authuser=1 and https://ai.google.dev/gemini-api/docs/models/gemini-3.1-flash-lite?authuser=1
+    "bedrock":  "amazon.nova-2-lite-v1:0"  ,                   #https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-nova-2-lite.html
+    }
+judge_MODEL_Name= Default_model.get(judge_)
+
+RESULTS_DIR= os.path.join(RESULTS_DIR, judge_) #save results in own folder
+os.makedirs(RESULTS_DIR, exist_ok=True)
+
+
+def make_judge(judge_, model, temperature=0):
+    judge_= (judge_).lower()
+    if judge_== "openai":
+        from langchain_openai import ChatOpenAI
+        return ChatOpenAI(model= model, temperature= temperature)
+    if judge_== "cohere":
+        from langchain_cohere import ChatCohere
+        return ChatCohere(model= model, temperature= temperature, cohere_api_key= os.environ.get("COHERE_API_KEY"))
+    if judge_== "google":
+        from langchain_google_genai import ChatGoogleGenerativeAI
+        return ChatGoogleGenerativeAI(model= model, temperature= temperature, google_api_key= os.environ.get("GOOGLE_API_KEY"))
+    if judge_== "bedrock":
+        from langchain_aws import ChatBedrockConverse
+        model_id= model if model.split(".",1)[0] in ("us", "eu", "apac") else "us."+ model
+        return ChatBedrockConverse(model= model_id, temperature= temperature, provider="amazon", region_name=os.environ.get("AWS_DEFAULT_REGION", "us-east-1"))
+    raise ValueError(f"Unknown judge: {judge_!r}. Use openai, cohere, google, or bedrock")
 
 def load_all_logs(eval_dir):
     rows, files= [], sorted(glob.glob(os.path.join(eval_dir, "**", "*.jsonl"), recursive= True))
@@ -72,7 +100,10 @@ def main():
     log_dataset= load_all_logs(EVAL_DIR)
     if not log_dataset:
         print("no log turns found nothing to do"); return
-    judge_model= ChatOpenAI(openai_api_key= OPENAI_API_KEY, model=model_, temperature=0 )
+    
+    
+    print(f"[judge] = {judge_}, model={judge_MODEL_Name}, results_dir={RESULTS_DIR}")
+    judge_model= make_judge(judge_, judge_MODEL_Name, temperature=0)
     
     #build samples
     macro_samples= ef.stratified_sample(ef.build_Macro_samples(log_dataset))
@@ -90,6 +121,8 @@ def main():
     
     macro_df, micro_df= pd.DataFrame(macro_results), pd.DataFrame(micro_results)
     summary= {DATASET_NAME: {
+        "judge_":judge_,
+        "judge_model":judge_MODEL_Name,
         "macro_pass_rate":macro_df["passed"].dropna().mean() if len(macro_df) else None,
         "micro_pass_rate":micro_df["passed"].dropna().mean() if len(micro_df) else None,
         "total_drift_rate": drift.get("total_drift_rate"),

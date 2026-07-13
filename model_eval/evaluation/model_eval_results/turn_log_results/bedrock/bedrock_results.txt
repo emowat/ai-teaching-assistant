@@ -1,0 +1,293 @@
+(venv) aa_pc@AAPC:~/ai-teaching-assistant/model_eval$ python3 run_eval.py
+No module named 'backend'
+found 7 jsonl files under eval
+loaded 83 log turns total
+[judge] = bedrock, model=amazon.nova-2-lite-v1:0, results_dir=evaluation/model_eval_results/turn_log_results/bedrock
+Both api_key and AWS credentials were provided. Using api_key for authentication; AWS credentials will be ignored.
+Both api_key and AWS credentials were provided. Using api_key for authentication; AWS credentials will be ignored.
+buckets {'homework': 38, 'study': 5, 'adversarial': 4} slected: 47
+evaluation on output....
+[ 1 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 2 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 3 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 4 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 5 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 6 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 7 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 8 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 9 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 10 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 11 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 12 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 13 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 14 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 15 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 16 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 17 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 18 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 19 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 20 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 21 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 22 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 23 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 24 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 25 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 26 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 27 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 28 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 29 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 30 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 31 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 32 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 33 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 34 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 35 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 36 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 37 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 38 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 39 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 40 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 41 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 42 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 43 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 44 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 45 / 47] total_ratio_score= 0.6666666666666666
+empty_parse: 0
+[ 46 / 47] total_ratio_score= 1.0
+empty_parse: 0
+[ 47 / 47] total_ratio_score= 1.0
+empty_parse: 0
+evaluation on output....
+[ 1 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 2 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 3 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 4 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 5 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 6 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 7 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 8 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 9 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 10 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 11 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 12 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 13 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 14 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 15 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 16 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 17 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 18 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 19 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 20 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 21 / 83] total_ratio_score= 0.6666666666666666
+empty_parse: 0
+[ 22 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 23 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 24 / 83] total_ratio_score= 1.0
+empty_parse: 0
+[ 25 / 83] total_ratio_score= None
+empty_parse: 1
+[ 26 / 83] total_ratio_score= 1.0
+empty_parse: 1
+[ 27 / 83] total_ratio_score= 1.0
+empty_parse: 1
+[ 28 / 83] total_ratio_score= 1.0
+empty_parse: 1
+[ 29 / 83] total_ratio_score= 1.0
+empty_parse: 1
+[ 30 / 83] total_ratio_score= 1.0
+empty_parse: 1
+[ 31 / 83] total_ratio_score= 0.6666666666666666
+empty_parse: 1
+[ 32 / 83] total_ratio_score= 1.0
+empty_parse: 1
+[ 33 / 83] total_ratio_score= 1.0
+empty_parse: 1
+[ 34 / 83] total_ratio_score= 1.0
+empty_parse: 1
+[ 35 / 83] total_ratio_score= 1.0
+empty_parse: 1
+[ 36 / 83] total_ratio_score= 1.0
+empty_parse: 1
+[ 37 / 83] total_ratio_score= 1.0
+empty_parse: 1
+[ 38 / 83] total_ratio_score= 1.0
+empty_parse: 1
+[ 39 / 83] total_ratio_score= 1.0
+empty_parse: 1
+[ 40 / 83] total_ratio_score= 1.0
+empty_parse: 1
+[ 41 / 83] total_ratio_score= 1.0
+empty_parse: 1
+[ 42 / 83] total_ratio_score= 1.0
+empty_parse: 1
+[ 43 / 83] total_ratio_score= 1.0
+empty_parse: 1
+[ 44 / 83] total_ratio_score= 1.0
+empty_parse: 1
+[ 45 / 83] total_ratio_score= 1.0
+empty_parse: 1
+[ 46 / 83] total_ratio_score= 0.8571428571428571
+empty_parse: 1
+[ 47 / 83] total_ratio_score= 1.0
+empty_parse: 1
+[ 48 / 83] total_ratio_score= 1.0
+empty_parse: 1
+[ 49 / 83] total_ratio_score= 1.0
+empty_parse: 1
+[ 50 / 83] total_ratio_score= 1.0
+empty_parse: 1
+[ 51 / 83] total_ratio_score= 1.0
+empty_parse: 1
+[ 52 / 83] total_ratio_score= 1.0
+empty_parse: 1
+[ 53 / 83] total_ratio_score= 1.0
+empty_parse: 1
+[ 54 / 83] total_ratio_score= 1.0
+empty_parse: 1
+[ 55 / 83] total_ratio_score= 1.0
+empty_parse: 1
+[ 56 / 83] total_ratio_score= 1.0
+empty_parse: 1
+[ 57 / 83] total_ratio_score= 1.0
+empty_parse: 1
+[ 58 / 83] total_ratio_score= 1.0
+empty_parse: 1
+[ 59 / 83] total_ratio_score= 0.8571428571428571
+empty_parse: 1
+[ 60 / 83] total_ratio_score= 1.0
+empty_parse: 1
+[ 61 / 83] total_ratio_score= 1.0
+empty_parse: 1
+[ 62 / 83] total_ratio_score= 1.0
+empty_parse: 1
+[ 63 / 83] total_ratio_score= 1.0
+empty_parse: 1
+[ 64 / 83] total_ratio_score= 1.0
+empty_parse: 1
+[ 65 / 83] total_ratio_score= 1.0
+empty_parse: 1
+[ 66 / 83] total_ratio_score= 0.8571428571428571
+empty_parse: 1
+[ 67 / 83] total_ratio_score= 1.0
+empty_parse: 1
+[ 68 / 83] total_ratio_score= 0.8571428571428571
+empty_parse: 1
+[ 69 / 83] total_ratio_score= 1.0
+empty_parse: 1
+[ 70 / 83] total_ratio_score= 1.0
+empty_parse: 1
+[ 71 / 83] total_ratio_score= 1.0
+empty_parse: 1
+[ 72 / 83] total_ratio_score= 1.0
+empty_parse: 1
+[ 73 / 83] total_ratio_score= 1.0
+empty_parse: 1
+[ 74 / 83] total_ratio_score= 1.0
+empty_parse: 1
+[ 75 / 83] total_ratio_score= 1.0
+empty_parse: 1
+[ 76 / 83] total_ratio_score= 1.0
+empty_parse: 1
+[ 77 / 83] total_ratio_score= 1.0
+empty_parse: 1
+[ 78 / 83] total_ratio_score= 1.0
+empty_parse: 1
+[ 79 / 83] total_ratio_score= 1.0
+empty_parse: 1
+[ 80 / 83] total_ratio_score= 1.0
+empty_parse: 1
+[ 81 / 83] total_ratio_score= 1.0
+empty_parse: 1
+[ 82 / 83] total_ratio_score= 1.0
+empty_parse: 1
+[ 83 / 83] total_ratio_score= 0.8571428571428571
+empty_parse: 1
+saved evaluation/model_eval_results/turn_log_results/bedrock/Macro_eval_log_LLM-as-a-judge_c_plus_plus_dataset.json
+saved evaluation/model_eval_results/turn_log_results/bedrock/Micro_eval_log_LLM-as-a-judge_c_plus_plus_dataset.json
+saved evaluation/model_eval_results/turn_log_results/bedrock/Drift_eval_log_LLM-as-a-judge_c_plus_plus_dataset.json
+saved evaluation/model_eval_results/turn_log_results/bedrock/Summary_LLM-as-a-judge_c_plus_plus_dataset.json
+{
+  "eval_log": {
+    "judge_": "bedrock",
+    "judge_model": "amazon.nova-2-lite-v1:0",
+    "macro_pass_rate": 0.9787234042553191,
+    "micro_pass_rate": 0.975609756097561,
+    "total_drift_rate": 0.0,
+    "qaulity_decline_rate": 0.0,
+    "code_leak_rate": 0.0
+  }
+}
+saved 4 chart PNGS to evaluation/model_eval_results/turn_log_results/bedrock
+                                   metric  checked  aggree_%  judge_false_negative  judge_false_positive  fn_rate  fp_rate
+                      direct_code_leakage       82      93.9                     5                     0    0.061    0.000
+                scaffold_justified_syntax       82      95.1                     4                     0    0.049    0.000
+Context_Utilization_Distractor_Resistance       70      97.1                     0                     2    0.000    0.029
+             visual_scaffolding_execution        2     100.0                     0                     0    0.000    0.000
+wrote spot-check-sheets
+(venv) aa_pc@AAPC:~/ai-teaching-assistant/model_eval$

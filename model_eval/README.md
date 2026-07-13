@@ -15,6 +15,7 @@ This folder contains the evaluation pipeline used to grade the AI Teaching Assis
 | `prompts.py` | The two judge prompts and the metric lists. |
 | `.env.example` | Template for your settings and key.|
 | `.gitignore` | Keeps `.env` and the output folders out of git. |
+| `requirements` | all installs needed. |
 | `test_data/` | A small log file for the test run. |
 | `eval/` | The folder the real run reads. Put your `final_eval_log`-format `.jsonl` files here. |
 
@@ -34,9 +35,7 @@ The judge is set at a temperature of 0, to minimize variation when re-running.
 
 # Set up
 
-pip install langchain-openai pandas matplotlib
-
-`langchain-openai` is only needed for the real run. `pandas` and `matplotlib` are needed for both.
+pip install -r requirements.txt
 
 # Running code
 
@@ -45,16 +44,35 @@ pip install langchain-openai pandas matplotlib
 Make your `.env`
 
 ```
-OPENAI_API_KEY= XXXXXXXXXXXXXXXXXXXXXXXXXXX
+###pick a model
+judge_=openai
+
+OPENAI_API_KEY= XXXXXXXXXXXXXXX
+COHERE_API_KEY= XXXXXXXXXXXXXXX
+
+GOOGLE_API_KEY= XXXXXXXXXXXXXXX
+
+AWS_DEFAULT_REGION=us-east-1
+AWS_BEARER_TOKEN_BEDROCK= bedrock-api-key-XXXXXXXXXXXXXXX
+
+#or classic IAM keys
+AWS_ACCESS_KEY_ID=XXXXXXXXXXXXXXXXXX
+AWS_SECRET_ACCESS_KEY=XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+
+
 EVAL_DIR=eval
 RESULTS_DIR=evaluation/model_eval_results/log_results
 DATASET_NAME=eval_log
-MODEL=gpt-4o-mini
 ```
 
 -EVAL_DIR must point at the folder that holds your logs (inputs)
 -RESULTS_DIR are the outputs
+-judge_ is the provider of the model you want to run eval, the default models are listed below.
 
+"openai": "gpt-4o-mini",        #https://developers.openai.com/api/docs/models/gpt-4o-mini
+"cohere": "command-r-08-2024",  #https://docs.cohere.com/docs/command-r
+"google": "gemini-3.1-flash-lite",     #https://ai.google.dev/gemini-api/docs/models/gemini-3.1-flash-lite?authuser=1
+"bedrock":  "amazon.nova-2-lite-v1:0" #https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-nova-2-lite.html
 
 ## put logs in the eval folder
 
