@@ -21,6 +21,8 @@ TeachingPlanStatus = Literal["draft", "published", "archived"]
 WeekVisibilityStatus = Literal["hidden", "open", "closed"]
 WeekResolutionMode = Literal["manual", "date_driven"]
 WeekReferenceType = Literal["course_doc", "external_link", "assignment", "reading", "tooling"]
+EvaluationJudgeProvider = Literal["openai", "bedrock"]
+EvaluationRunStatus = Literal["queued", "running", "succeeded", "failed", "launch_failed"]
 RERANK_STRATEGY_CHOICES: tuple[str, ...] = (
     "similarity",
     "mmr_0.5",
@@ -299,6 +301,101 @@ class AdminSectionMembershipUpdate(BaseModel):
         if self.role_in_section is None and self.status is None:
             raise ValueError("At least one membership field must be provided.")
         return self
+
+
+class EvaluationRunScope(BaseModel):
+    """Optional scope metadata for an offline evaluation run."""
+
+    course_id: str | None = None
+    section_id: str | None = None
+    start_date: str | None = None
+    end_date: str | None = None
+
+
+class EvaluationRunCreate(BaseModel):
+    """Payload used to launch an offline evaluation run."""
+
+    judge_provider: EvaluationJudgeProvider
+    judge_model: str = Field(min_length=1)
+    dataset_s3_uri: str | None = None
+    export_scope: EvaluationRunScope | None = None
+    run_label: str = ""
+    notes: str = ""
+
+    @model_validator(mode="after")
+    def _validate_dataset_source(self) -> "EvaluationRunCreate":
+        if self.dataset_s3_uri is None and self.export_scope is None:
+            raise ValueError("Either dataset_s3_uri or export_scope must be provided.")
+        return self
+
+
+class EvaluationRunMetric(BaseModel):
+    """Metric row persisted for an evaluation run."""
+
+    metric_id: str
+    evaluation_run_id: str
+    metric_group: str
+    metric_name: str
+    metric_value: float | None = None
+    metric_text: str = ""
+    metric_metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: str = ""
+    updated_at: str = ""
+
+
+class EvaluationRunArtifact(BaseModel):
+    """Artifact row persisted for an evaluation run."""
+
+    artifact_id: str
+    evaluation_run_id: str
+    artifact_type: str
+    label: str = ""
+    s3_uri: str
+    content_type: str = ""
+    artifact_metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: str = ""
+    updated_at: str = ""
+
+
+class EvaluationRunSummary(BaseModel):
+    """Compact evaluation run summary used by the admin dashboard."""
+
+    evaluation_run_id: str
+    run_label: str = ""
+    notes: str = ""
+    requested_by_user_id: str | None = None
+    requested_by_cognito_sub: str = ""
+    requested_by_email: str = ""
+    judge_provider: EvaluationJudgeProvider
+    judge_model: str
+    input_dataset_s3_uri: str = ""
+    results_s3_prefix: str = ""
+    course_id: str | None = None
+    section_id: str | None = None
+    scope_start_date: str | None = None
+    scope_end_date: str | None = None
+    scope_metadata: dict[str, Any] = Field(default_factory=dict)
+    status: EvaluationRunStatus
+    message: str = ""
+    total_rows: int = 0
+    usable_rows: int = 0
+    skipped_rows: int = 0
+    macro_pass_rate: float | None = None
+    micro_pass_rate: float | None = None
+    drift_rate: float | None = None
+    quality_decline_rate: float | None = None
+    code_leak_rate: float | None = None
+    summary: dict[str, Any] = Field(default_factory=dict)
+    artifacts: list[EvaluationRunArtifact] = Field(default_factory=list)
+    metrics: list[EvaluationRunMetric] = Field(default_factory=list)
+    ecs_cluster: str = ""
+    ecs_task_definition: str = ""
+    ecs_container_name: str = ""
+    ecs_task_arn: str | None = None
+    created_at: str = ""
+    updated_at: str = ""
+    started_at: str | None = None
+    completed_at: str | None = None
 
 
 class ProfessorSectionSummary(BaseModel):

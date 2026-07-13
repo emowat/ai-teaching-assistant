@@ -13,6 +13,8 @@ from rag_eng.schemas import (
     AdminCourseUpdate,
     AdminUser,
     AdminUserCreate,
+    EvaluationRunCreate,
+    EvaluationRunSummary,
     QueryPayload,
     QueryRequest,
     QueryResponse,
@@ -188,3 +190,29 @@ def test_admin_user_and_section_models_validate_defaults() -> None:
 
     assert admin_user.primary_role == "professor"
     assert admin_section.course_id == "mit14"
+
+
+def test_evaluation_run_create_requires_dataset_source() -> None:
+    with pytest.raises(ValidationError):
+        EvaluationRunCreate(
+            judge_provider="openai",
+            judge_model="gpt-4o-mini",
+        )
+
+
+def test_evaluation_run_summary_serializes_nested_artifacts_and_metrics() -> None:
+    summary = EvaluationRunSummary(
+        evaluation_run_id="eval-1",
+        run_label="Week 1 smoke",
+        judge_provider="openai",
+        judge_model="gpt-4o-mini",
+        status="queued",
+        artifacts=[],
+        metrics=[],
+    )
+
+    dumped = summary.model_dump()
+
+    assert dumped["evaluation_run_id"] == "eval-1"
+    assert dumped["judge_provider"] == "openai"
+    assert dumped["status"] == "queued"

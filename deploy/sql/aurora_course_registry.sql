@@ -184,6 +184,15 @@ CREATE INDEX IF NOT EXISTS teaching_plan_week_references_week_id_enabled_sort_id
 CREATE INDEX IF NOT EXISTS teaching_plan_week_references_section_id_week_id_idx
   ON teaching_plan_week_references (section_id, week_id);
 
+CREATE INDEX IF NOT EXISTS evaluation_runs_status_created_at_idx
+  ON evaluation_runs (status, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS evaluation_run_metrics_run_id_idx
+  ON evaluation_run_metrics (evaluation_run_id);
+
+CREATE INDEX IF NOT EXISTS evaluation_run_artifacts_run_id_idx
+  ON evaluation_run_artifacts (evaluation_run_id);
+
 CREATE TABLE IF NOT EXISTS ingestion_jobs (
   job_id text PRIMARY KEY,
   course_id text NOT NULL REFERENCES courses(course_id) ON DELETE CASCADE,
@@ -207,6 +216,69 @@ CREATE TABLE IF NOT EXISTS ingestion_jobs (
   updated_at timestamptz NOT NULL DEFAULT now(),
   started_at timestamptz,
   completed_at timestamptz
+);
+
+CREATE TABLE IF NOT EXISTS evaluation_runs (
+  evaluation_run_id text PRIMARY KEY,
+  run_label text NOT NULL DEFAULT '',
+  notes text NOT NULL DEFAULT '',
+  requested_by_user_id uuid REFERENCES users(user_id) ON DELETE SET NULL,
+  requested_by_cognito_sub text NOT NULL DEFAULT '',
+  requested_by_email text NOT NULL DEFAULT '',
+  judge_provider text NOT NULL CHECK (judge_provider IN ('openai', 'bedrock')),
+  judge_model text NOT NULL DEFAULT '',
+  input_dataset_s3_uri text NOT NULL DEFAULT '',
+  results_s3_prefix text NOT NULL DEFAULT '',
+  course_id text REFERENCES courses(course_id) ON DELETE SET NULL,
+  section_id text REFERENCES sections(section_id) ON DELETE SET NULL,
+  scope_start_date date,
+  scope_end_date date,
+  scope_metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  status text NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'running', 'succeeded', 'failed', 'launch_failed')),
+  message text NOT NULL DEFAULT '',
+  total_rows integer NOT NULL DEFAULT 0,
+  usable_rows integer NOT NULL DEFAULT 0,
+  skipped_rows integer NOT NULL DEFAULT 0,
+  macro_pass_rate numeric(6, 4),
+  micro_pass_rate numeric(6, 4),
+  drift_rate numeric(6, 4),
+  quality_decline_rate numeric(6, 4),
+  code_leak_rate numeric(6, 4),
+  summary jsonb NOT NULL DEFAULT '{}'::jsonb,
+  ecs_cluster text NOT NULL DEFAULT '',
+  ecs_task_definition text NOT NULL DEFAULT '',
+  ecs_container_name text NOT NULL DEFAULT '',
+  ecs_task_arn text,
+  request_payload jsonb NOT NULL DEFAULT '{}'::jsonb,
+  ecs_response jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  started_at timestamptz,
+  completed_at timestamptz
+);
+
+CREATE TABLE IF NOT EXISTS evaluation_run_metrics (
+  metric_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  evaluation_run_id text NOT NULL REFERENCES evaluation_runs(evaluation_run_id) ON DELETE CASCADE,
+  metric_group text NOT NULL,
+  metric_name text NOT NULL,
+  metric_value numeric,
+  metric_text text NOT NULL DEFAULT '',
+  metric_metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS evaluation_run_artifacts (
+  artifact_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  evaluation_run_id text NOT NULL REFERENCES evaluation_runs(evaluation_run_id) ON DELETE CASCADE,
+  artifact_type text NOT NULL,
+  label text NOT NULL DEFAULT '',
+  s3_uri text NOT NULL,
+  content_type text NOT NULL DEFAULT '',
+  artifact_metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS tutor_sessions (
