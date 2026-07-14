@@ -21,7 +21,7 @@ Google Drive (fine-tuned Qwen)
 |---|---|---|
 | **Configuration** | `deploy/deployment.yaml` | Single source of truth for all deploy settings |
 | **Shell wrappers** (start here) | `deploy/scripts/*.sh` | Human-friendly entry points with `--help` |
-| **Python implementation** | `deploy/upload_model.py`, `deploy/deploy_sagemaker.py`, `deploy/deploy_ingestion_worker.py`, `deploy/deploy_evaluation_worker.py`, `deploy/deploy_rag_eng_ecs.py`, `deploy/provision_rag_eng_stack.py`, `deploy/sagemaker_io.py` | Download, S3 upload, SageMaker API calls, ECS task-definition helpers, rag_eng AWS provisioning, async payload helpers |
+| **Python implementation** | `deploy/upload_model.py`, `deploy/deploy_sagemaker.py`, `deploy/deploy_ingestion_worker.py`, `deploy/deploy_evaluation_worker.py`, `deploy/evaluation_worker_image.py`, `deploy/deploy_rag_eng_ecs.py`, `deploy/provision_rag_eng_stack.py`, `deploy/sagemaker_io.py` | Download, S3 upload, SageMaker API calls, ECS task-definition helpers, evaluation-worker image build/push, rag_eng AWS provisioning, async payload helpers |
 | **Application** | `rag_eng/inference.py` | Calls the live endpoint at request time |
 
 ---
@@ -322,7 +322,7 @@ export INGESTION_ECS_SECRET_ARNS_JSON='{"INGESTION_JOBS_DATABASE_URL":"arn:aws:s
 
 **Purpose:** Describe, render, or register the ECS Fargate task definition used by the offline evaluation worker.
 
-The evaluation worker runs model-judging jobs on demand. It reuses the live app image and secrets, but launches as a separate one-off task family so runs stay isolated from the online `rag_eng` service.
+The evaluation worker runs model-judging jobs on demand. It uses its own dedicated image and reuses the shared AWS wiring, but launches as a separate one-off task family so runs stay isolated from the online `rag_eng` service.
 
 | Action | What it does |
 |---|---|
@@ -332,6 +332,14 @@ The evaluation worker runs model-judging jobs on demand. It reuses the live app 
 | `register-task-definition` | Register the task definition with ECS using boto3 |
 
 **Usage:**
+
+First build and push the dedicated worker image:
+
+```bash
+./deploy/scripts/build-evaluation-worker-image.sh
+```
+
+Then render or register the task definition:
 
 ```bash
 ./deploy/scripts/deploy-evaluation-worker.sh describe
@@ -344,7 +352,7 @@ The evaluation worker runs model-judging jobs on demand. It reuses the live app 
 
 | Variable | Description |
 |---|---|
-| `EVALUATION_WORKER_ECS_IMAGE_URI` | ECR image URI for the worker container |
+| `EVALUATION_WORKER_ECS_IMAGE_URI` | ECR image URI for the dedicated worker container |
 | `EVALUATION_WORKER_ECS_EXECUTION_ROLE_ARN` | ECS task execution role ARN |
 | `EVALUATION_WORKER_ECS_TASK_ROLE_ARN` | ECS task role ARN |
 | `EVALUATION_WORKER_ECS_TASK_FAMILY` | Task family name used for registration |

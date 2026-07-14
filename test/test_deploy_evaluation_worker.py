@@ -27,7 +27,7 @@ def _env() -> dict[str, str]:
         "DEPLOY_EVALUATION_WORKER_ECS_ASSIGN_PUBLIC_IP": "ENABLED",
         "DEPLOY_EVALUATION_WORKER_ECS_SUBNETS": "subnet-a, subnet-b",
         "DEPLOY_EVALUATION_WORKER_ECS_SECURITY_GROUPS": "sg-a",
-        "DEPLOY_EVALUATION_WORKER_ECS_IMAGE_URI": "123456789012.dkr.ecr.us-east-1.amazonaws.com/codingrabbit-rag-eng:latest",
+        "DEPLOY_EVALUATION_WORKER_ECS_IMAGE_URI": "123456789012.dkr.ecr.us-east-1.amazonaws.com/codingrabbit-evaluation-worker:latest",
         "DEPLOY_EVALUATION_WORKER_ECS_EXECUTION_ROLE_ARN": "arn:aws:iam::123456789012:role/ecsTaskExecutionRole",
         "DEPLOY_EVALUATION_WORKER_ECS_TASK_ROLE_ARN": "arn:aws:iam::123456789012:role/codingrabbit-rag-eng-task",
         "DEPLOY_EVALUATION_WORKER_ECS_SECRET_ARNS_JSON": json.dumps(
@@ -60,7 +60,7 @@ def test_load_evaluation_worker_config_reads_env_and_secret_mappings() -> None:
     assert config.aws_profile == "codingrabbit-dev"
     assert config.ecs_cluster == "codingrabbit-rag-eng"
     assert config.ecs_task_definition == "codingrabbit-evaluation-worker"
-    assert config.ecs_image_uri.endswith("/codingrabbit-rag-eng:latest")
+    assert config.ecs_image_uri.endswith("/codingrabbit-evaluation-worker:latest")
     assert config.ecs_execution_role_arn.endswith("ecsTaskExecutionRole")
     assert config.ecs_task_role_arn.endswith("codingrabbit-rag-eng-task")
     assert config.ecs_subnet_ids == ("subnet-a", "subnet-b")
@@ -83,7 +83,7 @@ def test_build_task_definition_includes_worker_env_and_secrets() -> None:
 
     container = payload["containerDefinitions"][0]
     assert container["name"] == "evaluation-worker"
-    assert container["image"].endswith("/codingrabbit-rag-eng:latest")
+    assert container["image"].endswith("/codingrabbit-evaluation-worker:latest")
     assert container["command"] == ["python", "-m", "model_eval.evaluation_worker"]
     assert container["logConfiguration"]["options"]["awslogs-group"] == (
         "/ecs/codingrabbit-evaluation-worker"

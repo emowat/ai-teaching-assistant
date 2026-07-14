@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { listAdminCourses, type AdminCourse } from "../../api/adminCoursesApi";
 import { listAdminSections, type AdminSection } from "../../api/adminSectionsApi";
@@ -19,6 +19,10 @@ import {
 } from "../../api/adminEvaluationsApi";
 import { Btn, Card, Stat, Tag } from "../../design/atoms";
 import { D, mono } from "../../design/tokens";
+import {
+  BEDROCK_MODEL_OPTIONS,
+  normalizeBedrockModelId,
+} from "../../data/llmModelOptions";
 
 interface OfflineEvalsPanelProps {
   accessToken: string;
@@ -40,6 +44,11 @@ interface LaunchDraft {
 }
 
 const ACTIVE_RUN_STATUSES = new Set<EvaluationRunStatus>(["queued", "running"]);
+
+function isKnownBedrockModel(modelId: string): boolean {
+  const normalized = normalizeBedrockModelId(modelId);
+  return BEDROCK_MODEL_OPTIONS.some((option) => option.value === normalized);
+}
 
 function emptyLaunchDraft(defaults?: Partial<LaunchDraft>): LaunchDraft {
   return {
@@ -151,6 +160,18 @@ export function OfflineEvalsPanel({ accessToken }: OfflineEvalsPanelProps) {
         .sort((left, right) => left.section_id.localeCompare(right.section_id)),
     [launchDraft.course_id, sections],
   );
+  const selectedLaunchSectionId = useMemo(() => {
+    if (launchDraft.dataset_mode !== "export") {
+      return "";
+    }
+    if (
+      launchDraft.section_id &&
+      selectedCourseSections.some((section) => section.section_id === launchDraft.section_id)
+    ) {
+      return launchDraft.section_id;
+    }
+    return selectedCourseSections[0]?.section_id ?? "";
+  }, [launchDraft.dataset_mode, launchDraft.section_id, selectedCourseSections]);
   const activeRunCount = runs.filter((run) => ACTIVE_RUN_STATUSES.has(run.status)).length;
 
   const syncRuns = (nextRuns: EvaluationRunSummary[]) => {
@@ -165,28 +186,31 @@ export function OfflineEvalsPanel({ accessToken }: OfflineEvalsPanelProps) {
     setSelectedRunId(nextSelectedId);
   };
 
-  const refreshRuns = async (options?: { silent?: boolean }) => {
-    const silent = options?.silent ?? false;
-    if (!silent) {
-      setRefreshingRuns(true);
-    }
-    setFormError(null);
-
-    try {
-      const [nextRuns, nextOverview] = await Promise.all([
-        listAdminEvaluationRuns(accessToken, { limit: 25 }),
-        getAdminEvaluationOverview(accessToken, 5),
-      ]);
-      syncRuns(nextRuns);
-      setOverview(nextOverview);
-    } catch (err) {
-      setFormError(err instanceof Error ? err.message : "Unable to refresh evaluation runs.");
-    } finally {
+  const refreshRuns = useCallback(
+    async (options?: { silent?: boolean }) => {
+      const silent = options?.silent ?? false;
       if (!silent) {
-        setRefreshingRuns(false);
+        setRefreshingRuns(true);
       }
-    }
-  };
+      setFormError(null);
+
+      try {
+        const [nextRuns, nextOverview] = await Promise.all([
+          listAdminEvaluationRuns(accessToken, { limit: 25 }),
+          getAdminEvaluationOverview(accessToken, 5),
+        ]);
+        syncRuns(nextRuns);
+        setOverview(nextOverview);
+      } catch (err) {
+        setFormError(err instanceof Error ? err.message : "Unable to refresh evaluation runs.");
+      } finally {
+        if (!silent) {
+          setRefreshingRuns(false);
+        }
+      }
+    },
+    [accessToken],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -218,9 +242,13 @@ export function OfflineEvalsPanel({ accessToken }: OfflineEvalsPanelProps) {
             nextSectionsForCourse.some((section) => section.section_id === current.section_id)
               ? current.section_id
               : nextSectionsForCourse[0]?.section_id ?? "";
+          const nextDefaultJudgeModel =
+            nextConfig.default_judge_provider === "bedrock"
+              ? normalizeBedrockModelId(nextConfig.default_judge_model)
+              : nextConfig.default_judge_model;
           return emptyLaunchDraft({
             judge_provider: nextConfig.default_judge_provider,
-            judge_model: nextConfig.default_judge_model,
+            judge_model: nextDefaultJudgeModel,
             course_id: nextCourseId,
             section_id: nextSectionId,
             dataset_mode: current.dataset_mode,
@@ -256,19 +284,6 @@ export function OfflineEvalsPanel({ accessToken }: OfflineEvalsPanelProps) {
     selectedRunIdRef.current = selectedRunId;
   }, [selectedRunId]);
 
-  useEffect(() => {
-    if (launchDraft.dataset_mode !== "export") {
-      return;
-    }
-    const nextSections = nextSectionsByCourse(sections, launchDraft.course_id);
-    if (launchDraft.section_id && !nextSections.some((section) => section.section_id === launchDraft.section_id)) {
-      setLaunchDraft((current) => ({
-        ...current,
-        section_id: nextSections[0]?.section_id ?? "",
-      }));
-    }
-  }, [launchDraft.dataset_mode, launchDraft.course_id, launchDraft.section_id, sections]);
-
   const activeRunStatuses = runs.filter((run) => ACTIVE_RUN_STATUSES.has(run.status));
 
   useEffect(() => {
@@ -288,7 +303,7 @@ export function OfflineEvalsPanel({ accessToken }: OfflineEvalsPanelProps) {
       cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, [activeRunStatuses.length, accessToken]);
+  }, [activeRunStatuses.length, accessToken, refreshRuns]);
 
   const handleLaunch = async () => {
     setLaunching(true);
@@ -315,7 +330,7 @@ export function OfflineEvalsPanel({ accessToken }: OfflineEvalsPanelProps) {
               judge_model: nextModel,
               export_scope: {
                 course_id: launchDraft.course_id.trim() || null,
-                section_id: launchDraft.section_id.trim() || null,
+                section_id: selectedLaunchSectionId || null,
                 start_date: launchDraft.start_date || null,
                 end_date: launchDraft.end_date || null,
               } satisfies EvaluationRunScope,
@@ -351,6 +366,9 @@ export function OfflineEvalsPanel({ accessToken }: OfflineEvalsPanelProps) {
 
   const providerOptions = config?.supported_judge_providers ?? ["openai", "bedrock"];
   const defaultModelPlaceholder = config?.default_judge_model ?? "anthropic.claude-haiku-4-5";
+  const selectedBedrockJudgeModel = isKnownBedrockModel(launchDraft.judge_model)
+    ? normalizeBedrockModelId(launchDraft.judge_model)
+    : BEDROCK_MODEL_OPTIONS[0].value;
 
   const summaryCards = [
     { label: "Total Runs", value: overview?.total_runs?.toString() ?? "..." },
@@ -416,10 +434,25 @@ export function OfflineEvalsPanel({ accessToken }: OfflineEvalsPanelProps) {
               <select
                 value={launchDraft.judge_provider}
                 onChange={(event) =>
-                  setLaunchDraft((current) => ({
-                    ...current,
-                    judge_provider: event.target.value as EvaluationJudgeProvider,
-                  }))
+                  setLaunchDraft((current) => {
+                    const nextProvider = event.target.value as EvaluationJudgeProvider;
+                    if (nextProvider !== "bedrock") {
+                      return {
+                        ...current,
+                        judge_provider: nextProvider,
+                      };
+                    }
+
+                    const normalizedCurrent = normalizeBedrockModelId(current.judge_model);
+                    const nextModel = isKnownBedrockModel(normalizedCurrent)
+                      ? normalizedCurrent
+                      : BEDROCK_MODEL_OPTIONS[0].value;
+                    return {
+                      ...current,
+                      judge_provider: nextProvider,
+                      judge_model: nextModel,
+                    };
+                  })
                 }
                 style={{
                   background: D.bg,
@@ -436,26 +469,54 @@ export function OfflineEvalsPanel({ accessToken }: OfflineEvalsPanelProps) {
                 ))}
               </select>
             </label>
-            <label style={{ display: "grid", gap: 6 }}>
-              <span style={{ fontSize: 12, color: D.muted }}>Judge model</span>
-              <input
-                value={launchDraft.judge_model}
-                onChange={(event) =>
-                  setLaunchDraft((current) => ({
-                    ...current,
-                    judge_model: event.target.value,
-                  }))
-                }
-                placeholder={defaultModelPlaceholder}
-                style={{
-                  background: D.bg,
-                  color: D.text,
-                  border: `1px solid ${D.border}`,
-                  borderRadius: 8,
-                  padding: "10px 12px",
-                }}
-              />
-            </label>
+            {launchDraft.judge_provider === "bedrock" ? (
+              <label style={{ display: "grid", gap: 6 }}>
+                <span style={{ fontSize: 12, color: D.muted }}>Judge model</span>
+                <select
+                  value={selectedBedrockJudgeModel}
+                  onChange={(event) =>
+                    setLaunchDraft((current) => ({
+                      ...current,
+                      judge_model: event.target.value,
+                    }))
+                  }
+                  style={{
+                    background: D.bg,
+                    color: D.text,
+                    border: `1px solid ${D.border}`,
+                    borderRadius: 8,
+                    padding: "10px 12px",
+                  }}
+                >
+                  {BEDROCK_MODEL_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <label style={{ display: "grid", gap: 6 }}>
+                <span style={{ fontSize: 12, color: D.muted }}>Judge model</span>
+                <input
+                  value={launchDraft.judge_model}
+                  onChange={(event) =>
+                    setLaunchDraft((current) => ({
+                      ...current,
+                      judge_model: event.target.value,
+                    }))
+                  }
+                  placeholder={defaultModelPlaceholder}
+                  style={{
+                    background: D.bg,
+                    color: D.text,
+                    border: `1px solid ${D.border}`,
+                    borderRadius: 8,
+                    padding: "10px 12px",
+                  }}
+                />
+              </label>
+            )}
             <label style={{ display: "grid", gap: 6 }}>
               <span style={{ fontSize: 12, color: D.muted }}>Dataset mode</span>
               <select
@@ -534,7 +595,7 @@ export function OfflineEvalsPanel({ accessToken }: OfflineEvalsPanelProps) {
                 <label style={{ display: "grid", gap: 6 }}>
                   <span style={{ fontSize: 12, color: D.muted }}>Section</span>
                   <select
-                    value={launchDraft.section_id}
+                    value={selectedLaunchSectionId}
                     onChange={(event) =>
                       setLaunchDraft((current) => ({
                         ...current,

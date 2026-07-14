@@ -209,6 +209,14 @@ def test_launch_evaluation_run_submits_task_and_returns_summary(monkeypatch) -> 
     fake_ecs = _FakeEcsClient()
     fake_logs = _FakeLogsClient()
     captured: dict[str, object] = {}
+    export_capture: dict[str, object] = {}
+
+    def _fake_export_turn_snapshots_to_s3(**kwargs):
+        export_capture["kwargs"] = kwargs
+        return {
+            "dataset_s3_uri": "s3://codingrabbit-data-dev/evaluation/offline/run-123/input/turn_snapshots.jsonl",
+            "manifest": {"total_rows": 2, "usable_rows": 2, "skipped_rows": 0},
+        }
 
     monkeypatch.setattr(
         "rag_eng.evaluation_jobs.load_evaluation_launch_runtime_config",
@@ -216,10 +224,7 @@ def test_launch_evaluation_run_submits_task_and_returns_summary(monkeypatch) -> 
     )
     monkeypatch.setattr(
         "rag_eng.evaluation_jobs.export_turn_snapshots_to_s3",
-        lambda **_kwargs: {
-            "dataset_s3_uri": "s3://codingrabbit-data-dev/evaluation/offline/run-123/input/turn_snapshots.jsonl",
-            "manifest": {"total_rows": 2, "usable_rows": 2, "skipped_rows": 0},
-        },
+        _fake_export_turn_snapshots_to_s3,
     )
     monkeypatch.setattr(
         "rag_eng.evaluation_jobs.connect_postgres_with_retry",
@@ -260,6 +265,9 @@ def test_launch_evaluation_run_submits_task_and_returns_summary(monkeypatch) -> 
     assert result.evaluation_run_id == captured["insert"]["run_id"]
     assert captured["insert"]["course_id"] == "mit14"
     assert captured["insert"]["section_id"] == "mit14-fall-001"
+    assert export_capture["kwargs"]["prefix"] == (
+        f"evaluation/offline/{captured['insert']['run_id']}/input"
+    )
     assert captured["updates"][0]["status"] == "running"
     assert fake_logs.created_log_groups == ["/ecs/codingrabbit-evaluation-worker"]
     assert fake_ecs.calls[0]["cluster"] == "codingrabbit-rag-eng"

@@ -293,7 +293,8 @@ evaluation_worker:
     - subnet-0711779df65a14e9d
   security_group_ids:
     - sg-0ce5f60034441172a
-  image_uri: "976193240866.dkr.ecr.us-east-1.amazonaws.com/codingrabbit-rag-eng:latest"
+  # Built separately with ./deploy/scripts/build-evaluation-worker-image.sh
+  image_uri: "976193240866.dkr.ecr.us-east-1.amazonaws.com/codingrabbit-evaluation-worker:latest"
   execution_role_arn: "arn:aws:iam::976193240866:role/codingrabbit-rag-eng-execution-role"
   task_role_arn: "arn:aws:iam::976193240866:role/codingrabbit-rag-eng-task"
   cpu: 1024
@@ -322,6 +323,7 @@ evaluation_worker:
 
   # The evaluation worker reuses the live app secret sources for the database
   # and optional OpenAI judge path.
+  # Built separately with ./deploy/scripts/build-evaluation-worker-image.sh
   secret_arn_map:
     OPENAI_API_KEY: "arn:aws:secretsmanager:us-east-1:976193240866:secret:codingrabbit/rag_eng/OPENAI_API_KEY-xH5rH5"
     COURSE_REGISTRY_DATABASE_URL: "arn:aws:secretsmanager:us-east-1:976193240866:secret:codingrabbit/rag_eng/COURSE_REGISTRY_DATABASE_URL-4fLsHS"

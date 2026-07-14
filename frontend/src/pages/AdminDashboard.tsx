@@ -26,6 +26,12 @@ import { OfflineEvalsPanel } from "../components/admin/OfflineEvalsPanel";
 import { SectionManagementPanel } from "../components/admin/SectionManagementPanel";
 import { UserManagementPanel } from "../components/admin/UserManagementPanel";
 import { RagDocsPanel } from "../components/admin/RagDocsPanel";
+import {
+  CUSTOM_MODEL_VALUE,
+  getDefaultModel,
+  getModelOptions,
+  resolveModelValue,
+} from "../data/llmModelOptions";
 import type { AppView } from "../types/navigation";
 
 interface AdminDashboardProps {
@@ -34,42 +40,6 @@ interface AdminDashboardProps {
   onSignOut: () => void;
   accessToken: string;
 }
-
-
-
-const CUSTOM_MODEL_VALUE = "__custom__";
-interface ModelOption {
-  label: string;
-  value: string;
-}
-
-const OPENAI_MODEL_OPTIONS: ModelOption[] = [
-  { label: "gpt-5.4-mini", value: "gpt-5.4-mini" },
-  { label: "gpt-5.4", value: "gpt-5.4" },
-  { label: "gpt-5.5", value: "gpt-5.5" },
-];
-const COHERE_MODEL_OPTIONS: ModelOption[] = [
-  { label: "command-r", value: "command-r" },
-  { label: "command-r-plus", value: "command-r-plus" },
-  { label: "command-xlarge-nightly", value: "command-xlarge-nightly" },
-];
-const BEDROCK_MODEL_OPTIONS: ModelOption[] = [
-  { label: "Amazon Nova 2 Lite", value: "us.amazon.nova-2-lite-v1:0" },
-  {
-    label: "Anthropic Claude Sonnet 4.6",
-    value: "us.anthropic.claude-sonnet-4-6",
-  },
-  {
-    label: "Anthropic Claude Haiku 4.5",
-    value: "us.anthropic.claude-haiku-4-5-20251001-v1:0",
-  },
-];
-const OLLAMA_MODEL_OPTIONS: ModelOption[] = [
-  { label: "qwen3.5:9b", value: "qwen3.5:9b" },
-  { label: "llama3.1:8b", value: "llama3.1:8b" },
-  { label: "llama3.2:3b", value: "llama3.2:3b" },
-];
-
 const HEALTH_POLL_INTERVAL_SECONDS = (() => {
   const parsed = Number(import.meta.env.VITE_HEALTH_POLL_INTERVAL_SECONDS ?? "15");
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 15;
@@ -97,21 +67,6 @@ interface HealthState {
   snapshot: BackendHealthResponse | null;
   checkedAt: string | null;
   error: string | null;
-}
-
-function getModelOptions(provider: LlmProvider): ModelOption[] {
-  switch (provider) {
-    case "openai":
-      return OPENAI_MODEL_OPTIONS;
-    case "cohere":
-      return COHERE_MODEL_OPTIONS;
-    case "bedrock":
-      return BEDROCK_MODEL_OPTIONS;
-    case "ollama":
-      return OLLAMA_MODEL_OPTIONS;
-    case "sagemaker":
-      return [];
-  }
 }
 
 function describeHealthService(configured?: boolean, reachable?: boolean): string {
@@ -159,25 +114,6 @@ function formatHealthTooltip(state: HealthState): string {
   }
 
   return lines.join("\n");
-}
-
-function resolveModelValue(selected: string, customValue: string): string {
-  return selected === CUSTOM_MODEL_VALUE ? customValue.trim() : selected;
-}
-
-function getDefaultModel(provider: LlmProvider): string {
-  switch (provider) {
-    case "openai":
-      return OPENAI_MODEL_OPTIONS[0].value;
-    case "cohere":
-      return COHERE_MODEL_OPTIONS[0].value;
-    case "bedrock":
-      return BEDROCK_MODEL_OPTIONS[0].value;
-    case "ollama":
-      return OLLAMA_MODEL_OPTIONS[0].value;
-    case "sagemaker":
-      return "";
-  }
 }
 
 const baseAdminTabs: SidebarTab[] = [

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import {
   createProfessorTeachingPlanWeekReference,
@@ -65,27 +65,17 @@ export function TeachingPlanWeekReferencesEditor({
 }: TeachingPlanWeekReferencesEditorProps) {
   const [referenceDrafts, setReferenceDrafts] = useState<
     Record<string, ProfessorTeachingPlanWeekReferenceCreatePayload>
-  >({});
+  >(() =>
+    Object.fromEntries(
+      week.references.map((reference) => [reference.reference_id, referenceFromWeek(reference)]),
+    ),
+  );
   const [newReference, setNewReference] = useState<ProfessorTeachingPlanWeekReferenceCreatePayload>(
     emptyReferenceDraft(),
   );
   const [busyReferenceId, setBusyReferenceId] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    setReferenceDrafts(
-      Object.fromEntries(
-        week.references.map((reference) => [reference.reference_id, referenceFromWeek(reference)]),
-      ),
-    );
-  }, [week.references, week.week_id]);
-
-  useEffect(() => {
-    setNewReference(emptyReferenceDraft());
-    setStatus(null);
-    setError(null);
-  }, [week.week_id]);
 
   const referenceCountLabel = useMemo(
     () => `${week.references.length} reference${week.references.length === 1 ? "" : "s"}`,

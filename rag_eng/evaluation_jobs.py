@@ -367,9 +367,16 @@ def export_turn_snapshots_to_s3(
     }
 
 
-def _resolve_results_root_prefix(runtime: EvaluationLaunchRuntimeConfig, run_id: str) -> str:
+def _resolve_results_object_prefix(
+    runtime: EvaluationLaunchRuntimeConfig,
+    run_id: str,
+) -> str:
     base_prefix = runtime.results_prefix.strip("/")
-    return f"s3://{runtime.results_bucket}/{base_prefix}/{run_id}"
+    return f"{base_prefix}/{run_id}" if base_prefix else run_id
+
+
+def _resolve_results_root_prefix(runtime: EvaluationLaunchRuntimeConfig, run_id: str) -> str:
+    return f"s3://{runtime.results_bucket}/{_resolve_results_object_prefix(runtime, run_id)}"
 
 
 def _resolve_requestor(
@@ -1089,6 +1096,7 @@ def launch_evaluation_run(
 
     requestor = _resolve_requestor(current_user)
     run_id = uuid.uuid4().hex
+    run_object_prefix = _resolve_results_object_prefix(runtime, run_id)
     run_root_prefix = _resolve_results_root_prefix(runtime, run_id)
     results_s3_prefix = f"{run_root_prefix}/results"
     dataset_s3_uri = request.dataset_s3_uri
@@ -1101,7 +1109,7 @@ def launch_evaluation_run(
         export_result = export_turn_snapshots_to_s3(
             database_url=runtime.database_url,
             bucket=runtime.results_bucket,
-            prefix=f"{run_root_prefix}/input",
+            prefix=f"{run_object_prefix}/input",
             start_date=(
                 date.fromisoformat(export_scope.start_date)
                 if export_scope.start_date

@@ -146,12 +146,17 @@ describe("OfflineEvalsPanel", () => {
     expect(await screen.findByText("Offline Evals")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /launch evaluation/i })).toBeInTheDocument();
     expect(await screen.findByText("Recent runs")).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Amazon Nova 2 Lite" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Anthropic Claude Sonnet 4.6" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Anthropic Claude Haiku 4.5" })).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Judge provider"), {
       target: { value: "bedrock" },
     });
-    fireEvent.change(screen.getByLabelText("Judge model"), {
-      target: { value: "anthropic.claude-haiku-4-5" },
+    const judgeModelSelect = screen.getByLabelText("Judge model");
+    expect(judgeModelSelect).toHaveValue("us.anthropic.claude-haiku-4-5-20251001-v1:0");
+    fireEvent.change(judgeModelSelect, {
+      target: { value: "us.anthropic.claude-sonnet-4-6" },
     });
     fireEvent.change(screen.getByLabelText("Dataset mode"), {
       target: { value: "direct" },
@@ -174,7 +179,7 @@ describe("OfflineEvalsPanel", () => {
         "access-token-1",
         expect.objectContaining({
           judge_provider: "bedrock",
-          judge_model: "anthropic.claude-haiku-4-5",
+          judge_model: "us.anthropic.claude-sonnet-4-6",
           run_label: "Weekly eval",
           notes: "Section review",
         }),

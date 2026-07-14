@@ -167,7 +167,6 @@ export function ProfessorDashboard({
   const [savingSectionSettings, setSavingSectionSettings] = useState(false);
   const [creatingTeachingPlanWeek, setCreatingTeachingPlanWeek] = useState(false);
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
-  const [studentAnalyticsFetchComplete, setStudentAnalyticsFetchComplete] = useState(false);
   const [inviteStudentEmail, setInviteStudentEmail] = useState("");
   const [inviteStudentDisplayName, setInviteStudentDisplayName] = useState("");
   const [invitingStudent, setInvitingStudent] = useState(false);
@@ -229,8 +228,8 @@ export function ProfessorDashboard({
   const loadingAnalytics = Boolean(selectedSectionId) && !analyticsFetchComplete && !analyticsError;
   const loadingStudentAnalytics =
     Boolean(selectedSectionId && selectedStudentId) &&
-    !studentAnalyticsFetchComplete &&
-    !studentAnalyticsError;
+    (studentAnalyticsSectionId !== selectedSectionId ||
+      studentAnalyticsStudentId !== selectedStudentId);
   const loadingTeachingPlan = Boolean(
     selectedSectionId &&
       accessToken &&
@@ -385,8 +384,6 @@ export function ProfessorDashboard({
     }
 
     let cancelled = false;
-    setStudentAnalyticsFetchComplete(false);
-    setStudentAnalyticsError(null);
 
     void getProfessorSectionStudentAnalytics(selectedSectionId, selectedStudentId, accessToken)
       .then((nextAnalytics) => {
@@ -403,9 +400,6 @@ export function ProfessorDashboard({
           setStudentAnalyticsStudentId(selectedStudentId);
           setStudentAnalyticsError(err.message);
         }
-      })
-      .finally(() => {
-        if (!cancelled) setStudentAnalyticsFetchComplete(true);
       });
 
     return () => {
@@ -451,7 +445,6 @@ export function ProfessorDashboard({
     setStudentAnalyticsSectionId(null);
     setStudentAnalyticsStudentId(null);
     setStudentAnalyticsError(null);
-    setStudentAnalyticsFetchComplete(false);
     setInviteStudentEmail("");
     setInviteStudentDisplayName("");
     setInvitingStudent(false);
@@ -1617,6 +1610,7 @@ export function ProfessorDashboard({
                       </div>
 
                       <TeachingPlanWeekReferencesEditor
+                        key={week.week_id}
                         sectionId={selectedSectionId ?? ""}
                         week={week}
                         accessToken={accessToken}
