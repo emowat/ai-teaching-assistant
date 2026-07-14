@@ -2,11 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 import { Btn, Card, Tag } from "../design/atoms";
 import { D, mono } from "../design/tokens";
 import { TopBar } from "../components/TopBar";
+import { Sidebar, type SidebarTab } from "../components/Sidebar";
 import type { AppView } from "../types/navigation";
 import { getCodespacesFallbackUrl, getWeekLaunchUrl, isWeekLaunchReady } from "../data/codespaces";
 import { getStudentBootstrap, type StudentBootstrapResponse } from "../api/studentBootstrapApi";
 import type { SectionLaunchConfig } from "../api/sectionLaunchConfigsApi";
 import { pickDefaultLaunchId, pickDefaultSection } from "../data/studentLaunch";
+import { StudentMetricsDashboard } from "../components/StudentMetricsDashboard";
 
 interface StudentInterfaceProps {
   onNavigate: (view: AppView) => void;
@@ -39,6 +41,7 @@ export function StudentInterface({
   const [error, setError] = useState<string | null>(null);
   const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
   const [selectedLaunchId, setSelectedLaunchId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"launch" | "metrics">("launch");
 
   useEffect(() => {
     if (!accessToken) return;
@@ -133,12 +136,17 @@ export function StudentInterface({
     },
   ];
 
+  const studentTabs: SidebarTab[] = [
+    { key: "launch", icon: "🚀", label: "Codespace Launch" },
+    { key: "metrics", icon: "📊", label: "My Analytics" },
+  ];
+
   return (
     <div
       style={{
         display: "flex",
         flexDirection: "column",
-        minHeight: "100vh",
+        height: "100vh",
         background:
           "linear-gradient(180deg, rgba(255,253,248,0.98) 0%, rgba(248,243,234,0.98) 100%)",
         color: D.text,
@@ -152,14 +160,20 @@ export function StudentInterface({
         onSignOut={onSignOut}
       />
 
-      <div style={{ flex: 1, overflow: "auto", padding: "40px 24px 56px" }}>
-        <div style={{ maxWidth: 1080, margin: "0 auto" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
-            <Tag>Backend-backed student launch</Tag>
-            <span style={{ ...mono, fontSize: 12, color: D.muted }}>
-              Student bootstrap is the source of truth
-            </span>
-          </div>
+      <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
+        <Sidebar tabs={studentTabs} active={activeTab} onTab={(key) => setActiveTab(key as "launch" | "metrics")} />
+
+        <div style={{ flex: 1, overflow: "auto", padding: "40px 24px 56px" }}>
+          <div style={{ maxWidth: 1080, margin: "0 auto" }}>
+          
+          {activeTab === 'launch' ? (
+            <>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
+                <Tag>Backend-backed student launch</Tag>
+                <span style={{ ...mono, fontSize: 12, color: D.muted }}>
+                  Student bootstrap is the source of truth
+                </span>
+              </div>
 
           {isBootstrapLoading ? (
             <Card style={{ padding: 24, marginBottom: 18 }}>
@@ -445,8 +459,13 @@ export function StudentInterface({
               </Card>
             ))}
           </div>
+          </>
+          ) : (
+            <StudentMetricsDashboard accessToken={accessToken} />
+          )}
         </div>
       </div>
+    </div>
     </div>
   );
 }

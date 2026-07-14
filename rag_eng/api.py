@@ -10,7 +10,7 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import urlparse
-from typing import Any
+from typing import Any, Optional
 
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
@@ -184,6 +184,7 @@ from rag_eng.telemetry import TelemetryStore
 
 logger = logging.getLogger(__name__)
 
+
 class _ChatOptions(BaseModel):
     temperature: float = 0.7
     top_p: float = 0.9
@@ -193,6 +194,7 @@ class _ChatOptions(BaseModel):
 
 class ChatRequest(BaseModel):
     """Ollama-compatible chat request (sent by the VS Code extension)."""
+
     model: str = "codingrabbit-ta"
     course_id: str | None = None
     week: int | None = Field(default=None, ge=1, le=8)
@@ -293,8 +295,11 @@ def _require_admin_access(
         current_user = verify_cognito_access_token(credentials.credentials, settings)
     except Exception:
         import traceback
+
         error_msg = traceback.format_exc()
-        logger.error(f"Failed to verify cognito access token! Token was: {credentials.credentials[:20]}...\nException trace:\n{error_msg}")
+        logger.error(
+            f"Failed to verify cognito access token! Token was: {credentials.credentials[:20]}...\nException trace:\n{error_msg}"
+        )
         raise
 
     if current_user.primary_role != "admin":
@@ -368,7 +373,9 @@ def _course_admin_http_error(exc: Exception) -> HTTPException:
 
 
 def _app_registry_http_error(exc: Exception) -> HTTPException:
-    if isinstance(exc, (AppUserNotFoundError, SectionNotFoundError, MembershipNotFoundError)):
+    if isinstance(
+        exc, (AppUserNotFoundError, SectionNotFoundError, MembershipNotFoundError)
+    ):
         return HTTPException(status_code=404, detail=str(exc))
     if isinstance(
         exc,
@@ -435,6 +442,7 @@ def create_app() -> FastAPI:
         try:
             from rag_eng.telemetry import _connect_postgres
             from rag_eng.chat_log_export import _resolve_database_url
+
             database_url = _resolve_database_url(None)
             if database_url:
                 with _connect_postgres(database_url, 10) as conn:
@@ -531,13 +539,16 @@ def create_app() -> FastAPI:
         try:
             app_user = sync_application_user(current_user)
             if not app_user:
-                raise HTTPException(status_code=404, detail="No provisioned user found.")
+                raise HTTPException(
+                    status_code=404, detail="No provisioned user found."
+                )
             if app_user.get("consent_status") == "withdrawn":
                 raise HTTPException(
                     status_code=403,
                     detail="Consent has been permanently withdrawn and cannot be re-granted.",
                 )
             from rag_eng.app_registry import grant_user_consent
+
             grant_user_consent(app_user["user_id"])
             return {"success": True, "consent_status": "granted"}
         except HTTPException:
@@ -560,9 +571,7 @@ def create_app() -> FastAPI:
         payload: QueryPayload,
     ) -> InputGuardrailDiagnosticResponse:
         try:
-            return _public_diagnostic_response(
-                run_input_guardrail_diagnostic(payload)
-            )
+            return _public_diagnostic_response(run_input_guardrail_diagnostic(payload))
         except Exception as exc:
             raise HTTPException(status_code=500, detail=str(exc)) from exc
 
@@ -960,7 +969,9 @@ def create_app() -> FastAPI:
         current_user=Depends(require_authenticated_user),
     ) -> list[SectionLaunchConfig]:
         try:
-            return replace_professor_section_launch_configs(current_user, section_id, payload)
+            return replace_professor_section_launch_configs(
+                current_user, section_id, payload
+            )
         except Exception as exc:
             raise _app_registry_http_error(exc) from exc
 
@@ -989,7 +1000,9 @@ def create_app() -> FastAPI:
         current_user=Depends(require_authenticated_user),
     ) -> SectionInstructionSettings:
         try:
-            return upsert_professor_section_instruction_settings(current_user, section_id, payload)
+            return upsert_professor_section_instruction_settings(
+                current_user, section_id, payload
+            )
         except Exception as exc:
             raise _app_registry_http_error(exc) from exc
 
@@ -1018,7 +1031,9 @@ def create_app() -> FastAPI:
         current_user=Depends(require_authenticated_user),
     ) -> ProfessorTeachingPlan:
         try:
-            return upsert_professor_section_teaching_plan(current_user, section_id, payload)
+            return upsert_professor_section_teaching_plan(
+                current_user, section_id, payload
+            )
         except Exception as exc:
             raise _app_registry_http_error(exc) from exc
 
@@ -1061,7 +1076,9 @@ def create_app() -> FastAPI:
         current_user=Depends(require_authenticated_user),
     ) -> ProfessorTeachingPlan:
         try:
-            return create_professor_section_teaching_plan_week(current_user, section_id, payload)
+            return create_professor_section_teaching_plan_week(
+                current_user, section_id, payload
+            )
         except Exception as exc:
             raise _app_registry_http_error(exc) from exc
 
@@ -1076,7 +1093,9 @@ def create_app() -> FastAPI:
         current_user=Depends(require_authenticated_user),
     ) -> ProfessorTeachingPlanWeek:
         try:
-            return get_professor_section_teaching_plan_week(current_user, section_id, week_id)
+            return get_professor_section_teaching_plan_week(
+                current_user, section_id, week_id
+            )
         except Exception as exc:
             raise _app_registry_http_error(exc) from exc
 
@@ -1112,7 +1131,9 @@ def create_app() -> FastAPI:
         current_user=Depends(require_authenticated_user),
     ) -> ProfessorTeachingPlan:
         try:
-            return delete_professor_section_teaching_plan_week(current_user, section_id, week_id)
+            return delete_professor_section_teaching_plan_week(
+                current_user, section_id, week_id
+            )
         except Exception as exc:
             raise _app_registry_http_error(exc) from exc
 
@@ -1405,6 +1426,7 @@ def create_app() -> FastAPI:
     def admin_run_migration() -> dict:
         from rag_eng.telemetry import _connect_postgres
         from rag_eng.chat_log_export import _resolve_database_url
+
         database_url = _resolve_database_url(None)
         if not database_url:
             raise HTTPException(status_code=500, detail="No database URL configured.")
@@ -1412,21 +1434,28 @@ def create_app() -> FastAPI:
         try:
             with _connect_postgres(database_url, 5) as connection:
                 with connection.cursor() as cursor:
-                    cursor.execute("ALTER TABLE courses ADD COLUMN IF NOT EXISTS syllabus_matrix TEXT;")
-                    cursor.execute("ALTER TABLE courses ADD COLUMN IF NOT EXISTS style_guide TEXT;")
+                    cursor.execute(
+                        "ALTER TABLE courses ADD COLUMN IF NOT EXISTS syllabus_matrix TEXT;"
+                    )
+                    cursor.execute(
+                        "ALTER TABLE courses ADD COLUMN IF NOT EXISTS style_guide TEXT;"
+                    )
                     # Consent columns (Issue 3 — mandatory opt-in)
                     cursor.execute(
                         "ALTER TABLE users ADD COLUMN IF NOT EXISTS consent_status text "
                         "NOT NULL DEFAULT 'pending' "
                         "CHECK (consent_status IN ('pending', 'granted', 'withdrawn'));"
                     )
-                    cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS consent_granted_at timestamptz;")
-                    cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS consent_withdrawn_at timestamptz;")
+                    cursor.execute(
+                        "ALTER TABLE users ADD COLUMN IF NOT EXISTS consent_granted_at timestamptz;"
+                    )
+                    cursor.execute(
+                        "ALTER TABLE users ADD COLUMN IF NOT EXISTS consent_withdrawn_at timestamptz;"
+                    )
                 connection.commit()
             return {"success": True, "message": "Migration complete."}
         except Exception as exc:
             raise HTTPException(status_code=500, detail=str(exc))
-
 
     @app.post(
         "/api/admin/restart",
@@ -1486,13 +1515,14 @@ def create_app() -> FastAPI:
         from datetime import datetime
         import json
         from rag_eng.telemetry import TelemetryStore
+
         try:
             feedback_data = {
                 "timestamp": datetime.utcnow().isoformat() + "Z",
                 "session_id": payload.session_id,
                 "rating": payload.rating,
                 "reason": payload.reason,
-                "message_index": payload.message_index
+                "message_index": payload.message_index,
             }
             logger.warning("Feedback received: " + json.dumps(feedback_data))
 
@@ -1517,12 +1547,13 @@ def create_app() -> FastAPI:
         from datetime import datetime
         import json
         from rag_eng.telemetry import TelemetryStore
+
         try:
             telemetry_data = {
                 "timestamp": datetime.utcnow().isoformat() + "Z",
                 "session_id": payload.session_id,
                 "mode": payload.mode,
-                "engagement_metrics": payload.engagement_metrics.model_dump()
+                "engagement_metrics": payload.engagement_metrics.model_dump(),
             }
             logger.info(json.dumps(telemetry_data))
 
@@ -1531,7 +1562,7 @@ def create_app() -> FastAPI:
                 telemetry.record_out_of_band_telemetry(
                     session_id=payload.session_id,
                     mode=payload.mode,
-                    engagement_metrics=payload.engagement_metrics.model_dump()
+                    engagement_metrics=payload.engagement_metrics.model_dump(),
                 )
 
             return {"status": "success"}
@@ -1587,9 +1618,7 @@ def create_app() -> FastAPI:
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    "/api/student/chat requires "
-                    + ", ".join(missing_fields)
-                    + "."
+                    "/api/student/chat requires " + ", ".join(missing_fields) + "."
                 ),
             )
 
@@ -1640,9 +1669,7 @@ def create_app() -> FastAPI:
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    "/api/student/telemetry requires "
-                    + ", ".join(missing_fields)
-                    + "."
+                    "/api/student/telemetry requires " + ", ".join(missing_fields) + "."
                 ),
             )
 
@@ -1687,9 +1714,7 @@ def create_app() -> FastAPI:
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    "/api/student/feedback requires "
-                    + ", ".join(missing_fields)
-                    + "."
+                    "/api/student/feedback requires " + ", ".join(missing_fields) + "."
                 ),
             )
 
@@ -1752,24 +1777,45 @@ def create_app() -> FastAPI:
         dependencies=[Depends(_require_admin_access)],
     )
     def export_chat_logs(
-        start_date: str | None = Query(default=None, description="UTC start date (YYYY-MM-DD). Defaults to today."),
-        end_date: str | None = Query(default=None, description="UTC end date (YYYY-MM-DD). Defaults to start_date."),
-        course_id: str | None = Query(default=None, description="Optional course ID filter."),
-        tz: str = Query(default="America/Los_Angeles", description="Timezone to use for resolving 'today' defaults"),
+        start_date: str | None = Query(
+            default=None, description="UTC start date (YYYY-MM-DD). Defaults to today."
+        ),
+        end_date: str | None = Query(
+            default=None,
+            description="UTC end date (YYYY-MM-DD). Defaults to start_date.",
+        ),
+        course_id: str | None = Query(
+            default=None, description="Optional course ID filter."
+        ),
+        tz: str = Query(
+            default="America/Los_Angeles",
+            description="Timezone to use for resolving 'today' defaults",
+        ),
     ) -> ChatLogExportResponse:
         from datetime import date as date_type, datetime
-        from rag_eng.chat_log_export import export_turn_snapshots_to_s3, _resolve_database_url
+        from rag_eng.chat_log_export import (
+            export_turn_snapshots_to_s3,
+            _resolve_database_url,
+        )
 
         database_url = _resolve_database_url(None)
         if not database_url:
-            raise HTTPException(status_code=500, detail="No database URL configured for chat log export.")
+            raise HTTPException(
+                status_code=500,
+                detail="No database URL configured for chat log export.",
+            )
 
         import pytz
+
         if tz not in pytz.all_timezones:
             raise HTTPException(status_code=400, detail="Invalid timezone")
 
         pt_tz = pytz.timezone(tz)
-        parsed_start = date_type.fromisoformat(start_date) if start_date else datetime.now(pt_tz).date()
+        parsed_start = (
+            date_type.fromisoformat(start_date)
+            if start_date
+            else datetime.now(pt_tz).date()
+        )
         parsed_end = date_type.fromisoformat(end_date) if end_date else parsed_start
 
         try:
@@ -1781,7 +1827,9 @@ def create_app() -> FastAPI:
                 tz=tz,
             )
         except Exception as exc:
-            raise HTTPException(status_code=500, detail=f"Export failed: {exc}") from exc
+            raise HTTPException(
+                status_code=500, detail=f"Export failed: {exc}"
+            ) from exc
 
         total = sum(p["record_count"] for p in partitions)
         return ChatLogExportResponse(
@@ -1794,8 +1842,11 @@ def create_app() -> FastAPI:
         "/api/admin/dashboard/stats",
         dependencies=[Depends(_require_admin_access)],
     )
-    def admin_dashboard_stats(course_id: str | None = None, tz: str = "America/Los_Angeles"):
+    def admin_dashboard_stats(
+        course_id: str | None = None, tz: str = "America/Los_Angeles"
+    ):
         import pytz
+
         if tz not in pytz.all_timezones:
             raise HTTPException(status_code=400, detail="Invalid timezone")
 
@@ -1804,7 +1855,9 @@ def create_app() -> FastAPI:
 
         database_url = _resolve_database_url(None)
         if not database_url:
-            raise HTTPException(status_code=500, detail="No database URL configured for telemetry.")
+            raise HTTPException(
+                status_code=500, detail="No database URL configured for telemetry."
+            )
 
         try:
             with _connect_postgres(database_url, 5) as connection:
@@ -1813,7 +1866,8 @@ def create_app() -> FastAPI:
                     course_filter = "AND course_id = %s" if course_id else ""
                     params = (course_id,) if course_id else ()
 
-                    cursor.execute(f'''
+                    cursor.execute(
+                        f"""
                         WITH combined AS (
                             SELECT
                                 metadata->>'rewards_given' as r,
@@ -1833,7 +1887,9 @@ def create_app() -> FastAPI:
                             SUM(COALESCE(CAST(e AS INTEGER), 0)) as editor_seconds,
                             SUM(COALESCE(CAST(s AS INTEGER), 0)) as terminal_seconds
                         FROM combined
-                    ''', params)
+                    """,
+                        params,
+                    )
                     row = cursor.fetchone()
                     total_rewards = row[0] if row and row[0] else 0
                     total_style_nudges = row[1] if row and row[1] else 0
@@ -1842,20 +1898,24 @@ def create_app() -> FastAPI:
                     terminal_seconds = row[4] if row and row[4] else 0
 
                     # 2. Sessions Today
-                    cursor.execute(f'''
+                    cursor.execute(
+                        f"""
                         SELECT
                             COUNT(DISTINCT session_id),
                             COUNT(*)
                         FROM tutor_turn_snapshots
                         WHERE DATE((created_at AT TIME ZONE '{tz}')) = (CURRENT_TIMESTAMP AT TIME ZONE '{tz}')::DATE
                         {course_filter}
-                    ''', params)
+                    """,
+                        params,
+                    )
                     row = cursor.fetchone()
                     sessions_today = row[0] if row else 0
                     requests_today = row[1] if row else 0
 
                     # 3. Request Volume (Last 7 days, by mode and pedagogical action)
-                    cursor.execute(f'''
+                    cursor.execute(
+                        f"""
                         SELECT
                             TO_CHAR((created_at AT TIME ZONE '{tz}'), 'Dy') as day,
                             COALESCE(snapshot->'ide_context'->>'mode', 'unknown') as mode,
@@ -1866,15 +1926,18 @@ def create_app() -> FastAPI:
                         {course_filter}
                         GROUP BY DATE((created_at AT TIME ZONE '{tz}')), day, mode, category
                         ORDER BY DATE((created_at AT TIME ZONE '{tz}')) ASC
-                    ''', params)
+                    """,
+                        params,
+                    )
                     volume_rows = cursor.fetchall()
 
                     from datetime import datetime, timedelta
                     import pytz
+
                     pt_tz = pytz.timezone(tz)
                     volume_data = {}
                     for i in range(6, -1, -1):
-                        d = (datetime.now(pt_tz) - timedelta(days=i)).strftime('%a')
+                        d = (datetime.now(pt_tz) - timedelta(days=i)).strftime("%a")
                         volume_data[d] = {"day": d, "sessions": 0}
 
                     normalized_rows = []
@@ -1899,11 +1962,28 @@ def create_app() -> FastAPI:
                         volume_data[day][key] += count
                     session_data = list(volume_data.values())
 
-                    homework_keys = list(set([f"{r[1]}: {r[2]}" for r in normalized_rows if r[1] == "Homework Assist"]))
-                    study_keys = list(set([f"{r[1]}: {r[2]}" for r in normalized_rows if r[1] == "Study Assist"]))
+                    homework_keys = list(
+                        set(
+                            [
+                                f"{r[1]}: {r[2]}"
+                                for r in normalized_rows
+                                if r[1] == "Homework Assist"
+                            ]
+                        )
+                    )
+                    study_keys = list(
+                        set(
+                            [
+                                f"{r[1]}: {r[2]}"
+                                for r in normalized_rows
+                                if r[1] == "Study Assist"
+                            ]
+                        )
+                    )
 
                     # 4. Guardrail Interventions (Input/Output blocks)
-                    cursor.execute(f'''
+                    cursor.execute(
+                        f"""
                         SELECT
                             COUNT(CASE WHEN snapshot->'input_guardrail_phase'->>'action' = 'block' THEN 1 END) as input_blocks,
                             COUNT(CASE WHEN snapshot->'output_guardrail_phase'->>'action' IN ('block', 'replace') THEN 1 END) as output_blocks,
@@ -1912,7 +1992,9 @@ def create_app() -> FastAPI:
                         FROM tutor_turn_snapshots
                         WHERE created_at >= (CURRENT_TIMESTAMP AT TIME ZONE '{tz}')::DATE - INTERVAL '6 days'
                         {course_filter}
-                    ''', params)
+                    """,
+                        params,
+                    )
                     row = cursor.fetchone()
                     input_blocks = row[0] if row else 0
                     output_blocks = row[1] if row else 0
@@ -1920,7 +2002,8 @@ def create_app() -> FastAPI:
                     output_dry_runs = row[3] if row else 0
 
                     # 5. Violation Types (Pie Chart)
-                    cursor.execute(f'''
+                    cursor.execute(
+                        f"""
                         SELECT
                             COALESCE(
                                 NULLIF(snapshot->'input_guardrail_phase'->>'violation_type', 'none'),
@@ -1935,12 +2018,18 @@ def create_app() -> FastAPI:
                             (snapshot->'output_guardrail_phase'->>'action' IN ('block', 'replace', 'log_only'))
                         )
                         GROUP BY violation_type
-                    ''', params)
+                    """,
+                        params,
+                    )
                     violation_rows = cursor.fetchall()
-                    violation_types = [{"name": r[0] or "unknown", "value": r[1]} for r in violation_rows]
+                    violation_types = [
+                        {"name": r[0] or "unknown", "value": r[1]}
+                        for r in violation_rows
+                    ]
 
                     # 6. Latency Metrics (P50, P90, P99)
-                    cursor.execute(f'''
+                    cursor.execute(
+                        f"""
                         SELECT
                             COALESCE(percentile_cont(0.5) WITHIN GROUP (ORDER BY (snapshot->'backend_retrieval_phase'->>'latency_ms')::numeric), 0) as rag_p50,
                             COALESCE(percentile_cont(0.9) WITHIN GROUP (ORDER BY (snapshot->'backend_retrieval_phase'->>'latency_ms')::numeric), 0) as rag_p90,
@@ -1957,41 +2046,78 @@ def create_app() -> FastAPI:
                         FROM tutor_turn_snapshots
                         WHERE created_at >= (CURRENT_TIMESTAMP AT TIME ZONE '{tz}')::DATE - INTERVAL '6 days'
                         {course_filter}
-                    ''', params)
+                    """,
+                        params,
+                    )
                     row = cursor.fetchone()
                     latencies = {
-                        "rag": {"p50": int(row[0]), "p90": int(row[1]), "p99": int(row[2])} if row else {},
-                        "llm": {"p50": int(row[3]), "p90": int(row[4]), "p99": int(row[5])} if row else {},
-                        "input_guardrail": {"p50": int(row[6]), "p90": int(row[7]), "p99": int(row[8])} if row else {},
-                        "output_guardrail": {"p50": int(row[9]), "p90": int(row[10]), "p99": int(row[11])} if row else {}
+                        "rag": {
+                            "p50": int(row[0]),
+                            "p90": int(row[1]),
+                            "p99": int(row[2]),
+                        }
+                        if row
+                        else {},
+                        "llm": {
+                            "p50": int(row[3]),
+                            "p90": int(row[4]),
+                            "p99": int(row[5]),
+                        }
+                        if row
+                        else {},
+                        "input_guardrail": {
+                            "p50": int(row[6]),
+                            "p90": int(row[7]),
+                            "p99": int(row[8]),
+                        }
+                        if row
+                        else {},
+                        "output_guardrail": {
+                            "p50": int(row[9]),
+                            "p90": int(row[10]),
+                            "p99": int(row[11]),
+                        }
+                        if row
+                        else {},
                     }
 
                     # 7. Retry Loop Health & System Errors
-                    cursor.execute(f'''
+                    cursor.execute(
+                        f"""
                         SELECT
                             COUNT(*) as total_turns,
                             COUNT(CASE WHEN (snapshot->'ta_generation_phase'->>'attempts_count')::int > 1 THEN 1 END) as retry_turns
                         FROM tutor_turn_snapshots
                         WHERE created_at >= (CURRENT_TIMESTAMP AT TIME ZONE '{tz}')::DATE - INTERVAL '6 days'
                         {course_filter}
-                    ''', params)
+                    """,
+                        params,
+                    )
                     row = cursor.fetchone()
                     total_turns = row[0] if row else 0
                     retry_turns = row[1] if row else 0
-                    retry_health_pct = round((retry_turns / total_turns * 100), 1) if total_turns > 0 else 0.0
+                    retry_health_pct = (
+                        round((retry_turns / total_turns * 100), 1)
+                        if total_turns > 0
+                        else 0.0
+                    )
 
-                    cursor.execute(f'''
+                    cursor.execute(
+                        f"""
                         SELECT COUNT(*)
                         FROM tutor_turns
                         WHERE status = 'failed'
                         AND DATE((created_at AT TIME ZONE '{tz}')) = (CURRENT_TIMESTAMP AT TIME ZONE '{tz}')::DATE
                         {course_filter}
-                    ''', params)
+                    """,
+                        params,
+                    )
                     row = cursor.fetchone()
                     system_errors = row[0] if row else 0
 
                     # 8. Models Used
-                    cursor.execute(f'''
+                    cursor.execute(
+                        f"""
                         SELECT
                             snapshot->'ta_generation_phase'->>'model_name' as model,
                             COUNT(*) as count
@@ -2000,12 +2126,17 @@ def create_app() -> FastAPI:
                           AND snapshot->'ta_generation_phase'->>'model_name' IS NOT NULL
                           {course_filter}
                         GROUP BY model
-                    ''', params)
+                    """,
+                        params,
+                    )
                     model_rows = cursor.fetchall()
-                    model_share = [{"name": r[0] or "unknown", "value": r[1]} for r in model_rows]
+                    model_share = [
+                        {"name": r[0] or "unknown", "value": r[1]} for r in model_rows
+                    ]
 
                     # 9. Weekly Rewards & Nudges
-                    cursor.execute(f'''
+                    cursor.execute(
+                        f"""
                         WITH combined AS (
                             SELECT
                                 created_at,
@@ -2023,11 +2154,14 @@ def create_app() -> FastAPI:
                         FROM combined
                         GROUP BY DATE((created_at AT TIME ZONE '{tz}')), day
                         ORDER BY DATE((created_at AT TIME ZONE '{tz}')) ASC
-                    ''', params)
+                    """,
+                        params,
+                    )
                     rewards_rows = cursor.fetchall()
 
                     # 10. Weekly Engagement Metrics
-                    cursor.execute(f'''
+                    cursor.execute(
+                        f"""
                         WITH combined AS (
                             SELECT
                                 created_at,
@@ -2047,16 +2181,27 @@ def create_app() -> FastAPI:
                         FROM combined
                         GROUP BY DATE((created_at AT TIME ZONE '{tz}')), day
                         ORDER BY DATE((created_at AT TIME ZONE '{tz}')) ASC
-                    ''', params)
+                    """,
+                        params,
+                    )
                     engagement_rows = cursor.fetchall()
 
                     weekly_rewards = []
                     weekly_engagement = []
 
                     for i in range(6, -1, -1):
-                        d = (datetime.now(pt_tz) - timedelta(days=i)).strftime('%a')
-                        weekly_rewards.append({"day": d, "rewards_given": 0, "style_nudges": 0})
-                        weekly_engagement.append({"day": d, "chat_seconds": 0, "editor_seconds": 0, "terminal_seconds": 0})
+                        d = (datetime.now(pt_tz) - timedelta(days=i)).strftime("%a")
+                        weekly_rewards.append(
+                            {"day": d, "rewards_given": 0, "style_nudges": 0}
+                        )
+                        weekly_engagement.append(
+                            {
+                                "day": d,
+                                "chat_seconds": 0,
+                                "editor_seconds": 0,
+                                "terminal_seconds": 0,
+                            }
+                        )
 
                     for row in rewards_rows:
                         day, r, n = row
@@ -2092,17 +2237,20 @@ def create_app() -> FastAPI:
                     "output_blocks": output_blocks,
                     "input_dry_runs": input_dry_runs,
                     "output_dry_runs": output_dry_runs,
-                    "violation_types": violation_types
+                    "violation_types": violation_types,
                 },
                 "latencies": latencies,
                 "retry_health_pct": retry_health_pct,
                 "system_errors": system_errors,
-                "status": "ok"
+                "status": "ok",
             }
         except Exception as exc:
             import traceback
+
             traceback.print_exc()
-            raise HTTPException(status_code=500, detail=f"Database query failed: {exc}") from exc
+            raise HTTPException(
+                status_code=500, detail=f"Database query failed: {exc}"
+            ) from exc
 
     @app.get(
         "/api/admin/dashboard/feedback",
@@ -2113,7 +2261,7 @@ def create_app() -> FastAPI:
         limit: int = 50,
         start_date: str | None = None,
         end_date: str | None = None,
-        tz: str = "America/Los_Angeles"
+        tz: str = "America/Los_Angeles",
     ):
         from rag_eng.telemetry import _connect_postgres
         from rag_eng.chat_log_export import _resolve_database_url
@@ -2131,16 +2279,21 @@ def create_app() -> FastAPI:
                     if course_id:
                         params_list.append(course_id)
                     if start_date:
-                        date_filter += f" AND DATE((created_at AT TIME ZONE '{tz}')) >= %s"
+                        date_filter += (
+                            f" AND DATE((created_at AT TIME ZONE '{tz}')) >= %s"
+                        )
                         params_list.append(start_date)
                     if end_date:
-                        date_filter += f" AND DATE((created_at AT TIME ZONE '{tz}')) <= %s"
+                        date_filter += (
+                            f" AND DATE((created_at AT TIME ZONE '{tz}')) <= %s"
+                        )
                         params_list.append(end_date)
 
                     params_list.append(limit)
                     params = tuple(params_list)
 
-                    cursor.execute(f'''
+                    cursor.execute(
+                        f"""
                         SELECT
                             session_id,
                             turn_index,
@@ -2164,7 +2317,9 @@ def create_app() -> FastAPI:
                         {date_filter}
                         ORDER BY created_at DESC
                         LIMIT %s
-                    ''', params)
+                    """,
+                        params,
+                    )
 
                     rows = cursor.fetchall()
                     feedback_entries = []
@@ -2173,32 +2328,222 @@ def create_app() -> FastAPI:
                         unique_sources = []
                         if rag_files and isinstance(rag_files, list):
                             for f_data in rag_files:
-                                src = f_data.get('Source', f_data.get('source'))
+                                src = f_data.get("Source", f_data.get("source"))
                                 if src and src not in unique_sources:
                                     unique_sources.append(src)
 
                         raw_ai_message = row[6] if row[6] else ""
-                        clean_ai_message = re.sub(r'<analysis>.*?</analysis>', '', raw_ai_message, flags=re.DOTALL).strip()
+                        clean_ai_message = re.sub(
+                            r"<analysis>.*?</analysis>",
+                            "",
+                            raw_ai_message,
+                            flags=re.DOTALL,
+                        ).strip()
 
-                        extracted_cot = row[7] if row[7] and isinstance(row[7], dict) else {}
+                        extracted_cot = (
+                            row[7] if row[7] and isinstance(row[7], dict) else {}
+                        )
 
-                        feedback_entries.append({
-                            "session_id": row[0],
-                            "turn_index": row[1],
-                            "rating": row[2],
-                            "explanation": row[3],
-                            "created_at": row[4].isoformat() if row[4] else None,
-                            "student_message": row[5] if row[5] else None,
-                            "ai_message": clean_ai_message if clean_ai_message else None,
-                            "cot": extracted_cot,
-                            "rag_sources": unique_sources
-                        })
+                        feedback_entries.append(
+                            {
+                                "session_id": row[0],
+                                "turn_index": row[1],
+                                "rating": row[2],
+                                "explanation": row[3],
+                                "created_at": row[4].isoformat() if row[4] else None,
+                                "student_message": row[5] if row[5] else None,
+                                "ai_message": clean_ai_message
+                                if clean_ai_message
+                                else None,
+                                "cot": extracted_cot,
+                                "rag_sources": unique_sources,
+                            }
+                        )
 
             return {"feedback": feedback_entries, "status": "ok"}
         except Exception as exc:
             import traceback
+
             traceback.print_exc()
-            raise HTTPException(status_code=500, detail=f"Database query failed: {exc}") from exc
+            raise HTTPException(
+                status_code=500, detail=f"Database query failed: {exc}"
+            ) from exc
+
+    @app.get(
+        "/api/student/dashboard/stats",
+        dependencies=[Depends(require_student_surface_user)],
+    )
+    def student_dashboard_stats(
+        course_id: Optional[str] = None,
+        tz: str = "America/Los_Angeles",
+        current_user: CurrentUser = Depends(require_student_surface_user),
+    ):
+        import pytz
+
+        if tz not in pytz.all_timezones:
+            raise HTTPException(status_code=400, detail="Invalid timezone")
+
+        from rag_eng.app_registry import sync_application_user
+        from rag_eng.telemetry import _connect_postgres
+        from rag_eng.chat_log_export import _resolve_database_url
+
+        app_user = sync_application_user(current_user)
+        user_id = str(app_user["user_id"])
+
+        database_url = _resolve_database_url(None)
+        if not database_url:
+            raise HTTPException(
+                status_code=500, detail="No database URL configured for telemetry."
+            )
+
+        try:
+            with _connect_postgres(database_url, 5) as connection:
+                with connection.cursor() as cursor:
+                    # Get available courses for this student
+                    cursor.execute(
+                        """
+                        SELECT DISTINCT course_id
+                        FROM tutor_turn_snapshots
+                        WHERE app_user_id = %s AND course_id != ''
+                    """,
+                        (user_id,),
+                    )
+                    available_courses = [row[0] for row in cursor.fetchall()]
+
+                    # If no course is specified, but there are multiple, maybe filter?
+                    # For now, if course_id is provided, filter by it.
+                    course_filter_sql = " AND course_id = %s " if course_id else ""
+                    course_filter_params = [course_id] if course_id else []
+
+                    # 1. Operational stats for student
+                    cursor.execute(
+                        """
+                        SELECT
+                            SUM(COALESCE(CAST(metadata->>'rewards_given' AS INTEGER), 0)) as total_rewards,
+                            SUM(COALESCE(CAST(metadata->>'style_nudges' AS INTEGER), 0)) as total_style_nudges
+                        FROM telemetry_events
+                        WHERE event_type = 'out_of_band_telemetry'
+                        AND app_user_id = %s
+                        """ + course_filter_sql,
+                        (user_id, *course_filter_params),
+                    )
+                    row = cursor.fetchone()
+                    total_rewards = row[0] if row and row[0] else 0
+                    total_style_nudges = row[1] if row and row[1] else 0
+
+                    cursor.execute(
+                        "SELECT COUNT(*) FROM tutor_turn_snapshots WHERE app_user_id = %s" + course_filter_sql,
+                        (user_id, *course_filter_params),
+                    )
+                    row = cursor.fetchone()
+                    requests_today = row[0] if row else 0
+
+                    # 2. Cognitive Progression
+                    cursor.execute(
+                        """
+                        SELECT
+                            COALESCE('Week ' || (snapshot->'instructional_context_phase'->>'effective_week'), 'Week Unknown') as week,
+                            COALESCE(INITCAP(REPLACE(SUBSTRING(snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Cognitive_Stage' FROM '([a-zA-Z]{5,})'), '_', ' ')), 'Unknown') as stage,
+                            COUNT(*) as count
+                        FROM tutor_turn_snapshots
+                        WHERE app_user_id = %s """ + course_filter_sql + """
+                          AND snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Cognitive_Stage' IS NOT NULL
+                        GROUP BY week, stage
+                    """,
+                        (user_id, *course_filter_params),
+                    )
+                    cognitive_rows = cursor.fetchall()
+
+                    # 3. Time Utilization
+                    cursor.execute(
+                        """
+                        SELECT
+                            COALESCE('Week ' || (s.snapshot->'instructional_context_phase'->>'effective_week'), 'Week Unknown') as assignment,
+                            SUM(COALESCE(CAST(t.metadata->>'active_chat_seconds' AS INTEGER), 0)) as chat_seconds,
+                            SUM(COALESCE(CAST(t.metadata->>'active_editor_seconds' AS INTEGER), 0)) as editor_seconds,
+                            SUM(COALESCE(CAST(t.metadata->>'active_shell_seconds' AS INTEGER), 0)) as terminal_seconds
+                        FROM telemetry_events t
+                        LEFT JOIN tutor_turn_snapshots s ON t.turn_id = s.turn_id
+                        WHERE t.event_type = 'out_of_band_telemetry'
+                        AND t.app_user_id = %s
+                        """ + course_filter_sql.replace('course_id', 't.course_id') + """
+                        GROUP BY assignment
+                    """,
+                        (user_id, *course_filter_params),
+                    )
+                    time_rows = cursor.fetchall()
+
+                    # 4. Pedagogical Actions
+                    cursor.execute(
+                        """
+                        SELECT
+                            COALESCE(INITCAP(REPLACE(SUBSTRING(snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Cognitive_Stage' FROM '([a-zA-Z]{5,})'), '_', ' ')), 'Unknown') as stage,
+                            COALESCE(INITCAP(REPLACE(SUBSTRING(snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Pedagogical_Action' FROM '([A-Z_]{2,})'), '_', ' ')), 'None') as category,
+                            COUNT(*) as count
+                        FROM tutor_turn_snapshots
+                        WHERE app_user_id = %s """ + course_filter_sql + """
+                          AND snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Pedagogical_Action' IS NOT NULL
+                        GROUP BY stage, category
+                    """,
+                        (user_id, *course_filter_params),
+                    )
+                    pedagogical_rows = cursor.fetchall()
+                    # 5. Frustration By Week
+                    cursor.execute(
+                        """
+                        SELECT
+                            COALESCE('Week ' || (snapshot->'instructional_context_phase'->>'effective_week'), 'Week Unknown') as week,
+                            COALESCE(CAST(SUBSTRING(snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Escalation_State' FROM 'Frustration Level: ([0-9]+)') AS INTEGER), 1) as frustration,
+                            COUNT(*) as count
+                        FROM tutor_turn_snapshots
+                        WHERE app_user_id = %s """ + course_filter_sql + """
+                        GROUP BY week, frustration
+                    """,
+                        (user_id, *course_filter_params),
+                    )
+                    frustration_rows = cursor.fetchall()
+
+            # Parse responses
+            cognitive_data = [
+                {"x": r[0], "stage_name": r[1], "count": r[2]} for r in cognitive_rows
+            ]
+            time_data = [
+                {
+                    "assignment": r[0],
+                    "chat": round(r[1] / 3600.0, 1),
+                    "editor": round(r[2] / 3600.0, 1),
+                    "terminal": round(r[3] / 3600.0, 1),
+                }
+                for r in time_rows
+            ]
+            pedagogical_data = [
+                {"stage_name": r[0], "scaffold_name": r[1], "count": r[2]}
+                for r in pedagogical_rows
+            ]
+            frustration_data = [
+                {"week": r[0], "frustration": r[1], "queries": r[2]}
+                for r in frustration_rows
+            ]
+
+            return {
+                "available_courses": available_courses,
+                "live_stats": {
+                    "requests": requests_today,
+                    "rewards": total_rewards,
+                    "nudges": total_style_nudges,
+                },
+                "cognitive_progression": cognitive_data,
+                "time_utilization": time_data,
+                "pedagogical_actions": pedagogical_data,
+                "frustration_by_week": frustration_data,
+            }
+        except Exception as exc:
+            import traceback
+
+            traceback.print_exc()
+            raise HTTPException(
+                status_code=500, detail=f"Database query failed: {exc}"
+            ) from exc
 
     if _should_mount_gradio():
         from rag_eng.ui import mount_gradio_consoles
