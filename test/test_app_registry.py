@@ -48,6 +48,46 @@ class _State:
     tutor_turn_snapshots: list[dict[str, object]]
 
 
+class _FakeCognitoClient:
+    def __init__(self) -> None:
+        self.created_users: list[dict[str, object]] = []
+        self.group_additions: list[dict[str, object]] = []
+        self._users_by_email: dict[str, dict[str, object]] = {}
+
+    def list_users(self, *, UserPoolId: str, Filter: str):  # noqa: N803
+        del UserPoolId
+        email = Filter.split('"')[1].casefold()
+        user = self._users_by_email.get(email)
+        return {"Users": [user]} if user is not None else {"Users": []}
+
+    def admin_create_user(self, **kwargs):
+        username = str(kwargs["Username"])
+        sub = f"sub-{username}"
+        user = {
+            "Username": username,
+            "Attributes": [
+                {"Name": "sub", "Value": sub},
+                {"Name": "email", "Value": username},
+            ],
+        }
+        self._users_by_email[username.casefold()] = user
+        self.created_users.append(kwargs)
+        return {"User": user}
+
+    def admin_add_user_to_group(self, **kwargs):
+        self.group_additions.append(kwargs)
+
+
+class _FakeBoto3Session:
+    def __init__(self, client: _FakeCognitoClient, **kwargs) -> None:
+        self.client_kwargs = kwargs
+        self._client = client
+
+    def client(self, service_name: str):
+        assert service_name == "cognito-idp"
+        return self._client
+
+
 class _FakeCursor:
     def __init__(self, state: _State):
         self.state = state
@@ -319,10 +359,14 @@ class _FakeCursor:
 
         if sql.startswith("INSERT INTO users"):
             user_id = str(uuid.uuid4())
-            email, display_name, primary_role, status = params
+            if len(params) == 5:
+                cognito_sub, email, display_name, primary_role, status = params
+            else:
+                cognito_sub = None
+                email, display_name, primary_role, status = params
             self.state.users[user_id] = {
                 "user_id": user_id,
-                "cognito_sub": None,
+                "cognito_sub": cognito_sub,
                 "email": str(email),
                 "display_name": str(display_name),
                 "primary_role": str(primary_role),
@@ -2546,10 +2590,25 @@ def test_professor_can_invite_student_into_assigned_section(
         section_id="mit14-fall-001",
         display_name="MIT 6.0014 Section A",
     )
+    state.users["student-1"] = _user(
+        user_id="student-1",
+        email="new.student@example.edu",
+        display_name="New Student",
+        primary_role="student",
+        status="invited",
+        cognito_sub=None,
+    )
     state.memberships[("mit14-fall-001", "prof-1")] = _membership(
         section_id="mit14-fall-001",
         user_id="prof-1",
         role_in_section="professor",
+    )
+    fake_cognito = _FakeCognitoClient()
+    monkeypatch.setenv("COGNITO_REGION", "us-east-1")
+    monkeypatch.setenv("COGNITO_USER_POOL_ID", "us-east-1_test_pool")
+    monkeypatch.setattr(
+        "rag_eng.app_registry.boto3.Session",
+        lambda **kwargs: _FakeBoto3Session(fake_cognito, **kwargs),
     )
     _patch_connection(monkeypatch, state)
 
@@ -2571,11 +2630,72 @@ def test_professor_can_invite_student_into_assigned_section(
     invited = next(student for student in roster if student.email == "new.student@example.edu")
     assert invited.membership_status == "invited"
     assert invited.role_in_section == "student"
+    assert fake_cognito.created_users
+    assert state.users["student-1"]["cognito_sub"] == "sub-new.student@example.edu"
     assert any(
         membership["status"] == "invited"
         for membership in state.memberships.values()
         if membership["user_id"] != "prof-1"
     )
+
+
+def test_professor_invite_student_creates_cognito_user_and_group_membership(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _state()
+    state.users["prof-1"] = _user(
+        user_id="prof-1",
+        email="prof@example.edu",
+        display_name="Prof",
+        primary_role="professor",
+        status="active",
+        cognito_sub="sub-prof",
+    )
+    state.sections["mit14-fall-001"] = _section(
+        section_id="mit14-fall-001",
+        display_name="MIT 6.0014 Section A",
+    )
+    state.memberships[("mit14-fall-001", "prof-1")] = _membership(
+        section_id="mit14-fall-001",
+        user_id="prof-1",
+        role_in_section="professor",
+    )
+    fake_cognito = _FakeCognitoClient()
+    monkeypatch.setenv("COGNITO_REGION", "us-east-1")
+    monkeypatch.setenv("COGNITO_USER_POOL_ID", "us-east-1_test_pool")
+    monkeypatch.setattr(
+        "rag_eng.app_registry.boto3.Session",
+        lambda **kwargs: _FakeBoto3Session(fake_cognito, **kwargs),
+    )
+    _patch_connection(monkeypatch, state)
+
+    roster = app_registry.invite_professor_section_student(
+        CurrentUser(
+            cognito_sub="sub-prof",
+            email="prof@example.edu",
+            primary_role="professor",
+        ),
+        "mit14-fall-001",
+        ProfessorSectionStudentInviteCreate(
+            email="new.student@example.edu",
+            display_name="New Student",
+        ),
+        runtime=_runtime(),
+    )
+
+    invited = next(student for student in roster if student.email == "new.student@example.edu")
+    user_row = next(
+        record for record in state.users.values() if record["email"] == "new.student@example.edu"
+    )
+
+    assert invited.membership_status == "invited"
+    assert invited.role_in_section == "student"
+    assert user_row["status"] == "invited"
+    assert user_row["cognito_sub"] == "sub-new.student@example.edu"
+    assert fake_cognito.created_users
+    assert fake_cognito.created_users[0]["Username"] == "new.student@example.edu"
+    assert fake_cognito.group_additions
+    assert fake_cognito.group_additions[0]["GroupName"] == "Students"
 
 
 def test_professor_can_view_student_analytics_for_assigned_section(

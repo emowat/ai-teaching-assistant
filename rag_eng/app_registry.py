@@ -11,7 +11,9 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any
 import uuid
 
+import boto3
 from dotenv import load_dotenv
+from botocore.exceptions import BotoCoreError, ClientError
 
 from rag_eng.auth.models import CurrentUser
 from rag_eng.course_admin import CourseNotFoundError
@@ -93,6 +95,14 @@ class SectionConflictError(AppRegistryError):
 
 class SectionNotFoundError(LookupError):
     """Raised when a section cannot be found."""
+
+
+class CognitoInviteError(AppRegistryError):
+    """Raised when Cognito cannot create or refresh a student invitation."""
+
+
+class CognitoInviteNotConfiguredError(AppRegistryError):
+    """Raised when Cognito invite delivery is not configured on this server."""
 
 
 @dataclass(frozen=True)
@@ -348,6 +358,136 @@ def _require_database_url(runtime: AppRegistryRuntimeConfig) -> str:
     if not runtime.database_url:
         raise RuntimeError("Aurora course registry database URL is not configured.")
     return runtime.database_url
+
+
+@dataclass(frozen=True)
+class _CognitoInviteConfig:
+    region: str
+    user_pool_id: str
+    student_group_name: str = "Students"
+
+
+def _load_cognito_invite_config() -> _CognitoInviteConfig:
+    region = _clean_text(os.getenv("COGNITO_REGION"))
+    user_pool_id = _clean_text(os.getenv("COGNITO_USER_POOL_ID"))
+    if not region or not user_pool_id:
+        raise CognitoInviteNotConfiguredError(
+            "Cognito invitation support is not configured on this server."
+        )
+
+    student_group_name = _clean_text(os.getenv("COGNITO_STUDENT_GROUP")) or "Students"
+    return _CognitoInviteConfig(
+        region=region,
+        user_pool_id=user_pool_id,
+        student_group_name=student_group_name,
+    )
+
+
+def _cognito_attribute_value(user_record: dict[str, Any], name: str) -> str | None:
+    for attribute in user_record.get("Attributes", []) or []:
+        if _clean_text(attribute.get("Name")) == name:
+            value = _clean_text(attribute.get("Value"))
+            return value or None
+    return None
+
+
+def _load_cognito_user_by_email(
+    client,
+    *,
+    user_pool_id: str,
+    email: str,
+) -> dict[str, Any] | None:
+    response = client.list_users(
+        UserPoolId=user_pool_id,
+        Filter=f'email = "{email}"',
+    )
+    users = response.get("Users") or []
+    if not users:
+        return None
+    return users[0]
+
+
+def _invite_cognito_student_user(
+    email: str,
+    display_name: str,
+) -> dict[str, Any]:
+    config = _load_cognito_invite_config()
+    session = boto3.Session(region_name=config.region)
+    client = session.client("cognito-idp")
+
+    cognito_user = _load_cognito_user_by_email(
+        client,
+        user_pool_id=config.user_pool_id,
+        email=email,
+    )
+    created = False
+
+    if cognito_user is None:
+        user_attributes = [
+            {"Name": "email", "Value": email},
+            {"Name": "email_verified", "Value": "true"},
+        ]
+        if display_name:
+            user_attributes.append({"Name": "name", "Value": display_name})
+
+        try:
+            response = client.admin_create_user(
+                UserPoolId=config.user_pool_id,
+                Username=email,
+                UserAttributes=user_attributes,
+                DesiredDeliveryMediums=["EMAIL"],
+            )
+        except (BotoCoreError, ClientError) as exc:
+            error_code = ""
+            if isinstance(exc, ClientError):
+                error_code = _clean_text(exc.response.get("Error", {}).get("Code"))
+            if error_code in {"UsernameExistsException", "AliasExistsException"}:
+                cognito_user = _load_cognito_user_by_email(
+                    client,
+                    user_pool_id=config.user_pool_id,
+                    email=email,
+                )
+            else:
+                raise CognitoInviteError(
+                    f"Unable to create Cognito invitation for {email}."
+                ) from exc
+        else:
+            cognito_user = response.get("User") or {}
+            created = True
+
+    if cognito_user is None:
+        raise CognitoInviteError(f"Unable to resolve Cognito user record for {email}.")
+
+    username = _clean_text(cognito_user.get("Username")) or email
+    try:
+        client.admin_add_user_to_group(
+            UserPoolId=config.user_pool_id,
+            Username=username,
+            GroupName=config.student_group_name,
+        )
+    except (BotoCoreError, ClientError) as exc:
+        raise CognitoInviteError(
+            f"Unable to add Cognito user {email} to group {config.student_group_name}."
+        ) from exc
+
+    cognito_sub = _cognito_attribute_value(cognito_user, "sub")
+    if not cognito_sub:
+        refreshed_user = _load_cognito_user_by_email(
+            client,
+            user_pool_id=config.user_pool_id,
+            email=email,
+        )
+        if refreshed_user is not None:
+            cognito_sub = _cognito_attribute_value(refreshed_user, "sub")
+
+    if not cognito_sub:
+        raise CognitoInviteError(f"Unable to resolve Cognito subject for invited user {email}.")
+
+    return {
+        "username": username,
+        "cognito_sub": cognito_sub,
+        "created": created,
+    }
 
 
 def _group_admin_users(
@@ -3250,6 +3390,8 @@ def invite_professor_section_student(
     if not email:
         raise ValueError("email is required.")
 
+    cognito_invite = _invite_cognito_student_user(email, display_name)
+
     with _connect_postgres(database_url, runtime.connect_timeout_seconds) as connection:
         user_row = _load_user_by_email(connection, email)
         if user_row is None:
@@ -3263,16 +3405,27 @@ def invite_professor_section_student(
                       primary_role,
                       status
                     )
-                    VALUES (NULL, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s)
                     RETURNING user_id
                     """,
-                    (email, display_name, "student", "invited"),
+                    (
+                        cognito_invite["cognito_sub"],
+                        email,
+                        display_name,
+                        "student",
+                        "invited",
+                    ),
                 )
                 user_id = str(cursor.fetchone()[0])
         else:
             user_id = str(user_row[0])
             if _clean_text(user_row[5]) == "disabled":
                 raise AppUserDisabledError(f"User with email {email} is disabled.")
+            existing_cognito_sub = _clean_text(user_row[1])
+            if existing_cognito_sub and existing_cognito_sub != cognito_invite["cognito_sub"]:
+                raise AppUserConflictError(
+                    f"User with email {email} is already linked to another Cognito identity."
+                )
             if display_name and _clean_text(user_row[3]) != display_name:
                 with connection.cursor() as cursor:
                     cursor.execute(
@@ -3283,6 +3436,17 @@ def invite_professor_section_student(
                         WHERE user_id = %s
                         """,
                         (display_name, user_id),
+                    )
+            if existing_cognito_sub != cognito_invite["cognito_sub"]:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        UPDATE users
+                        SET cognito_sub = %s,
+                            updated_at = now()
+                        WHERE user_id = %s
+                        """,
+                        (cognito_invite["cognito_sub"], user_id),
                     )
 
         membership_row = _fetch_one_row(

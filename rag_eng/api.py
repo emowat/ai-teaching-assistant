@@ -31,6 +31,8 @@ from rag_eng.app_registry import (
     AppUserDisabledError,
     AppUserNotFoundError,
     AppUserNotProvisionedError,
+    CognitoInviteError,
+    CognitoInviteNotConfiguredError,
     MembershipAccessDeniedError,
     MembershipConflictError,
     MembershipNotFoundError,
@@ -386,6 +388,10 @@ def _app_registry_http_error(exc: Exception) -> HTTPException:
         ),
     ):
         return HTTPException(status_code=403, detail=str(exc))
+    if isinstance(exc, CognitoInviteNotConfiguredError):
+        return HTTPException(status_code=503, detail=str(exc))
+    if isinstance(exc, CognitoInviteError):
+        return HTTPException(status_code=502, detail=str(exc))
     if isinstance(exc, ValueError):
         return HTTPException(status_code=400, detail=str(exc))
     if isinstance(exc, CourseNotFoundError):

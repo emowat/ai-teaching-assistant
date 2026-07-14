@@ -493,10 +493,13 @@ def _ensure_task_role(
                         "Resource": [endpoint_arn],
                     },
                     {
-                        "Sid": "CognitoGetUser",
+                        "Sid": "CognitoUserManagement",
                         "Effect": "Allow",
                         "Action": [
                             "cognito-idp:GetUser",
+                            "cognito-idp:ListUsers",
+                            "cognito-idp:AdminCreateUser",
+                            "cognito-idp:AdminAddUserToGroup",
                         ],
                         "Resource": ["*"],
                     },
