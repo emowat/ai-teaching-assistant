@@ -305,7 +305,10 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
     private _checkCarrotReset() {
         const resetTime = this._context.workspaceState.get<number>('carrotsResetTime', 0);
         if (Date.now() > resetTime) {
-            this._context.workspaceState.update('carrots', TAChatViewProvider.STARTING_CARROTS);
+            const currentCarrots = this._context.workspaceState.get<number>('carrots', TAChatViewProvider.STARTING_CARROTS);
+            if (currentCarrots < TAChatViewProvider.STARTING_CARROTS) {
+                this._context.workspaceState.update('carrots', TAChatViewProvider.STARTING_CARROTS);
+            }
             this._context.workspaceState.update('carrotsResetTime', Date.now() + 3600000);
         }
     }
@@ -1376,7 +1379,8 @@ ${terminalOutput}`;
                             // assembled in rawTaResponse if the backend split it across chunks
                             // (e.g. "[DEBUG_" arrived, then regenerate fired before "IDEA_UNLOCKED]").
                             // Matching without the closing ] handles the split-chunk edge case.
-                            if (rawTaResponse.includes('[DEBUG_IDEA_UNLOCKED')) {
+                            const cleanText = rawTaResponse.replace(/<think>[\s\S]*?(?:<\/think>|$)/g, '').replace(/<analysis>[\s\S]*?(?:<\/analysis>|$)/g, '');
+                            if (cleanText.includes('[DEBUG_IDEA_UNLOCKED')) {
                                 debugIdeaUnlocked = true;
                             }
                             // Erase the leaked content in-place — reset the existing bubble
@@ -1390,7 +1394,8 @@ ${terminalOutput}`;
                             rawTaResponse += payload.message?.content || "";
                         }
                         // Latch the reward flag immediately — survives replace overwrites
-                        if (rawTaResponse.includes('[DEBUG_IDEA_UNLOCKED]')) {
+                        const cleanText = rawTaResponse.replace(/<think>[\s\S]*?(?:<\/think>|$)/g, '').replace(/<analysis>[\s\S]*?(?:<\/analysis>|$)/g, '');
+                        if (cleanText.includes('[DEBUG_IDEA_UNLOCKED')) {
                             debugIdeaUnlocked = true;
                         }
                     } catch (e) {
@@ -1431,7 +1436,8 @@ ${terminalOutput}`;
                         rawTaResponse += payload.message?.content || "";
                     }
                     // Latch check on final flush — mirrors the in-loop check
-                    if (rawTaResponse.includes('[DEBUG_IDEA_UNLOCKED')) {
+                    const cleanText = rawTaResponse.replace(/<think>[\s\S]*?(?:<\/think>|$)/g, '').replace(/<analysis>[\s\S]*?(?:<\/analysis>|$)/g, '');
+                    if (cleanText.includes('[DEBUG_IDEA_UNLOCKED')) {
                         debugIdeaUnlocked = true;
                     }
                 } catch(e) {}
@@ -1522,18 +1528,25 @@ ${terminalOutput}`;
                 const hasReward = displayResponse.includes('[DEBUG_IDEA_UNLOCKED]') || debugIdeaUnlocked;
                 if (hasReward) {
                     displayResponse = displayResponse.replace(/\[DEBUG_IDEA_UNLOCKED\]/g, '').trim();
-                    if (mode !== 'Study Assist') {
+                }
+
+                if (mode !== 'Study Assist') {
+                    if (hasReward) {
                         this._homeworkDeltaRewardsGiven += 1;
-                        this._carrots -= 1;
+                        this._carrots += 5;
+                        displayResponse += `\n\n*(Coding Rabbit 🐰 loves your insight!  Here's 5 more 🥕.)*`;
+                    } else {
+                        // normal question cost
+                        this._carrots = Math.max(0, this._carrots - 1);
                         if (this._carrots <= 0) {
                             displayResponse += `\n\n*(Coding Rabbit ate all the carrots and is full and needs a break - Check in with your Human TA if you have more questions before then. 🥕)*`;
                         } else {
-                            displayResponse += `\n\n*(Coding Rabbit got to eat a carrot! 🥕 You have ${this._carrots} carrots remaining this hour.)*`;
+                            displayResponse += `\n\n*(Coding Rabbit ate another carrot 🥕  You have ${this._carrots} carrots remaining this hour.)*`;
                         }
-                        webviewView.webview.postMessage({ type: 'updateCarrots', count: this._carrots });
-                    } else {
-                        displayResponse += `\n\n*(Coding Rabbit 🐰 loves your insight!)*`;
                     }
+                    webviewView.webview.postMessage({ type: 'updateCarrots', count: this._carrots });
+                } else if (hasReward) {
+                     displayResponse += `\n\n*(Coding Rabbit 🐰 loves your insight!)*`;
                 }
                 
                 // Add the RAW TA response (INCLUDING the <analysis> block) to history so the LLM retains its Chain of Thought across turns!
