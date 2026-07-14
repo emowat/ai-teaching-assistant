@@ -164,6 +164,7 @@ def _load_course_state(connection) -> _CourseState:
               is_active,
               syllabus_matrix,
               style_guide,
+              launch_configs,
               created_at,
               updated_at
             FROM courses
@@ -207,8 +208,9 @@ def _load_course_state(connection) -> _CourseState:
             "is_active": bool(row[4]),
             "syllabus_matrix": row[5],
             "style_guide": row[6],
-            "created_at": _format_timestamp(row[7]),
-            "updated_at": _format_timestamp(row[8]),
+            "launch_configs": row[7],
+            "created_at": _format_timestamp(row[8]),
+            "updated_at": _format_timestamp(row[9]),
             "has_ingestion_history": False,
         }
         course_ids_by_normalized[_normalize_course_key(stored_course_id)] = stored_course_id
@@ -254,6 +256,7 @@ def _state_to_course(course_data: dict[str, Any], aliases: list[str]) -> AdminCo
         aliases=sorted(aliases),
         syllabus_matrix=course_data.get("syllabus_matrix"),
         style_guide=course_data.get("style_guide"),
+        launch_configs=course_data.get("launch_configs"),
         created_at=_format_timestamp(course_data["created_at"]),
         updated_at=_format_timestamp(course_data["updated_at"]),
     )
@@ -318,6 +321,7 @@ def _resolve_course_row(connection, course_id: str) -> tuple[Any, ...]:
               is_active,
               syllabus_matrix,
               style_guide,
+              launch_configs,
               created_at,
               updated_at
             FROM courses
@@ -398,6 +402,7 @@ def create_admin_course(
     course_source = _validate_course_source(payload.course_source)
     aliases = _dedupe_aliases(payload.aliases, cleaned_course_id)
     syllabus_matrix = _validate_json_string(payload.syllabus_matrix, "syllabus_matrix")
+    launch_configs = _validate_json_string(payload.launch_configs, "launch_configs")
     style_guide = payload.style_guide.strip() if payload.style_guide else None
 
     with _connect_postgres(
@@ -417,9 +422,9 @@ def create_admin_course(
             cursor.execute(
                 """
                 INSERT INTO courses (
-                    course_id, course_source, collection_name, display_name, is_active, syllabus_matrix, style_guide
+                    course_id, course_source, collection_name, display_name, is_active, syllabus_matrix, style_guide, launch_configs
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     cleaned_course_id,
@@ -429,6 +434,7 @@ def create_admin_course(
                     payload.is_active,
                     syllabus_matrix,
                     style_guide,
+                    launch_configs,
                 ),
             )
             for alias in aliases:
@@ -482,6 +488,9 @@ def update_admin_course(
     if payload.style_guide is not None:
         updates.append("style_guide = %s")
         values.append(payload.style_guide.strip() if payload.style_guide.strip() else None)
+    if payload.launch_configs is not None:
+        updates.append("launch_configs = %s")
+        values.append(_validate_json_string(payload.launch_configs, "launch_configs"))
 
     if not updates:
         raise ValueError("At least one course field must be provided.")

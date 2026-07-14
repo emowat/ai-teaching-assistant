@@ -896,6 +896,7 @@ class AdminCourse(BaseModel):
     aliases: list[str] = Field(default_factory=list)
     syllabus_matrix: str | None = None
     style_guide: str | None = None
+    launch_configs: str | None = None
     created_at: str = ""
     updated_at: str = ""
 
@@ -911,6 +912,7 @@ class AdminCourseCreate(BaseModel):
     aliases: list[str] = Field(default_factory=list)
     syllabus_matrix: str | None = None
     style_guide: str | None = None
+    launch_configs: str | None = None
 
 
 class AdminCourseUpdate(BaseModel):
@@ -922,6 +924,7 @@ class AdminCourseUpdate(BaseModel):
     is_active: bool | None = None
     syllabus_matrix: str | None = None
     style_guide: str | None = None
+    launch_configs: str | None = None
 
     @model_validator(mode="after")
     def _validate_non_empty_update(self) -> "AdminCourseUpdate":
@@ -932,6 +935,7 @@ class AdminCourseUpdate(BaseModel):
             and self.is_active is None
             and self.syllabus_matrix is None
             and self.style_guide is None
+            and self.launch_configs is None
         ):
             raise ValueError("At least one course field must be provided.")
         return self

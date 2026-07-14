@@ -39,7 +39,7 @@ class _FakeCursor:
         self.rowcount = 0
 
         if sql.startswith(
-            "SELECT course_id, course_source, collection_name, display_name, is_active, syllabus_matrix, style_guide, created_at, updated_at FROM courses ORDER BY course_id"
+            "SELECT course_id, course_source, collection_name, display_name, is_active, syllabus_matrix, style_guide, launch_configs, created_at, updated_at FROM courses ORDER BY course_id"
         ):
             self._rows = [
                 (
@@ -50,6 +50,7 @@ class _FakeCursor:
                     record["is_active"],
                     record.get("syllabus_matrix"),
                     record.get("style_guide"),
+                    record.get("launch_configs"),
                     record["created_at"],
                     record["updated_at"],
                 )
@@ -87,7 +88,7 @@ class _FakeCursor:
             return
 
         if sql.startswith(
-            "SELECT course_id, course_source, collection_name, display_name, is_active, syllabus_matrix, style_guide, created_at, updated_at FROM courses WHERE course_id = %s"
+            "SELECT course_id, course_source, collection_name, display_name, is_active, syllabus_matrix, style_guide, launch_configs, created_at, updated_at FROM courses WHERE course_id = %s"
         ):
             course_id = str(params[0])
             record = self.state.courses.get(course_id)
@@ -100,6 +101,7 @@ class _FakeCursor:
                     record["is_active"],
                     record.get("syllabus_matrix"),
                     record.get("style_guide"),
+                    record.get("launch_configs"),
                     record["created_at"],
                     record["updated_at"],
                 )
@@ -121,7 +123,7 @@ class _FakeCursor:
             return
 
         if sql.startswith("INSERT INTO courses"):
-            course_id, course_source, collection_name, display_name, is_active, syllabus_matrix, style_guide = params
+            course_id, course_source, collection_name, display_name, is_active, syllabus_matrix, style_guide, launch_configs = params
             self.state.courses[str(course_id)] = {
                 "course_id": str(course_id),
                 "course_source": str(course_source),
@@ -130,6 +132,7 @@ class _FakeCursor:
                 "is_active": bool(is_active),
                 "syllabus_matrix": syllabus_matrix,
                 "style_guide": style_guide,
+                "launch_configs": launch_configs,
                 "created_at": NOW,
                 "updated_at": NOW,
             }

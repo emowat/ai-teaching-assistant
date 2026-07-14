@@ -12,6 +12,7 @@ export interface AdminCourse {
   aliases: string[];
   syllabus_matrix?: string;
   style_guide?: string;
+  launch_configs?: string;
   created_at: string;
   updated_at: string;
 }
@@ -25,6 +26,7 @@ export interface AdminCourseCreatePayload {
   aliases?: string[];
   syllabus_matrix?: string;
   style_guide?: string;
+  launch_configs?: string;
 }
 
 export interface AdminCourseUpdatePayload {
@@ -34,6 +36,7 @@ export interface AdminCourseUpdatePayload {
   is_active?: boolean;
   syllabus_matrix?: string;
   style_guide?: string;
+  launch_configs?: string;
 }
 
 export interface AdminCourseAliasCreatePayload {
@@ -124,4 +127,10 @@ export function removeAdminCourseAlias(
       method: "DELETE",
     }
   );
+}
+
+export function runAdminMigration(accessToken: string): Promise<{ success: boolean; message: string }> {
+  return adminFetch<{ success: boolean; message: string }>("/admin/run-migration", accessToken, {
+    method: "POST",
+  });
 }

@@ -3533,19 +3533,49 @@ def get_student_bootstrap(
             if recent_section_id in section_ids:
                 default_section_id = recent_section_id
         launch_configs_by_section: dict[str, list[StudentLaunchConfig]] = {}
-        for section_id in section_ids:
-            launch_configs_by_section[section_id] = [
-                StudentLaunchConfig(
-                    launch_id=_clean_text(row[1]),
-                    label=_clean_text(row[2]),
-                    repo_url=_clean_text(row[3]),
-                    template_url=_clean_text(row[4]),
-                    default_branch=_clean_text(row[5]) or "main",
-                    enabled=bool(row[6]),
-                    sort_order=int(row[7] or 0),
-                )
-                for row in _load_section_launch_config_rows(connection, section_id)
-            ]
+        with connection.cursor() as cursor:
+            for row in section_rows:
+                section_id = _clean_text(row[0])
+                course_id = _clean_text(row[1])
+
+                section_configs = _load_section_launch_config_rows(connection, section_id)
+                if section_configs:
+                    launch_configs_by_section[section_id] = [
+                        StudentLaunchConfig(
+                            launch_id=_clean_text(r[1]),
+                            label=_clean_text(r[2]),
+                            repo_url=_clean_text(r[3]),
+                            template_url=_clean_text(r[4]),
+                            default_branch=_clean_text(r[5]) or "main",
+                            enabled=bool(r[6]),
+                            sort_order=int(r[7] or 0),
+                        )
+                        for r in section_configs
+                    ]
+                    continue
+
+                cursor.execute("SELECT launch_configs FROM courses WHERE course_id = %s", (course_id,))
+                course_row = cursor.fetchone()
+                if course_row and course_row[0]:
+                    import json
+                    try:
+                        course_configs = json.loads(course_row[0])
+                        launch_configs_by_section[section_id] = [
+                            StudentLaunchConfig(
+                                launch_id=_clean_text(c.get("launch_id", "")),
+                                label=_clean_text(c.get("label", "")),
+                                repo_url=_clean_text(c.get("repo_url", "")),
+                                template_url=_clean_text(c.get("template_url", "")),
+                                default_branch=_clean_text(c.get("default_branch", "")) or "main",
+                                enabled=bool(c.get("enabled", True)),
+                                sort_order=int(c.get("sort_order", 0)),
+                            )
+                            for c in course_configs
+                        ]
+                    except Exception:
+                        launch_configs_by_section[section_id] = []
+                else:
+                    launch_configs_by_section[section_id] = []
 
     return StudentBootstrapResponse(
         user=StudentBootstrapUser(

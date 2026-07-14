@@ -784,6 +784,15 @@ class _FakeCursor:
                 self._rows = [(course_id,)]
             return
 
+        if sql.startswith("SELECT launch_configs FROM courses WHERE course_id = %s"):
+            course_id = str(params[0])
+            record = self.state.courses.get(course_id)
+            if record is not None:
+                self._rows = [(record.get("launch_configs"),)]
+            else:
+                self._rows = []
+            return
+
         if sql.startswith(
             "SELECT s.section_id, s.course_id, c.display_name, s.display_name, s.term, s.is_active, s.created_at, s.updated_at FROM sections AS s INNER JOIN courses AS c ON c.course_id = s.course_id WHERE s.section_id = %s"
         ):

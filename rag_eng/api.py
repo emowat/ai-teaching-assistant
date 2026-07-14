@@ -448,6 +448,15 @@ def create_app() -> FastAPI:
                 with _connect_postgres(database_url, 10) as conn:
                     with conn.cursor() as cur:
                         cur.execute(
+                            "ALTER TABLE courses ADD COLUMN IF NOT EXISTS syllabus_matrix TEXT;"
+                        )
+                        cur.execute(
+                            "ALTER TABLE courses ADD COLUMN IF NOT EXISTS style_guide TEXT;"
+                        )
+                        cur.execute(
+                            "ALTER TABLE courses ADD COLUMN IF NOT EXISTS launch_configs TEXT;"
+                        )
+                        cur.execute(
                             "ALTER TABLE users ADD COLUMN IF NOT EXISTS consent_status text "
                             "NOT NULL DEFAULT 'pending' "
                             "CHECK (consent_status IN ('pending', 'granted', 'withdrawn'));"
@@ -1420,7 +1429,7 @@ def create_app() -> FastAPI:
         return _runtime_config_payload()
 
     @app.post(
-        "/api/admin/run-migration",
+        "/admin/run-migration",
         dependencies=[Depends(_require_admin_access)],
     )
     def admin_run_migration() -> dict:
@@ -1439,6 +1448,9 @@ def create_app() -> FastAPI:
                     )
                     cursor.execute(
                         "ALTER TABLE courses ADD COLUMN IF NOT EXISTS style_guide TEXT;"
+                    )
+                    cursor.execute(
+                        "ALTER TABLE courses ADD COLUMN IF NOT EXISTS launch_configs TEXT;"
                     )
                     # Consent columns (Issue 3 — mandatory opt-in)
                     cursor.execute(

@@ -16,6 +16,7 @@ interface CreateDraft {
   is_active: boolean;
   syllabus_matrix: string;
   style_guide: string;
+  launch_configs: string;
 }
 
 interface EditDraft {
@@ -25,6 +26,7 @@ interface EditDraft {
   is_active: boolean;
   syllabus_matrix: string;
   style_guide: string;
+  launch_configs: string;
 }
 
 type RetrievalProfile = "mit" | "cs50";
@@ -109,6 +111,7 @@ function emptyCreateDraft(): CreateDraft {
     is_active: true,
     syllabus_matrix: "",
     style_guide: "",
+    launch_configs: "",
   };
 }
 
@@ -120,6 +123,7 @@ function emptyEditDraft(): EditDraft {
     is_active: true,
     syllabus_matrix: "",
     style_guide: "",
+    launch_configs: "",
   };
 }
 
@@ -159,6 +163,7 @@ export function CourseManagementPanel({ accessToken }: CourseManagementPanelProp
       is_active: course.is_active,
       syllabus_matrix: course.syllabus_matrix ?? "",
       style_guide: course.style_guide ?? "",
+      launch_configs: course.launch_configs ?? "",
     });
     setAliasInput("");
   };
@@ -234,6 +239,7 @@ export function CourseManagementPanel({ accessToken }: CourseManagementPanelProp
         aliases,
         syllabus_matrix: createDraft.syllabus_matrix.trim() || undefined,
         style_guide: createDraft.style_guide.trim() || undefined,
+        launch_configs: createDraft.launch_configs.trim() || undefined,
       });
       upsertCourse(created);
       applySelectedCourse(created);
@@ -286,6 +292,7 @@ export function CourseManagementPanel({ accessToken }: CourseManagementPanelProp
         is_active: editDraft.is_active,
         syllabus_matrix: editDraft.syllabus_matrix.trim() || undefined,
         style_guide: editDraft.style_guide.trim() || undefined,
+        launch_configs: editDraft.launch_configs.trim() || undefined,
       });
       upsertCourse(updated);
       applySelectedCourse(updated);
@@ -365,25 +372,50 @@ export function CourseManagementPanel({ accessToken }: CourseManagementPanelProp
               Aurora-backed course registry used by ingestion and retrieval.
             </div>
           </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-            <Tag color={D.blue}>{courses.length} total</Tag>
-            <Tag color={D.green}>{activeCount} active</Tag>
-            <Tag color={D.orange}>{aliasCount} aliases</Tag>
+          <div style={{ display: "flex", gap: 15, fontSize: 13, color: D.muted }}>
+            <div>{courses.length} courses</div>
+            <div>{activeCount} active</div>
+            <div>{aliasCount} aliases</div>
           </div>
         </div>
-        {loading && <div style={{ fontSize: 12, color: D.muted }}>Loading courses...</div>}
+        {loading && <div style={{ fontSize: 12, color: D.muted }}>Loading...</div>}
         {formError && <div style={{ fontSize: 12, color: D.red }}>{formError}</div>}
         {formStatus && <div style={{ fontSize: 12, color: D.green }}>{formStatus}</div>}
       </Card>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-          gap: 14,
-          alignItems: "start",
-        }}
-      >
+      <Card style={{ display: "grid", gap: 10 }}>
+        <label style={{ display: "grid", gap: 5 }}>
+          <span style={{ fontSize: 13, fontWeight: 500 }}>Select Course to Manage</span>
+          <select
+            value={selectedCourseId ?? "NEW"}
+            onChange={(e) => {
+              if (e.target.value === "NEW") {
+                applySelectedCourse(null);
+              } else {
+                const course = courses.find((c) => c.course_id === e.target.value);
+                if (course) applySelectedCourse(course);
+              }
+            }}
+            style={{
+              background: D.bg,
+              color: D.text,
+              border: `1px solid ${D.border}`,
+              borderRadius: 8,
+              padding: "8px 12px",
+              fontSize: 14,
+            }}
+          >
+            <option value="NEW">-- Create New Course --</option>
+            {courses.map((c) => (
+              <option key={c.course_id} value={c.course_id}>
+                {c.display_name} ({c.course_id})
+              </option>
+            ))}
+          </select>
+        </label>
+      </Card>
+
+      {selectedCourse === null ? (
         <Card style={{ display: "grid", gap: 12 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
             <div style={{ fontSize: 15, fontWeight: 600 }}>Create course</div>
@@ -544,6 +576,26 @@ export function CourseManagementPanel({ accessToken }: CourseManagementPanelProp
                 placeholder="- Indentation: 4 spaces&#10;- Braces: K&R style"
               />
             </label>
+            <label style={{ display: "grid", gap: 5 }}>
+              <span style={{ fontSize: 12, color: D.muted }}>Launch configs (JSON array)</span>
+              <textarea
+                value={createDraft.launch_configs}
+                onChange={(e) =>
+                  setCreateDraft((current) => ({ ...current, launch_configs: e.target.value }))
+                }
+                rows={4}
+                style={{
+                  background: D.bg,
+                  color: D.text,
+                  border: `1px solid ${D.border}`,
+                  borderRadius: 8,
+                  padding: "10px 12px",
+                  ...mono,
+                  fontSize: 12,
+                }}
+                placeholder='[{"repo_url": "https://github.com/...", "label": "Week 1", "launch_id": "week1"}]'
+              />
+            </label>
             <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: D.muted }}>
               <input
                 type="checkbox"
@@ -565,21 +617,16 @@ export function CourseManagementPanel({ accessToken }: CourseManagementPanelProp
             </div>
           </div>
         </Card>
-
+      ) : (
         <Card style={{ display: "grid", gap: 12 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
             <div style={{ fontSize: 15, fontWeight: 600 }}>
-              {selectedCourse ? `Manage ${selectedCourse.course_id}` : "Manage course"}
+              Manage {selectedCourse.course_id}
             </div>
-            {selectedCourse ? courseStatusLabel(selectedCourse) : <Tag color={D.muted}>select one</Tag>}
+            {courseStatusLabel(selectedCourse)}
           </div>
 
-          {!selectedCourse ? (
-            <div style={{ fontSize: 12, color: D.muted }}>
-              Select a course from the list below to edit metadata or manage aliases.
-            </div>
-          ) : (
-            <div style={{ display: "grid", gap: 10 }}>
+          <div style={{ display: "grid", gap: 10 }}>
               <div style={{ display: "grid", gap: 5 }}>
                 <span style={{ fontSize: 12, color: D.muted }}>Course ID</span>
                 <div
@@ -715,6 +762,26 @@ export function CourseManagementPanel({ accessToken }: CourseManagementPanelProp
                   placeholder="- Indentation: 4 spaces&#10;- Braces: K&R style"
                 />
               </label>
+              <label style={{ display: "grid", gap: 5 }}>
+                <span style={{ fontSize: 12, color: D.muted }}>Launch configs (JSON array)</span>
+                <textarea
+                  value={editDraft.launch_configs}
+                  onChange={(e) =>
+                    setEditDraft((current) => ({ ...current, launch_configs: e.target.value }))
+                  }
+                  rows={4}
+                  style={{
+                    background: D.bg,
+                    color: D.text,
+                    border: `1px solid ${D.border}`,
+                    borderRadius: 8,
+                    padding: "10px 12px",
+                    ...mono,
+                    fontSize: 12,
+                  }}
+                  placeholder='[{"repo_url": "https://github.com/...", "label": "Week 1", "launch_id": "week1"}]'
+                />
+              </label>
               <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: D.muted }}>
                 <input
                   type="checkbox"
@@ -802,74 +869,8 @@ export function CourseManagementPanel({ accessToken }: CourseManagementPanelProp
                 </div>
               </div>
             </div>
-          )}
         </Card>
-      </div>
-
-      <div style={{ display: "grid", gap: 10 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ fontSize: 14, fontWeight: 600 }}>All courses</div>
-          <Tag color={D.muted}>click a row to manage</Tag>
-        </div>
-        <div style={{ display: "grid", gap: 10 }}>
-          {courses.length === 0 && !loading ? (
-            <Card style={{ fontSize: 12, color: D.muted }}>No courses found.</Card>
-          ) : (
-            courses.map((course) => {
-              const isSelected = course.course_id === selectedCourseId;
-              return (
-                <Card
-                  key={course.course_id}
-                  onClick={() => applySelectedCourse(course)}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 12,
-                    justifyContent: "space-between",
-                    borderColor: isSelected ? D.orangeBorder : D.border,
-                    background: isSelected ? `${D.orangeGlow}55` : D.card,
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-                    <div
-                      style={{
-                        background: D.orangeGlow,
-                        border: `1px solid ${D.orangeBorder}`,
-                        borderRadius: 6,
-                        padding: "5px 11px",
-                        ...mono,
-                        fontSize: 13,
-                        fontWeight: 600,
-                        color: D.orange,
-                        flexShrink: 0,
-                      }}
-                    >
-                      {course.course_id}
-                    </div>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 14, fontWeight: 500 }}>{course.display_name}</div>
-                      <div style={{ fontSize: 12, color: D.muted, marginTop: 2 }}>
-                        {retrievalProfileLabel(course.course_source)} · {course.collection_name} · {course.aliases.length} alias
-                        {course.aliases.length === 1 ? "" : "es"}
-                      </div>
-                    </div>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
-                    {courseStatusLabel(course)}
-                    <Btn
-                      variant="ghost"
-                      small
-                      onClick={() => applySelectedCourse(course)}
-                    >
-                      Manage
-                    </Btn>
-                  </div>
-                </Card>
-              );
-            })
-          )}
-        </div>
-      </div>
+      )}
     </div>
   );
 }

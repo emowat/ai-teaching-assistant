@@ -387,14 +387,39 @@ export function SectionManagementPanel({ accessToken }: SectionManagementPanelPr
         {formStatus && <div style={{ fontSize: 12, color: D.green }}>{formStatus}</div>}
       </Card>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-          gap: 14,
-          alignItems: "start",
-        }}
-      >
+      <Card style={{ display: "grid", gap: 10 }}>
+        <label style={{ display: "grid", gap: 5 }}>
+          <span style={{ fontSize: 13, fontWeight: 500 }}>Select Section to Manage</span>
+          <select
+            value={selectedSectionId ?? "NEW"}
+            onChange={(e) => {
+              if (e.target.value === "NEW") {
+                applySelectedSection(null);
+              } else {
+                const section = sections.find((s) => s.section_id === e.target.value);
+                if (section) applySelectedSection(section);
+              }
+            }}
+            style={{
+              background: D.bg,
+              color: D.text,
+              border: `1px solid ${D.border}`,
+              borderRadius: 8,
+              padding: "8px 12px",
+              fontSize: 14,
+            }}
+          >
+            <option value="NEW">-- Create New Section --</option>
+            {sections.map((s) => (
+              <option key={s.section_id} value={s.section_id}>
+                {s.display_name} ({s.section_id})
+              </option>
+            ))}
+          </select>
+        </label>
+      </Card>
+
+      {selectedSection === null ? (
         <Card style={{ display: "grid", gap: 12 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
             <div style={{ fontSize: 15, fontWeight: 600 }}>Create section</div>
@@ -486,21 +511,17 @@ export function SectionManagementPanel({ accessToken }: SectionManagementPanelPr
             </div>
           </div>
         </Card>
-
-        <Card style={{ display: "grid", gap: 12 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-            <div style={{ fontSize: 15, fontWeight: 600 }}>
-              {selectedSection ? `Manage ${selectedSection.section_id}` : "Manage section"}
-            </div>
-            {selectedSection ? (
+      ) : (
+        <div style={{ display: "grid", gap: 14 }}>
+          <Card style={{ display: "grid", gap: 12 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+              <div style={{ fontSize: 15, fontWeight: 600 }}>
+                Manage {selectedSection.section_id}
+              </div>
               <Tag color={selectedSection.is_active ? D.green : D.yellow}>
                 {selectedSection.is_active ? "active" : "inactive"}
               </Tag>
-            ) : (
-              <Tag color={D.muted}>select one</Tag>
-            )}
-          </div>
-          {selectedSection ? (
+            </div>
             <div style={{ display: "grid", gap: 10 }}>
               <div style={{ display: "grid", gap: 2 }}>
                 <div style={{ fontSize: 14, fontWeight: 600 }}>{selectedSection.display_name}</div>
@@ -564,11 +585,7 @@ export function SectionManagementPanel({ accessToken }: SectionManagementPanelPr
                 <Tag color={D.blue}>{selectedSection.memberships.length} memberships</Tag>
               </div>
             </div>
-          ) : (
-            <div style={{ fontSize: 12, color: D.dim }}>Select a section to edit its Aurora record.</div>
-          )}
-        </Card>
-      </div>
+          </Card>
 
       <div
         style={{
@@ -781,46 +798,8 @@ export function SectionManagementPanel({ accessToken }: SectionManagementPanelPr
         </Card>
       </div>
 
-      <Card style={{ display: "grid", gap: 10 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-          <div style={{ fontSize: 15, fontWeight: 600 }}>All sections</div>
-          <Tag color={D.muted}>{sections.length} shown</Tag>
         </div>
-        <div style={{ display: "grid", gap: 8 }}>
-          {sections.length === 0 && !loading ? (
-            <div style={{ fontSize: 12, color: D.dim }}>No sections found.</div>
-          ) : (
-            sections.map((section) => {
-              const isSelected = section.section_id === selectedSectionId;
-              return (
-                <Card
-                  key={section.section_id}
-                  onClick={() => applySelectedSection(section)}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 14,
-                    borderColor: isSelected ? D.orangeBorder : D.border,
-                    background: isSelected ? D.orangeGlow : D.card,
-                  }}
-                >
-                  <Avatar name={section.display_name} />
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 13, fontWeight: 500 }}>{section.display_name}</div>
-                    <div style={{ fontSize: 11, color: D.muted }}>
-                      {section.section_id} · {section.course_id} · {section.term || "n/a"}
-                    </div>
-                  </div>
-                  <Tag color={section.is_active ? D.green : D.yellow}>
-                    {section.is_active ? "active" : "inactive"}
-                  </Tag>
-                  <Tag color={D.blue}>{section.memberships.length} memberships</Tag>
-                </Card>
-              );
-            })
-          )}
-        </div>
-      </Card>
+      )}
     </div>
   );
 }

@@ -286,14 +286,39 @@ export function UserManagementPanel({ accessToken }: UserManagementPanelProps) {
         {formStatus && <div style={{ fontSize: 12, color: D.green }}>{formStatus}</div>}
       </Card>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-          gap: 14,
-          alignItems: "start",
-        }}
-      >
+      <Card style={{ display: "grid", gap: 10 }}>
+        <label style={{ display: "grid", gap: 5 }}>
+          <span style={{ fontSize: 13, fontWeight: 500 }}>Select User to Manage</span>
+          <select
+            value={selectedUserId ?? "NEW"}
+            onChange={(e) => {
+              if (e.target.value === "NEW") {
+                applySelectedUser(null);
+              } else {
+                const user = filteredUsers.find((u) => u.user_id === e.target.value);
+                if (user) applySelectedUser(user);
+              }
+            }}
+            style={{
+              background: D.bg,
+              color: D.text,
+              border: `1px solid ${D.border}`,
+              borderRadius: 8,
+              padding: "8px 12px",
+              fontSize: 14,
+            }}
+          >
+            <option value="NEW">-- Invite New User --</option>
+            {filteredUsers.map((u) => (
+              <option key={u.user_id} value={u.user_id}>
+                {u.display_name || u.email} ({u.email})
+              </option>
+            ))}
+          </select>
+        </label>
+      </Card>
+
+      {selectedUser === null ? (
         <Card style={{ display: "grid", gap: 12 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
             <div style={{ fontSize: 15, fontWeight: 600 }}>Invite user</div>
@@ -391,16 +416,15 @@ export function UserManagementPanel({ accessToken }: UserManagementPanelProps) {
             </div>
           </div>
         </Card>
-
+      ) : (
         <Card style={{ display: "grid", gap: 12 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
             <div style={{ fontSize: 15, fontWeight: 600 }}>
-              {selectedUser ? `Manage ${selectedUser.email}` : "Manage user"}
+              Manage {selectedUser.email}
             </div>
-            {selectedUser ? <Tag color={D.green}>{selectedUser.status}</Tag> : <Tag color={D.muted}>select one</Tag>}
+            <Tag color={membershipStatusColor(selectedUser.status)}>{selectedUser.status}</Tag>
           </div>
-          {selectedUser ? (
-            <div style={{ display: "grid", gap: 10 }}>
+          <div style={{ display: "grid", gap: 10 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <Avatar name={selectedUser.display_name || selectedUser.email} />
                 <div style={{ display: "grid", gap: 2 }}>
@@ -516,49 +540,9 @@ export function UserManagementPanel({ accessToken }: UserManagementPanelProps) {
                 )}
               </div>
             </div>
-          ) : (
-            <div style={{ fontSize: 12, color: D.dim }}>Select a user to edit their Aurora record.</div>
-          )}
-        </Card>
-      </div>
 
-      <Card style={{ display: "grid", gap: 10 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-          <div style={{ fontSize: 15, fontWeight: 600 }}>All users</div>
-          <Tag color={D.muted}>{filteredUsers.length} shown</Tag>
-        </div>
-        <div style={{ display: "grid", gap: 8 }}>
-          {filteredUsers.length === 0 && !loading ? (
-            <div style={{ fontSize: 12, color: D.dim }}>No users match the current filters.</div>
-          ) : (
-            filteredUsers.map((user) => {
-              const isSelected = user.user_id === selectedUserId;
-              return (
-                <Card
-                  key={user.user_id}
-                  onClick={() => applySelectedUser(user)}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 14,
-                    borderColor: isSelected ? D.orangeBorder : D.border,
-                    background: isSelected ? D.orangeGlow : D.card,
-                  }}
-                >
-                  <Avatar name={user.display_name || user.email} />
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 13, fontWeight: 500 }}>{user.display_name}</div>
-                    <div style={{ fontSize: 11, color: D.muted }}>{user.email}</div>
-                  </div>
-                  <Tag color={D.blue}>{user.primary_role}</Tag>
-                  <Tag color={membershipStatusColor(user.status)}>{user.status}</Tag>
-                  <Tag color={D.muted}>{user.section_memberships.length} memberships</Tag>
-                </Card>
-              );
-            })
-          )}
-        </div>
-      </Card>
+        </Card>
+      )}
     </div>
   );
 }
