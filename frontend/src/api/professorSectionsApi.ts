@@ -35,12 +35,47 @@ export interface ProfessorSectionAnalyticsPoint {
   active_students: number;
 }
 
+export interface AnalyticsCognitiveProgressionPoint {
+  x: string;
+  stage_name: string;
+  count: number;
+}
+
+export interface AnalyticsPedagogicalActionPoint {
+  stage_name: string;
+  scaffold_name: string;
+  count: number;
+}
+
+export interface AnalyticsFrustrationPoint {
+  week: string;
+  frustration: number;
+  queries: number;
+}
+
+export interface AnalyticsTimeUtilizationPoint {
+  assignment: string;
+  chat: number;
+  editor: number;
+  terminal: number;
+}
+
+export interface AnalyticsPasteIncident {
+  created_at: string;
+  session_id: string;
+  pasted_char_count: number;
+}
+
 export interface ProfessorSectionAnalytics {
   section: ProfessorSectionSummary;
   sessions_last_7_days: number;
   active_students_last_7_days: number;
   weekly_activity: ProfessorSectionAnalyticsPoint[];
   top_students: ProfessorSectionStudent[];
+  cognitive_progression: AnalyticsCognitiveProgressionPoint[];
+  pedagogical_actions: AnalyticsPedagogicalActionPoint[];
+  frustration_by_week: AnalyticsFrustrationPoint[];
+  time_utilization: AnalyticsTimeUtilizationPoint[];
   generated_at: string;
 }
 
@@ -61,7 +96,29 @@ export interface ProfessorSectionStudentAnalytics {
   negative_feedback_count: number;
   last_activity_at: string;
   weekly_activity: ProfessorSectionStudentAnalyticsPoint[];
+  cognitive_progression: AnalyticsCognitiveProgressionPoint[];
+  pedagogical_actions: AnalyticsPedagogicalActionPoint[];
+  frustration_by_week: AnalyticsFrustrationPoint[];
+  time_utilization: AnalyticsTimeUtilizationPoint[];
+  external_paste_count: number;
+  paste_incidents: AnalyticsPasteIncident[];
   generated_at: string;
+}
+
+export interface ProfessorStudentFeedbackEntry {
+  created_at: string;
+  session_id: string;
+  turn_index: number;
+  rating: "positive" | "negative";
+  explanation: string | null;
+  student_message: string | null;
+  ai_message: string | null;
+  cot: Record<string, string>;
+  rag_sources: string[];
+}
+
+export interface ProfessorStudentFeedbackResponse {
+  feedback: ProfessorStudentFeedbackEntry[];
 }
 
 export interface ProfessorSectionStudentInvitePayload {
@@ -81,16 +138,19 @@ export function professorSectionAnalyticsPath(
 }
 
 export function listProfessorSections(
-  accessToken: string
+  accessToken: string,
 ): Promise<ProfessorSectionSummary[]> {
   return apiGet<ProfessorSectionSummary[]>("/professor/sections", accessToken);
 }
 
 export function listProfessorSectionStudents(
   sectionId: string,
-  accessToken: string
+  accessToken: string,
 ): Promise<ProfessorSectionStudent[]> {
-  return apiGet<ProfessorSectionStudent[]>(professorSectionStudentsPath(sectionId), accessToken);
+  return apiGet<ProfessorSectionStudent[]>(
+    professorSectionStudentsPath(sectionId),
+    accessToken,
+  );
 }
 
 export function inviteProfessorSectionStudent(
@@ -98,11 +158,10 @@ export function inviteProfessorSectionStudent(
   accessToken: string,
   payload: ProfessorSectionStudentInvitePayload,
 ): Promise<ProfessorSectionStudent[]> {
-  return apiPost<ProfessorSectionStudentInvitePayload, ProfessorSectionStudent[]>(
-    professorSectionStudentsPath(sectionId),
-    payload,
-    accessToken,
-  );
+  return apiPost<
+    ProfessorSectionStudentInvitePayload,
+    ProfessorSectionStudent[]
+  >(professorSectionStudentsPath(sectionId), payload, accessToken);
 }
 
 export function getProfessorSectionAnalytics(
@@ -110,7 +169,10 @@ export function getProfessorSectionAnalytics(
   accessToken: string,
   tz = "America/Los_Angeles",
 ): Promise<ProfessorSectionAnalytics> {
-  return apiGet<ProfessorSectionAnalytics>(professorSectionAnalyticsPath(sectionId, tz), accessToken);
+  return apiGet<ProfessorSectionAnalytics>(
+    professorSectionAnalyticsPath(sectionId, tz),
+    accessToken,
+  );
 }
 
 export function professorSectionStudentAnalyticsPath(
@@ -125,10 +187,26 @@ export function getProfessorSectionStudentAnalytics(
   sectionId: string,
   studentUserId: string,
   accessToken: string,
-  tz = "America/Los_Angeles",
+  tz: string = Intl.DateTimeFormat().resolvedOptions().timeZone,
 ): Promise<ProfessorSectionStudentAnalytics> {
+  const params = new URLSearchParams();
+  if (tz) params.append("tz", tz);
   return apiGet<ProfessorSectionStudentAnalytics>(
-    professorSectionStudentAnalyticsPath(sectionId, studentUserId, tz),
+    `/professor/sections/${encodeURIComponent(sectionId)}/students/${encodeURIComponent(studentUserId)}/analytics?${params.toString()}`,
+    accessToken,
+  );
+}
+
+export function getProfessorSectionStudentFeedback(
+  sectionId: string,
+  studentUserId: string,
+  accessToken: string,
+  limit: number = 50,
+): Promise<ProfessorStudentFeedbackResponse> {
+  const params = new URLSearchParams();
+  params.append("limit", limit.toString());
+  return apiGet<ProfessorStudentFeedbackResponse>(
+    `/professor/sections/${encodeURIComponent(sectionId)}/students/${encodeURIComponent(studentUserId)}/feedback?${params.toString()}`,
     accessToken,
   );
 }

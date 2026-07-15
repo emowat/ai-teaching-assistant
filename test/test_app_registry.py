@@ -1256,6 +1256,22 @@ class _FakeCursor:
                 self._rows = [(record["role_in_section"], record["status"])]
             return
 
+        if "FROM tutor_sessions" in sql and "GROUP BY" in sql:
+            self._rows = []
+            return
+            
+        if "FROM tutor_turn_snapshots" in sql and "GROUP BY" in sql:
+            self._rows = []
+            return
+            
+        if "external_paste_detected" in sql:
+            self._rows = []
+            return
+            
+        if "FROM telemetry_events" in sql and "GROUP BY" in sql:
+            self._rows = []
+            return
+
         raise AssertionError(f"Unexpected SQL: {sql}")
 
     def fetchall(self):

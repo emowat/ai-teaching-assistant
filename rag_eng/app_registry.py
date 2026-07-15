@@ -37,7 +37,14 @@ from rag_eng.schemas import (
     ProfessorSectionAnalyticsPoint,
     ProfessorSectionStudentAnalytics,
     ProfessorSectionStudentAnalyticsPoint,
+    AnalyticsCognitiveProgressionPoint,
+    AnalyticsTimeUtilizationPoint,
+    AnalyticsPedagogicalActionPoint,
+    AnalyticsFrustrationPoint,
+    AnalyticsPasteIncident,
     ProfessorSectionSummary,
+    ProfessorStudentFeedbackEntry,
+    ProfessorStudentFeedbackResponse,
     ProfessorSectionStudentInviteCreate,
     ProfessorTeachingPlan,
     ProfessorTeachingPlanUpdate,
@@ -129,7 +136,8 @@ def load_app_registry_runtime_config(
     """Load Aurora app-registry settings from the current process environment."""
     source = env or os.environ
     return AppRegistryRuntimeConfig(
-        database_url=source.get("COURSE_REGISTRY_DATABASE_URL") or source.get("DATABASE_URL"),
+        database_url=source.get("COURSE_REGISTRY_DATABASE_URL")
+        or source.get("DATABASE_URL"),
         connect_timeout_seconds=int(
             source.get(
                 "COURSE_REGISTRY_CONNECT_TIMEOUT_SECONDS",
@@ -234,7 +242,9 @@ def _section_summary_from_row(row: tuple[Any, ...]) -> dict[str, Any]:
     }
 
 
-def _membership_summary_from_section_row(row: tuple[Any, ...]) -> SectionMembershipSummary:
+def _membership_summary_from_section_row(
+    row: tuple[Any, ...],
+) -> SectionMembershipSummary:
     (
         section_id,
         user_id,
@@ -332,7 +342,9 @@ def _section_instruction_settings_from_row(
         student_access_enabled=bool(student_access_enabled),
         week_resolution_mode=_clean_text(week_resolution_mode) or "manual",
         manual_current_week_number=(
-            int(manual_current_week_number) if manual_current_week_number is not None else None
+            int(manual_current_week_number)
+            if manual_current_week_number is not None
+            else None
         ),
         teaching_plan_prompt_enabled=bool(teaching_plan_prompt_enabled),
         references_prompt_enabled=bool(references_prompt_enabled),
@@ -342,13 +354,17 @@ def _section_instruction_settings_from_row(
     )
 
 
-def _fetch_one_row(connection, query: str, params: tuple[Any, ...]) -> tuple[Any, ...] | None:
+def _fetch_one_row(
+    connection, query: str, params: tuple[Any, ...]
+) -> tuple[Any, ...] | None:
     with connection.cursor() as cursor:
         cursor.execute(query, params)
         return cursor.fetchone()
 
 
-def _fetch_all_rows(connection, query: str, params: tuple[Any, ...] = ()) -> list[tuple[Any, ...]]:
+def _fetch_all_rows(
+    connection, query: str, params: tuple[Any, ...] = ()
+) -> list[tuple[Any, ...]]:
     with connection.cursor() as cursor:
         cursor.execute(query, params)
         return cursor.fetchall()
@@ -481,7 +497,9 @@ def _invite_cognito_student_user(
             cognito_sub = _cognito_attribute_value(refreshed_user, "sub")
 
     if not cognito_sub:
-        raise CognitoInviteError(f"Unable to resolve Cognito subject for invited user {email}.")
+        raise CognitoInviteError(
+            f"Unable to resolve Cognito subject for invited user {email}."
+        )
 
     return {
         "username": username,
@@ -515,7 +533,9 @@ def _group_admin_sections(
     section_rows: list[tuple[Any, ...]],
     membership_rows: list[tuple[Any, ...]],
 ) -> list[AdminSection]:
-    memberships_by_section: dict[str, list[SectionMembershipSummary]] = defaultdict(list)
+    memberships_by_section: dict[str, list[SectionMembershipSummary]] = defaultdict(
+        list
+    )
     counts_by_section: dict[str, dict[str, int]] = defaultdict(
         lambda: {"professor": 0, "ta": 0, "student": 0}
     )
@@ -524,7 +544,10 @@ def _group_admin_sections(
         section_id = _clean_text(row[0])
         membership = _membership_summary_from_section_row(row)
         memberships_by_section[section_id].append(membership)
-        if membership.status == "active" and membership.role_in_section in counts_by_section[section_id]:
+        if (
+            membership.status == "active"
+            and membership.role_in_section in counts_by_section[section_id]
+        ):
             counts_by_section[section_id][membership.role_in_section] += 1
 
     sections: list[AdminSection] = []
@@ -657,7 +680,9 @@ def _load_user_by_cognito_sub(connection, cognito_sub: str) -> tuple[Any, ...] |
 
 def _assert_user_row(row: tuple[Any, ...] | None, cognito_sub: str) -> tuple[Any, ...]:
     if row is None:
-        raise AppUserNotFoundError(f"No application user exists for cognito_sub={cognito_sub}.")
+        raise AppUserNotFoundError(
+            f"No application user exists for cognito_sub={cognito_sub}."
+        )
     return row
 
 
@@ -920,7 +945,11 @@ def _load_student_section_rows(
     *,
     allowed_roles: set[str] | None = None,
 ) -> list[tuple[Any, ...]]:
-    allowed = {role for role in (allowed_roles or {"student"}) if role in {"student", "professor", "ta"}}
+    allowed = {
+        role
+        for role in (allowed_roles or {"student"})
+        if role in {"student", "professor", "ta"}
+    }
     if not allowed:
         return []
 
@@ -1044,7 +1073,9 @@ def _json_list_from_value(value: object | None) -> list[str]:
     return [cleaned] if cleaned else []
 
 
-def _load_section_teaching_plan_row(connection, section_id: str) -> tuple[Any, ...] | None:
+def _load_section_teaching_plan_row(
+    connection, section_id: str
+) -> tuple[Any, ...] | None:
     return _fetch_one_row(
         connection,
         """
@@ -1295,7 +1326,9 @@ def _load_professor_section_teaching_plan(
         connection,
         teaching_plan_id,
     )
-    references_by_week_id: dict[str, list[ProfessorTeachingPlanWeekReference]] = defaultdict(list)
+    references_by_week_id: dict[str, list[ProfessorTeachingPlanWeekReference]] = (
+        defaultdict(list)
+    )
     for reference_row in reference_rows:
         reference = _teaching_plan_week_reference_from_row(reference_row)
         references_by_week_id[reference.week_id].append(reference)
@@ -1467,13 +1500,19 @@ def resolve_application_user(
 
     cognito_sub = _clean_text(current_user.cognito_sub)
     if not cognito_sub:
-        raise AppUserNotProvisionedError("Current user does not include a Cognito subject claim.")
+        raise AppUserNotProvisionedError(
+            "Current user does not include a Cognito subject claim."
+        )
 
     with _connect_postgres(database_url, runtime.connect_timeout_seconds) as connection:
-        row = _load_user_by_cognito_sub(connection, cognito_sub) if cognito_sub else None
+        row = (
+            _load_user_by_cognito_sub(connection, cognito_sub) if cognito_sub else None
+        )
         if row is not None:
             if _clean_text(row[5]) == "disabled":
-                raise AppUserDisabledError(f"Application user {current_user.email or cognito_sub} is disabled.")
+                raise AppUserDisabledError(
+                    f"Application user {current_user.email or cognito_sub} is disabled."
+                )
             if _clean_text(row[5]) != "active":
                 with connection.cursor() as cursor:
                     cursor.execute(
@@ -1489,7 +1528,9 @@ def resolve_application_user(
         else:
             email = _normalize_email(current_user.email)
             if not email:
-                raise AppUserNotProvisionedError("Current user does not include an email claim.")
+                raise AppUserNotProvisionedError(
+                    "Current user does not include an email claim."
+                )
             row = _load_user_by_email(connection, email)
             if row is None:
                 raise AppUserNotProvisionedError(
@@ -1503,7 +1544,9 @@ def resolve_application_user(
             if _clean_text(row[5]) == "disabled":
                 raise AppUserDisabledError(f"Application user {email} is disabled.")
             if existing_cognito_sub != cognito_sub:
-                _insert_or_update_claim(connection, user_id=str(row[0]), cognito_sub=cognito_sub)
+                _insert_or_update_claim(
+                    connection, user_id=str(row[0]), cognito_sub=cognito_sub
+                )
             if _clean_text(row[5]) != "active":
                 with connection.cursor() as cursor:
                     cursor.execute(
@@ -1515,7 +1558,9 @@ def resolve_application_user(
                         """,
                         (str(row[0]),),
                     )
-            row = _load_user_by_cognito_sub(connection, cognito_sub) or _load_user_by_email(connection, email)
+            row = _load_user_by_cognito_sub(
+                connection, cognito_sub
+            ) or _load_user_by_email(connection, email)
 
     return _user_summary_from_row(_assert_user_row(row, cognito_sub))
 
@@ -2063,8 +2108,12 @@ def get_professor_section_analytics(
             (section_id, tz),
         )
         totals = {
-            "sessions": int(totals_row[0]) if totals_row and totals_row[0] is not None else 0,
-            "active_students": int(totals_row[1]) if totals_row and totals_row[1] is not None else 0,
+            "sessions": int(totals_row[0])
+            if totals_row and totals_row[0] is not None
+            else 0,
+            "active_students": int(totals_row[1])
+            if totals_row and totals_row[1] is not None
+            else 0,
         }
 
         daily_rows = _fetch_all_rows(
@@ -2132,12 +2181,97 @@ def get_professor_section_analytics(
         for values in timeline.values()
     ]
 
+    with _connect_postgres(database_url, runtime.connect_timeout_seconds) as connection:
+        cognitive_rows = _fetch_all_rows(
+            connection,
+            """
+            SELECT
+                COALESCE('Week ' || (snapshot->'instructional_context_phase'->>'effective_week'), 'Week Unknown') as week,
+                COALESCE(INITCAP(REPLACE(SUBSTRING(snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Cognitive_Stage' FROM '([a-zA-Z]{5,})'), '_', ' ')), 'Unknown') as stage,
+                COUNT(*) as count
+            FROM tutor_turn_snapshots
+            WHERE section_id = %s
+              AND snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Cognitive_Stage' IS NOT NULL
+            GROUP BY week, stage
+            """,
+            (section_id,),
+        )
+        time_rows = _fetch_all_rows(
+            connection,
+            """
+            SELECT
+                COALESCE('Week ' || (s.snapshot->'instructional_context_phase'->>'effective_week'), 'Week Unknown') as assignment,
+                SUM(COALESCE(CAST(t.metadata->>'active_chat_seconds' AS INTEGER), 0)) as chat_seconds,
+                SUM(COALESCE(CAST(t.metadata->>'active_editor_seconds' AS INTEGER), 0)) as editor_seconds,
+                SUM(COALESCE(CAST(t.metadata->>'active_shell_seconds' AS INTEGER), 0)) as terminal_seconds
+            FROM telemetry_events t
+            LEFT JOIN tutor_turn_snapshots s ON t.turn_id = s.turn_id
+            WHERE t.event_type = 'out_of_band_telemetry'
+            AND t.section_id = %s
+            GROUP BY assignment
+            """,
+            (section_id,),
+        )
+        pedagogical_rows = _fetch_all_rows(
+            connection,
+            """
+            SELECT
+                COALESCE(INITCAP(REPLACE(SUBSTRING(snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Cognitive_Stage' FROM '([a-zA-Z]{5,})'), '_', ' ')), 'Unknown') as stage,
+                COALESCE(INITCAP(REPLACE(SUBSTRING(snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Pedagogical_Action' FROM '([A-Z_]{2,})'), '_', ' ')), 'None') as category,
+                COUNT(*) as count
+            FROM tutor_turn_snapshots
+            WHERE section_id = %s
+              AND snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Pedagogical_Action' IS NOT NULL
+            GROUP BY stage, category
+            """,
+            (section_id,),
+        )
+        frustration_rows = _fetch_all_rows(
+            connection,
+            """
+            SELECT
+                COALESCE('Week ' || (snapshot->'instructional_context_phase'->>'effective_week'), 'Week Unknown') as week,
+                COALESCE(CAST(SUBSTRING(snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Escalation_State' FROM 'Frustration Level: ([0-9]+)') AS INTEGER), 1) as frustration,
+                COUNT(*) as count
+            FROM tutor_turn_snapshots
+            WHERE section_id = %s
+            GROUP BY week, frustration
+            """,
+            (section_id,),
+        )
+
+    cognitive_data = [
+        AnalyticsCognitiveProgressionPoint(x=r[0], stage_name=r[1], count=r[2])
+        for r in cognitive_rows
+    ]
+    time_data = [
+        AnalyticsTimeUtilizationPoint(
+            assignment=r[0],
+            chat=r[1] / 3600.0,
+            editor=r[2] / 3600.0,
+            terminal=r[3] / 3600.0,
+        )
+        for r in time_rows
+    ]
+    pedagogical_data = [
+        AnalyticsPedagogicalActionPoint(stage_name=r[0], scaffold_name=r[1], count=r[2])
+        for r in pedagogical_rows
+    ]
+    frustration_data = [
+        AnalyticsFrustrationPoint(week=r[0], frustration=r[1], queries=r[2])
+        for r in frustration_rows
+    ]
+
     return ProfessorSectionAnalytics(
         section=section_summary,
         sessions_last_7_days=totals["sessions"],
         active_students_last_7_days=totals["active_students"],
         weekly_activity=weekly_activity,
         top_students=top_students,
+        cognitive_progression=cognitive_data,
+        pedagogical_actions=pedagogical_data,
+        frustration_by_week=frustration_data,
+        time_utilization=time_data,
         generated_at=_format_timestamp(datetime.now(timezone.utc)),
     )
 
@@ -2311,7 +2445,86 @@ def get_professor_section_student_analytics(
             (tz, section_id, *activity_params, tz),
         )
 
-    session_count = int(session_row[0]) if session_row and session_row[0] is not None else 0
+        cognitive_rows = _fetch_all_rows(
+            connection,
+            """
+            SELECT
+                COALESCE('Week ' || (snapshot->'instructional_context_phase'->>'effective_week'), 'Week Unknown') as week,
+                COALESCE(INITCAP(REPLACE(SUBSTRING(snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Cognitive_Stage' FROM '([a-zA-Z]{5,})'), '_', ' ')), 'Unknown') as stage,
+                COUNT(*) as count
+            FROM tutor_turn_snapshots
+            WHERE section_id = %s
+              AND (user_sub = %s OR app_user_id::text = %s)
+              AND snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Cognitive_Stage' IS NOT NULL
+            GROUP BY week, stage
+            """,
+            (section_id, *activity_params),
+        )
+        time_rows = _fetch_all_rows(
+            connection,
+            """
+            SELECT
+                COALESCE('Week ' || (s.snapshot->'instructional_context_phase'->>'effective_week'), 'Week Unknown') as assignment,
+                SUM(COALESCE(CAST(t.metadata->>'active_chat_seconds' AS INTEGER), 0)) as chat_seconds,
+                SUM(COALESCE(CAST(t.metadata->>'active_editor_seconds' AS INTEGER), 0)) as editor_seconds,
+                SUM(COALESCE(CAST(t.metadata->>'active_shell_seconds' AS INTEGER), 0)) as terminal_seconds
+            FROM telemetry_events t
+            LEFT JOIN tutor_turn_snapshots s ON t.turn_id = s.turn_id
+            WHERE t.event_type = 'out_of_band_telemetry'
+              AND t.section_id = %s
+              AND (t.user_sub = %s OR t.app_user_id::text = %s)
+            GROUP BY assignment
+            """,
+            (section_id, *activity_params),
+        )
+        pedagogical_rows = _fetch_all_rows(
+            connection,
+            """
+            SELECT
+                COALESCE(INITCAP(REPLACE(SUBSTRING(snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Cognitive_Stage' FROM '([a-zA-Z]{5,})'), '_', ' ')), 'Unknown') as stage,
+                COALESCE(INITCAP(REPLACE(SUBSTRING(snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Pedagogical_Action' FROM '([A-Z_]{2,})'), '_', ' ')), 'None') as category,
+                COUNT(*) as count
+            FROM tutor_turn_snapshots
+            WHERE section_id = %s
+              AND (user_sub = %s OR app_user_id::text = %s)
+              AND snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Pedagogical_Action' IS NOT NULL
+            GROUP BY stage, category
+            """,
+            (section_id, *activity_params),
+        )
+        frustration_rows = _fetch_all_rows(
+            connection,
+            """
+            SELECT
+                COALESCE('Week ' || (snapshot->'instructional_context_phase'->>'effective_week'), 'Week Unknown') as week,
+                COALESCE(CAST(SUBSTRING(snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Escalation_State' FROM 'Frustration Level: ([0-9]+)') AS INTEGER), 1) as frustration,
+                COUNT(*) as count
+            FROM tutor_turn_snapshots
+            WHERE section_id = %s
+              AND (user_sub = %s OR app_user_id::text = %s)
+            GROUP BY week, frustration
+            """,
+            (section_id, *activity_params),
+        )
+        paste_rows = _fetch_all_rows(
+            connection,
+            """
+            SELECT
+                created_at,
+                session_id,
+                (snapshot->'ide_context'->'clipboard_event'->>'pasted_char_count')::integer as char_count
+            FROM tutor_turn_snapshots
+            WHERE section_id = %s
+              AND (user_sub = %s OR app_user_id::text = %s)
+              AND (snapshot->'ide_context'->'clipboard_event'->>'external_paste_detected')::boolean = true
+            ORDER BY created_at DESC
+            """,
+            (section_id, *activity_params),
+        )
+
+    session_count = (
+        int(session_row[0]) if session_row and session_row[0] is not None else 0
+    )
     last_session_at = session_row[1] if session_row else None
     turn_count = int(turn_row[0]) if turn_row and turn_row[0] is not None else 0
     last_turn_at = turn_row[1] if turn_row else None
@@ -2321,10 +2534,16 @@ def get_professor_section_student_analytics(
     negative_feedback_count = (
         int(feedback_row[1]) if feedback_row and feedback_row[1] is not None else 0
     )
-    last_feedback_at = feedback_row[2] if feedback_row and len(feedback_row) > 2 else None
+    last_feedback_at = (
+        feedback_row[2] if feedback_row and len(feedback_row) > 2 else None
+    )
 
     last_activity_at = max(
-        [value for value in (last_session_at, last_turn_at, last_feedback_at) if value is not None],
+        [
+            value
+            for value in (last_session_at, last_turn_at, last_feedback_at)
+            if value is not None
+        ],
         default=None,
     )
 
@@ -2363,17 +2582,53 @@ def get_professor_section_student_analytics(
         for values in timeline.values()
     ]
 
+    cognitive_data = [
+        AnalyticsCognitiveProgressionPoint(x=r[0], stage_name=r[1], count=r[2])
+        for r in cognitive_rows
+    ]
+    time_data = [
+        AnalyticsTimeUtilizationPoint(
+            assignment=r[0],
+            chat=r[1] / 3600.0,
+            editor=r[2] / 3600.0,
+            terminal=r[3] / 3600.0,
+        )
+        for r in time_rows
+    ]
+    pedagogical_data = [
+        AnalyticsPedagogicalActionPoint(stage_name=r[0], scaffold_name=r[1], count=r[2])
+        for r in pedagogical_rows
+    ]
+    frustration_data = [
+        AnalyticsFrustrationPoint(week=r[0], frustration=r[1], queries=r[2])
+        for r in frustration_rows
+    ]
+    paste_incidents = [
+        AnalyticsPasteIncident(
+            created_at=_format_timestamp(r[0]),
+            session_id=str(r[1]),
+            pasted_char_count=int(r[2] or 0),
+        )
+        for r in paste_rows
+    ]
+
     return ProfessorSectionStudentAnalytics(
         section=section_summary,
         student=student_summary,
         total_sessions=session_count,
         total_turns=turn_count,
-        sessions_last_7_days=sum(int(values["sessions"]) for values in timeline.values()),
-        turns_last_7_days=sum(int(values["turns"]) for values in timeline.values()),
+        sessions_last_7_days=sum(point.sessions for point in weekly_activity),
+        turns_last_7_days=sum(point.turns for point in weekly_activity),
         positive_feedback_count=positive_feedback_count,
         negative_feedback_count=negative_feedback_count,
         last_activity_at=_format_timestamp(last_activity_at),
         weekly_activity=weekly_activity,
+        cognitive_progression=cognitive_data,
+        pedagogical_actions=pedagogical_data,
+        frustration_by_week=frustration_data,
+        time_utilization=time_data,
+        external_paste_count=len(paste_incidents),
+        paste_incidents=paste_incidents,
         generated_at=_format_timestamp(datetime.now(timezone.utc)),
     )
 
@@ -2396,10 +2651,7 @@ def list_professor_section_launch_configs(
     with _connect_postgres(database_url, runtime.connect_timeout_seconds) as connection:
         rows = _load_section_launch_config_rows(connection, section_id)
 
-    return [
-        _launch_config_from_row(row, model_cls=SectionLaunchConfig)
-        for row in rows
-    ]
+    return [_launch_config_from_row(row, model_cls=SectionLaunchConfig) for row in rows]
 
 
 def replace_professor_section_launch_configs(
@@ -2428,7 +2680,9 @@ def replace_professor_section_launch_configs(
         if not label:
             raise ValueError("label is required for each launch config.")
         if launch_id in seen_launch_ids:
-            raise ValueError(f"Duplicate launch_id '{launch_id}' in launch config payload.")
+            raise ValueError(
+                f"Duplicate launch_id '{launch_id}' in launch config payload."
+            )
         seen_launch_ids.add(launch_id)
         normalized_rows.append(
             (
@@ -2470,7 +2724,9 @@ def replace_professor_section_launch_configs(
                     row,
                 )
 
-    return list_professor_section_launch_configs(current_user, section_id, runtime=runtime)
+    return list_professor_section_launch_configs(
+        current_user, section_id, runtime=runtime
+    )
 
 
 def get_professor_section_teaching_plan(
@@ -2682,7 +2938,11 @@ def upsert_professor_section_instruction_settings(
 
     with _connect_postgres(database_url, runtime.connect_timeout_seconds) as connection:
         row = _load_section_instruction_settings_row(connection, section_id)
-    return _section_instruction_settings_from_row(row) if row is not None else SectionInstructionSettings(section_id=section_id)
+    return (
+        _section_instruction_settings_from_row(row)
+        if row is not None
+        else SectionInstructionSettings(section_id=section_id)
+    )
 
 
 def get_section_instructional_context(
@@ -2725,7 +2985,10 @@ def get_section_instructional_context(
 
     if not policy.teaching_plan_orchestration.enabled:
         return context
-    if policy.teaching_plan_orchestration.homework_assist_only and mode != "Homework Assist":
+    if (
+        policy.teaching_plan_orchestration.homework_assist_only
+        and mode != "Homework Assist"
+    ):
         context["reason"] = "mode_not_supported"
         return context
 
@@ -2776,12 +3039,19 @@ def get_section_instructional_context(
             return context
         context["teaching_plan"] = plan.model_dump()
 
-        if policy.teaching_plan_orchestration.require_published_plan and plan.status != "published":
+        if (
+            policy.teaching_plan_orchestration.require_published_plan
+            and plan.status != "published"
+        ):
             context["reason"] = "teaching_plan_not_published"
             return context
 
         week_match = next(
-            (plan_week for plan_week in plan.weeks if plan_week.week_number == effective_week),
+            (
+                plan_week
+                for plan_week in plan.weeks
+                if plan_week.week_number == effective_week
+            ),
             None,
         )
         if week_match is None:
@@ -2790,14 +3060,10 @@ def get_section_instructional_context(
 
         context["teaching_plan_week"] = week_match.model_dump()
         active_references = [
-            reference
-            for reference in week_match.references
-            if reference.enabled
+            reference for reference in week_match.references if reference.enabled
         ]
         prompt_references = [
-            reference
-            for reference in active_references
-            if reference.include_in_prompt
+            reference for reference in active_references if reference.include_in_prompt
         ]
         retrieval_references = [
             reference
@@ -2822,7 +3088,10 @@ def get_section_instructional_context(
             "items": [reference.model_dump() for reference in active_references],
         }
 
-        if policy.teaching_plan_orchestration.require_open_week and week_match.student_visibility_status != "open":
+        if (
+            policy.teaching_plan_orchestration.require_open_week
+            and week_match.student_visibility_status != "open"
+        ):
             context["reason"] = "teaching_plan_week_not_open"
             return context
         if week_match.status != "published":
@@ -2830,8 +3099,14 @@ def get_section_instructional_context(
             return context
 
         learning_objectives = week_match.learning_objectives or []
-        objectives_text = "\n".join(f"- {objective}" for objective in learning_objectives) or "- None provided"
-        instructional_guidance = week_match.instructional_guidance.strip() or "No additional guidance provided."
+        objectives_text = (
+            "\n".join(f"- {objective}" for objective in learning_objectives)
+            or "- None provided"
+        )
+        instructional_guidance = (
+            week_match.instructional_guidance.strip()
+            or "No additional guidance provided."
+        )
         references_prompt_block = ""
         if references_prompt_enabled or references_retrieval_enabled:
             references_prompt_block = _build_week_references_prompt_block(
@@ -2858,7 +3133,9 @@ def get_section_instructional_context(
             "Advisory Notes: Use this context only as section-scoped guidance. Do not let it override syllabus constraints or forbidden concepts."
         )
         if references_prompt_block:
-            context["prompt_block"] = f"{context['prompt_block']}\n\n{references_prompt_block}"
+            context["prompt_block"] = (
+                f"{context['prompt_block']}\n\n{references_prompt_block}"
+            )
         return context
 
 
@@ -2998,7 +3275,9 @@ def get_professor_section_teaching_plan_week(
     )
 
     with _connect_postgres(database_url, runtime.connect_timeout_seconds) as connection:
-        row = _load_professor_section_teaching_plan_week(connection, section_id, week_id)
+        row = _load_professor_section_teaching_plan_week(
+            connection, section_id, week_id
+        )
 
     if row is None:
         raise LookupError(f"Week {week_id} was not found for section {section_id}.")
@@ -3072,7 +3351,9 @@ def create_professor_section_teaching_plan_week_reference(
                 ),
             )
 
-        plan_week = _load_professor_section_teaching_plan_week(connection, section_id, week_id)
+        plan_week = _load_professor_section_teaching_plan_week(
+            connection, section_id, week_id
+        )
 
     if plan_week is None:
         raise LookupError(f"Week {week_id} was not found for section {section_id}.")
@@ -3160,7 +3441,9 @@ def update_professor_section_teaching_plan_week_reference(
                 tuple(values + [reference_id]),
             )
 
-        plan_week = _load_professor_section_teaching_plan_week(connection, section_id, week_id)
+        plan_week = _load_professor_section_teaching_plan_week(
+            connection, section_id, week_id
+        )
 
     if plan_week is None:
         raise LookupError(f"Week {week_id} was not found for section {section_id}.")
@@ -3212,7 +3495,9 @@ def delete_professor_section_teaching_plan_week_reference(
                 (reference_id,),
             )
 
-        plan_week = _load_professor_section_teaching_plan_week(connection, section_id, week_id)
+        plan_week = _load_professor_section_teaching_plan_week(
+            connection, section_id, week_id
+        )
 
     if plan_week is None:
         raise LookupError(f"Week {week_id} was not found for section {section_id}.")
@@ -3363,9 +3648,14 @@ def list_professor_section_students(
     )
 
     with _connect_postgres(database_url, runtime.connect_timeout_seconds) as connection:
-        rows = _load_student_rows_for_section(connection, section_id, include_inactive=True)
+        rows = _load_student_rows_for_section(
+            connection, section_id, include_inactive=True
+        )
 
-    return [ProfessorSectionStudent.model_validate(_student_row_from_tuple(row)) for row in rows]
+    return [
+        ProfessorSectionStudent.model_validate(_student_row_from_tuple(row))
+        for row in rows
+    ]
 
 
 def invite_professor_section_student(
@@ -3422,7 +3712,10 @@ def invite_professor_section_student(
             if _clean_text(user_row[5]) == "disabled":
                 raise AppUserDisabledError(f"User with email {email} is disabled.")
             existing_cognito_sub = _clean_text(user_row[1])
-            if existing_cognito_sub and existing_cognito_sub != cognito_invite["cognito_sub"]:
+            if (
+                existing_cognito_sub
+                and existing_cognito_sub != cognito_invite["cognito_sub"]
+            ):
                 raise AppUserConflictError(
                     f"User with email {email} is already linked to another Cognito identity."
                 )
@@ -3506,7 +3799,9 @@ def get_student_bootstrap(
     database_url = _require_database_url(runtime)
     app_user = sync_application_user(current_user, runtime=runtime)
     if not app_user:
-        raise AppUserNotProvisionedError("No provisioned application user is available for this identity.")
+        raise AppUserNotProvisionedError(
+            "No provisioned application user is available for this identity."
+        )
     allowed_roles = student_surface_allowed_roles(current_user.primary_role)
 
     with _connect_postgres(database_url, runtime.connect_timeout_seconds) as connection:
@@ -3538,7 +3833,9 @@ def get_student_bootstrap(
                 section_id = _clean_text(row[0])
                 course_id = _clean_text(row[1])
 
-                section_configs = _load_section_launch_config_rows(connection, section_id)
+                section_configs = _load_section_launch_config_rows(
+                    connection, section_id
+                )
                 if section_configs:
                     launch_configs_by_section[section_id] = [
                         StudentLaunchConfig(
@@ -3554,10 +3851,14 @@ def get_student_bootstrap(
                     ]
                     continue
 
-                cursor.execute("SELECT launch_configs FROM courses WHERE course_id = %s", (course_id,))
+                cursor.execute(
+                    "SELECT launch_configs FROM courses WHERE course_id = %s",
+                    (course_id,),
+                )
                 course_row = cursor.fetchone()
                 if course_row and course_row[0]:
                     import json
+
                     try:
                         course_configs = json.loads(course_row[0])
                         launch_configs_by_section[section_id] = [
@@ -3566,7 +3867,8 @@ def get_student_bootstrap(
                                 label=_clean_text(c.get("label", "")),
                                 repo_url=_clean_text(c.get("repo_url", "")),
                                 template_url=_clean_text(c.get("template_url", "")),
-                                default_branch=_clean_text(c.get("default_branch", "")) or "main",
+                                default_branch=_clean_text(c.get("default_branch", ""))
+                                or "main",
                                 enabled=bool(c.get("enabled", True)),
                                 sort_order=int(c.get("sort_order", 0)),
                             )
@@ -3587,7 +3889,6 @@ def get_student_bootstrap(
             status=_clean_text(app_user["status"]),
             consent_status=_clean_text(app_user.get("consent_status")) or "pending",
         ),
-
         sections=[
             _student_section_from_row(
                 row,
@@ -3602,3 +3903,109 @@ def get_student_bootstrap(
             feedback="/api/student/feedback",
         ),
     )
+
+
+def get_professor_section_student_feedback(
+    current_user: CurrentUser,
+    section_id: str,
+    student_user_id: str,
+    *,
+    limit: int = 50,
+    runtime: AppRegistryRuntimeConfig | None = None,
+) -> ProfessorStudentFeedbackResponse:
+    """Return recent student feedback for a specific section and student."""
+    runtime = runtime or load_app_registry_runtime_config()
+    database_url = _require_database_url(runtime)
+    require_section_membership(
+        current_user,
+        section_id,
+        allowed_roles={"professor", "ta"},
+        runtime=runtime,
+    )
+
+    with _connect_postgres(database_url, runtime.connect_timeout_seconds) as connection:
+        section_row = _load_section_by_id(connection, section_id)
+        if section_row is None:
+            raise SectionNotFoundError(f"Section {section_id} was not found.")
+
+        student_row = _load_user_by_id(connection, student_user_id)
+        if student_row is None:
+            raise AppUserNotFoundError(f"User {student_user_id} was not found.")
+
+        membership_row = _fetch_one_row(
+            connection,
+            "SELECT sm.role_in_section, sm.status FROM section_memberships AS sm WHERE sm.section_id = %s AND sm.user_id = %s",
+            (section_id, student_user_id),
+        )
+        if membership_row is None:
+            raise MembershipNotFoundError(
+                f"Student {student_user_id} is not assigned to section {section_id}."
+            )
+
+        student_cognito_sub = _clean_text(student_row[1])
+        activity_identity = student_cognito_sub or student_user_id
+        activity_params = (activity_identity, student_user_id)
+
+        rows = _fetch_all_rows(
+            connection,
+            """
+            SELECT
+                session_id,
+                turn_index,
+                snapshot->'feedback'->>'thumbs_up' as rating,
+                snapshot->'feedback'->>'explanation' as explanation,
+                created_at,
+                COALESCE(snapshot->'student_phase'->>'raw_input', '') as student_message,
+                CASE
+                    WHEN (snapshot->'ta_generation_phase'->'output_guardrail'->>'blocked')::boolean = true THEN
+                        '[BLOCKED: ' || COALESCE(snapshot->'ta_generation_phase'->'output_guardrail'->>'final_answer', '') || ']\n\n' || COALESCE(snapshot->'ta_generation_phase'->'generation_history'->-1->>'raw_generation', '')
+                    ELSE
+                        COALESCE(snapshot->'ta_generation_phase'->'generation_history'->-1->>'raw_generation', '')
+                END as ai_message,
+                snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys' as cot,
+                snapshot->'backend_retrieval_phase'->'retrieved_rag_chunks' as rag_sources
+            FROM tutor_turn_snapshots
+            WHERE snapshot->'feedback' IS NOT NULL
+              AND section_id = %s
+              AND (user_sub = %s OR app_user_id::text = %s)
+            ORDER BY created_at DESC
+            LIMIT %s
+            """,
+            (section_id, *activity_params, limit),
+        )
+
+        feedback_entries = []
+        for row in rows:
+            rag_files = row[8]
+            unique_sources = []
+            if rag_files and isinstance(rag_files, list):
+                for f_data in rag_files:
+                    src = f_data.get("Source", f_data.get("source"))
+                    if src and src not in unique_sources:
+                        unique_sources.append(src)
+
+            raw_ai_message = row[6] if row[6] else ""
+            import re
+
+            clean_ai_message = re.sub(
+                r"<analysis>.*?</analysis>",
+                "",
+                raw_ai_message,
+                flags=re.DOTALL,
+            ).strip()
+
+            feedback_entries.append(
+                ProfessorStudentFeedbackEntry(
+                    session_id=str(row[0]),
+                    turn_index=int(row[1]) if row[1] is not None else 0,
+                    rating=str(row[2]),
+                    explanation=str(row[3]) if row[3] else None,
+                    created_at=_format_timestamp(row[4]),
+                    student_message=str(row[5]) if row[5] else None,
+                    ai_message=clean_ai_message or None,
+                    cot=row[7] if isinstance(row[7], dict) else {},
+                    rag_sources=unique_sources,
+                )
+            )
+
+    return ProfessorStudentFeedbackResponse(feedback=feedback_entries)

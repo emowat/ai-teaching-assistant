@@ -8,11 +8,18 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from rag_eng.config import bedrock_inference_profile_id
 from rag_eng.config import is_deprecated_bedrock_model_id
-from rag.schemas import CourseSource as RagCourseSource, QueryInput, RetrievalResult, EngagementMetrics
+from rag.schemas import (
+    CourseSource as RagCourseSource,
+    QueryInput,
+    RetrievalResult,
+    EngagementMetrics,
+)
 
 RetrievalRerankStrategy = Literal["similarity", "mmr_0.5", "mmr_0.7", "mmr_0.9"]
 IngestionJobKind = Literal["parse", "chunk-index"]
-IngestionJobStatus = Literal["queued", "running", "completed", "failed", "launch_failed"]
+IngestionJobStatus = Literal[
+    "queued", "running", "completed", "failed", "launch_failed"
+]
 AppPrimaryRole = Literal["admin", "professor", "student"]
 UserStatus = Literal["invited", "active", "disabled"]
 SectionMembershipStatus = Literal["invited", "active", "dropped", "disabled"]
@@ -20,9 +27,13 @@ SectionMembershipRole = Literal["professor", "ta", "student"]
 TeachingPlanStatus = Literal["draft", "published", "archived"]
 WeekVisibilityStatus = Literal["hidden", "open", "closed"]
 WeekResolutionMode = Literal["manual", "date_driven"]
-WeekReferenceType = Literal["course_doc", "external_link", "assignment", "reading", "tooling"]
+WeekReferenceType = Literal[
+    "course_doc", "external_link", "assignment", "reading", "tooling"
+]
 EvaluationJudgeProvider = Literal["openai", "bedrock"]
-EvaluationRunStatus = Literal["queued", "running", "succeeded", "failed", "launch_failed"]
+EvaluationRunStatus = Literal[
+    "queued", "running", "succeeded", "failed", "launch_failed"
+]
 RERANK_STRATEGY_CHOICES: tuple[str, ...] = (
     "similarity",
     "mmr_0.5",
@@ -89,6 +100,7 @@ class QueryRequest(QueryPayload):
 
 class TelemetryPayload(BaseModel):
     """Payload for out-of-band telemetry from the VS Code extension."""
+
     session_id: str
     mode: str
     engagement_metrics: EngagementMetrics
@@ -442,6 +454,31 @@ class ProfessorSectionAnalyticsPoint(BaseModel):
     active_students: int = 0
 
 
+class AnalyticsCognitiveProgressionPoint(BaseModel):
+    x: str
+    stage_name: str
+    count: int
+
+
+class AnalyticsPedagogicalActionPoint(BaseModel):
+    stage_name: str
+    scaffold_name: str
+    count: int
+
+
+class AnalyticsFrustrationPoint(BaseModel):
+    week: str
+    frustration: int
+    queries: int
+
+
+class AnalyticsTimeUtilizationPoint(BaseModel):
+    assignment: str
+    chat: float
+    editor: float
+    terminal: float
+
+
 class ProfessorSectionAnalytics(BaseModel):
     """Professor-facing analytics payload for one section."""
 
@@ -450,6 +487,14 @@ class ProfessorSectionAnalytics(BaseModel):
     active_students_last_7_days: int = 0
     weekly_activity: list[ProfessorSectionAnalyticsPoint] = Field(default_factory=list)
     top_students: list[ProfessorSectionStudent] = Field(default_factory=list)
+    cognitive_progression: list[AnalyticsCognitiveProgressionPoint] = Field(
+        default_factory=list
+    )
+    pedagogical_actions: list[AnalyticsPedagogicalActionPoint] = Field(
+        default_factory=list
+    )
+    frustration_by_week: list[AnalyticsFrustrationPoint] = Field(default_factory=list)
+    time_utilization: list[AnalyticsTimeUtilizationPoint] = Field(default_factory=list)
     generated_at: str = ""
 
 
@@ -473,8 +518,42 @@ class ProfessorSectionStudentAnalytics(BaseModel):
     positive_feedback_count: int = 0
     negative_feedback_count: int = 0
     last_activity_at: str = ""
-    weekly_activity: list[ProfessorSectionStudentAnalyticsPoint] = Field(default_factory=list)
+    weekly_activity: list[ProfessorSectionStudentAnalyticsPoint] = Field(
+        default_factory=list
+    )
+    cognitive_progression: list[AnalyticsCognitiveProgressionPoint] = Field(
+        default_factory=list
+    )
+    pedagogical_actions: list[AnalyticsPedagogicalActionPoint] = Field(
+        default_factory=list
+    )
+    frustration_by_week: list[AnalyticsFrustrationPoint] = Field(default_factory=list)
+    time_utilization: list[AnalyticsTimeUtilizationPoint] = Field(default_factory=list)
+    external_paste_count: int = 0
+    paste_incidents: list["AnalyticsPasteIncident"] = Field(default_factory=list)
     generated_at: str = ""
+
+
+class AnalyticsPasteIncident(BaseModel):
+    created_at: str
+    session_id: str
+    pasted_char_count: int
+
+
+class ProfessorStudentFeedbackEntry(BaseModel):
+    created_at: str
+    session_id: str
+    turn_index: int
+    rating: str
+    explanation: str | None = None
+    student_message: str | None = None
+    ai_message: str | None = None
+    cot: dict[str, str] = Field(default_factory=dict)
+    rag_sources: list[str] = Field(default_factory=list)
+
+
+class ProfessorStudentFeedbackResponse(BaseModel):
+    feedback: list[ProfessorStudentFeedbackEntry] = Field(default_factory=list)
 
 
 class SectionLaunchConfig(BaseModel):

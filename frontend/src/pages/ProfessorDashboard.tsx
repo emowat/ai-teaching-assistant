@@ -1,22 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
-import {
   inviteProfessorSectionStudent,
   getProfessorSectionAnalytics,
   getProfessorSectionStudentAnalytics,
+  getProfessorSectionStudentFeedback,
   listProfessorSectionStudents,
   listProfessorSections,
   type ProfessorSectionStudentInvitePayload,
   type ProfessorSectionAnalytics,
   type ProfessorSectionStudentAnalytics,
+  type ProfessorStudentFeedbackResponse,
   type ProfessorSectionStudent,
   type ProfessorSectionSummary,
 } from "../api/professorSectionsApi";
@@ -44,10 +37,12 @@ import {
   type SectionWeekResolutionMode,
 } from "../api/sectionInstructionSettingsApi";
 import { Avatar, Btn, Card, Stat, Tag } from "../design/atoms";
-import { chartTooltipStyle, D, mono } from "../design/tokens";
+import { D, mono } from "../design/tokens";
 import { Sidebar } from "../components/Sidebar";
 import { TopBar } from "../components/TopBar";
 import { TeachingPlanWeekReferencesEditor } from "../components/professor/TeachingPlanWeekReferencesEditor";
+import { ProfessorAnalyticsCharts } from "../components/professor/ProfessorAnalyticsCharts";
+import { ProfessorStudentFeedback } from "../components/professor/ProfessorStudentFeedback";
 import type { AppView } from "../types/navigation";
 import { getWeekLaunchUrl, isWeekLaunchReady } from "../data/codespaces";
 
@@ -106,8 +101,11 @@ function formatLastSession(value: string): string {
   return value;
 }
 
-function nextTeachingPlanWeekNumber(plan: ProfessorTeachingPlan | null): number {
-  const highestWeek = plan?.weeks.reduce((max, week) => Math.max(max, week.week_number), 0) ?? 0;
+function nextTeachingPlanWeekNumber(
+  plan: ProfessorTeachingPlan | null,
+): number {
+  const highestWeek =
+    plan?.weeks.reduce((max, week) => Math.max(max, week.week_number), 0) ?? 0;
   return highestWeek + 1;
 }
 
@@ -133,52 +131,103 @@ export function ProfessorDashboard({
 }: ProfessorDashboardProps) {
   const [tab, setTab] = useState("overview");
   const [sections, setSections] = useState<ProfessorSectionSummary[]>([]);
-  const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
-  const [students, setStudents] = useState<ProfessorSectionStudent[]>([]);
-  const [analytics, setAnalytics] = useState<ProfessorSectionAnalytics | null>(null);
-  const [analyticsSectionId, setAnalyticsSectionId] = useState<string | null>(null);
-  const [studentAnalytics, setStudentAnalytics] = useState<ProfessorSectionStudentAnalytics | null>(
+  const [selectedSectionId, setSelectedSectionId] = useState<string | null>(
     null,
   );
-  const [studentAnalyticsSectionId, setStudentAnalyticsSectionId] = useState<string | null>(null);
-  const [studentAnalyticsStudentId, setStudentAnalyticsStudentId] = useState<string | null>(null);
+  const [students, setStudents] = useState<ProfessorSectionStudent[]>([]);
+  const [analytics, setAnalytics] = useState<ProfessorSectionAnalytics | null>(
+    null,
+  );
+  const [analyticsSectionId, setAnalyticsSectionId] = useState<string | null>(
+    null,
+  );
+  const [studentAnalytics, setStudentAnalytics] =
+    useState<ProfessorSectionStudentAnalytics | null>(null);
+  const [studentAnalyticsSectionId, setStudentAnalyticsSectionId] = useState<
+    string | null
+  >(null);
+  const [studentAnalyticsStudentId, setStudentAnalyticsStudentId] = useState<
+    string | null
+  >(null);
   const [launchConfigs, setLaunchConfigs] = useState<SectionLaunchConfig[]>([]);
-  const [launchConfigsSectionId, setLaunchConfigsSectionId] = useState<string | null>(null);
-  const [teachingPlan, setTeachingPlan] = useState<ProfessorTeachingPlan | null>(null);
-  const [teachingPlanSectionId, setTeachingPlanSectionId] = useState<string | null>(null);
-  const [sectionSettings, setSectionSettings] = useState<SectionInstructionSettings | null>(null);
-  const [sectionSettingsSectionId, setSectionSettingsSectionId] = useState<string | null>(null);
+  const [launchConfigsSectionId, setLaunchConfigsSectionId] = useState<
+    string | null
+  >(null);
+  const [teachingPlan, setTeachingPlan] =
+    useState<ProfessorTeachingPlan | null>(null);
+  const [teachingPlanSectionId, setTeachingPlanSectionId] = useState<
+    string | null
+  >(null);
+  const [sectionSettings, setSectionSettings] =
+    useState<SectionInstructionSettings | null>(null);
+  const [sectionSettingsSectionId, setSectionSettingsSectionId] = useState<
+    string | null
+  >(null);
   const [loadingSections, setLoadingSections] = useState(true);
   const [studentFetchComplete, setStudentFetchComplete] = useState(false);
   const [analyticsFetchComplete, setAnalyticsFetchComplete] = useState(false);
   const [sectionError, setSectionError] = useState<string | null>(null);
   const [studentError, setStudentError] = useState<string | null>(null);
   const [analyticsError, setAnalyticsError] = useState<string | null>(null);
-  const [studentAnalyticsError, setStudentAnalyticsError] = useState<string | null>(null);
-  const [launchConfigError, setLaunchConfigError] = useState<string | null>(null);
-  const [launchConfigStatus, setLaunchConfigStatus] = useState<string | null>(null);
-  const [teachingPlanError, setTeachingPlanError] = useState<string | null>(null);
-  const [teachingPlanStatus, setTeachingPlanStatus] = useState<string | null>(null);
-  const [sectionSettingsError, setSectionSettingsError] = useState<string | null>(null);
-  const [sectionSettingsStatus, setSectionSettingsStatus] = useState<string | null>(null);
+  const [studentAnalyticsError, setStudentAnalyticsError] = useState<
+    string | null
+  >(null);
+  const [studentFeedback, setStudentFeedback] =
+    useState<ProfessorStudentFeedbackResponse | null>(null);
+  const [studentFeedbackError, setStudentFeedbackError] = useState<
+    string | null
+  >(null);
+  const [studentDrillDownTab, setStudentDrillDownTab] = useState<
+    "analytics" | "feedback"
+  >("analytics");
+  const [launchConfigError, setLaunchConfigError] = useState<string | null>(
+    null,
+  );
+  const [launchConfigStatus, setLaunchConfigStatus] = useState<string | null>(
+    null,
+  );
+  const [teachingPlanError, setTeachingPlanError] = useState<string | null>(
+    null,
+  );
+  const [teachingPlanStatus, setTeachingPlanStatus] = useState<string | null>(
+    null,
+  );
+  const [sectionSettingsError, setSectionSettingsError] = useState<
+    string | null
+  >(null);
+  const [sectionSettingsStatus, setSectionSettingsStatus] = useState<
+    string | null
+  >(null);
   const [savingLaunchConfigs, setSavingLaunchConfigs] = useState(false);
   const [savingTeachingPlan, setSavingTeachingPlan] = useState(false);
-  const [savingTeachingPlanWeekId, setSavingTeachingPlanWeekId] = useState<string | null>(null);
+  const [savingTeachingPlanWeekId, setSavingTeachingPlanWeekId] = useState<
+    string | null
+  >(null);
   const [savingSectionSettings, setSavingSectionSettings] = useState(false);
-  const [creatingTeachingPlanWeek, setCreatingTeachingPlanWeek] = useState(false);
-  const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
+  const [creatingTeachingPlanWeek, setCreatingTeachingPlanWeek] =
+    useState(false);
+  const [selectedStudentId, setSelectedStudentId] = useState<string | null>(
+    null,
+  );
   const [inviteStudentEmail, setInviteStudentEmail] = useState("");
   const [inviteStudentDisplayName, setInviteStudentDisplayName] = useState("");
   const [invitingStudent, setInvitingStudent] = useState(false);
-  const [inviteStudentError, setInviteStudentError] = useState<string | null>(null);
-  const [inviteStudentStatus, setInviteStudentStatus] = useState<string | null>(null);
+  const [inviteStudentError, setInviteStudentError] = useState<string | null>(
+    null,
+  );
+  const [inviteStudentStatus, setInviteStudentStatus] = useState<string | null>(
+    null,
+  );
   const selectedSection = useMemo(
-    () => sections.find((section) => section.section_id === selectedSectionId) ?? null,
-    [sections, selectedSectionId]
+    () =>
+      sections.find((section) => section.section_id === selectedSectionId) ??
+      null,
+    [sections, selectedSectionId],
   );
   const selectedStudent = useMemo(
-    () => students.find((student) => student.user_id === selectedStudentId) ?? null,
-    [selectedStudentId, students]
+    () =>
+      students.find((student) => student.user_id === selectedStudentId) ?? null,
+    [selectedStudentId, students],
   );
   const activeLaunchConfigs = useMemo(
     () => (launchConfigsSectionId === selectedSectionId ? launchConfigs : []),
@@ -207,7 +256,8 @@ export function ProfessorDashboard({
     [selectedSectionId, teachingPlan, teachingPlanSectionId],
   );
   const activeSectionSettings = useMemo(
-    () => (sectionSettingsSectionId === selectedSectionId ? sectionSettings : null),
+    () =>
+      sectionSettingsSectionId === selectedSectionId ? sectionSettings : null,
     [sectionSettings, sectionSettingsSectionId, selectedSectionId],
   );
   const readyLaunchConfigCount = useMemo(
@@ -221,28 +271,30 @@ export function ProfessorDashboard({
   );
   const loadingLaunchConfigs = Boolean(
     selectedSectionId &&
-      accessToken &&
-      launchConfigsSectionId !== selectedSectionId &&
-      !launchConfigError
+    accessToken &&
+    launchConfigsSectionId !== selectedSectionId &&
+    !launchConfigError,
   );
-  const loadingAnalytics = Boolean(selectedSectionId) && !analyticsFetchComplete && !analyticsError;
+  const loadingAnalytics =
+    Boolean(selectedSectionId) && !analyticsFetchComplete && !analyticsError;
   const loadingStudentAnalytics =
     Boolean(selectedSectionId && selectedStudentId) &&
     (studentAnalyticsSectionId !== selectedSectionId ||
       studentAnalyticsStudentId !== selectedStudentId);
   const loadingTeachingPlan = Boolean(
     selectedSectionId &&
-      accessToken &&
-      teachingPlanSectionId !== selectedSectionId &&
-      !teachingPlanError
+    accessToken &&
+    teachingPlanSectionId !== selectedSectionId &&
+    !teachingPlanError,
   );
   const loadingSectionSettings = Boolean(
     selectedSectionId &&
-      accessToken &&
-      sectionSettingsSectionId !== selectedSectionId &&
-      !sectionSettingsError
+    accessToken &&
+    sectionSettingsSectionId !== selectedSectionId &&
+    !sectionSettingsError,
   );
-  const loadingStudents = Boolean(selectedSectionId) && !studentFetchComplete && !studentError;
+  const loadingStudents =
+    Boolean(selectedSectionId) && !studentFetchComplete && !studentError;
 
   useEffect(() => {
     let cancelled = false;
@@ -251,7 +303,9 @@ export function ProfessorDashboard({
       .then((nextSections) => {
         if (cancelled) return;
         setSections(nextSections);
-        setSelectedSectionId((current) => current ?? nextSections[0]?.section_id ?? null);
+        setSelectedSectionId(
+          (current) => current ?? nextSections[0]?.section_id ?? null,
+        );
       })
       .catch((err: Error) => {
         if (!cancelled) {
@@ -379,26 +433,46 @@ export function ProfessorDashboard({
   }, [accessToken, selectedSectionId]);
 
   useEffect(() => {
-    if (tab !== "analytics" || !selectedSectionId || !selectedStudentId || !accessToken) {
+    if (
+      tab !== "analytics" ||
+      !selectedSectionId ||
+      !selectedStudentId ||
+      !accessToken
+    ) {
       return;
     }
 
     let cancelled = false;
 
-    void getProfessorSectionStudentAnalytics(selectedSectionId, selectedStudentId, accessToken)
-      .then((nextAnalytics) => {
+    Promise.all([
+      getProfessorSectionStudentAnalytics(
+        selectedSectionId,
+        selectedStudentId,
+        accessToken,
+      ),
+      getProfessorSectionStudentFeedback(
+        selectedSectionId,
+        selectedStudentId,
+        accessToken,
+      ),
+    ])
+      .then(([nextAnalytics, nextFeedback]) => {
         if (cancelled) return;
         setStudentAnalytics(nextAnalytics);
+        setStudentFeedback(nextFeedback);
         setStudentAnalyticsSectionId(selectedSectionId);
         setStudentAnalyticsStudentId(selectedStudentId);
         setStudentAnalyticsError(null);
+        setStudentFeedbackError(null);
       })
       .catch((err: Error) => {
         if (!cancelled) {
           setStudentAnalytics(null);
+          setStudentFeedback(null);
           setStudentAnalyticsSectionId(selectedSectionId);
           setStudentAnalyticsStudentId(selectedStudentId);
           setStudentAnalyticsError(err.message);
+          setStudentFeedbackError(err.message);
         }
       });
 
@@ -470,21 +544,27 @@ export function ProfessorDashboard({
     ? `${selectedSection.student_count} students · ${selectedSection.ta_count} TAs · ${selectedSection.professor_count} professors`
     : "Select a section to view the roster";
 
-  const updateLaunchConfig = (launchId: string, patch: Partial<SectionLaunchConfig>) => {
+  const updateLaunchConfig = (
+    launchId: string,
+    patch: Partial<SectionLaunchConfig>,
+  ) => {
     setLaunchConfigs((current) =>
       current.map((config) =>
-        config.launch_id === launchId ? { ...config, ...patch } : config
-      )
+        config.launch_id === launchId ? { ...config, ...patch } : config,
+      ),
     );
   };
 
   const addLaunchConfig = () => {
-    setLaunchConfigs((current) => [...current, emptyLaunchConfig(current.length)]);
+    setLaunchConfigs((current) => [
+      ...current,
+      emptyLaunchConfig(current.length),
+    ]);
   };
 
   const removeLaunchConfig = (launchId: string) => {
     setLaunchConfigs((current) =>
-      current.filter((config) => config.launch_id !== launchId)
+      current.filter((config) => config.launch_id !== launchId),
     );
   };
 
@@ -547,13 +627,15 @@ export function ProfessorDashboard({
       const updated = await replaceProfessorSectionLaunchConfigs(
         selectedSectionId,
         accessToken,
-        cleaned
+        cleaned,
       );
       setLaunchConfigs(updated);
       setLaunchConfigsSectionId(selectedSectionId);
       setLaunchConfigStatus("Saved launch configs.");
     } catch (err) {
-      setLaunchConfigError(err instanceof Error ? err.message : "Unable to save launch configs.");
+      setLaunchConfigError(
+        err instanceof Error ? err.message : "Unable to save launch configs.",
+      );
     } finally {
       setSavingLaunchConfigs(false);
     }
@@ -588,16 +670,20 @@ export function ProfessorDashboard({
     setTeachingPlanStatus(null);
 
     try {
-      const updated = await saveProfessorTeachingPlan(selectedSectionId, accessToken, {
-        title: activeTeachingPlan.title.trim(),
-        summary: activeTeachingPlan.summary.trim(),
-      });
+      const updated = await saveProfessorTeachingPlan(
+        selectedSectionId,
+        accessToken,
+        {
+          title: activeTeachingPlan.title.trim(),
+          summary: activeTeachingPlan.summary.trim(),
+        },
+      );
       setTeachingPlan(updated);
       setTeachingPlanSectionId(selectedSectionId);
       setTeachingPlanStatus("Saved teaching plan.");
     } catch (err) {
       setTeachingPlanError(
-        err instanceof Error ? err.message : "Unable to save teaching plan."
+        err instanceof Error ? err.message : "Unable to save teaching plan.",
       );
     } finally {
       setSavingTeachingPlan(false);
@@ -614,13 +700,16 @@ export function ProfessorDashboard({
     setTeachingPlanStatus(null);
 
     try {
-      const updated = await publishProfessorTeachingPlan(selectedSectionId, accessToken);
+      const updated = await publishProfessorTeachingPlan(
+        selectedSectionId,
+        accessToken,
+      );
       setTeachingPlan(updated);
       setTeachingPlanSectionId(selectedSectionId);
       setTeachingPlanStatus("Published teaching plan.");
     } catch (err) {
       setTeachingPlanError(
-        err instanceof Error ? err.message : "Unable to publish teaching plan."
+        err instanceof Error ? err.message : "Unable to publish teaching plan.",
       );
     } finally {
       setSavingTeachingPlan(false);
@@ -637,13 +726,16 @@ export function ProfessorDashboard({
     setTeachingPlanStatus(null);
 
     try {
-      const updated = await archiveProfessorTeachingPlan(selectedSectionId, accessToken);
+      const updated = await archiveProfessorTeachingPlan(
+        selectedSectionId,
+        accessToken,
+      );
       setTeachingPlan(updated);
       setTeachingPlanSectionId(selectedSectionId);
       setTeachingPlanStatus("Archived teaching plan.");
     } catch (err) {
       setTeachingPlanError(
-        err instanceof Error ? err.message : "Unable to archive teaching plan."
+        err instanceof Error ? err.message : "Unable to archive teaching plan.",
       );
     } finally {
       setSavingTeachingPlan(false);
@@ -661,23 +753,29 @@ export function ProfessorDashboard({
 
     try {
       const nextWeekNumber = nextTeachingPlanWeekNumber(activeTeachingPlan);
-      const updated = await createProfessorTeachingPlanWeek(selectedSectionId, accessToken, {
-        week_number: nextWeekNumber,
-        title: `Week ${nextWeekNumber}`,
-        topic: "",
-        learning_objectives: [],
-        instructional_guidance: "",
-        status: "draft",
-        student_visibility_status: "hidden",
-        available_from: null,
-        available_until: null,
-      });
+      const updated = await createProfessorTeachingPlanWeek(
+        selectedSectionId,
+        accessToken,
+        {
+          week_number: nextWeekNumber,
+          title: `Week ${nextWeekNumber}`,
+          topic: "",
+          learning_objectives: [],
+          instructional_guidance: "",
+          status: "draft",
+          student_visibility_status: "hidden",
+          available_from: null,
+          available_until: null,
+        },
+      );
       setTeachingPlan(updated);
       setTeachingPlanSectionId(selectedSectionId);
       setTeachingPlanStatus(`Added week ${nextWeekNumber}.`);
     } catch (err) {
       setTeachingPlanError(
-        err instanceof Error ? err.message : "Unable to add teaching plan week."
+        err instanceof Error
+          ? err.message
+          : "Unable to add teaching plan week.",
       );
     } finally {
       setCreatingTeachingPlanWeek(false);
@@ -710,14 +808,16 @@ export function ProfessorDashboard({
           student_visibility_status: week.student_visibility_status,
           available_from: week.available_from,
           available_until: week.available_until,
-        }
+        },
       );
       setTeachingPlan(updated);
       setTeachingPlanSectionId(selectedSectionId);
       setTeachingPlanStatus(`Saved week ${week.week_number}.`);
     } catch (err) {
       setTeachingPlanError(
-        err instanceof Error ? err.message : "Unable to save teaching plan week."
+        err instanceof Error
+          ? err.message
+          : "Unable to save teaching plan week.",
       );
     } finally {
       setSavingTeachingPlanWeekId(null);
@@ -744,7 +844,9 @@ export function ProfessorDashboard({
       setTeachingPlanStatus(`Deleted week ${week.week_number}.`);
     } catch (err) {
       setTeachingPlanError(
-        err instanceof Error ? err.message : "Unable to delete teaching plan week."
+        err instanceof Error
+          ? err.message
+          : "Unable to delete teaching plan week.",
       );
     } finally {
       setSavingTeachingPlanWeekId(null);
@@ -753,7 +855,7 @@ export function ProfessorDashboard({
 
   const updateTeachingPlanWeekDraft = (
     weekId: string,
-    patch: Partial<ProfessorTeachingPlanWeek>
+    patch: Partial<ProfessorTeachingPlanWeek>,
   ) => {
     setTeachingPlan((current) => {
       if (!current) {
@@ -761,7 +863,9 @@ export function ProfessorDashboard({
       }
       return {
         ...current,
-        weeks: current.weeks.map((week) => (week.week_id === weekId ? { ...week, ...patch } : week)),
+        weeks: current.weeks.map((week) =>
+          week.week_id === weekId ? { ...week, ...patch } : week,
+        ),
       };
     });
   };
@@ -781,7 +885,7 @@ export function ProfessorDashboard({
   };
 
   const updateSectionSettingsDraft = (
-    patch: Partial<SectionInstructionSettings>
+    patch: Partial<SectionInstructionSettings>,
   ) => {
     setSectionSettings((current) => {
       if (!current) {
@@ -807,18 +911,24 @@ export function ProfessorDashboard({
         {
           student_access_enabled: activeSectionSettings.student_access_enabled,
           week_resolution_mode: activeSectionSettings.week_resolution_mode,
-          manual_current_week_number: activeSectionSettings.manual_current_week_number,
-          teaching_plan_prompt_enabled: activeSectionSettings.teaching_plan_prompt_enabled,
-          references_prompt_enabled: activeSectionSettings.references_prompt_enabled,
-          references_retrieval_enabled: activeSectionSettings.references_retrieval_enabled,
-        }
+          manual_current_week_number:
+            activeSectionSettings.manual_current_week_number,
+          teaching_plan_prompt_enabled:
+            activeSectionSettings.teaching_plan_prompt_enabled,
+          references_prompt_enabled:
+            activeSectionSettings.references_prompt_enabled,
+          references_retrieval_enabled:
+            activeSectionSettings.references_retrieval_enabled,
+        },
       );
       setSectionSettings(updated);
       setSectionSettingsSectionId(selectedSectionId);
       setSectionSettingsStatus("Saved section instruction settings.");
     } catch (err) {
       setSectionSettingsError(
-        err instanceof Error ? err.message : "Unable to save section instruction settings."
+        err instanceof Error
+          ? err.message
+          : "Unable to save section instruction settings.",
       );
     } finally {
       setSavingSectionSettings(false);
@@ -847,14 +957,19 @@ export function ProfessorDashboard({
       );
       setStudents(nextStudents);
       const invitedStudent = nextStudents.find(
-        (student) => student.email.toLowerCase() === payload.email.toLowerCase(),
+        (student) =>
+          student.email.toLowerCase() === payload.email.toLowerCase(),
       );
-      setSelectedStudentId(invitedStudent?.user_id ?? nextStudents[0]?.user_id ?? null);
+      setSelectedStudentId(
+        invitedStudent?.user_id ?? nextStudents[0]?.user_id ?? null,
+      );
       setInviteStudentEmail("");
       setInviteStudentDisplayName("");
       setInviteStudentStatus(`Invitation saved for ${payload.email}.`);
     } catch (err) {
-      setInviteStudentError(err instanceof Error ? err.message : "Unable to invite student.");
+      setInviteStudentError(
+        err instanceof Error ? err.message : "Unable to invite student.",
+      );
     } finally {
       setInvitingStudent(false);
     }
@@ -912,7 +1027,9 @@ export function ProfessorDashboard({
           }}
         >
           {loadingSections && <option value="">Loading sections...</option>}
-          {!loadingSections && sections.length === 0 && <option value="">No sections found</option>}
+          {!loadingSections && sections.length === 0 && (
+            <option value="">No sections found</option>
+          )}
           {sections.map((section) => (
             <option key={section.section_id} value={section.section_id}>
               {section.section_id} · {section.display_name}
@@ -920,8 +1037,14 @@ export function ProfessorDashboard({
           ))}
         </select>
         <div style={{ flex: 1 }} />
-        <Tag color={D.green}>{selectedSection ? selectedSection.course_id : "no section"}</Tag>
-        <Tag color={D.red}>{selectedSection ? `${selectedSection.student_count} students` : "no roster"}</Tag>
+        <Tag color={D.green}>
+          {selectedSection ? selectedSection.course_id : "no section"}
+        </Tag>
+        <Tag color={D.red}>
+          {selectedSection
+            ? `${selectedSection.student_count} students`
+            : "no roster"}
+        </Tag>
         <Tag color={D.muted}>Section roster</Tag>
       </div>
 
@@ -939,10 +1062,14 @@ export function ProfessorDashboard({
           {tab === "overview" ? (
             <div>
               <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 18 }}>
-                {selectedSection ? selectedSection.display_name : "Section overview"}
+                {selectedSection
+                  ? selectedSection.display_name
+                  : "Section overview"}
               </div>
               {sectionError && (
-                <Card style={{ marginBottom: 14, color: D.red, fontSize: 12 }}>{sectionError}</Card>
+                <Card style={{ marginBottom: 14, color: D.red, fontSize: 12 }}>
+                  {sectionError}
+                </Card>
               )}
               <div
                 style={{
@@ -978,9 +1105,13 @@ export function ProfessorDashboard({
                 />
               </div>
               <Card style={{ marginBottom: 18, display: "grid", gap: 8 }}>
-                <div style={{ fontSize: 12, color: D.muted }}>Section context</div>
+                <div style={{ fontSize: 12, color: D.muted }}>
+                  Section context
+                </div>
                 <div style={{ fontSize: 15, fontWeight: 600 }}>
-                  {selectedSection ? selectedSection.section_id : "No section selected"}
+                  {selectedSection
+                    ? selectedSection.section_id
+                    : "No section selected"}
                 </div>
                 <div style={{ fontSize: 12, color: D.dim }}>
                   {selectedSection
@@ -988,12 +1119,15 @@ export function ProfessorDashboard({
                     : "Choose a section from the selector above."}
                 </div>
                 <div style={{ fontSize: 12, color: D.dim, lineHeight: 1.5 }}>
-                  Students use the launch configs in this section to enter the workspace. Keep the
-                  selected section and its launch setup aligned with the roster below.
+                  Students use the launch configs in this section to enter the
+                  workspace. Keep the selected section and its launch setup
+                  aligned with the roster below.
                 </div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <Tag color={selectedSection?.is_active ? D.green : D.red}>
-                    {selectedSection?.is_active ? "active section" : "inactive section"}
+                    {selectedSection?.is_active
+                      ? "active section"
+                      : "inactive section"}
                   </Tag>
                   <Tag color={D.blue}>
                     {activeLaunchConfigs.length} launch config
@@ -1006,17 +1140,34 @@ export function ProfessorDashboard({
                 </div>
               </Card>
               <Card style={{ display: "grid", gap: 12 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 12,
+                    flexWrap: "wrap",
+                  }}
+                >
                   <div>
-                    <div style={{ fontSize: 12, color: D.muted, marginBottom: 6 }}>
+                    <div
+                      style={{ fontSize: 12, color: D.muted, marginBottom: 6 }}
+                    >
                       Section controls
                     </div>
                     <div style={{ fontSize: 14, fontWeight: 600 }}>
-                      {selectedSection ? selectedSection.section_id : "No section selected"}
+                      {selectedSection
+                        ? selectedSection.section_id
+                        : "No section selected"}
                     </div>
                   </div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <Tag color={activeSectionSettings?.student_access_enabled ? D.green : D.red}>
+                    <Tag
+                      color={
+                        activeSectionSettings?.student_access_enabled
+                          ? D.green
+                          : D.red
+                      }
+                    >
                       {activeSectionSettings?.student_access_enabled
                         ? "open to students"
                         : "student access paused"}
@@ -1033,27 +1184,36 @@ export function ProfessorDashboard({
                   </div>
                 </div>
                 <div style={{ fontSize: 12, color: D.dim, lineHeight: 1.6 }}>
-                  These settings control when students can use this section and which professor
-                  instructional signals are considered active.
+                  These settings control when students can use this section and
+                  which professor instructional signals are considered active.
                 </div>
                 {sectionSettingsError && (
-                  <Card style={{ color: D.red, fontSize: 12 }}>{sectionSettingsError}</Card>
+                  <Card style={{ color: D.red, fontSize: 12 }}>
+                    {sectionSettingsError}
+                  </Card>
                 )}
                 {sectionSettingsStatus && (
-                  <Card style={{ color: D.green, fontSize: 12 }}>{sectionSettingsStatus}</Card>
+                  <Card style={{ color: D.green, fontSize: 12 }}>
+                    {sectionSettingsStatus}
+                  </Card>
                 )}
                 {loadingSectionSettings ? (
-                  <div style={{ fontSize: 12, color: D.muted }}>Loading section controls...</div>
+                  <div style={{ fontSize: 12, color: D.muted }}>
+                    Loading section controls...
+                  </div>
                 ) : (
                   <div
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                      gridTemplateColumns:
+                        "repeat(auto-fit, minmax(220px, 1fr))",
                       gap: 12,
                     }}
                   >
                     <label style={{ display: "grid", gap: 6 }}>
-                      <span style={{ fontSize: 12, color: D.muted }}>Student access</span>
+                      <span style={{ fontSize: 12, color: D.muted }}>
+                        Student access
+                      </span>
                       <label
                         style={{
                           display: "flex",
@@ -1065,7 +1225,10 @@ export function ProfessorDashboard({
                         <input
                           type="checkbox"
                           aria-label="Open to students"
-                          checked={activeSectionSettings?.student_access_enabled ?? true}
+                          checked={
+                            activeSectionSettings?.student_access_enabled ??
+                            true
+                          }
                           onChange={(event) =>
                             updateSectionSettingsDraft({
                               student_access_enabled: event.target.checked,
@@ -1076,12 +1239,18 @@ export function ProfessorDashboard({
                       </label>
                     </label>
                     <label style={{ display: "grid", gap: 6 }}>
-                      <span style={{ fontSize: 12, color: D.muted }}>Week resolution mode</span>
+                      <span style={{ fontSize: 12, color: D.muted }}>
+                        Week resolution mode
+                      </span>
                       <select
-                        value={activeSectionSettings?.week_resolution_mode ?? "manual"}
+                        value={
+                          activeSectionSettings?.week_resolution_mode ??
+                          "manual"
+                        }
                         onChange={(event) =>
                           updateSectionSettingsDraft({
-                            week_resolution_mode: event.target.value as SectionWeekResolutionMode,
+                            week_resolution_mode: event.target
+                              .value as SectionWeekResolutionMode,
                           })
                         }
                         style={inputStyle}
@@ -1091,11 +1260,16 @@ export function ProfessorDashboard({
                       </select>
                     </label>
                     <label style={{ display: "grid", gap: 6 }}>
-                      <span style={{ fontSize: 12, color: D.muted }}>Manual current week</span>
+                      <span style={{ fontSize: 12, color: D.muted }}>
+                        Manual current week
+                      </span>
                       <input
                         type="number"
                         min={1}
-                        value={activeSectionSettings?.manual_current_week_number ?? ""}
+                        value={
+                          activeSectionSettings?.manual_current_week_number ??
+                          ""
+                        }
                         onChange={(event) =>
                           updateSectionSettingsDraft({
                             manual_current_week_number: event.target.value
@@ -1110,14 +1284,25 @@ export function ProfessorDashboard({
                       <span style={{ fontSize: 12, color: D.muted }}>
                         Teaching plan prompt context
                       </span>
-                      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+                      <label
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          fontSize: 13,
+                        }}
+                      >
                         <input
                           type="checkbox"
                           aria-label="Include published plan in prompt"
-                          checked={activeSectionSettings?.teaching_plan_prompt_enabled ?? false}
+                          checked={
+                            activeSectionSettings?.teaching_plan_prompt_enabled ??
+                            false
+                          }
                           onChange={(event) =>
                             updateSectionSettingsDraft({
-                              teaching_plan_prompt_enabled: event.target.checked,
+                              teaching_plan_prompt_enabled:
+                                event.target.checked,
                             })
                           }
                         />
@@ -1125,12 +1310,24 @@ export function ProfessorDashboard({
                       </label>
                     </label>
                     <label style={{ display: "grid", gap: 6 }}>
-                      <span style={{ fontSize: 12, color: D.muted }}>References prompt context</span>
-                      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+                      <span style={{ fontSize: 12, color: D.muted }}>
+                        References prompt context
+                      </span>
+                      <label
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          fontSize: 13,
+                        }}
+                      >
                         <input
                           type="checkbox"
                           aria-label="Include section references in prompt"
-                          checked={activeSectionSettings?.references_prompt_enabled ?? false}
+                          checked={
+                            activeSectionSettings?.references_prompt_enabled ??
+                            false
+                          }
                           onChange={(event) =>
                             updateSectionSettingsDraft({
                               references_prompt_enabled: event.target.checked,
@@ -1144,14 +1341,25 @@ export function ProfessorDashboard({
                       <span style={{ fontSize: 12, color: D.muted }}>
                         References retrieval context
                       </span>
-                      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+                      <label
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          fontSize: 13,
+                        }}
+                      >
                         <input
                           type="checkbox"
                           aria-label="Allow references in retrieval"
-                          checked={activeSectionSettings?.references_retrieval_enabled ?? false}
+                          checked={
+                            activeSectionSettings?.references_retrieval_enabled ??
+                            false
+                          }
                           onChange={(event) =>
                             updateSectionSettingsDraft({
-                              references_retrieval_enabled: event.target.checked,
+                              references_retrieval_enabled:
+                                event.target.checked,
                             })
                           }
                         />
@@ -1160,11 +1368,21 @@ export function ProfessorDashboard({
                     </label>
                   </div>
                 )}
-                <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "flex-end",
+                    gap: 8,
+                  }}
+                >
                   <Btn
                     small
                     onClick={() => void saveSectionSettings()}
-                    disabled={!selectedSectionId || savingSectionSettings || loadingSectionSettings}
+                    disabled={
+                      !selectedSectionId ||
+                      savingSectionSettings ||
+                      loadingSectionSettings
+                    }
                   >
                     {savingSectionSettings ? "Saving..." : "Save controls"}
                   </Btn>
@@ -1177,24 +1395,38 @@ export function ProfessorDashboard({
                 style={{
                   display: "flex",
                   justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: 18,
-              }}
+                  alignItems: "center",
+                  marginBottom: 18,
+                }}
               >
                 <div style={{ fontSize: 18, fontWeight: 600 }}>
                   Section launch config <Tag color={D.green}>Aurora-backed</Tag>
                 </div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <Btn small variant="ghost" onClick={addLaunchConfig} disabled={!selectedSectionId}>
+                  <Btn
+                    small
+                    variant="ghost"
+                    onClick={addLaunchConfig}
+                    disabled={!selectedSectionId}
+                  >
                     Add launch option
                   </Btn>
-                  <Btn small variant="ghost" onClick={resetLaunchConfigs} disabled={!selectedSectionId}>
+                  <Btn
+                    small
+                    variant="ghost"
+                    onClick={resetLaunchConfigs}
+                    disabled={!selectedSectionId}
+                  >
                     Reload
                   </Btn>
                   <Btn
                     small
                     onClick={() => void saveLaunchConfigs()}
-                    disabled={!selectedSectionId || savingLaunchConfigs || loadingLaunchConfigs}
+                    disabled={
+                      !selectedSectionId ||
+                      savingLaunchConfigs ||
+                      loadingLaunchConfigs
+                    }
                   >
                     {savingLaunchConfigs ? "Saving..." : "Save launch configs"}
                   </Btn>
@@ -1206,36 +1438,60 @@ export function ProfessorDashboard({
                 </Card>
               )}
               {launchConfigStatus && (
-                <Card style={{ marginBottom: 12, color: D.green, fontSize: 12 }}>
+                <Card
+                  style={{ marginBottom: 12, color: D.green, fontSize: 12 }}
+                >
                   {launchConfigStatus}
                 </Card>
               )}
               {loadingLaunchConfigs ? (
                 <Card>Loading launch configs...</Card>
               ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <div
+                  style={{ display: "flex", flexDirection: "column", gap: 10 }}
+                >
                   {activeLaunchConfigs.length === 0 && (
-                    <Card style={{ color: D.muted, fontSize: 13, lineHeight: 1.7 }}>
-                      No launch configs are saved for this section yet. Add one to define the
-                      Codespaces launch target students should use.
+                    <Card
+                      style={{ color: D.muted, fontSize: 13, lineHeight: 1.7 }}
+                    >
+                      No launch configs are saved for this section yet. Add one
+                      to define the Codespaces launch target students should
+                      use.
                     </Card>
                   )}
                   {activeLaunchConfigs.map((launchConfig, index) => (
-                    <Card key={launchConfig.launch_id} style={{ display: "grid", gap: 10 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <Card
+                      key={launchConfig.launch_id}
+                      style={{ display: "grid", gap: 10 }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 10,
+                        }}
+                      >
                         <div style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>
                           Launch option {index + 1}
                         </div>
                         <Tag color={launchConfig.enabled ? D.green : D.muted}>
                           {launchConfig.enabled ? "Enabled" : "Disabled"}
                         </Tag>
-                        <Btn small variant="danger" onClick={() => removeLaunchConfig(launchConfig.launch_id)}>
+                        <Btn
+                          small
+                          variant="danger"
+                          onClick={() =>
+                            removeLaunchConfig(launchConfig.launch_id)
+                          }
+                        >
                           Remove
                         </Btn>
                       </div>
 
                       <label style={{ display: "grid", gap: 6 }}>
-                        <span style={{ fontSize: 12, color: D.muted }}>Launch ID</span>
+                        <span style={{ fontSize: 12, color: D.muted }}>
+                          Launch ID
+                        </span>
                         <input
                           value={launchConfig.launch_id}
                           onChange={(event) =>
@@ -1248,7 +1504,9 @@ export function ProfessorDashboard({
                       </label>
 
                       <label style={{ display: "grid", gap: 6 }}>
-                        <span style={{ fontSize: 12, color: D.muted }}>Label</span>
+                        <span style={{ fontSize: 12, color: D.muted }}>
+                          Label
+                        </span>
                         <input
                           value={launchConfig.label}
                           onChange={(event) =>
@@ -1305,8 +1563,18 @@ export function ProfessorDashboard({
                         />
                       </label>
 
-                      <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-                        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: D.muted }}>
+                      <div
+                        style={{ display: "flex", gap: 16, flexWrap: "wrap" }}
+                      >
+                        <label
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                            fontSize: 12,
+                            color: D.muted,
+                          }}
+                        >
                           <input
                             type="checkbox"
                             checked={launchConfig.enabled}
@@ -1320,7 +1588,9 @@ export function ProfessorDashboard({
                         </label>
                         <div style={{ fontSize: 11, color: D.muted }}>
                           Launch URL:{" "}
-                          <code>{getWeekLaunchUrl(toWeekLaunchConfig(launchConfig))}</code>
+                          <code>
+                            {getWeekLaunchUrl(toWeekLaunchConfig(launchConfig))}
+                          </code>
                         </div>
                         <div style={{ fontSize: 11, color: D.muted }}>
                           Status:{" "}
@@ -1346,13 +1616,27 @@ export function ProfessorDashboard({
                 }}
               >
                 <div style={{ fontSize: 18, fontWeight: 600 }}>
-                  Teaching Plan for {selectedSection ? selectedSection.display_name : "selected section"}{" "}
-                  <Tag color={activeTeachingPlan?.status === "published" ? D.green : D.blue}>
+                  Teaching Plan for{" "}
+                  {selectedSection
+                    ? selectedSection.display_name
+                    : "selected section"}{" "}
+                  <Tag
+                    color={
+                      activeTeachingPlan?.status === "published"
+                        ? D.green
+                        : D.blue
+                    }
+                  >
                     {activeTeachingPlan?.status || "draft"}
                   </Tag>
                 </div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <Btn small variant="ghost" onClick={reloadTeachingPlan} disabled={!selectedSectionId}>
+                  <Btn
+                    small
+                    variant="ghost"
+                    onClick={reloadTeachingPlan}
+                    disabled={!selectedSectionId}
+                  >
                     Reload
                   </Btn>
                   <Btn
@@ -1374,45 +1658,65 @@ export function ProfessorDashboard({
                   <Btn
                     small
                     onClick={() => void saveTeachingPlan()}
-                    disabled={!selectedSectionId || savingTeachingPlan || loadingTeachingPlan}
+                    disabled={
+                      !selectedSectionId ||
+                      savingTeachingPlan ||
+                      loadingTeachingPlan
+                    }
                   >
                     {savingTeachingPlan ? "Saving..." : "Save plan"}
                   </Btn>
                   <Btn
                     small
                     onClick={() => void publishTeachingPlan()}
-                    disabled={!selectedSectionId || savingTeachingPlan || loadingTeachingPlan}
+                    disabled={
+                      !selectedSectionId ||
+                      savingTeachingPlan ||
+                      loadingTeachingPlan
+                    }
                   >
                     Publish
                   </Btn>
                 </div>
               </div>
               {teachingPlanError && (
-                <Card style={{ color: D.red, fontSize: 12 }}>{teachingPlanError}</Card>
+                <Card style={{ color: D.red, fontSize: 12 }}>
+                  {teachingPlanError}
+                </Card>
               )}
               {teachingPlanStatus && (
-                <Card style={{ color: D.green, fontSize: 12 }}>{teachingPlanStatus}</Card>
+                <Card style={{ color: D.green, fontSize: 12 }}>
+                  {teachingPlanStatus}
+                </Card>
               )}
               <Card style={{ display: "grid", gap: 12 }}>
                 <label style={{ display: "grid", gap: 6 }}>
-                  <span style={{ fontSize: 12, color: D.muted }}>Plan title</span>
+                  <span style={{ fontSize: 12, color: D.muted }}>
+                    Plan title
+                  </span>
                   <input
                     value={activeTeachingPlan?.title ?? ""}
                     onChange={(event) =>
                       setTeachingPlan((current) =>
-                        current ? { ...current, title: event.target.value } : current
+                        current
+                          ? { ...current, title: event.target.value }
+                          : current,
                       )
                     }
                     style={inputStyle}
                   />
                 </label>
                 <label style={{ display: "grid", gap: 6 }}>
-                  <span style={{ fontSize: 12, color: D.muted }}>Plan summary</span>
+                  <span style={{ fontSize: 12, color: D.muted }}>
+                    Plan summary
+                  </span>
                   <textarea
                     value={activeTeachingPlan?.summary ?? ""}
                     onChange={(event) =>
                       setTeachingPlan((current) =>
-                        current ? { ...current, summary: event.target.value } : current
+                        current
+                          ? { ...current, summary: event.target.value }
+                          : current,
                       )
                     }
                     rows={4}
@@ -1424,9 +1728,13 @@ export function ProfessorDashboard({
                     {activeTeachingPlan?.weeks.length ?? 0} week
                     {(activeTeachingPlan?.weeks.length ?? 0) === 1 ? "" : "s"}
                   </Tag>
-                  <Tag color={D.orange}>Version {activeTeachingPlan?.version ?? 1}</Tag>
+                  <Tag color={D.orange}>
+                    Version {activeTeachingPlan?.version ?? 1}
+                  </Tag>
                   <Tag color={D.muted}>
-                    {activeTeachingPlan?.teaching_plan_id ? "saved in Aurora" : "not saved yet"}
+                    {activeTeachingPlan?.teaching_plan_id
+                      ? "saved in Aurora"
+                      : "not saved yet"}
                   </Tag>
                 </div>
               </Card>
@@ -1435,18 +1743,34 @@ export function ProfessorDashboard({
               ) : (
                 <div style={{ display: "grid", gap: 10 }}>
                   {(activeTeachingPlan?.weeks.length ?? 0) === 0 && (
-                    <Card style={{ color: D.muted, fontSize: 13, lineHeight: 1.7 }}>
-                      No week plans exist for this section yet. Add the first week to define the
-                      instructional scope for students and retrieval.
+                    <Card
+                      style={{ color: D.muted, fontSize: 13, lineHeight: 1.7 }}
+                    >
+                      No week plans exist for this section yet. Add the first
+                      week to define the instructional scope for students and
+                      retrieval.
                     </Card>
                   )}
                   {activeTeachingPlan?.weeks.map((week) => (
-                    <Card key={week.week_id} style={{ display: "grid", gap: 10 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <Card
+                      key={week.week_id}
+                      style={{ display: "grid", gap: 10 }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 10,
+                        }}
+                      >
                         <div style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>
                           Week {week.week_number}
                         </div>
-                        <Tag color={week.status === "published" ? D.green : D.muted}>
+                        <Tag
+                          color={
+                            week.status === "published" ? D.green : D.muted
+                          }
+                        >
                           {week.status}
                         </Tag>
                         <Btn
@@ -1460,7 +1784,9 @@ export function ProfessorDashboard({
                       </div>
 
                       <label style={{ display: "grid", gap: 6 }}>
-                        <span style={{ fontSize: 12, color: D.muted }}>Week number</span>
+                        <span style={{ fontSize: 12, color: D.muted }}>
+                          Week number
+                        </span>
                         <input
                           type="number"
                           min={1}
@@ -1475,30 +1801,47 @@ export function ProfessorDashboard({
                       </label>
 
                       <label style={{ display: "grid", gap: 6 }}>
-                        <span style={{ fontSize: 12, color: D.muted }}>Week title</span>
+                        <span style={{ fontSize: 12, color: D.muted }}>
+                          Week title
+                        </span>
                         <input
                           value={week.title}
                           onChange={(event) =>
-                            updateTeachingPlanWeekDraft(week.week_id, { title: event.target.value })
+                            updateTeachingPlanWeekDraft(week.week_id, {
+                              title: event.target.value,
+                            })
                           }
                           style={inputStyle}
                         />
                       </label>
 
                       <label style={{ display: "grid", gap: 6 }}>
-                        <span style={{ fontSize: 12, color: D.muted }}>Topic</span>
+                        <span style={{ fontSize: 12, color: D.muted }}>
+                          Topic
+                        </span>
                         <input
                           value={week.topic}
                           onChange={(event) =>
-                            updateTeachingPlanWeekDraft(week.week_id, { topic: event.target.value })
+                            updateTeachingPlanWeekDraft(week.week_id, {
+                              topic: event.target.value,
+                            })
                           }
                           style={inputStyle}
                         />
                       </label>
 
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns:
+                            "repeat(auto-fit, minmax(180px, 1fr))",
+                          gap: 10,
+                        }}
+                      >
                         <label style={{ display: "grid", gap: 6 }}>
-                          <span style={{ fontSize: 12, color: D.muted }}>Start date</span>
+                          <span style={{ fontSize: 12, color: D.muted }}>
+                            Start date
+                          </span>
                           <input
                             type="date"
                             value={week.start_date ?? ""}
@@ -1511,7 +1854,9 @@ export function ProfessorDashboard({
                           />
                         </label>
                         <label style={{ display: "grid", gap: 6 }}>
-                          <span style={{ fontSize: 12, color: D.muted }}>End date</span>
+                          <span style={{ fontSize: 12, color: D.muted }}>
+                            End date
+                          </span>
                           <input
                             type="date"
                             value={week.end_date ?? ""}
@@ -1533,16 +1878,24 @@ export function ProfessorDashboard({
                           value={week.learning_objectives.join("\n")}
                           onChange={(event) =>
                             updateTeachingPlanWeekDraft(week.week_id, {
-                              learning_objectives: splitObjectives(event.target.value),
+                              learning_objectives: splitObjectives(
+                                event.target.value,
+                              ),
                             })
                           }
                           rows={4}
-                          style={{ ...inputStyle, resize: "vertical", minHeight: 100 }}
+                          style={{
+                            ...inputStyle,
+                            resize: "vertical",
+                            minHeight: 100,
+                          }}
                         />
                       </label>
 
                       <label style={{ display: "grid", gap: 6 }}>
-                        <span style={{ fontSize: 12, color: D.muted }}>Instructional guidance</span>
+                        <span style={{ fontSize: 12, color: D.muted }}>
+                          Instructional guidance
+                        </span>
                         <textarea
                           value={week.instructional_guidance}
                           onChange={(event) =>
@@ -1551,14 +1904,19 @@ export function ProfessorDashboard({
                             })
                           }
                           rows={4}
-                          style={{ ...inputStyle, resize: "vertical", minHeight: 100 }}
+                          style={{
+                            ...inputStyle,
+                            resize: "vertical",
+                            minHeight: 100,
+                          }}
                         />
                       </label>
 
                       <div
                         style={{
                           display: "grid",
-                          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                          gridTemplateColumns:
+                            "repeat(auto-fit, minmax(180px, 1fr))",
                           gap: 10,
                         }}
                       >
@@ -1582,7 +1940,9 @@ export function ProfessorDashboard({
                           </select>
                         </label>
                         <label style={{ display: "grid", gap: 6 }}>
-                          <span style={{ fontSize: 12, color: D.muted }}>Available from</span>
+                          <span style={{ fontSize: 12, color: D.muted }}>
+                            Available from
+                          </span>
                           <input
                             type="date"
                             value={dateInputValue(week.available_from)}
@@ -1595,7 +1955,9 @@ export function ProfessorDashboard({
                           />
                         </label>
                         <label style={{ display: "grid", gap: 6 }}>
-                          <span style={{ fontSize: 12, color: D.muted }}>Available until</span>
+                          <span style={{ fontSize: 12, color: D.muted }}>
+                            Available until
+                          </span>
                           <input
                             type="date"
                             value={dateInputValue(week.available_until)}
@@ -1617,7 +1979,14 @@ export function ProfessorDashboard({
                         onWeekUpdated={replaceTeachingPlanWeek}
                       />
 
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          gap: 10,
+                          flexWrap: "wrap",
+                        }}
+                      >
                         <div style={{ fontSize: 11, color: D.muted }}>
                           Week ID: <code>{week.week_id}</code>
                         </div>
@@ -1626,7 +1995,9 @@ export function ProfessorDashboard({
                           onClick={() => void saveTeachingPlanWeek(week)}
                           disabled={savingTeachingPlanWeekId === week.week_id}
                         >
-                          {savingTeachingPlanWeekId === week.week_id ? "Saving..." : "Save week"}
+                          {savingTeachingPlanWeekId === week.week_id
+                            ? "Saving..."
+                            : "Save week"}
                         </Btn>
                       </div>
                     </Card>
@@ -1637,18 +2008,24 @@ export function ProfessorDashboard({
           ) : tab === "students" ? (
             <div style={{ display: "grid", gap: 14 }}>
               <div style={{ fontSize: 18, fontWeight: 600 }}>
-                Students for {selectedSection ? selectedSection.display_name : "selected section"}{" "}
+                Students for{" "}
+                {selectedSection
+                  ? selectedSection.display_name
+                  : "selected section"}{" "}
                 <Tag color={D.muted}>
                   {loadingStudents ? "loading" : "student memberships"}
                 </Tag>
               </div>
               <Card style={{ fontSize: 12, color: D.muted, lineHeight: 1.7 }}>
-                This roster shows student memberships for the selected section and includes live
-                session usage from Aurora-backed telemetry. Invites create invited Aurora users
-                that claim their account on first login.
+                This roster shows student memberships for the selected section
+                and includes live session usage from Aurora-backed telemetry.
+                Invites create invited Aurora users that claim their account on
+                first login.
               </Card>
               <Card style={{ display: "grid", gap: 12 }}>
-                <div style={{ fontSize: 14, fontWeight: 600 }}>Invite student</div>
+                <div style={{ fontSize: 14, fontWeight: 600 }}>
+                  Invite student
+                </div>
                 <div
                   style={{
                     display: "grid",
@@ -1657,57 +2034,97 @@ export function ProfessorDashboard({
                   }}
                 >
                   <label style={{ display: "grid", gap: 6 }}>
-                    <span style={{ fontSize: 12, color: D.muted }}>Student email</span>
+                    <span style={{ fontSize: 12, color: D.muted }}>
+                      Student email
+                    </span>
                     <input
                       value={inviteStudentEmail}
-                      onChange={(event) => setInviteStudentEmail(event.target.value)}
+                      onChange={(event) =>
+                        setInviteStudentEmail(event.target.value)
+                      }
                       placeholder="student@example.edu"
                       style={inputStyle}
                     />
                   </label>
                   <label style={{ display: "grid", gap: 6 }}>
-                    <span style={{ fontSize: 12, color: D.muted }}>Display name</span>
+                    <span style={{ fontSize: 12, color: D.muted }}>
+                      Display name
+                    </span>
                     <input
                       value={inviteStudentDisplayName}
-                      onChange={(event) => setInviteStudentDisplayName(event.target.value)}
+                      onChange={(event) =>
+                        setInviteStudentDisplayName(event.target.value)
+                      }
                       placeholder="Optional"
                       style={inputStyle}
                     />
                   </label>
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 10,
+                    flexWrap: "wrap",
+                  }}
+                >
                   <div style={{ fontSize: 12, color: D.dim, lineHeight: 1.6 }}>
-                    Creates or reuses the Aurora application user, then assigns an invited student
-                    membership to this section.
+                    Creates or reuses the Aurora application user, then assigns
+                    an invited student membership to this section.
                   </div>
-                  <Btn small onClick={() => void inviteStudent()} disabled={invitingStudent || !inviteStudentEmail.trim()}>
+                  <Btn
+                    small
+                    onClick={() => void inviteStudent()}
+                    disabled={invitingStudent || !inviteStudentEmail.trim()}
+                  >
                     {invitingStudent ? "Inviting..." : "Invite student"}
                   </Btn>
                 </div>
                 {inviteStudentError && (
-                  <div style={{ fontSize: 12, color: D.red }}>{inviteStudentError}</div>
+                  <div style={{ fontSize: 12, color: D.red }}>
+                    {inviteStudentError}
+                  </div>
                 )}
                 {inviteStudentStatus && (
-                  <div style={{ fontSize: 12, color: D.green }}>{inviteStudentStatus}</div>
+                  <div style={{ fontSize: 12, color: D.green }}>
+                    {inviteStudentStatus}
+                  </div>
                 )}
               </Card>
-              {studentError && <Card style={{ color: D.red, fontSize: 12 }}>{studentError}</Card>}
+              {studentError && (
+                <Card style={{ color: D.red, fontSize: 12 }}>
+                  {studentError}
+                </Card>
+              )}
               {selectedStudent ? (
                 <Card style={{ display: "grid", gap: 10 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <Avatar name={selectedStudent.display_name || selectedStudent.email} size={38} />
+                  <div
+                    style={{ display: "flex", alignItems: "center", gap: 10 }}
+                  >
+                    <Avatar
+                      name={
+                        selectedStudent.display_name || selectedStudent.email
+                      }
+                      size={38}
+                    />
                     <div style={{ display: "grid", gap: 2 }}>
-                      <div style={{ fontSize: 17, fontWeight: 600 }}>{selectedStudent.display_name}</div>
-                      <div style={{ fontSize: 12, color: D.muted }}>{selectedStudent.email}</div>
+                      <div style={{ fontSize: 17, fontWeight: 600 }}>
+                        {selectedStudent.display_name}
+                      </div>
+                      <div style={{ fontSize: 12, color: D.muted }}>
+                        {selectedStudent.email}
+                      </div>
                       <div style={{ fontSize: 11, color: D.dim }}>
-                        {selectedStudent.role_in_section} · {selectedStudent.membership_status}
+                        {selectedStudent.role_in_section} ·{" "}
+                        {selectedStudent.membership_status}
                       </div>
                     </div>
                   </div>
                   <div
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                      gridTemplateColumns:
+                        "repeat(auto-fit, minmax(220px, 1fr))",
                       gap: 12,
                     }}
                   >
@@ -1724,15 +2141,23 @@ export function ProfessorDashboard({
                     />
                     <Stat
                       label="// last_session"
-                      value={selectedStudent.last_session_at ? "recent" : "none"}
+                      value={
+                        selectedStudent.last_session_at ? "recent" : "none"
+                      }
                       sub={formatLastSession(selectedStudent.last_session_at)}
-                      color={selectedStudent.last_session_at ? D.green : D.muted}
+                      color={
+                        selectedStudent.last_session_at ? D.green : D.muted
+                      }
                     />
                   </div>
                 </Card>
               ) : null}
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {loadingStudents && <div style={{ fontSize: 12, color: D.muted }}>Loading roster...</div>}
+                {loadingStudents && (
+                  <div style={{ fontSize: 12, color: D.muted }}>
+                    Loading roster...
+                  </div>
+                )}
                 {!loadingStudents && students.length === 0 && (
                   <div style={{ fontSize: 12, color: D.dim }}>
                     No student memberships found for this section.
@@ -1746,17 +2171,36 @@ export function ProfessorDashboard({
                       display: "flex",
                       alignItems: "center",
                       gap: 14,
-                      borderColor: student.user_id === selectedStudentId ? D.orangeBorder : D.border,
-                      background: student.user_id === selectedStudentId ? D.orangeGlow : D.card,
+                      borderColor:
+                        student.user_id === selectedStudentId
+                          ? D.orangeBorder
+                          : D.border,
+                      background:
+                        student.user_id === selectedStudentId
+                          ? D.orangeGlow
+                          : D.card,
                     }}
                   >
                     <Avatar name={student.display_name || student.email} />
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 13, fontWeight: 500 }}>{student.display_name}</div>
-                      <div style={{ fontSize: 11, color: D.muted }}>{student.email}</div>
+                      <div style={{ fontSize: 13, fontWeight: 500 }}>
+                        {student.display_name}
+                      </div>
+                      <div style={{ fontSize: 11, color: D.muted }}>
+                        {student.email}
+                      </div>
                     </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                      <Tag color={D.green}>{student.session_count} sessions</Tag>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <Tag color={D.green}>
+                        {student.session_count} sessions
+                      </Tag>
                       <Tag color={D.blue}>{student.membership_status}</Tag>
                       <Btn
                         small
@@ -1775,10 +2219,12 @@ export function ProfessorDashboard({
                 Section analytics <Tag color={D.green}>LIVE</Tag>
               </div>
               <Card style={{ marginBottom: 12, fontSize: 12, color: D.muted }}>
-                Live Aurora-backed analytics for the selected section. This view stays scoped to the
-                professor or TA memberships on that section.
+                Live Aurora-backed analytics for the selected section. This view
+                stays scoped to the professor or TA memberships on that section.
                 {activeAnalytics?.generated_at ? (
-                  <span style={{ display: "block", marginTop: 8, color: D.dim }}>
+                  <span
+                    style={{ display: "block", marginTop: 8, color: D.dim }}
+                  >
                     Refreshed at {activeAnalytics.generated_at}
                   </span>
                 ) : null}
@@ -1811,40 +2257,49 @@ export function ProfessorDashboard({
                 <Stat
                   label="// section_roster"
                   value={selectedSection?.student_count ?? 0}
-                  sub={selectedSection ? selectedSection.section_id : "no section selected"}
+                  sub={
+                    selectedSection
+                      ? selectedSection.section_id
+                      : "no section selected"
+                  }
                   color={D.green}
                 />
               </div>
               <Card style={{ marginBottom: 12 }}>
-                <div style={{ ...mono, fontSize: 11, color: D.muted, marginBottom: 14 }}>
-                  // weekly_section_activity
+                <div
+                  style={{
+                    ...mono,
+                    fontSize: 11,
+                    color: D.muted,
+                    marginBottom: 14,
+                  }}
+                >
+                  // section_analytics
                 </div>
                 {loadingAnalytics ? (
-                  <div style={{ fontSize: 12, color: D.muted }}>Loading analytics...</div>
-                ) : (
-                  <ResponsiveContainer width="100%" height={220}>
-                    <BarChart data={activeAnalytics?.weekly_activity ?? []}>
-                      <CartesianGrid strokeDasharray="3 3" stroke={D.border} />
-                      <XAxis
-                        dataKey="day"
-                        stroke={D.muted}
-                        tick={{ fontSize: 11, fill: D.muted }}
-                      />
-                      <YAxis stroke={D.muted} tick={{ fontSize: 11, fill: D.muted }} />
-                      <Tooltip {...chartTooltipStyle} />
-                      <Bar dataKey="sessions" fill={D.orange} radius={[3, 3, 0, 0]} name="sessions" />
-                      <Bar
-                        dataKey="active_students"
-                        fill={D.blue}
-                        radius={[3, 3, 0, 0]}
-                        name="active students"
-                      />
-                    </BarChart>
-                  </ResponsiveContainer>
-                )}
+                  <div style={{ fontSize: 12, color: D.muted }}>
+                    Loading analytics...
+                  </div>
+                ) : activeAnalytics ? (
+                  <ProfessorAnalyticsCharts
+                    cognitive_progression={
+                      activeAnalytics.cognitive_progression
+                    }
+                    pedagogical_actions={activeAnalytics.pedagogical_actions}
+                    frustration_by_week={activeAnalytics.frustration_by_week}
+                    time_utilization={activeAnalytics.time_utilization}
+                  />
+                ) : null}
               </Card>
               <Card style={{ marginBottom: 12 }}>
-                <div style={{ ...mono, fontSize: 11, color: D.muted, marginBottom: 14 }}>
+                <div
+                  style={{
+                    ...mono,
+                    fontSize: 11,
+                    color: D.muted,
+                    marginBottom: 14,
+                  }}
+                >
                   // student_drill_down
                 </div>
                 {studentAnalyticsError ? (
@@ -1852,7 +2307,9 @@ export function ProfessorDashboard({
                     Student analytics failed to load: {studentAnalyticsError}
                   </div>
                 ) : loadingStudentAnalytics ? (
-                  <div style={{ fontSize: 12, color: D.muted }}>Loading student drill-down...</div>
+                  <div style={{ fontSize: 12, color: D.muted }}>
+                    Loading student drill-down...
+                  </div>
                 ) : activeStudentAnalytics ? (
                   <div style={{ display: "grid", gap: 12 }}>
                     <div
@@ -1883,38 +2340,83 @@ export function ProfessorDashboard({
                         </div>
                       </div>
                       <div style={{ flex: 1 }} />
-                      <Btn small onClick={() => setTab("students")}>Back to roster</Btn>
+                      <Btn small onClick={() => setTab("students")}>
+                        Back to roster
+                      </Btn>
                     </div>
+
                     <div
                       style={{
-                        display: "grid",
-                        gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                        display: "flex",
+                        gap: 8,
+                        borderBottom: `1px solid ${D.border}`,
+                        paddingBottom: 12,
+                      }}
+                    >
+                      <button
+                        onClick={() => setStudentDrillDownTab("analytics")}
+                        style={{
+                          background:
+                            studentDrillDownTab === "analytics"
+                              ? D.surface
+                              : "transparent",
+                          border: `1px solid ${studentDrillDownTab === "analytics" ? D.border : "transparent"}`,
+                          color: D.text,
+                          padding: "6px 12px",
+                          borderRadius: 6,
+                          fontSize: 13,
+                          cursor: "pointer",
+                          fontWeight:
+                            studentDrillDownTab === "analytics" ? 600 : 400,
+                        }}
+                      >
+                        Analytics
+                      </button>
+                      <button
+                        onClick={() => setStudentDrillDownTab("feedback")}
+                        style={{
+                          background:
+                            studentDrillDownTab === "feedback"
+                              ? D.surface
+                              : "transparent",
+                          border: `1px solid ${studentDrillDownTab === "feedback" ? D.border : "transparent"}`,
+                          color: D.text,
+                          padding: "6px 12px",
+                          borderRadius: 6,
+                          fontSize: 13,
+                          cursor: "pointer",
+                          fontWeight:
+                            studentDrillDownTab === "feedback" ? 600 : 400,
+                        }}
+                      >
+                        Feedback
+                      </button>
+                    </div>
+
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
                         gap: 12,
+                        flexWrap: "wrap",
+                        padding: 12,
+                        background: D.surface,
+                        borderRadius: 8,
+                        border: `1px solid ${D.border}`,
+                        marginTop: 4,
                       }}
                     >
                       <Stat
-                        label="// sessions_7d"
-                        value={activeStudentAnalytics.sessions_last_7_days}
-                        sub="student sessions in section"
-                        color={D.orange}
-                      />
-                      <Stat
-                        label="// turns_7d"
-                        value={activeStudentAnalytics.turns_last_7_days}
-                        sub="student turns in section"
-                        color={D.blue}
-                      />
-                      <Stat
-                        label="// total_sessions"
+                        label="// sessions"
                         value={activeStudentAnalytics.total_sessions}
-                        sub="all time"
-                        color={D.green}
+                        sub="total sessions"
+                        color={D.orange}
                       />
                       <Stat
-                        label="// total_turns"
+                        label="// requests"
                         value={activeStudentAnalytics.total_turns}
-                        sub="all time"
-                        color={D.orange}
+                        sub="total requests"
+                        color={D.purple}
                       />
                       <Stat
                         label="// feedback"
@@ -1924,43 +2426,182 @@ export function ProfessorDashboard({
                       />
                       <Stat
                         label="// last_activity"
-                        value={activeStudentAnalytics.last_activity_at ? "recent" : "none"}
-                        sub={formatLastSession(activeStudentAnalytics.last_activity_at)}
-                        color={activeStudentAnalytics.last_activity_at ? D.green : D.muted}
+                        value={
+                          activeStudentAnalytics.last_activity_at
+                            ? "recent"
+                            : "none"
+                        }
+                        sub={formatLastSession(
+                          activeStudentAnalytics.last_activity_at,
+                        )}
+                        color={
+                          activeStudentAnalytics.last_activity_at
+                            ? D.green
+                            : D.muted
+                        }
+                      />
+                      <Stat
+                        label="// pastes"
+                        value={activeStudentAnalytics.external_paste_count}
+                        sub="external pastes detected"
+                        color={
+                          activeStudentAnalytics.external_paste_count > 0
+                            ? D.red
+                            : D.muted
+                        }
                       />
                     </div>
-                    <div style={{ fontSize: 12, color: D.dim, lineHeight: 1.6 }}>
-                      The chart below shows the student’s own activity across the selected section.
-                    </div>
-                    <ResponsiveContainer width="100%" height={220}>
-                      <BarChart data={activeStudentAnalytics.weekly_activity}>
-                        <CartesianGrid strokeDasharray="3 3" stroke={D.border} />
-                        <XAxis
-                          dataKey="day"
-                          stroke={D.muted}
-                          tick={{ fontSize: 11, fill: D.muted }}
+
+                    {studentDrillDownTab === "analytics" && (
+                      <>
+                        <div
+                          style={{
+                            fontSize: 12,
+                            color: D.dim,
+                            lineHeight: 1.6,
+                            marginTop: 12,
+                          }}
+                        >
+                          The charts below show the student’s own activity
+                          across the selected section.
+                        </div>
+                        <ProfessorAnalyticsCharts
+                          cognitive_progression={
+                            activeStudentAnalytics.cognitive_progression
+                          }
+                          pedagogical_actions={
+                            activeStudentAnalytics.pedagogical_actions
+                          }
+                          frustration_by_week={
+                            activeStudentAnalytics.frustration_by_week
+                          }
+                          time_utilization={
+                            activeStudentAnalytics.time_utilization
+                          }
                         />
-                        <YAxis stroke={D.muted} tick={{ fontSize: 11, fill: D.muted }} />
-                        <Tooltip {...chartTooltipStyle} />
-                        <Bar dataKey="sessions" fill={D.orange} radius={[3, 3, 0, 0]} name="sessions" />
-                        <Bar dataKey="turns" fill={D.blue} radius={[3, 3, 0, 0]} name="turns" />
-                      </BarChart>
-                    </ResponsiveContainer>
+
+                        {activeStudentAnalytics.paste_incidents &&
+                          activeStudentAnalytics.paste_incidents.length > 0 && (
+                            <div style={{ marginTop: 24 }}>
+                              <div
+                                style={{
+                                  fontSize: 14,
+                                  fontWeight: 600,
+                                  marginBottom: 8,
+                                  color: D.red,
+                                }}
+                              >
+                                ⚠️ Paste Incidents
+                              </div>
+                              <div
+                                style={{
+                                  display: "flex",
+                                  flexDirection: "column",
+                                  gap: 8,
+                                }}
+                              >
+                                {activeStudentAnalytics.paste_incidents.map(
+                                  (incident, i) => (
+                                    <div
+                                      key={i}
+                                      style={{
+                                        display: "flex",
+                                        justifyContent: "space-between",
+                                        padding: 12,
+                                        background: D.surface,
+                                        border: `1px solid ${D.red}40`,
+                                        borderRadius: 6,
+                                        fontSize: 13,
+                                      }}
+                                    >
+                                      <div>
+                                        <span
+                                          style={{
+                                            fontWeight: 600,
+                                            color: D.red,
+                                          }}
+                                        >
+                                          Pasted {incident.pasted_char_count}{" "}
+                                          characters
+                                        </span>
+                                        <div
+                                          style={{
+                                            ...mono,
+                                            fontSize: 11,
+                                            color: D.muted,
+                                            marginTop: 4,
+                                          }}
+                                        >
+                                          Session: {incident.session_id}
+                                        </div>
+                                      </div>
+                                      <div style={{ color: D.muted }}>
+                                        {incident.created_at
+                                          ? new Date(
+                                              incident.created_at,
+                                            ).toLocaleString()
+                                          : "Unknown"}
+                                      </div>
+                                    </div>
+                                  ),
+                                )}
+                              </div>
+                            </div>
+                          )}
+                      </>
+                    )}
+
+                    {studentDrillDownTab === "feedback" && (
+                      <div style={{ marginTop: 12 }}>
+                        {studentFeedbackError ? (
+                          <div
+                            style={{
+                              color: D.red,
+                              padding: 12,
+                              background: `${D.red}10`,
+                              borderRadius: 8,
+                            }}
+                          >
+                            Failed to load feedback: {studentFeedbackError}
+                          </div>
+                        ) : studentFeedback ? (
+                          <ProfessorStudentFeedback
+                            feedback={studentFeedback.feedback}
+                          />
+                        ) : (
+                          <div style={{ fontSize: 12, color: D.muted }}>
+                            Loading feedback...
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div style={{ fontSize: 12, color: D.dim }}>
-                    Pick a student from the roster to inspect individual activity.
+                    Pick a student from the roster to inspect individual
+                    activity.
                   </div>
                 )}
               </Card>
               <Card>
-                <div style={{ ...mono, fontSize: 11, color: D.muted, marginBottom: 14 }}>
+                <div
+                  style={{
+                    ...mono,
+                    fontSize: 11,
+                    color: D.muted,
+                    marginBottom: 14,
+                  }}
+                >
                   // top_active_students
                 </div>
                 {loadingAnalytics ? (
-                  <div style={{ fontSize: 12, color: D.muted }}>Loading student highlights...</div>
+                  <div style={{ fontSize: 12, color: D.muted }}>
+                    Loading student highlights...
+                  </div>
                 ) : activeAnalytics?.top_students.length ? (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  <div
+                    style={{ display: "flex", flexDirection: "column", gap: 8 }}
+                  >
                     {activeAnalytics.top_students.map((student) => (
                       <Card
                         key={student.user_id}
@@ -1972,17 +2613,35 @@ export function ProfessorDashboard({
                           borderColor: D.border,
                         }}
                       >
-                        <Avatar name={student.display_name || student.email} size={32} />
+                        <Avatar
+                          name={student.display_name || student.email}
+                          size={32}
+                        />
                         <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: 13, fontWeight: 500 }}>{student.display_name}</div>
-                          <div style={{ fontSize: 11, color: D.muted }}>{student.email}</div>
+                          <div style={{ fontSize: 13, fontWeight: 500 }}>
+                            {student.display_name}
+                          </div>
+                          <div style={{ fontSize: 11, color: D.muted }}>
+                            {student.email}
+                          </div>
                         </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                          <Tag color={D.orange}>{student.session_count} sessions</Tag>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                            flexWrap: "wrap",
+                          }}
+                        >
+                          <Tag color={D.orange}>
+                            {student.session_count} sessions
+                          </Tag>
                           <Tag color={D.blue}>{student.membership_status}</Tag>
                           <Btn
                             small
-                            onClick={() => openStudentAnalytics(student.user_id)}
+                            onClick={() =>
+                              openStudentAnalytics(student.user_id)
+                            }
                           >
                             View analytics
                           </Btn>

@@ -50,6 +50,7 @@ from rag_eng.app_registry import (
     create_professor_section_teaching_plan_week_reference,
     get_professor_section_analytics,
     get_professor_section_student_analytics,
+    get_professor_section_student_feedback,
     list_professor_section_launch_configs,
     get_professor_section_teaching_plan,
     get_professor_section_teaching_plan_week,
@@ -135,6 +136,7 @@ from rag_eng.schemas import (
     ProfessorSectionStudentInviteCreate,
     ProfessorSectionAnalytics,
     ProfessorSectionStudentAnalytics,
+    ProfessorStudentFeedbackResponse,
     ProfessorSectionSummary,
     ProfessorTeachingPlan,
     ProfessorTeachingPlanUpdate,
@@ -949,6 +951,27 @@ def create_app() -> FastAPI:
                 section_id,
                 student_user_id,
                 tz=tz,
+            )
+        except Exception as exc:
+            raise _app_registry_http_error(exc) from exc
+
+    @app.get(
+        "/professor/sections/{section_id}/students/{student_user_id}/feedback",
+        response_model=ProfessorStudentFeedbackResponse,
+        dependencies=[Depends(require_authenticated_user)],
+    )
+    def professor_get_student_feedback(
+        section_id: str,
+        student_user_id: str,
+        limit: int = 50,
+        current_user=Depends(require_authenticated_user),
+    ) -> ProfessorStudentFeedbackResponse:
+        try:
+            return get_professor_section_student_feedback(
+                current_user,
+                section_id,
+                student_user_id,
+                limit=limit,
             )
         except Exception as exc:
             raise _app_registry_http_error(exc) from exc
@@ -2436,7 +2459,8 @@ def create_app() -> FastAPI:
                         FROM telemetry_events
                         WHERE event_type = 'out_of_band_telemetry'
                         AND app_user_id = %s
-                        """ + course_filter_sql,
+                        """
+                        + course_filter_sql,
                         (user_id, *course_filter_params),
                     )
                     row = cursor.fetchone()
@@ -2444,7 +2468,8 @@ def create_app() -> FastAPI:
                     total_style_nudges = row[1] if row and row[1] else 0
 
                     cursor.execute(
-                        "SELECT COUNT(*) FROM tutor_turn_snapshots WHERE app_user_id = %s" + course_filter_sql,
+                        "SELECT COUNT(*) FROM tutor_turn_snapshots WHERE app_user_id = %s"
+                        + course_filter_sql,
                         (user_id, *course_filter_params),
                     )
                     row = cursor.fetchone()
@@ -2458,7 +2483,9 @@ def create_app() -> FastAPI:
                             COALESCE(INITCAP(REPLACE(SUBSTRING(snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Cognitive_Stage' FROM '([a-zA-Z]{5,})'), '_', ' ')), 'Unknown') as stage,
                             COUNT(*) as count
                         FROM tutor_turn_snapshots
-                        WHERE app_user_id = %s """ + course_filter_sql + """
+                        WHERE app_user_id = %s """
+                        + course_filter_sql
+                        + """
                           AND snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Cognitive_Stage' IS NOT NULL
                         GROUP BY week, stage
                     """,
@@ -2478,7 +2505,9 @@ def create_app() -> FastAPI:
                         LEFT JOIN tutor_turn_snapshots s ON t.turn_id = s.turn_id
                         WHERE t.event_type = 'out_of_band_telemetry'
                         AND t.app_user_id = %s
-                        """ + course_filter_sql.replace('course_id', 't.course_id') + """
+                        """
+                        + course_filter_sql.replace("course_id", "t.course_id")
+                        + """
                         GROUP BY assignment
                     """,
                         (user_id, *course_filter_params),
@@ -2493,7 +2522,9 @@ def create_app() -> FastAPI:
                             COALESCE(INITCAP(REPLACE(SUBSTRING(snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Pedagogical_Action' FROM '([A-Z_]{2,})'), '_', ' ')), 'None') as category,
                             COUNT(*) as count
                         FROM tutor_turn_snapshots
-                        WHERE app_user_id = %s """ + course_filter_sql + """
+                        WHERE app_user_id = %s """
+                        + course_filter_sql
+                        + """
                           AND snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Pedagogical_Action' IS NOT NULL
                         GROUP BY stage, category
                     """,
@@ -2508,7 +2539,9 @@ def create_app() -> FastAPI:
                             COALESCE(CAST(SUBSTRING(snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Escalation_State' FROM 'Frustration Level: ([0-9]+)') AS INTEGER), 1) as frustration,
                             COUNT(*) as count
                         FROM tutor_turn_snapshots
-                        WHERE app_user_id = %s """ + course_filter_sql + """
+                        WHERE app_user_id = %s """
+                        + course_filter_sql
+                        + """
                         GROUP BY week, frustration
                     """,
                         (user_id, *course_filter_params),
