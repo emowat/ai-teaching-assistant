@@ -617,6 +617,8 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
                             preserveFocus: true,
                         });
                     } else if (data.mode !== 'Study Assist' && previousMode === 'Study Assist') {
+                        // Auto-restore the terminal panel
+                        vscode.commands.executeCommand('coding-rabbit.startTerminal');
                         // Switching back — restore the previous file if it's still open
                         if (this._studyAssistPreviousEditor) {
                             try {
@@ -644,7 +646,7 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
                     break;
                 }
                 case 'exportChat': {
-                    this._exportChat();
+                    this._exportChat(webviewView);
                     break;
                 }
                 case 'toggleStopwatch': {
@@ -728,7 +730,7 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
         }
     }
 
-    private async _exportChat() {
+    private async _exportChat(webviewView: vscode.WebviewView) {
         if (this._conversationHistory.length === 0) {
             vscode.window.showInformationMessage("No chat history to export.");
             return;
@@ -773,23 +775,16 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
             markdownContent += `${role}:\n\n${content}\n\n---\n\n`;
         }
 
-        const workspaceFolders = vscode.workspace.workspaceFolders;
-        let defaultUri: vscode.Uri | undefined;
-        if (workspaceFolders && workspaceFolders.length > 0) {
-            const dateStr = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-            defaultUri = vscode.Uri.joinPath(workspaceFolders[0].uri, `chat_export_${dateStr}.md`);
-        }
+        const dateStr = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+        const filename = `chat_export_${dateStr}.md`;
 
-        const uri = await vscode.window.showSaveDialog({
-            defaultUri,
-            filters: { 'Markdown': ['md'] },
-            title: 'Save Chat Export'
+        webviewView.webview.postMessage({
+            type: 'triggerDownload',
+            filename: filename,
+            content: markdownContent
         });
 
-        if (uri) {
-            await vscode.workspace.fs.writeFile(uri, Buffer.from(markdownContent, 'utf8'));
-            vscode.window.showInformationMessage("Chat exported successfully!");
-        }
+        vscode.window.showInformationMessage("Chat export initiated. Check your browser downloads!");
     }
 
     private async _handleAskTA(userMessage: string, mode: string, webviewView: any, isHidden: boolean = false) {
@@ -2293,6 +2288,17 @@ ${terminalOutput}`;
                 case 'updateCarrots':
                     const cc = document.getElementById('carrotCount');
                     if (cc) cc.innerText = \`🥕 \${message.count} Carrots\`;
+                    break;
+                case 'triggerDownload':
+                    const blob = new Blob([message.content], { type: 'text/markdown' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = message.filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
                     break;
             }
         });

@@ -46,7 +46,7 @@
             "extensions": [
                 "ms-vscode.cpptools",
                 "ms-vscode.cpptools-extension-pack",
-                "${containerWorkspaceFolder}/.devcontainer/coding-rabbit-0.3.0.vsix"
+                "${containerWorkspaceFolder}/.devcontainer/coding-rabbit-0.3.1.vsix"
             ]
         }
     },

@@ -4,7 +4,13 @@ import { spawn } from 'child_process';
 export let terminalBuffer: string[] = [];
 export let lastExitCode: number | null = null;
 
+let activeTerminal: vscode.Terminal | null = null;
+
 export function trackTerminal(onActivity?: () => void) {
+    if (activeTerminal) {
+        activeTerminal.show();
+        return;
+    }
     const writeEmitter = new vscode.EventEmitter<string>();
     
     const customEnv = Object.assign({}, process.env as { [key: string]: string });
@@ -80,5 +86,14 @@ export function trackTerminal(onActivity?: () => void) {
     };
 
     const terminal = vscode.window.createTerminal({ name: 'TA Console', pty: pseudoterminal });
+    activeTerminal = terminal;
+    
+    // Clear reference if the user manually kills it by pressing the trash can
+    vscode.window.onDidCloseTerminal((closedTerminal) => {
+        if (closedTerminal === activeTerminal) {
+            activeTerminal = null;
+        }
+    });
+    
     terminal.show();
 }
