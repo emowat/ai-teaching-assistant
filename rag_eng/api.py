@@ -2522,9 +2522,9 @@ def create_app() -> FastAPI:
             time_data = [
                 {
                     "assignment": r[0],
-                    "chat": round(r[1] / 3600.0, 1),
-                    "editor": round(r[2] / 3600.0, 1),
-                    "terminal": round(r[3] / 3600.0, 1),
+                    "chat": r[1] / 3600.0,
+                    "editor": r[2] / 3600.0,
+                    "terminal": r[3] / 3600.0,
                 }
                 for r in time_rows
             ]
