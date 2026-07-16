@@ -473,6 +473,12 @@ ALTER TABLE teaching_plan_weeks
 ALTER TABLE teaching_plan_weeks
   ADD COLUMN IF NOT EXISTS available_until timestamptz;
 
+-- Set by archive_section_data() when a section is archived (Case 2a course-end
+-- scrub): distinguishes an actual archive-with-scrub run from a plain
+-- is_active=false toggle, which historically had no side effects.
+ALTER TABLE sections
+  ADD COLUMN IF NOT EXISTS archived_at timestamptz;
+
 INSERT INTO courses (course_id, course_source, collection_name, display_name, is_active)
 VALUES
   ('mit13', 'mit13', 'course_knowledge', 'MIT 6.0013', TRUE),

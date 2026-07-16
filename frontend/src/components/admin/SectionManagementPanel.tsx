@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  archiveAdminSection,
   createAdminSection,
   createAdminSectionMembership,
   listAdminSections,
@@ -99,6 +100,7 @@ export function SectionManagementPanel({ accessToken }: SectionManagementPanelPr
   );
   const [creating, setCreating] = useState(false);
   const [savingSectionId, setSavingSectionId] = useState<string | null>(null);
+  const [archivingSectionId, setArchivingSectionId] = useState<string | null>(null);
   const [savingMembership, setSavingMembership] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [formStatus, setFormStatus] = useState<string | null>(null);
@@ -290,6 +292,34 @@ export function SectionManagementPanel({ accessToken }: SectionManagementPanelPr
       setFormError(err instanceof Error ? err.message : "Unable to update section.");
     } finally {
       setSavingSectionId(null);
+    }
+  };
+
+  const handleArchiveSection = async () => {
+    if (selectedSection === null) {
+      return;
+    }
+    if (
+      !window.confirm(
+        "Are you sure you want to archive this section? This will permanently remove individual student chat data and cannot be undone."
+      )
+    ) {
+      return;
+    }
+
+    setArchivingSectionId(selectedSection.section_id);
+    setFormError(null);
+    setFormStatus(null);
+
+    try {
+      const updated = await archiveAdminSection(selectedSection.section_id, accessToken);
+      upsertSection(updated);
+      applySelectedSection(updated);
+      setFormStatus(`Archived ${updated.section_id}.`);
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Unable to archive section.");
+    } finally {
+      setArchivingSectionId(null);
     }
   };
 
@@ -518,9 +548,12 @@ export function SectionManagementPanel({ accessToken }: SectionManagementPanelPr
               <div style={{ fontSize: 15, fontWeight: 600 }}>
                 Manage {selectedSection.section_id}
               </div>
-              <Tag color={selectedSection.is_active ? D.green : D.yellow}>
-                {selectedSection.is_active ? "active" : "inactive"}
-              </Tag>
+              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                {selectedSection.archived_at && <Tag color={D.red}>archived</Tag>}
+                <Tag color={selectedSection.is_active ? D.green : D.yellow}>
+                  {selectedSection.is_active ? "active" : "inactive"}
+                </Tag>
+              </div>
             </div>
             <div style={{ display: "grid", gap: 10 }}>
               <div style={{ display: "grid", gap: 2 }}>
@@ -581,6 +614,22 @@ export function SectionManagementPanel({ accessToken }: SectionManagementPanelPr
                   disabled={savingSectionId === selectedSection.section_id || loading}
                 >
                   {savingSectionId === selectedSection.section_id ? "Saving..." : "Save section"}
+                </Btn>
+                <Btn
+                  small
+                  variant="danger"
+                  onClick={() => void handleArchiveSection()}
+                  disabled={
+                    archivingSectionId === selectedSection.section_id ||
+                    loading ||
+                    Boolean(selectedSection.archived_at)
+                  }
+                >
+                  {archivingSectionId === selectedSection.section_id
+                    ? "Archiving..."
+                    : selectedSection.archived_at
+                      ? "Archived"
+                      : "Archive Section"}
                 </Btn>
                 <Tag color={D.blue}>{selectedSection.memberships.length} memberships</Tag>
               </div>

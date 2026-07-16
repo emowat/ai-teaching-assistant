@@ -39,8 +39,10 @@ from rag_eng.app_registry import (
     SectionConflictError,
     SectionNotFoundError,
     get_student_bootstrap,
+    archive_section_data,
     create_admin_section,
     create_admin_user,
+    get_admin_section,
     create_section_membership,
     invite_professor_section_student,
     archive_professor_section_teaching_plan,
@@ -924,6 +926,18 @@ def create_app() -> FastAPI:
             raise _app_registry_http_error(exc) from exc
 
     @app.post(
+        "/admin/sections/{section_id}/archive",
+        response_model=AdminSection,
+        dependencies=[Depends(_require_admin_access)],
+    )
+    def admin_archive_section(section_id: str) -> AdminSection:
+        try:
+            archive_section_data(section_id)
+            return get_admin_section(section_id)
+        except Exception as exc:
+            raise _app_registry_http_error(exc) from exc
+
+    @app.post(
         "/admin/sections/{section_id}/memberships",
         response_model=AdminSection,
         dependencies=[Depends(_require_admin_access)],
@@ -1204,6 +1218,23 @@ def create_app() -> FastAPI:
             require_section_membership(current_user, section_id, allowed_roles=["professor", "admin"])
             scrub_user_data(student_id)
             return {"success": True, "message": "User data successfully scrubbed."}
+        except Exception as exc:
+            raise _app_registry_http_error(exc) from exc
+
+    @app.post(
+        "/professor/sections/{section_id}/archive",
+        dependencies=[Depends(require_authenticated_user)],
+    )
+    def professor_archive_section(
+        section_id: str,
+        current_user=Depends(require_authenticated_user),
+    ):
+        try:
+            require_section_membership(
+                current_user, section_id, allowed_roles=["professor", "admin"]
+            )
+            archive_section_data(section_id)
+            return {"success": True, "message": "Section archived."}
         except Exception as exc:
             raise _app_registry_http_error(exc) from exc
 

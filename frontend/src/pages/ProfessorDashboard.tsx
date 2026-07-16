@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  archiveProfessorSection,
   inviteProfessorSectionStudent,
   getProfessorSectionAnalytics,
   getProfessorSectionStudentAnalytics,
@@ -209,6 +210,10 @@ export function ProfessorDashboard({
     string | null
   >(null);
   const [savingSectionSettings, setSavingSectionSettings] = useState(false);
+  const [archivingSection, setArchivingSection] = useState(false);
+  const [archiveSectionMessage, setArchiveSectionMessage] = useState<
+    string | null
+  >(null);
   const [creatingTeachingPlanWeek, setCreatingTeachingPlanWeek] =
     useState(false);
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(
@@ -955,6 +960,44 @@ export function ProfessorDashboard({
     }
   };
 
+  const handleArchiveSection = async () => {
+    if (!selectedSectionId) {
+      return;
+    }
+    if (
+      !window.confirm(
+        "Are you sure you want to archive this section? This will permanently remove individual student chat data and cannot be undone.",
+      )
+    ) {
+      return;
+    }
+
+    setArchivingSection(true);
+    setArchiveSectionMessage(null);
+
+    try {
+      await archiveProfessorSection(selectedSectionId, accessToken);
+      setSections((current) =>
+        current.map((section) =>
+          section.section_id === selectedSectionId
+            ? {
+                ...section,
+                is_active: false,
+                archived_at: new Date().toISOString(),
+              }
+            : section,
+        ),
+      );
+      setArchiveSectionMessage("Section archived.");
+    } catch (err) {
+      setArchiveSectionMessage(
+        err instanceof Error ? err.message : "Unable to archive section.",
+      );
+    } finally {
+      setArchivingSection(false);
+    }
+  };
+
   const inviteStudent = async () => {
     if (!selectedSectionId || !inviteStudentEmail.trim()) {
       return;
@@ -1422,6 +1465,39 @@ export function ProfessorDashboard({
                     }
                   >
                     {savingSectionSettings ? "Saving..." : "Save controls"}
+                  </Btn>
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "flex-end",
+                    alignItems: "center",
+                    gap: 8,
+                    marginTop: 12,
+                    paddingTop: 12,
+                    borderTop: `1px solid ${D.border}`,
+                  }}
+                >
+                  {archiveSectionMessage && (
+                    <div style={{ fontSize: 12, color: D.muted }}>
+                      {archiveSectionMessage}
+                    </div>
+                  )}
+                  <Btn
+                    small
+                    variant="danger"
+                    onClick={() => void handleArchiveSection()}
+                    disabled={
+                      !selectedSectionId ||
+                      archivingSection ||
+                      Boolean(selectedSection?.archived_at)
+                    }
+                  >
+                    {archivingSection
+                      ? "Archiving..."
+                      : selectedSection?.archived_at
+                        ? "Archived"
+                        : "Archive Section"}
                   </Btn>
                 </div>
               </Card>

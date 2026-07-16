@@ -32,7 +32,7 @@ def test_split_sql_statements_ignores_comments_and_blank_lines() -> None:
 def test_load_sql_statements_reads_repo_bootstrap_file() -> None:
     statements = load_sql_statements(DEFAULT_SQL_FILE)
 
-    assert len(statements) == 61
+    assert len(statements) == 62
     assert statements[0].startswith("CREATE EXTENSION IF NOT EXISTS pgcrypto")
     assert statements[1].startswith("CREATE TABLE IF NOT EXISTS courses")
     assert statements[2].startswith("CREATE TABLE IF NOT EXISTS course_aliases")
@@ -146,11 +146,12 @@ def test_load_sql_statements_reads_repo_bootstrap_file() -> None:
     assert statements[50].startswith("ALTER TABLE teaching_plan_weeks")
     assert statements[51].startswith("ALTER TABLE teaching_plan_weeks")
     assert statements[52].startswith("ALTER TABLE teaching_plan_weeks")
-    assert statements[53].startswith("INSERT INTO courses")
-    assert statements[54].startswith("INSERT INTO course_aliases")
-    assert "'course_knowledge'" in statements[53]
-    assert "'mit14_course_BAAI_bge_large_en_v1_5'" in statements[53]
-    assert "'harvard_cs50_BAAI_bge_large_en_v1_5'" in statements[53]
+    assert statements[53].startswith("ALTER TABLE sections")
+    assert statements[54].startswith("INSERT INTO courses")
+    assert statements[55].startswith("INSERT INTO course_aliases")
+    assert "'course_knowledge'" in statements[54]
+    assert "'mit14_course_BAAI_bge_large_en_v1_5'" in statements[54]
+    assert "'harvard_cs50_BAAI_bge_large_en_v1_5'" in statements[54]
 
 
 class _ApplySchemaClient:

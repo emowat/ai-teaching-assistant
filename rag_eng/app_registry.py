@@ -237,7 +237,8 @@ def _section_summary_from_row(row: tuple[Any, ...]) -> dict[str, Any]:
         is_active,
         created_at,
         updated_at,
-    ) = row[:8]
+        archived_at,
+    ) = row[:9]
     return {
         "section_id": _clean_text(section_id),
         "course_id": _clean_text(course_id),
@@ -247,6 +248,7 @@ def _section_summary_from_row(row: tuple[Any, ...]) -> dict[str, Any]:
         "is_active": bool(is_active),
         "created_at": _format_timestamp(created_at),
         "updated_at": _format_timestamp(updated_at),
+        "archived_at": _format_timestamp(archived_at),
     }
 
 
@@ -790,10 +792,55 @@ def scrub_user_data(
     *,
     runtime: "AppRegistryRuntimeConfig | None" = None,
 ) -> None:
+    """Permanently delete a student's data after mid-course consent withdrawal
+    (Case 1) — full deletion, as if the student never used the product.
+
+    Deletes tutor_sessions for this user, which cascades via existing FKs to
+    tutor_turns, tutor_turn_snapshots, telemetry_events,
+    ta_effectiveness_session_scores, and ta_effectiveness_turn_scores.
+    reported_issues and section_memberships have no FK path from
+    tutor_sessions (session_id is an unconstrained column on
+    reported_issues), so they're deleted explicitly. The `users` row is
+    anonymized rather than hard-deleted, since data_deletion_requests has
+    ON DELETE CASCADE on user_id — deleting `users` would destroy the audit
+    trail of the deletion itself.
+
+    Safe to call more than once for the same user_id: every statement here
+    is a no-op if the rows are already gone.
+    """
     runtime = runtime or load_app_registry_runtime_config()
     database_url = _require_database_url(runtime)
     with _connect_postgres(database_url, runtime.connect_timeout_seconds) as connection:
         with connection.cursor() as cursor:
+            # Capture cognito_sub before it's nulled below, so sessions only
+            # keyed by the legacy user_sub column (not app_user_id) are still
+            # caught.
+            cursor.execute(
+                "SELECT cognito_sub FROM users WHERE user_id = %s", (user_id,)
+            )
+            row = cursor.fetchone()
+            cognito_sub = row[0] if row else None
+
+            # The ::text cast is required: when cognito_sub is None, Postgres
+            # can't infer a type for a bare "%s IS NOT NULL" placeholder and
+            # raises IndeterminateDatatype under the extended query protocol.
+            cursor.execute(
+                """
+                DELETE FROM tutor_sessions
+                WHERE app_user_id = %s
+                   OR (%s::text IS NOT NULL AND user_sub = %s)
+                """,
+                (user_id, cognito_sub, cognito_sub),
+            )
+
+            cursor.execute(
+                "DELETE FROM reported_issues WHERE user_id = %s", (user_id,)
+            )
+
+            cursor.execute(
+                "DELETE FROM section_memberships WHERE user_id = %s", (user_id,)
+            )
+
             cursor.execute(
                 """
                 UPDATE users
@@ -807,29 +854,6 @@ def scrub_user_data(
             )
 
             cursor.execute(
-                "SELECT session_id, turn_index, snapshot FROM tutor_turn_snapshots WHERE app_user_id = %s",
-                (user_id,),
-            )
-            rows = cursor.fetchall()
-            for row in rows:
-                session_id = row[0]
-                turn_index = row[1]
-                snapshot = row[2]
-                if "student_phase" in snapshot and "raw_input" in snapshot["student_phase"]:
-                    snapshot["student_phase"]["raw_input"] = "[DELETED_FOR_PRIVACY]"
-                if "ta_generation_phase" in snapshot and "generation_history" in snapshot["ta_generation_phase"]:
-                    for gen in snapshot["ta_generation_phase"]["generation_history"]:
-                        if "raw_generation" in gen:
-                            gen["raw_generation"] = "[DELETED_FOR_PRIVACY]"
-                        if "cot_keys" in gen:
-                            for k in gen["cot_keys"].keys():
-                                gen["cot_keys"][k] = "[DELETED_FOR_PRIVACY]"
-                cursor.execute(
-                    "UPDATE tutor_turn_snapshots SET snapshot = %s WHERE session_id = %s AND turn_index = %s",
-                    (json.dumps(snapshot), session_id, turn_index),
-                )
-
-            cursor.execute(
                 """
                 UPDATE data_deletion_requests
                 SET status = 'completed',
@@ -839,16 +863,174 @@ def scrub_user_data(
                 """,
                 (user_id,),
             )
+        connection.commit()
+
+
+_ARCHIVE_REDACTED_VALUE = "[DELETED_FOR_PRIVACY]"
+
+
+def _redact_snapshot_for_archive(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """Redact free-text/identifying fields from a turn snapshot for Case 2a
+    (course-end archive). Leaves structural/categorical fields (stage/action
+    labels, week numbers, scores, latencies, counts) untouched, since the
+    section-wide aggregate charts (cognitive_progression, pedagogical_actions,
+    frustration_by_week, time_utilization) read only those fields.
+    """
+    student = snapshot.get("student")
+    if isinstance(student, dict) and student.get("user_sub"):
+        student["user_sub"] = _ARCHIVE_REDACTED_VALUE
+
+    student_phase = snapshot.get("student_phase")
+    if isinstance(student_phase, dict):
+        if student_phase.get("raw_input"):
+            student_phase["raw_input"] = _ARCHIVE_REDACTED_VALUE
+        if student_phase.get("processed_input"):
+            student_phase["processed_input"] = _ARCHIVE_REDACTED_VALUE
+
+    ide_context = snapshot.get("ide_context")
+    if isinstance(ide_context, dict):
+        if ide_context.get("raw_code_snippet"):
+            ide_context["raw_code_snippet"] = _ARCHIVE_REDACTED_VALUE
+        if ide_context.get("clipboard_event"):
+            ide_context["clipboard_event"] = _ARCHIVE_REDACTED_VALUE
+        if ide_context.get("terminal_context"):
+            ide_context["terminal_context"] = _ARCHIVE_REDACTED_VALUE
+
+    input_guardrail_phase = snapshot.get("input_guardrail_phase")
+    if isinstance(input_guardrail_phase, dict):
+        if input_guardrail_phase.get("final_answer"):
+            input_guardrail_phase["final_answer"] = _ARCHIVE_REDACTED_VALUE
+        if input_guardrail_phase.get("evidence"):
+            input_guardrail_phase["evidence"] = _ARCHIVE_REDACTED_VALUE
+
+    backend_retrieval_phase = snapshot.get("backend_retrieval_phase")
+    if isinstance(backend_retrieval_phase, dict):
+        if backend_retrieval_phase.get("query_string"):
+            backend_retrieval_phase["query_string"] = _ARCHIVE_REDACTED_VALUE
+        if backend_retrieval_phase.get("cpp_query_string"):
+            backend_retrieval_phase["cpp_query_string"] = _ARCHIVE_REDACTED_VALUE
+
+    orchestrator_phase = snapshot.get("orchestrator_phase")
+    if isinstance(orchestrator_phase, dict) and orchestrator_phase.get("final_rendered_text"):
+        orchestrator_phase["final_rendered_text"] = _ARCHIVE_REDACTED_VALUE
+
+    ta_generation_phase = snapshot.get("ta_generation_phase")
+    if isinstance(ta_generation_phase, dict):
+        for gen in ta_generation_phase.get("generation_history") or []:
+            if not isinstance(gen, dict):
+                continue
+            if gen.get("raw_generation"):
+                gen["raw_generation"] = _ARCHIVE_REDACTED_VALUE
+            cot_keys = gen.get("cot_keys")
+            if isinstance(cot_keys, dict):
+                for key in cot_keys:
+                    cot_keys[key] = _ARCHIVE_REDACTED_VALUE
+
+    output_guardrail_phase = snapshot.get("output_guardrail_phase")
+    if isinstance(output_guardrail_phase, dict):
+        if output_guardrail_phase.get("evidence"):
+            output_guardrail_phase["evidence"] = _ARCHIVE_REDACTED_VALUE
+        if output_guardrail_phase.get("final_answer"):
+            output_guardrail_phase["final_answer"] = _ARCHIVE_REDACTED_VALUE
+
+    return snapshot
+
+
+# Tables keyed by section_id whose per-student identity columns are nulled
+# (not deleted) on archive, so section-wide aggregate queries keep working.
+_ARCHIVE_IDENTITY_TABLES: tuple[str, ...] = (
+    "tutor_sessions",
+    "tutor_turns",
+    "tutor_turn_snapshots",
+    "telemetry_events",
+)
+_ARCHIVE_SCORE_TABLES: tuple[str, ...] = (
+    "ta_effectiveness_session_scores",
+    "ta_effectiveness_turn_scores",
+)
+
+
+def archive_section_data(
+    section_id: str,
+    *,
+    runtime: "AppRegistryRuntimeConfig | None" = None,
+) -> None:
+    """Course-end scrub (Case 2a): remove individual student attribution and
+    chat content for a whole section, while preserving section-wide
+    aggregated information (analytics charts, TA effectiveness scores as raw
+    numbers).
+
+    Unlike scrub_user_data (Case 1, full per-student deletion), this never
+    deletes tutor_sessions/tutor_turns/tutor_turn_snapshots/telemetry_events/
+    ta_effectiveness_* rows — only nulls their app_user_id/user_sub columns
+    and redacts free-text snapshot fields — because the section-wide
+    aggregate queries compute directly from these tables filtered by
+    section_id, with no join on user identity.
+
+    Irreversible by design (matches scrub_user_data); safe to call more than
+    once for the same section_id.
+    """
+    runtime = runtime or load_app_registry_runtime_config()
+    database_url = _require_database_url(runtime)
+    with _connect_postgres(database_url, runtime.connect_timeout_seconds) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT session_id, turn_index, snapshot FROM tutor_turn_snapshots WHERE section_id = %s",
+                (section_id,),
+            )
+            snapshot_rows = cursor.fetchall()
+            for row in snapshot_rows:
+                snap_session_id, turn_index, snapshot = row
+                redacted = _redact_snapshot_for_archive(snapshot)
+                cursor.execute(
+                    "UPDATE tutor_turn_snapshots SET snapshot = %s WHERE session_id = %s AND turn_index = %s",
+                    (json.dumps(redacted), snap_session_id, turn_index),
+                )
+
+            # Table names below are from the fixed, hardcoded tuples above —
+            # never user input — so f-string interpolation here is safe.
+            for table in _ARCHIVE_IDENTITY_TABLES:
+                cursor.execute(
+                    f"UPDATE {table} SET app_user_id = NULL, user_sub = NULL WHERE section_id = %s",
+                    (section_id,),
+                )
+            for table in _ARCHIVE_SCORE_TABLES:
+                cursor.execute(
+                    f"UPDATE {table} SET app_user_id = NULL WHERE section_id = %s",
+                    (section_id,),
+                )
 
             cursor.execute(
                 """
                 UPDATE reported_issues
-                SET chat_history = '[{"role": "system", "content": "[DELETED_FOR_PRIVACY]"}]'::jsonb
-                WHERE user_id = %s
+                SET chat_history = '[{"role": "system", "content": "[DELETED_FOR_PRIVACY]"}]'::jsonb,
+                    reason = %s,
+                    user_id = NULL
+                WHERE section_id = %s
                 """,
-                (user_id,),
+                (_ARCHIVE_REDACTED_VALUE, section_id),
             )
+
+            cursor.execute(
+                """
+                DELETE FROM section_memberships
+                WHERE section_id = %s AND role_in_section = 'student'
+                """,
+                (section_id,),
+            )
+
+            cursor.execute(
+                """
+                UPDATE sections
+                SET is_active = FALSE, archived_at = now(), updated_at = now()
+                WHERE section_id = %s
+                """,
+                (section_id,),
+            )
+            if cursor.rowcount == 0:
+                raise SectionNotFoundError(f"Section {section_id} was not found.")
         connection.commit()
+
 
 def resolve_reported_issue(
     issue_id: str,
@@ -965,7 +1147,8 @@ def _load_section_by_id(connection, section_id: str) -> tuple[Any, ...] | None:
           s.term,
           s.is_active,
           s.created_at,
-          s.updated_at
+          s.updated_at,
+          s.archived_at
         FROM sections AS s
         INNER JOIN courses AS c ON c.course_id = s.course_id
         WHERE s.section_id = %s
@@ -1041,7 +1224,8 @@ def _load_all_section_rows(connection) -> list[tuple[Any, ...]]:
           s.term,
           s.is_active,
           s.created_at,
-          s.updated_at
+          s.updated_at,
+          s.archived_at
         FROM sections AS s
         INNER JOIN courses AS c ON c.course_id = s.course_id
         ORDER BY s.section_id ASC
@@ -1061,7 +1245,8 @@ def _load_accessible_section_rows(connection, user_id: str) -> list[tuple[Any, .
           s.term,
           s.is_active,
           s.created_at,
-          s.updated_at
+          s.updated_at,
+          s.archived_at
         FROM sections AS s
         INNER JOIN courses AS c ON c.course_id = s.course_id
         WHERE EXISTS (

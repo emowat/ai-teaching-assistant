@@ -18,6 +18,7 @@ export interface AdminSection {
   memberships: SectionMembershipSummary[];
   created_at: string;
   updated_at: string;
+  archived_at: string;
 }
 
 export interface AdminSectionCreatePayload {
@@ -89,6 +90,17 @@ export function updateAdminSectionMembership(
   return apiPatch<AdminSectionMembershipUpdatePayload, AdminSection>(
     `${sectionPath(sectionId)}/memberships/${encodeURIComponent(userId)}`,
     payload,
+    accessToken
+  );
+}
+
+export function archiveAdminSection(
+  sectionId: string,
+  accessToken: string
+): Promise<AdminSection> {
+  return apiPost<Record<string, never>, AdminSection>(
+    `${sectionPath(sectionId)}/archive`,
+    {},
     accessToken
   );
 }

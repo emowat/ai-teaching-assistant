@@ -16,6 +16,7 @@ export interface ProfessorSectionSummary {
   student_count: number;
   created_at: string;
   updated_at: string;
+  archived_at: string;
 }
 
 export interface ProfessorSectionStudent {
@@ -270,6 +271,17 @@ export async function scrubProfessorUserData(
 ): Promise<{ success: boolean; message: string }> {
   return apiPost<any, { success: boolean; message: string }>(
     `/professor/sections/${encodeURIComponent(sectionId)}/consent/scrub/${encodeURIComponent(studentId)}`,
+    {},
+    accessToken,
+  );
+}
+
+export async function archiveProfessorSection(
+  sectionId: string,
+  accessToken: string,
+): Promise<{ success: boolean; message: string }> {
+  return apiPost<any, { success: boolean; message: string }>(
+    `/professor/sections/${encodeURIComponent(sectionId)}/archive`,
     {},
     accessToken,
   );

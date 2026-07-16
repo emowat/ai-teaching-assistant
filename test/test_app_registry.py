@@ -122,6 +122,7 @@ class _FakeCursor:
             record.get("is_active", True),
             record["created_at"],
             record["updated_at"],
+            record.get("archived_at"),
         )
 
     def _membership_row_for_user(
@@ -481,7 +482,7 @@ class _FakeCursor:
             return
 
         if sql.startswith(
-            "SELECT s.section_id, s.course_id, c.display_name, s.display_name, s.term, s.is_active, s.created_at, s.updated_at FROM sections AS s INNER JOIN courses AS c ON c.course_id = s.course_id ORDER BY s.section_id ASC"
+            "SELECT s.section_id, s.course_id, c.display_name, s.display_name, s.term, s.is_active, s.created_at, s.updated_at, s.archived_at FROM sections AS s INNER JOIN courses AS c ON c.course_id = s.course_id ORDER BY s.section_id ASC"
         ):
             self._rows = [
                 self._section_row(record)
@@ -493,7 +494,7 @@ class _FakeCursor:
             return
 
         if sql.startswith(
-            "SELECT s.section_id, s.course_id, c.display_name, s.display_name, s.term, s.is_active, s.created_at, s.updated_at FROM sections AS s INNER JOIN courses AS c ON c.course_id = s.course_id WHERE EXISTS ( SELECT 1 FROM section_memberships AS sm WHERE sm.section_id = s.section_id AND sm.user_id = %s AND sm.status = 'active' AND sm.role_in_section IN ('professor', 'ta') ) AND s.is_active = TRUE ORDER BY s.section_id ASC"
+            "SELECT s.section_id, s.course_id, c.display_name, s.display_name, s.term, s.is_active, s.created_at, s.updated_at, s.archived_at FROM sections AS s INNER JOIN courses AS c ON c.course_id = s.course_id WHERE EXISTS ( SELECT 1 FROM section_memberships AS sm WHERE sm.section_id = s.section_id AND sm.user_id = %s AND sm.status = 'active' AND sm.role_in_section IN ('professor', 'ta') ) AND s.is_active = TRUE ORDER BY s.section_id ASC"
         ):
             user_id = str(params[0])
             section_ids = {
@@ -794,7 +795,7 @@ class _FakeCursor:
             return
 
         if sql.startswith(
-            "SELECT s.section_id, s.course_id, c.display_name, s.display_name, s.term, s.is_active, s.created_at, s.updated_at FROM sections AS s INNER JOIN courses AS c ON c.course_id = s.course_id WHERE s.section_id = %s"
+            "SELECT s.section_id, s.course_id, c.display_name, s.display_name, s.term, s.is_active, s.created_at, s.updated_at, s.archived_at FROM sections AS s INNER JOIN courses AS c ON c.course_id = s.course_id WHERE s.section_id = %s"
         ):
             section_id = str(params[0])
             record = self.state.sections.get(section_id)

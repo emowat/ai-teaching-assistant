@@ -268,6 +268,7 @@ class AdminSection(BaseModel):
     memberships: list[SectionMembershipSummary] = Field(default_factory=list)
     created_at: str = ""
     updated_at: str = ""
+    archived_at: str = ""
 
 
 class AdminSectionCreate(BaseModel):
@@ -424,6 +425,7 @@ class ProfessorSectionSummary(BaseModel):
     student_count: int = 0
     created_at: str = ""
     updated_at: str = ""
+    archived_at: str = ""
 
 
 class ProfessorSectionStudent(BaseModel):
