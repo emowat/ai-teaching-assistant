@@ -597,6 +597,37 @@ class StudentBootstrapUser(BaseModel):
     consent_status: str = "pending"
 
 
+class ReportIssuePayload(BaseModel):
+    session_id: str
+    turn_index: int | None = None
+    reason: str
+    chat_history: list[dict[str, Any]] = Field(default_factory=list)
+
+class AdminReportedIssue(BaseModel):
+    issue_id: str
+    session_id: str
+    turn_index: int | None = None
+    student_email: str | None = None
+    section_id: str | None = None
+    reason: str
+    chat_history: list[dict[str, Any]] = Field(default_factory=list)
+    status: str
+    created_at: str
+
+class AdminReportedIssuesResponse(BaseModel):
+    issues: list[AdminReportedIssue] = Field(default_factory=list)
+
+class AdminDataDeletionRequest(BaseModel):
+    request_id: str
+    user_id: str
+    student_email: str
+    status: str
+    created_at: str
+    scrubbed_at: str | None = None
+
+class AdminDataDeletionRequestsResponse(BaseModel):
+    requests: list[AdminDataDeletionRequest] = Field(default_factory=list)
+
 class StudentBootstrapEndpoints(BaseModel):
     """Student-facing API endpoints returned by the bootstrap endpoint."""
 

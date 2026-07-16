@@ -45,6 +45,11 @@ def _count_effective_statements(text: str) -> int:
     """
     import re
     
+    # -1. Strip C/C++ style comments before checking for anything else 
+    # (otherwise ASCII arrows in comments like `// <--` will bypass the detector)
+    text = re.sub(r'//.*', '', text)
+    text = re.sub(r'/\*.*?\*/', '', text, flags=re.DOTALL)
+    
     # 0. If this is an ASCII art diagram (e.g. +---+, Unicode boxes, arrows), ignore semicolons entirely
     ascii_patterns = [
         r'\+[-=]{2,}\+',               # +---+ or +===+

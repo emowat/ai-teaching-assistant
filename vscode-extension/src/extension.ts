@@ -96,13 +96,13 @@ export async function activate(context: vscode.ExtensionContext) {
                 // If the exact same text was recently deleted OR already exists elsewhere in the file, it's an internal move/copy.
                 const normalizedInserted = insertedText.replace(/\s+/g, '');
                 const insertedHash = crypto.createHash('md5').update(normalizedInserted).digest('hex');
-                
+
                 // Also ignore whitespace for the internal copy check
                 const normalizedBefore = before.replace(/\s+/g, '');
                 const isInternalCopy = normalizedBefore.includes(normalizedInserted);
-                
+
                 const isInternalCut = recentlyDeletedHashes.has(insertedHash);
-                
+
                 if (!isInternalCopy && !isInternalCut) {
                     likelyPaste = true;
                     pastedCharCount += change.text.length;
@@ -140,17 +140,39 @@ export async function activate(context: vscode.ExtensionContext) {
 
     // Removed aggressive terminal disposal so startup error logs (from devcontainers, etc) remain visible.
     // The TA Console will simply be focused over them instead.
-    
+
     // Automatically start it immediately
     trackTerminal(() => provider.recordShellActivity());
 
-    // Aggressively hunt down and uninstall Copilot programmatically to enforce Hard Mode
-    setTimeout(() => {
-        vscode.commands.executeCommand('workbench.extensions.uninstallExtension', 'github.copilot').then(() => {}, () => {});
-        vscode.commands.executeCommand('workbench.extensions.uninstallExtension', 'github.copilot-chat').then(() => {}, () => {});
+    // Aggressively hunt down Copilot Chat popups during the first 20 seconds of startup.
+    // GitHub Codespaces injects Copilot asynchronously and it usually opens in the Secondary Side Bar (Auxiliary Bar)
+    // or as an editor tab. We want to close these by default to avoid confusing testers.
+    let attempts = 0;
+    const squashCopilotInterval = setInterval(() => {
+        attempts++;
+        if (attempts > 10) { // 10 * 2s = 20 seconds
+            clearInterval(squashCopilotInterval);
+            return;
+        }
+
+        // Close the Secondary Side Bar (where Copilot Chat usually lives)
+        vscode.commands.executeCommand('workbench.action.closeAuxiliaryBar');
+
+        // Close any active Copilot Chat editor tabs
+        for (const group of vscode.window.tabGroups.all) {
+            for (const tab of group.tabs) {
+                if (tab.label.includes('Copilot') || tab.label.includes('Chat')) {
+                    // Only close it if it's NOT our own chat file if we ever use one
+                    vscode.window.tabGroups.close(tab);
+                }
+            }
+        }
+
+        // Ensure our chat has focus in the primary sidebar
+        vscode.commands.executeCommand('coding-rabbit.chatView.focus');
     }, 2000);
 
-    // Automatically pop open the TA Chat window in the sidebar
+    // Automatically pop open the TA Chat window in the sidebar initially
     vscode.commands.executeCommand('coding-rabbit.openChatView');
 }
 

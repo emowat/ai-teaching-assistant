@@ -1726,7 +1726,7 @@ async def run_chat(
                     if guardrail.get("action") == "replace" and guardrail.get("violation_type") == "code_leakage" and attempt_idx < max_attempts - 1:
                         base_api_messages = base_api_messages + [
                             {"role": "assistant", "content": raw_text_acc},
-                            {"role": "user", "content": "Your previous response was rejected by safety guardrails due to code leakage. Please generate a new response that strictly adheres to the pedagogical rules, ensuring no direct code leakage."},
+                            {"role": "user", "content": "Your previous response was rejected by safety guardrails due to code leakage. Please generate a new response that strictly adheres to the pedagogical rules, ensuring no direct code leakage. If you need to provide a syntax scaffold, it must be at most 1 statement long."},
                         ]
                         if not mid_stream_blocked:
                             # Post-processing caught the leak after a clean stream - signal UI to erase
@@ -1842,7 +1842,7 @@ async def run_chat(
                     base_api_messages.append({"role": "assistant", "content": raw_text})
                     base_api_messages.append({
                         "role": "user",
-                        "content": "Your previous response was rejected by safety guardrails due to code leakage. Please generate a new response that strictly adheres to the pedagogical rules, ensuring no direct code leakage."
+                        "content": "Your previous response was rejected by safety guardrails due to code leakage. Please generate a new response that strictly adheres to the pedagogical rules, ensuring no direct code leakage. If you need to provide a syntax scaffold, it must be at most 1 statement long."
                     })
                     continue
 

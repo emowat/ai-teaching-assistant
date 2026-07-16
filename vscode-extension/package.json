@@ -2,7 +2,7 @@
   "name": "coding-rabbit",
   "displayName": "CodingRabbit",
   "description": "C++ CodingRabbit Teaching Assistant via the remote rag_eng backend",
-  "version": "0.3.1",
+  "version": "0.4.2",
   "publisher": "berkeley",
   "repository": "https://github.com/berkeley/coding-rabbit",
   "engines": {

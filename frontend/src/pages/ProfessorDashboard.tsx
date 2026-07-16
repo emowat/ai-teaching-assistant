@@ -12,6 +12,8 @@ import {
   type ProfessorStudentFeedbackResponse,
   type ProfessorSectionStudent,
   type ProfessorSectionSummary,
+  fetchProfessorReportedIssues,
+  type ProfessorReportedIssue,
 } from "../api/professorSectionsApi";
 import {
   listProfessorSectionLaunchConfigs,
@@ -43,6 +45,7 @@ import { TopBar } from "../components/TopBar";
 import { TeachingPlanWeekReferencesEditor } from "../components/professor/TeachingPlanWeekReferencesEditor";
 import { ProfessorAnalyticsCharts } from "../components/professor/ProfessorAnalyticsCharts";
 import { ProfessorStudentFeedback } from "../components/professor/ProfessorStudentFeedback";
+import { ProfessorPrivacyPanel } from "../components/professor/ProfessorPrivacyPanel";
 import type { AppView } from "../types/navigation";
 import { getWeekLaunchUrl, isWeekLaunchReady } from "../data/codespaces";
 
@@ -59,6 +62,7 @@ const profTabs = [
   { key: "teaching-plan", icon: "🧭", label: "Teaching Plan" },
   { key: "students", icon: "👥", label: "Students" },
   { key: "analytics", icon: "📊", label: "Analytics" },
+  { key: "privacy", icon: "🛡️", label: "Privacy & Ethics" },
 ];
 
 const inputStyle = {
@@ -218,6 +222,8 @@ export function ProfessorDashboard({
   const [inviteStudentStatus, setInviteStudentStatus] = useState<string | null>(
     null,
   );
+  const [reportedIssues, setReportedIssues] = useState<ProfessorReportedIssue[] | null>(null);
+
   const selectedSection = useMemo(
     () =>
       sections.find((section) => section.section_id === selectedSectionId) ??
@@ -321,6 +327,19 @@ export function ProfessorDashboard({
       cancelled = true;
     };
   }, [accessToken]);
+
+  useEffect(() => {
+    if (!selectedSectionId || !accessToken) return;
+    let cancelled = false;
+    void fetchProfessorReportedIssues(selectedSectionId, accessToken)
+      .then((res) => {
+        if (!cancelled) setReportedIssues(res.issues);
+      })
+      .catch(() => {
+        if (!cancelled) setReportedIssues(null);
+      });
+    return () => { cancelled = true; };
+  }, [selectedSectionId, accessToken, tab]);
 
   useEffect(() => {
     if (!selectedSectionId || !accessToken) {
@@ -1069,6 +1088,23 @@ export function ProfessorDashboard({
               {sectionError && (
                 <Card style={{ marginBottom: 14, color: D.red, fontSize: 12 }}>
                   {sectionError}
+                </Card>
+              )}
+              {reportedIssues && reportedIssues.filter(i => i.status === 'open').length > 0 && (
+                <Card style={{ marginBottom: 18, background: `${D.red}15`, border: `1px solid ${D.red}`, color: D.text, display: "flex", alignItems: "center", gap: 16, padding: "16px 20px" }}>
+                  <span style={{ fontSize: 32 }}>🚩</span>
+                  <div>
+                    <strong style={{ color: D.red, fontSize: 16 }}>Action Required:</strong> 
+                    <div style={{ marginTop: 4, marginBottom: 12, fontSize: 14 }}>
+                      You have {reportedIssues.filter(i => i.status === 'open').length} reported {reportedIssues.filter(i => i.status === 'open').length === 1 ? 'issue' : 'issues'} that require your attention.
+                    </div>
+                    <button 
+                      onClick={() => setTab("privacy")}
+                      style={{ background: D.red, color: "white", padding: "6px 16px", border: "none", borderRadius: 4, cursor: "pointer", fontSize: 13, fontWeight: "bold" }}
+                    >
+                      Review Issues
+                    </button>
+                  </div>
                 </Card>
               )}
               <div
@@ -2656,6 +2692,11 @@ export function ProfessorDashboard({
                 )}
               </Card>
             </div>
+          ) : tab === "privacy" ? (
+            <ProfessorPrivacyPanel
+              accessToken={accessToken}
+              sectionId={selectedSectionId ?? ""}
+            />
           ) : null}
         </div>
       </div>

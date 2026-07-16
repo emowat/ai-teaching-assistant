@@ -184,6 +184,34 @@ CREATE INDEX IF NOT EXISTS teaching_plan_week_references_week_id_enabled_sort_id
 CREATE INDEX IF NOT EXISTS teaching_plan_week_references_section_id_week_id_idx
   ON teaching_plan_week_references (section_id, week_id);
 
+CREATE TABLE IF NOT EXISTS data_deletion_requests (
+  request_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+  status text NOT NULL DEFAULT 'pending_professor_approval' CHECK (status IN ('pending_professor_approval', 'completed')),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  scrubbed_at timestamptz
+);
+
+CREATE TABLE IF NOT EXISTS reported_issues (
+  issue_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id text NOT NULL,
+  turn_index integer,
+  user_id uuid REFERENCES users(user_id) ON DELETE SET NULL,
+  section_id text REFERENCES sections(section_id) ON DELETE SET NULL,
+  reason text NOT NULL,
+  chat_history jsonb NOT NULL DEFAULT '[]'::jsonb,
+  status text NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'resolved')),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS data_deletion_requests_status_idx
+  ON data_deletion_requests (status);
+
+CREATE INDEX IF NOT EXISTS reported_issues_section_id_status_idx
+  ON reported_issues (section_id, status);
+
 CREATE TABLE IF NOT EXISTS ingestion_jobs (
   job_id text PRIMARY KEY,
   course_id text NOT NULL REFERENCES courses(course_id) ON DELETE CASCADE,

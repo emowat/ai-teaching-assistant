@@ -106,6 +106,7 @@ from rag_eng.config import (
     update_env_file,
 )
 from rag_eng.schemas import (
+    ReportIssuePayload,
     AdminLlmConfigResponse,
     AdminLlmConfigUpdate,
     AdminCourse,
@@ -469,6 +470,34 @@ def create_app() -> FastAPI:
                         cur.execute(
                             "ALTER TABLE users ADD COLUMN IF NOT EXISTS consent_withdrawn_at timestamptz;"
                         )
+                        cur.execute(
+                            """
+                            CREATE TABLE IF NOT EXISTS data_deletion_requests (
+                                request_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+                                user_id uuid NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+                                status text NOT NULL DEFAULT 'pending_professor_approval' CHECK (status IN ('pending_professor_approval', 'completed')),
+                                created_at timestamptz NOT NULL DEFAULT now(),
+                                updated_at timestamptz NOT NULL DEFAULT now(),
+                                scrubbed_at timestamptz
+                            );
+                            """
+                        )
+                        cur.execute(
+                            """
+                            CREATE TABLE IF NOT EXISTS reported_issues (
+                                issue_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+                                session_id text NOT NULL,
+                                turn_index integer,
+                                user_id uuid REFERENCES users(user_id) ON DELETE SET NULL,
+                                section_id text REFERENCES sections(section_id) ON DELETE SET NULL,
+                                reason text NOT NULL,
+                                chat_history jsonb NOT NULL DEFAULT '[]'::jsonb,
+                                status text NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'resolved')),
+                                created_at timestamptz NOT NULL DEFAULT now(),
+                                updated_at timestamptz NOT NULL DEFAULT now()
+                            );
+                            """
+                        )
                     conn.commit()
                 logger.info("Startup migration: consent columns ensured.")
         except Exception as exc:
@@ -562,6 +591,43 @@ def create_app() -> FastAPI:
 
             grant_user_consent(app_user["user_id"])
             return {"success": True, "consent_status": "granted"}
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise _app_registry_http_error(exc) from exc
+
+    @app.post("/api/student/consent/revoke")
+    def student_consent_revoke(
+        current_user=Depends(require_student_surface_user),
+    ) -> dict:
+        try:
+            app_user = sync_application_user(current_user)
+            if not app_user:
+                raise HTTPException(
+                    status_code=404, detail="No provisioned user found."
+                )
+            from rag_eng.app_registry import revoke_user_consent
+            revoke_user_consent(app_user["user_id"])
+            return {"success": True, "consent_status": "withdrawn"}
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise _app_registry_http_error(exc) from exc
+
+    @app.post("/api/report-issue")
+    def report_issue(
+        payload: ReportIssuePayload,
+        current_user=Depends(require_student_surface_user),
+    ) -> dict:
+        try:
+            app_user = sync_application_user(current_user)
+            if not app_user:
+                raise HTTPException(
+                    status_code=404, detail="No provisioned user found."
+                )
+            from rag_eng.app_registry import create_reported_issue
+            create_reported_issue(app_user["user_id"], payload)
+            return {"success": True, "message": "Issue reported successfully."}
         except HTTPException:
             raise
         except Exception as exc:
@@ -973,6 +1039,70 @@ def create_app() -> FastAPI:
                 student_user_id,
                 limit=limit,
             )
+        except Exception as exc:
+            raise _app_registry_http_error(exc) from exc
+
+    @app.get(
+        "/professor/sections/{section_id}/deletion-requests",
+        dependencies=[Depends(require_authenticated_user)],
+    )
+    def professor_list_deletion_requests(
+        section_id: str,
+        current_user=Depends(require_authenticated_user),
+    ):
+        try:
+            from rag_eng.app_registry import require_section_membership, list_data_deletion_requests
+            require_section_membership(current_user, section_id, allowed_roles=["professor", "admin"])
+            return {"requests": list_data_deletion_requests(section_id=section_id)}
+        except Exception as exc:
+            raise _app_registry_http_error(exc) from exc
+
+    @app.get(
+        "/professor/sections/{section_id}/reported-issues",
+        dependencies=[Depends(require_authenticated_user)],
+    )
+    def professor_list_reported_issues(
+        section_id: str,
+        current_user=Depends(require_authenticated_user),
+    ):
+        try:
+            from rag_eng.app_registry import require_section_membership, list_reported_issues
+            require_section_membership(current_user, section_id, allowed_roles=["professor", "admin"])
+            return {"issues": list_reported_issues(section_id=section_id)}
+        except Exception as exc:
+            raise _app_registry_http_error(exc) from exc
+
+    @app.post(
+        "/professor/sections/{section_id}/reported-issues/{issue_id}/resolve",
+        dependencies=[Depends(require_authenticated_user)],
+    )
+    def professor_resolve_reported_issue(
+        section_id: str,
+        issue_id: str,
+        current_user=Depends(require_authenticated_user),
+    ):
+        try:
+            from rag_eng.app_registry import require_section_membership, resolve_reported_issue
+            require_section_membership(current_user, section_id, allowed_roles=["professor", "admin"])
+            resolve_reported_issue(issue_id)
+            return {"success": True}
+        except Exception as exc:
+            raise _app_registry_http_error(exc) from exc
+
+    @app.post(
+        "/professor/sections/{section_id}/consent/scrub/{student_id}",
+        dependencies=[Depends(require_authenticated_user)],
+    )
+    def professor_scrub_user_data(
+        section_id: str,
+        student_id: str,
+        current_user=Depends(require_authenticated_user),
+    ):
+        try:
+            from rag_eng.app_registry import require_section_membership, scrub_user_data
+            require_section_membership(current_user, section_id, allowed_roles=["professor", "admin"])
+            scrub_user_data(student_id)
+            return {"success": True, "message": "User data successfully scrubbed."}
         except Exception as exc:
             raise _app_registry_http_error(exc) from exc
 
@@ -1486,6 +1616,34 @@ def create_app() -> FastAPI:
                     )
                     cursor.execute(
                         "ALTER TABLE users ADD COLUMN IF NOT EXISTS consent_withdrawn_at timestamptz;"
+                    )
+                    cursor.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS data_deletion_requests (
+                            request_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+                            user_id uuid NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+                            status text NOT NULL DEFAULT 'pending_professor_approval' CHECK (status IN ('pending_professor_approval', 'completed')),
+                            created_at timestamptz NOT NULL DEFAULT now(),
+                            updated_at timestamptz NOT NULL DEFAULT now(),
+                            scrubbed_at timestamptz
+                        );
+                        """
+                    )
+                    cursor.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS reported_issues (
+                            issue_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+                            session_id text NOT NULL,
+                            turn_index integer,
+                            user_id uuid REFERENCES users(user_id) ON DELETE SET NULL,
+                            section_id text REFERENCES sections(section_id) ON DELETE SET NULL,
+                            reason text NOT NULL,
+                            chat_history jsonb NOT NULL DEFAULT '[]'::jsonb,
+                            status text NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'resolved')),
+                            created_at timestamptz NOT NULL DEFAULT now(),
+                            updated_at timestamptz NOT NULL DEFAULT now()
+                        );
+                        """
                     )
                 connection.commit()
             return {"success": True, "message": "Migration complete."}
@@ -2415,6 +2573,64 @@ def create_app() -> FastAPI:
             raise HTTPException(
                 status_code=500, detail=f"Database query failed: {exc}"
             ) from exc
+
+    @app.post(
+        "/admin/consent/scrub-request/{request_id}",
+        dependencies=[Depends(_require_admin_access)],
+    )
+    def admin_scrub_user_data_by_request(request_id: str):
+        try:
+            from rag_eng.app_registry import scrub_user_data, load_app_registry_runtime_config, _require_database_url
+            from rag_eng.telemetry import _connect_postgres
+
+            runtime = load_app_registry_runtime_config()
+            database_url = _require_database_url(runtime)
+            with _connect_postgres(database_url, runtime.connect_timeout_seconds) as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute("SELECT user_id FROM data_deletion_requests WHERE request_id = %s", (request_id,))
+                    row = cursor.fetchone()
+                    if not row:
+                        raise HTTPException(status_code=404, detail="Deletion request not found.")
+                    user_id = row[0]
+
+            scrub_user_data(user_id)
+            return {"success": True, "message": "User data successfully scrubbed."}
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    @app.get(
+        "/admin/dashboard/deletion-requests",
+        dependencies=[Depends(_require_admin_access)],
+    )
+    def admin_list_deletion_requests():
+        try:
+            from rag_eng.app_registry import list_data_deletion_requests
+            return {"requests": list_data_deletion_requests()}
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    @app.get(
+        "/admin/dashboard/reported-issues",
+        dependencies=[Depends(_require_admin_access)],
+    )
+    def admin_list_reported_issues():
+        try:
+            from rag_eng.app_registry import list_reported_issues
+            return {"issues": list_reported_issues(section_id=None)}
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    @app.post(
+        "/admin/reported-issues/{issue_id}/resolve",
+        dependencies=[Depends(_require_admin_access)],
+    )
+    def admin_resolve_reported_issue(issue_id: str):
+        try:
+            from rag_eng.app_registry import resolve_reported_issue
+            resolve_reported_issue(issue_id)
+            return {"success": True}
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     @app.get(
         "/api/student/dashboard/stats",

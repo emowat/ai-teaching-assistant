@@ -210,3 +210,67 @@ export function getProfessorSectionStudentFeedback(
     accessToken,
   );
 }
+
+export interface ProfessorReportedIssue {
+  issue_id: string;
+  session_id: string;
+  turn_index: number | null;
+  student_email: string | null;
+  section_id: string | null;
+  reason: string;
+  chat_history: any[];
+  status: string;
+  created_at: string;
+}
+
+export interface ProfessorDataDeletionRequest {
+  request_id: string;
+  user_id: string;
+  student_email: string;
+  status: string;
+  created_at: string;
+  scrubbed_at: string | null;
+}
+
+export async function fetchProfessorReportedIssues(
+  sectionId: string,
+  accessToken: string,
+): Promise<{ issues: ProfessorReportedIssue[] }> {
+  return apiGet<{ issues: ProfessorReportedIssue[] }>(
+    `/professor/sections/${encodeURIComponent(sectionId)}/reported-issues`,
+    accessToken,
+  );
+}
+
+export async function resolveProfessorReportedIssue(
+  sectionId: string,
+  issueId: string,
+  accessToken: string,
+): Promise<{ success: boolean }> {
+  return apiPost<any, { success: boolean }>(
+    `/professor/sections/${encodeURIComponent(sectionId)}/reported-issues/${encodeURIComponent(issueId)}/resolve`,
+    {},
+    accessToken,
+  );
+}
+
+export async function fetchProfessorDataDeletionRequests(
+  sectionId: string,
+  accessToken: string,
+): Promise<{ requests: ProfessorDataDeletionRequest[] }> {
+  return apiGet<{ requests: ProfessorDataDeletionRequest[] }>(
+    `/professor/sections/${encodeURIComponent(sectionId)}/deletion-requests`,
+    accessToken,
+  );
+}
+export async function scrubProfessorUserData(
+  sectionId: string,
+  studentId: string,
+  accessToken: string,
+): Promise<{ success: boolean; message: string }> {
+  return apiPost<any, { success: boolean; message: string }>(
+    `/professor/sections/${encodeURIComponent(sectionId)}/consent/scrub/${encodeURIComponent(studentId)}`,
+    {},
+    accessToken,
+  );
+}

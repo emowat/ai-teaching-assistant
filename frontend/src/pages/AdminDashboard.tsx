@@ -35,6 +35,11 @@ import { OfflineEvalsPanel } from "../components/admin/OfflineEvalsPanel";
 import { SectionManagementPanel } from "../components/admin/SectionManagementPanel";
 import { UserManagementPanel } from "../components/admin/UserManagementPanel";
 import { RagDocsPanel } from "../components/admin/RagDocsPanel";
+import { AdminPrivacyPanel } from "../components/admin/AdminPrivacyPanel";
+import {
+  fetchAdminReportedIssues,
+  type AdminReportedIssue,
+} from "../api/adminUsersApi";
 import {
   CUSTOM_MODEL_VALUE,
   getDefaultModel,
@@ -146,6 +151,7 @@ const baseAdminTabs: SidebarTab[] = [
   { key: "stats", icon: "📊", label: "Evaluation" },
   { key: "offline-evals", icon: "🧪", label: "Offline Evals" },
   { key: "feedback", icon: "💬", label: "Feedback" },
+  { key: "privacy", icon: "🛡️", label: "Privacy & Ethics" },
   { key: "models", icon: "🤖", label: "AI Models" },
 ];
 
@@ -190,11 +196,25 @@ export function AdminDashboard({
 
   const [courses, setCourses] = useState<AdminCourse[]>([]);
   const [courseFilter, setCourseFilter] = useState<string>("all");
+  const [reportedIssues, setReportedIssues] = useState<AdminReportedIssue[] | null>(null);
 
   useEffect(() => {
     if (!accessToken) return;
     void listAdminCourses(accessToken).then(setCourses).catch(console.error);
   }, [accessToken]);
+
+  useEffect(() => {
+    if (!accessToken) return;
+    let cancelled = false;
+    void fetchAdminReportedIssues(accessToken)
+      .then((res) => {
+        if (!cancelled) setReportedIssues(res.issues);
+      })
+      .catch(() => {
+        if (!cancelled) setReportedIssues(null);
+      });
+    return () => { cancelled = true; };
+  }, [accessToken, tab]);
 
   useEffect(() => {
     const base = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8001";
@@ -771,6 +791,23 @@ export function AdminDashboard({
 
           {activeTab === "stats" && (
             <div>
+              {reportedIssues && reportedIssues.filter(i => i.status === 'open').length > 0 && (
+                <Card style={{ marginBottom: 18, background: `${D.red}15`, border: `1px solid ${D.red}`, color: D.text, display: "flex", alignItems: "center", gap: 16, padding: "16px 20px" }}>
+                  <span style={{ fontSize: 32 }}>🚩</span>
+                  <div>
+                    <strong style={{ color: D.red, fontSize: 16 }}>Action Required:</strong> 
+                    <div style={{ marginTop: 4, marginBottom: 12, fontSize: 14 }}>
+                      There {reportedIssues.filter(i => i.status === 'open').length === 1 ? 'is' : 'are'} {reportedIssues.filter(i => i.status === 'open').length} system-wide reported {reportedIssues.filter(i => i.status === 'open').length === 1 ? 'issue' : 'issues'} that require administrator attention.
+                    </div>
+                    <button 
+                      onClick={() => setTab("privacy")}
+                      style={{ background: D.red, color: "white", padding: "6px 16px", border: "none", borderRadius: 4, cursor: "pointer", fontSize: 13, fontWeight: "bold" }}
+                    >
+                      Review Issues
+                    </button>
+                  </div>
+                </Card>
+              )}
               <div
                 style={{
                   display: "flex",
@@ -2127,6 +2164,9 @@ export function AdminDashboard({
 
           {activeTab === "courses" && (
             <CourseManagementPanel accessToken={accessToken} />
+          )}
+          {activeTab === "privacy" && (
+            <AdminPrivacyPanel accessToken={accessToken} />
           )}
         </div>
       </div>

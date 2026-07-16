@@ -44,6 +44,7 @@ from rag_eng.schemas import (
     AnalyticsPasteIncident,
     ProfessorSectionSummary,
     ProfessorStudentFeedbackEntry,
+    ReportIssuePayload,
     ProfessorStudentFeedbackResponse,
     ProfessorSectionStudentInviteCreate,
     ProfessorTeachingPlan,
@@ -713,6 +714,237 @@ def grant_user_consent(
             )
         connection.commit()
 
+def revoke_user_consent(
+    user_id: str,
+    *,
+    runtime: "AppRegistryRuntimeConfig | None" = None,
+) -> None:
+    runtime = runtime or load_app_registry_runtime_config()
+    database_url = _require_database_url(runtime)
+    with _connect_postgres(database_url, runtime.connect_timeout_seconds) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE users
+                SET consent_status = 'withdrawn',
+                    consent_withdrawn_at = now(),
+                    updated_at = now()
+                WHERE user_id = %s
+                """,
+                (user_id,),
+            )
+            # Make sure we don't insert duplicate active requests
+            cursor.execute(
+                "SELECT 1 FROM data_deletion_requests WHERE user_id = %s AND status = 'pending_professor_approval'",
+                (user_id,),
+            )
+            if not cursor.fetchone():
+                cursor.execute(
+                    """
+                    INSERT INTO data_deletion_requests (user_id)
+                    VALUES (%s)
+                    """,
+                    (user_id,),
+                )
+        connection.commit()
+
+def create_reported_issue(
+    user_id: str,
+    payload: ReportIssuePayload,
+    *,
+    runtime: "AppRegistryRuntimeConfig | None" = None,
+) -> None:
+    runtime = runtime or load_app_registry_runtime_config()
+    database_url = _require_database_url(runtime)
+    with _connect_postgres(database_url, runtime.connect_timeout_seconds) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO reported_issues (session_id, turn_index, user_id, section_id, reason, chat_history)
+                VALUES (
+                    %s, %s, %s,
+                    (SELECT section_id FROM section_memberships WHERE user_id = %s AND role_in_section = 'student' AND status = 'active' LIMIT 1),
+                    %s, %s
+                )
+                """,
+                (
+                    payload.session_id,
+                    payload.turn_index,
+                    user_id,
+                    user_id,
+                    payload.reason,
+                    json.dumps(payload.chat_history),
+                ),
+            )
+        connection.commit()
+
+def scrub_user_data(
+    user_id: str,
+    *,
+    runtime: "AppRegistryRuntimeConfig | None" = None,
+) -> None:
+    runtime = runtime or load_app_registry_runtime_config()
+    database_url = _require_database_url(runtime)
+    with _connect_postgres(database_url, runtime.connect_timeout_seconds) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE users
+                SET display_name = 'Deleted Student',
+                    email = 'deleted-' || gen_random_uuid() || '@example.com',
+                    cognito_sub = NULL,
+                    updated_at = now()
+                WHERE user_id = %s
+                """,
+                (user_id,),
+            )
+
+            cursor.execute(
+                "SELECT session_id, turn_index, snapshot FROM tutor_turn_snapshots WHERE app_user_id = %s",
+                (user_id,),
+            )
+            rows = cursor.fetchall()
+            for row in rows:
+                session_id = row[0]
+                turn_index = row[1]
+                snapshot = row[2]
+                if "student_phase" in snapshot and "raw_input" in snapshot["student_phase"]:
+                    snapshot["student_phase"]["raw_input"] = "[DELETED_FOR_PRIVACY]"
+                if "ta_generation_phase" in snapshot and "generation_history" in snapshot["ta_generation_phase"]:
+                    for gen in snapshot["ta_generation_phase"]["generation_history"]:
+                        if "raw_generation" in gen:
+                            gen["raw_generation"] = "[DELETED_FOR_PRIVACY]"
+                        if "cot_keys" in gen:
+                            for k in gen["cot_keys"].keys():
+                                gen["cot_keys"][k] = "[DELETED_FOR_PRIVACY]"
+                cursor.execute(
+                    "UPDATE tutor_turn_snapshots SET snapshot = %s WHERE session_id = %s AND turn_index = %s",
+                    (json.dumps(snapshot), session_id, turn_index),
+                )
+
+            cursor.execute(
+                """
+                UPDATE data_deletion_requests
+                SET status = 'completed',
+                    scrubbed_at = now(),
+                    updated_at = now()
+                WHERE user_id = %s
+                """,
+                (user_id,),
+            )
+
+            cursor.execute(
+                """
+                UPDATE reported_issues
+                SET chat_history = '[{"role": "system", "content": "[DELETED_FOR_PRIVACY]"}]'::jsonb
+                WHERE user_id = %s
+                """,
+                (user_id,),
+            )
+        connection.commit()
+
+def resolve_reported_issue(
+    issue_id: str,
+    *,
+    runtime: "AppRegistryRuntimeConfig | None" = None,
+) -> None:
+    runtime = runtime or load_app_registry_runtime_config()
+    database_url = _require_database_url(runtime)
+    with _connect_postgres(database_url, runtime.connect_timeout_seconds) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "UPDATE reported_issues SET status = 'resolved', updated_at = now() WHERE issue_id = %s",
+                (issue_id,),
+            )
+        connection.commit()
+
+def list_reported_issues(
+    section_id: str | None = None,
+    *,
+    runtime: "AppRegistryRuntimeConfig | None" = None,
+) -> list[dict[str, Any]]:
+    runtime = runtime or load_app_registry_runtime_config()
+    database_url = _require_database_url(runtime)
+    with _connect_postgres(database_url, runtime.connect_timeout_seconds) as connection:
+        with connection.cursor() as cursor:
+            query = """
+                SELECT
+                    r.issue_id, r.session_id, r.turn_index, r.section_id, r.reason, r.chat_history, r.status, r.created_at,
+                    u.email as student_email,
+                    s.display_name,
+                    pu.email as professor_email
+                FROM reported_issues r
+                LEFT JOIN users u ON r.user_id = u.user_id
+                LEFT JOIN sections s ON r.section_id = s.section_id
+                LEFT JOIN section_memberships sm ON s.section_id = sm.section_id AND sm.role_in_section = 'professor'
+                LEFT JOIN users pu ON sm.user_id = pu.user_id
+            """
+            params = []
+            if section_id:
+                query += " WHERE r.section_id = %s"
+                params.append(section_id)
+            query += " ORDER BY r.created_at DESC"
+            cursor.execute(query, tuple(params))
+            rows = cursor.fetchall()
+            issues = []
+            for row in rows:
+                issues.append({
+                    "issue_id": str(row[0]),
+                    "session_id": row[1],
+                    "turn_index": row[2],
+                    "section_id": row[3],
+                    "reason": row[4],
+                    "chat_history": row[5] if row[5] else [],
+                    "status": row[6],
+                    "created_at": row[7].isoformat(),
+                    "student_email": row[8] if section_id else "[REDACTED]",
+                    "section_name": row[9],
+                    "professor_email": row[10]
+                })
+            return issues
+
+def list_data_deletion_requests(
+    section_id: str | None = None,
+    *,
+    runtime: "AppRegistryRuntimeConfig | None" = None,
+) -> list[dict[str, Any]]:
+    runtime = runtime or load_app_registry_runtime_config()
+    database_url = _require_database_url(runtime)
+    with _connect_postgres(database_url, runtime.connect_timeout_seconds) as connection:
+        with connection.cursor() as cursor:
+            query = """
+                SELECT DISTINCT
+                    d.request_id, d.user_id, d.status, d.created_at, d.scrubbed_at,
+                    u.email as student_email,
+                    s.display_name,
+                    pu.email as professor_email
+                FROM data_deletion_requests d
+                JOIN users u ON d.user_id = u.user_id
+                LEFT JOIN section_memberships stu_m ON d.user_id = stu_m.user_id AND stu_m.role_in_section = 'student'
+                LEFT JOIN sections s ON stu_m.section_id = s.section_id
+                LEFT JOIN section_memberships prof_m ON s.section_id = prof_m.section_id AND prof_m.role_in_section = 'professor'
+                LEFT JOIN users pu ON prof_m.user_id = pu.user_id
+            """
+            params = []
+            if section_id:
+                query += " WHERE stu_m.section_id = %s"
+                params.append(section_id)
+            query += " ORDER BY d.created_at DESC"
+            cursor.execute(query, tuple(params))
+            rows = cursor.fetchall()
+            requests = []
+            for row in rows:
+                requests.append({
+                    "request_id": str(row[0]),
+                    "user_id": str(row[1]) if section_id else "[REDACTED]",
+                    "status": row[2],
+                    "created_at": row[3].isoformat(),
+                    "scrubbed_at": row[4].isoformat() if row[4] else None,
+                    "student_email": row[5] if section_id else "[REDACTED]",
+                    "section_name": row[6],
+                    "professor_email": row[7]
+                })
+            return requests
 
 def _load_section_by_id(connection, section_id: str) -> tuple[Any, ...] | None:
     return _fetch_one_row(
@@ -3857,7 +4089,6 @@ def get_student_bootstrap(
                 )
                 course_row = cursor.fetchone()
                 if course_row and course_row[0]:
-                    import json
 
                     try:
                         course_configs = json.loads(course_row[0])

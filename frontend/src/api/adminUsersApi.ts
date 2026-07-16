@@ -64,3 +64,52 @@ export function updateAdminUser(
 ): Promise<AdminUser> {
   return apiPatch<AdminUserUpdatePayload, AdminUser>(userPath(userId), payload, accessToken);
 }
+
+export interface AdminReportedIssue {
+  issue_id: string;
+  session_id: string;
+  turn_index: number | null;
+  student_email: string | null; // Will be redacted for admins
+  section_id: string | null;
+  section_name: string | null;
+  professor_email: string | null;
+  reason: string;
+  chat_history: any[];
+  status: string;
+  created_at: string;
+}
+
+export interface AdminReportedIssuesResponse {
+  issues: AdminReportedIssue[];
+}
+
+export interface AdminDataDeletionRequest {
+  request_id: string;
+  user_id: string; // Will be redacted for admins
+  student_email: string; // Will be redacted for admins
+  section_name: string | null;
+  professor_email: string | null;
+  status: string;
+  created_at: string;
+  scrubbed_at: string | null;
+}
+
+export interface AdminDataDeletionRequestsResponse {
+  requests: AdminDataDeletionRequest[];
+}
+
+export function fetchAdminReportedIssues(accessToken: string): Promise<AdminReportedIssuesResponse> {
+  return apiGet<AdminReportedIssuesResponse>(`/admin/dashboard/reported-issues`, accessToken);
+}
+
+export function resolveAdminReportedIssue(issue_id: string, accessToken: string): Promise<{ success: boolean }> {
+  return apiPost<any, { success: boolean }>(`/admin/reported-issues/${issue_id}/resolve`, {}, accessToken);
+}
+
+export function fetchAdminDataDeletionRequests(accessToken: string): Promise<AdminDataDeletionRequestsResponse> {
+  return apiGet<AdminDataDeletionRequestsResponse>(`/admin/dashboard/deletion-requests`, accessToken);
+}
+
+export function scrubAdminUserData(request_id: string, accessToken: string): Promise<{ success: boolean; message: string }> {
+  return apiPost<any, { success: boolean; message: string }>(`/admin/consent/scrub-request/${request_id}`, {}, accessToken);
+}

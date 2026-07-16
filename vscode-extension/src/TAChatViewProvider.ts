@@ -562,6 +562,51 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
                     }
                     break;
                 }
+                case 'reportIssue': {
+                    const reason = await vscode.window.showInputBox({
+                        prompt: `Reason for reporting this issue:`,
+                        placeHolder: "Please provide a reason..."
+                    });
+                    if (!reason) { break; } // User cancelled
+
+                    try {
+                        const reportUrl = buildStudentApiUrl(resolveApiBaseUrl(), '/api/report-issue');
+                        await this._authService.fetch(reportUrl, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                session_id: this._sessionId,
+                                turn_index: null,
+                                reason: reason,
+                                chat_history: this._conversationHistory,
+                            })
+                        });
+                        vscode.window.showInformationMessage("Issue reported successfully.");
+                    } catch (error) {
+                        TAChatViewProvider.getOutputChannel().appendLine(`[Report Issue Error]: ${error}`);
+                        vscode.window.showErrorMessage("Failed to report issue.");
+                    }
+                    break;
+                }
+                case 'revokeConsent': {
+                    const confirm = await vscode.window.showWarningMessage(
+                        "Are you sure you want to withdraw consent? This action is permanent and will flag your data for deletion.",
+                        { modal: true },
+                        "Withdraw Consent"
+                    );
+                    if (confirm !== "Withdraw Consent") { break; }
+
+                    try {
+                        const revokeUrl = buildStudentApiUrl(resolveApiBaseUrl(), '/api/student/consent/revoke');
+                        await this._authService.fetch(revokeUrl, { method: 'POST' });
+                        vscode.window.showInformationMessage("Consent withdrawn. Your data will be deleted.");
+                        await this._refreshStudentBootstrap(true);
+                    } catch (error) {
+                        TAChatViewProvider.getOutputChannel().appendLine(`[Revoke Consent Error]: ${error}`);
+                        vscode.window.showErrorMessage("Failed to withdraw consent.");
+                    }
+                    break;
+                }
                 case 'feedback': {
                     const reason = await vscode.window.showInputBox({
                         prompt: `Optional reason for ${data.rating === 'up' ? 'positive' : 'negative'} feedback:`,
@@ -605,11 +650,11 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
                             vscode.window.activeTextEditor?.document.uri;
                         // Close the terminal/panel area
                         vscode.commands.executeCommand('workbench.action.closePanel');
-                        // Open a blank untitled doc — gives empty code context without
+                        // Open a markdown doc — gives empty code context without
                         // closing the student's file (it stays as a tab)
                         const blankDoc = await vscode.workspace.openTextDocument({
-                            content: '',
-                            language: 'plaintext',
+                            content: '# Study Assist Mode\n\nWelcome to Study Assist mode! This mode is designed to help you with deep conceptual questions without getting distracted by your current code.\n\nIn this mode:\n- Your code context is hidden from Coding Rabbit.\n- The terminal is closed so you can focus entirely on theory and concepts.\n- Coding Rabbit will draw from official course materials to explain concepts rather than debugging specific syntax errors in your file.\n\nWhen you are ready to go back to coding, just select "Mode: Homework Assist" in the chat panel!',
+                            language: 'markdown',
                         });
                         this._studyAssistBlankDoc = blankDoc;
                         await vscode.window.showTextDocument(blankDoc, {
@@ -635,7 +680,8 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
                             for (const tab of vscode.window.tabGroups.all.flatMap(g => g.tabs)) {
                                 const input = tab.input as { uri?: vscode.Uri } | undefined;
                                 if (input?.uri?.toString() === this._studyAssistBlankDoc.uri.toString()) {
-                                    await vscode.window.tabGroups.close(tab);
+                                    await vscode.window.showTextDocument(this._studyAssistBlankDoc);
+                                    await vscode.commands.executeCommand('workbench.action.revertAndCloseActiveEditor');
                                     break;
                                 }
                             }
@@ -704,7 +750,7 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
                     }
                     webview.postMessage({ type: 'addResponse', text: content, isHtml: false, isThinking: false, isUser: true, turnIndex: msg.turnIndex });
                 } else {
-                    const thinkMatch = content.match(/<think>[\s\S]*?<\/think>/);
+                    const thinkMatch = content.match(/<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>/);
                     if (thinkMatch) {
                         content = content.replace(thinkMatch[0], '').trim();
                     }
@@ -746,7 +792,7 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
             }
             
             // Strip out <think> and <analysis> tags if present in the TA's raw history
-            const thinkMatch = content.match(/<think>[\s\S]*?<\/think>/);
+            const thinkMatch = content.match(/<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>/);
             if (thinkMatch) {
                 content = content.replace(thinkMatch[0], '').trim();
             }
@@ -1279,7 +1325,7 @@ ${terminalOutput}`;
             let content = msg.content;
             // If in Study Assist mode, aggressively blindfold the LLM from its past thoughts about the code
             if (mode === 'Study Assist' && msg.role === 'assistant') {
-                const thinkMatch = content.match(/<think>[\s\S]*?<\/think>/);
+                const thinkMatch = content.match(/<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>/);
                 if (thinkMatch) {
                     content = content.replace(thinkMatch[0], '').trim();
                 }
@@ -1374,7 +1420,7 @@ ${terminalOutput}`;
                             // assembled in rawTaResponse if the backend split it across chunks
                             // (e.g. "[DEBUG_" arrived, then regenerate fired before "IDEA_UNLOCKED]").
                             // Matching without the closing ] handles the split-chunk edge case.
-                            const cleanText = rawTaResponse.replace(/<think>[\s\S]*?(?:<\/think>|$)/g, '').replace(/<analysis>[\s\S]*?(?:<\/analysis>|$)/g, '');
+                            const cleanText = rawTaResponse.replace(/<think(?:ing)?>[\s\S]*?(?:<\/think(?:ing)?>|$)/g, '').replace(/<analysis>[\s\S]*?(?:<\/analysis>|$)/g, '');
                             if (cleanText.includes('[DEBUG_IDEA_UNLOCKED')) {
                                 debugIdeaUnlocked = true;
                             }
@@ -1389,7 +1435,7 @@ ${terminalOutput}`;
                             rawTaResponse += payload.message?.content || "";
                         }
                         // Latch the reward flag immediately — survives replace overwrites
-                        const cleanText = rawTaResponse.replace(/<think>[\s\S]*?(?:<\/think>|$)/g, '').replace(/<analysis>[\s\S]*?(?:<\/analysis>|$)/g, '');
+                        const cleanText = rawTaResponse.replace(/<think(?:ing)?>[\s\S]*?(?:<\/think(?:ing)?>|$)/g, '').replace(/<analysis>[\s\S]*?(?:<\/analysis>|$)/g, '');
                         if (cleanText.includes('[DEBUG_IDEA_UNLOCKED')) {
                             debugIdeaUnlocked = true;
                         }
@@ -1401,19 +1447,13 @@ ${terminalOutput}`;
                 // Throttle UI updates to every 100ms
                 if (Date.now() - lastUpdate > 100) {
                     let tempDisplay = rawTaResponse;
-                    if (tempDisplay.includes('<think>')) {
-                        if (!tempDisplay.includes('</think>')) {
-                            tempDisplay = tempDisplay.substring(0, tempDisplay.indexOf('<think>')) + '\n\n*(Coding Rabbit is thinking...)*';
-                        } else {
-                            tempDisplay = tempDisplay.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
-                        }
+                    tempDisplay = tempDisplay.replace(/<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>/g, '').trim();
+                    if (tempDisplay.match(/<think(?:ing)?>/)) {
+                        tempDisplay = tempDisplay.substring(0, tempDisplay.search(/<think(?:ing)?>/)) + '\n\n*(Coding Rabbit is thinking...)*';
                     }
-                    if (tempDisplay.includes('<analysis>')) {
-                        if (!tempDisplay.includes('</analysis>')) {
-                            tempDisplay = tempDisplay.substring(0, tempDisplay.indexOf('<analysis>')) + '\n\n*(Coding Rabbit is analyzing code...)*';
-                        } else {
-                            tempDisplay = tempDisplay.replace(/<analysis>[\s\S]*?<\/analysis>/g, '').trim();
-                        }
+                    tempDisplay = tempDisplay.replace(/<analysis>[\s\S]*?<\/analysis>/g, '').trim();
+                    if (tempDisplay.match(/<analysis>/)) {
+                        tempDisplay = tempDisplay.substring(0, tempDisplay.search(/<analysis>/)) + '\n\n*(Coding Rabbit is analyzing code...)*';
                     }
                     
                     const tempHtml = await marked.parse(tempDisplay);
@@ -1431,7 +1471,7 @@ ${terminalOutput}`;
                         rawTaResponse += payload.message?.content || "";
                     }
                     // Latch check on final flush — mirrors the in-loop check
-                    const cleanText = rawTaResponse.replace(/<think>[\s\S]*?(?:<\/think>|$)/g, '').replace(/<analysis>[\s\S]*?(?:<\/analysis>|$)/g, '');
+                    const cleanText = rawTaResponse.replace(/<think(?:ing)?>[\s\S]*?(?:<\/think(?:ing)?>|$)/g, '').replace(/<analysis>[\s\S]*?(?:<\/analysis>|$)/g, '');
                     if (cleanText.includes('[DEBUG_IDEA_UNLOCKED')) {
                         debugIdeaUnlocked = true;
                     }
@@ -1454,19 +1494,13 @@ ${terminalOutput}`;
             }
             
             // If the LLM successfully generated an analysis block but the student isn't supposed to see it
-            if (displayResponse.includes('<think>')) {
-                if (!displayResponse.includes('</think>')) {
-                    displayResponse = displayResponse.substring(0, displayResponse.indexOf('<think>')) + '\n\n*(Coding Rabbit is thinking...)*';
-                } else {
-                    displayResponse = displayResponse.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
-                }
+            displayResponse = displayResponse.replace(/<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>/g, '').trim();
+            if (displayResponse.match(/<think(?:ing)?>/)) {
+                displayResponse = displayResponse.substring(0, displayResponse.search(/<think(?:ing)?>/)) + '\n\n*(Coding Rabbit is thinking...)*';
             }
-            if (displayResponse.includes('<analysis>')) {
-                if (!displayResponse.includes('</analysis>')) {
-                    displayResponse = displayResponse.substring(0, displayResponse.indexOf('<analysis>')) + '\n\n*(Coding Rabbit is analyzing code...)*';
-                } else {
-                    displayResponse = displayResponse.replace(/<analysis>[\s\S]*?<\/analysis>/g, '').trim();
-                }
+            displayResponse = displayResponse.replace(/<analysis>[\s\S]*?<\/analysis>/g, '').trim();
+            if (displayResponse.match(/<analysis>/)) {
+                displayResponse = displayResponse.substring(0, displayResponse.search(/<analysis>/)) + '\n\n*(Coding Rabbit is analyzing code...)*';
             }
             
             // Clean up accidental markdown code block wrappers generated by the 14B model
@@ -2116,9 +2150,11 @@ ${terminalOutput}`;
     <div class="chat-container">
         <div style="font-weight: bold; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--vscode-widget-border);">
             Coding Rabbit: Student Chat
-            <button id="signOutBtn" title="Sign out locally from this extension" style="float: right; margin-left: 8px; width: auto;">Sign out</button>
-            <span id="authStatus" style="float: right; margin-left: 8px;">${authState.status === 'refreshing' ? 'Refreshing session...' : 'Signed in as student'}</span>
-            <span id="carrotCount" style="float: right;">🥕 ${carrots} Carrots</span>
+            <span id="reportIssueBtn" title="Report Issue" style="cursor: pointer; margin-left: 8px; font-size: 14px;">🚩</span>
+            <span id="revokeConsentBtn" title="Privacy Settings / Revoke Consent" style="cursor: pointer; margin-left: 4px; font-size: 14px; color: var(--vscode-textLink-foreground);">🔒</span>
+            <button id="signOutBtn" title="Sign out locally from this extension" style="float: right; margin-left: 8px; width: auto; margin-top: 0; padding: 4px 8px; font-size: 11px;">Sign out</button>
+            <span id="authStatus" style="float: right; margin-left: 8px; font-weight: normal; font-size: 12px; margin-top: 2px;">${authState.status === 'refreshing' ? 'Refreshing...' : 'Signed in'}</span>
+            <span id="carrotCount" style="float: right; font-weight: normal; font-size: 12px; margin-top: 2px;">🥕 ${carrots} Carrots</span>
         </div>
         <div style="margin-bottom: 10px; padding: 8px 10px; border: 1px solid var(--vscode-widget-border); border-radius: 6px; background: var(--vscode-editorWidget-background);">
             <div style="font-size: 12px; opacity: 0.85; margin-bottom: 6px;">${this._escapeHtml(identityLabel)}</div>
@@ -2215,6 +2251,17 @@ ${terminalOutput}`;
             isPaused = !isPaused;
             updateStopwatchUI();
             vscode.postMessage({ type: 'toggleStopwatch', isPaused, elapsedSeconds });
+        });
+        
+        const reportIssueBtn = document.getElementById('reportIssueBtn');
+        const revokeConsentBtn = document.getElementById('revokeConsentBtn');
+        
+        reportIssueBtn.addEventListener('click', () => {
+            vscode.postMessage({ type: 'reportIssue' });
+        });
+        
+        revokeConsentBtn.addEventListener('click', () => {
+            vscode.postMessage({ type: 'revokeConsent' });
         });
         
         // Signal that the webview DOM is fully loaded and ready to receive messages
