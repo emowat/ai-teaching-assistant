@@ -30,6 +30,7 @@ _WORKER_SOURCE_FILES: tuple[Path, ...] = (
     Path("model_eval/eval_functions.py"),
     Path("model_eval/prompts.py"),
     Path("model_eval/requirements.txt"),
+    Path("model_eval/backfill_ta_effectiveness.py"),
     Path("rag/__init__.py"),
     Path("rag/schemas.py"),
     Path("rag_eng/__init__.py"),
@@ -37,6 +38,7 @@ _WORKER_SOURCE_FILES: tuple[Path, ...] = (
     Path("rag_eng/config.py"),
     Path("rag_eng/llm_clients.py"),
     Path("rag_eng/schemas.py"),
+    Path("rag_eng/ta_effectiveness_ingest.py"),
     Path("rag_eng/inference_config.yaml"),
     Path("rag_eng/runtime_config.yaml"),
 )

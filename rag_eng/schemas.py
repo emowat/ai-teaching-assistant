@@ -540,6 +540,97 @@ class AnalyticsPasteIncident(BaseModel):
     pasted_char_count: int
 
 
+class TaEffectivenessMetricResult(BaseModel):
+    """One judge metric's value + rationale, as stored in the metric JSONB bag."""
+
+    value: float | str | None = None  # 1, 0, or "NA"
+    reason: str = ""
+
+
+class TaEffectivenessSessionScore(BaseModel):
+    """Judge scores for one tutoring session, from the latest run that scored it."""
+
+    session_id: str
+    evaluation_run_id: str
+    mode: str = ""
+    session_effectiveness_score: float | None = None
+    session_passed: bool | None = None
+    macro_metric_results: dict[str, TaEffectivenessMetricResult] = Field(
+        default_factory=dict
+    )
+    pedagogical_impact_score: float | None = None
+    turn_count: int = 0
+    drift_delta: float | None = None
+    drift_flag: bool = False
+    code_leak_turn_index: int | None = None
+    scored_at: str = ""
+
+
+class TaEffectivenessTurnScore(BaseModel):
+    """Judge scores for one TA reply within a scored session."""
+
+    turn_id: str
+    turn_index: int | None = None
+    mode: str = ""
+    pedagogical_turn_score: float | None = None
+    turn_passed: bool | None = None
+    micro_metric_results: dict[str, TaEffectivenessMetricResult] = Field(
+        default_factory=dict
+    )
+    input_action: str = ""
+    output_action: str = ""
+
+
+class TaEffectivenessRosterEntry(BaseModel):
+    """One student's aggregate TA effectiveness scores for a section roster."""
+
+    student: ProfessorSectionStudent
+    session_count: int = 0
+    avg_session_effectiveness: float | None = None
+    avg_pedagogical_impact: float | None = None
+    drift_rate: float | None = None
+    has_code_leak: bool = False
+    last_scored_at: str = ""
+
+
+class TaEffectivenessSectionRoster(BaseModel):
+    """Section-wide TA effectiveness roster, worst-effectiveness first."""
+
+    section: ProfessorSectionSummary
+    entries: list[TaEffectivenessRosterEntry] = Field(default_factory=list)
+    generated_at: str = ""
+
+
+class TaEffectivenessStudentDetail(BaseModel):
+    """Per-student drill-down: every scored session, most recent first."""
+
+    section: ProfessorSectionSummary
+    student: ProfessorSectionStudent
+    sessions: list[TaEffectivenessSessionScore] = Field(default_factory=list)
+
+
+class TaEffectivenessSessionTurns(BaseModel):
+    """Per-turn judge scores for one scored session."""
+
+    session_id: str
+    turns: list[TaEffectivenessTurnScore] = Field(default_factory=list)
+
+
+class ProfessorTaEffectivenessRefreshRequest(BaseModel):
+    """Payload for triggering a new TA effectiveness evaluation run for a section.
+
+    `section_id` is intentionally NOT a field here — the API handler forces
+    it from the authenticated professor/TA's path-scoped section_id so a
+    crafted request body can never launch or read another section's run.
+    """
+
+    judge_provider: EvaluationJudgeProvider | None = None
+    judge_model: str | None = None
+    start_date: str | None = None
+    end_date: str | None = None
+    run_label: str = ""
+
+
 class ProfessorStudentFeedbackEntry(BaseModel):
     created_at: str
     session_id: str

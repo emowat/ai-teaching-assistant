@@ -350,6 +350,71 @@ CREATE TABLE IF NOT EXISTS tutor_turns (
   completed_at timestamptz
 );
 
+CREATE TABLE IF NOT EXISTS ta_effectiveness_session_scores (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  evaluation_run_id text NOT NULL REFERENCES evaluation_runs(evaluation_run_id) ON DELETE CASCADE,
+  session_id text NOT NULL REFERENCES tutor_sessions(session_id) ON DELETE CASCADE,
+  -- No FK on app_user_id/course_id/section_id: these are copied straight
+  -- from tutor_sessions, which itself has no FK on them (ad-hoc/smoke-test
+  -- sessions can carry section/course ids that were never registered).
+  app_user_id uuid,
+  course_id text,
+  section_id text,
+  mode text NOT NULL DEFAULT '',
+  conversation_id integer,
+  session_effectiveness_score numeric(6, 4),
+  session_passed boolean,
+  macro_metric_results jsonb NOT NULL DEFAULT '{}'::jsonb,
+  pedagogical_impact_score numeric(6, 4),
+  turn_count integer NOT NULL DEFAULT 0,
+  drift_delta numeric(6, 4),
+  drift_flag boolean NOT NULL DEFAULT false,
+  code_leak_turn_index integer,
+  scored_at timestamptz NOT NULL DEFAULT now(),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (evaluation_run_id, session_id)
+);
+
+CREATE TABLE IF NOT EXISTS ta_effectiveness_turn_scores (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  evaluation_run_id text NOT NULL REFERENCES evaluation_runs(evaluation_run_id) ON DELETE CASCADE,
+  session_id text NOT NULL REFERENCES tutor_sessions(session_id) ON DELETE CASCADE,
+  turn_id text NOT NULL REFERENCES tutor_turns(turn_id) ON DELETE CASCADE,
+  -- No FK on app_user_id/course_id/section_id: see ta_effectiveness_session_scores.
+  app_user_id uuid,
+  section_id text,
+  course_id text,
+  turn_index integer,
+  mode text NOT NULL DEFAULT '',
+  pedagogical_turn_score numeric(6, 4),
+  turn_passed boolean,
+  micro_metric_results jsonb NOT NULL DEFAULT '{}'::jsonb,
+  input_action text NOT NULL DEFAULT '',
+  output_action text NOT NULL DEFAULT '',
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (evaluation_run_id, turn_id)
+);
+
+CREATE INDEX IF NOT EXISTS ta_effectiveness_session_scores_section_user_idx
+  ON ta_effectiveness_session_scores (section_id, app_user_id, scored_at DESC);
+
+CREATE INDEX IF NOT EXISTS ta_effectiveness_session_scores_run_idx
+  ON ta_effectiveness_session_scores (evaluation_run_id);
+
+CREATE INDEX IF NOT EXISTS ta_effectiveness_session_scores_session_idx
+  ON ta_effectiveness_session_scores (session_id);
+
+CREATE INDEX IF NOT EXISTS ta_effectiveness_turn_scores_session_idx
+  ON ta_effectiveness_turn_scores (session_id, turn_index);
+
+CREATE INDEX IF NOT EXISTS ta_effectiveness_turn_scores_run_idx
+  ON ta_effectiveness_turn_scores (evaluation_run_id);
+
+CREATE INDEX IF NOT EXISTS ta_effectiveness_turn_scores_user_idx
+  ON ta_effectiveness_turn_scores (app_user_id, section_id);
+
 CREATE TABLE IF NOT EXISTS tutor_turn_snapshots (
   turn_id text PRIMARY KEY REFERENCES tutor_turns(turn_id) ON DELETE CASCADE,
   session_id text NOT NULL REFERENCES tutor_sessions(session_id) ON DELETE CASCADE,
@@ -435,3 +500,27 @@ ON CONFLICT (alias) DO UPDATE SET
   course_id = EXCLUDED.course_id,
   is_active = TRUE,
   updated_at = now();
+
+-- app_user_id/course_id/section_id on ta_effectiveness_* were originally
+-- created with FK constraints to users/courses/sections. tutor_sessions
+-- itself has no such FK on these columns (ad-hoc/smoke-test sessions can
+-- carry ids never registered in those tables), so the stricter constraint
+-- broke ingestion for real session data. Drop it for deployments where the
+-- tables were already created before this fix.
+ALTER TABLE ta_effectiveness_session_scores
+  DROP CONSTRAINT IF EXISTS ta_effectiveness_session_scores_app_user_id_fkey;
+
+ALTER TABLE ta_effectiveness_session_scores
+  DROP CONSTRAINT IF EXISTS ta_effectiveness_session_scores_course_id_fkey;
+
+ALTER TABLE ta_effectiveness_session_scores
+  DROP CONSTRAINT IF EXISTS ta_effectiveness_session_scores_section_id_fkey;
+
+ALTER TABLE ta_effectiveness_turn_scores
+  DROP CONSTRAINT IF EXISTS ta_effectiveness_turn_scores_app_user_id_fkey;
+
+ALTER TABLE ta_effectiveness_turn_scores
+  DROP CONSTRAINT IF EXISTS ta_effectiveness_turn_scores_course_id_fkey;
+
+ALTER TABLE ta_effectiveness_turn_scores
+  DROP CONSTRAINT IF EXISTS ta_effectiveness_turn_scores_section_id_fkey;

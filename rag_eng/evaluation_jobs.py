@@ -324,7 +324,24 @@ def export_turn_snapshots_to_s3(
         connect_timeout_seconds=connect_timeout_seconds,
     )
     if not rows:
-        raise RuntimeError("No evaluation rows were found for the requested scope.")
+        window_desc = (
+            start_date.isoformat()
+            if start_date == end_date
+            else f"{start_date.isoformat()} to {end_date.isoformat()}"
+        )
+        scope_bits = [
+            bit
+            for bit in (
+                f"section {section_id}" if section_id else None,
+                f"course {course_id}" if course_id else None,
+            )
+            if bit
+        ]
+        scope_desc = f" for {' / '.join(scope_bits)}" if scope_bits else ""
+        # ValueError (not RuntimeError) so callers that map exceptions to
+        # HTTP status codes surface this as a clean 400 with a friendly
+        # detail message, rather than a generic 500.
+        raise ValueError(f"No activity to evaluate{scope_desc} ({window_desc}).")
 
     records = [snapshot for _created_at, snapshot in rows]
     normalized_prefix = prefix.strip("/")

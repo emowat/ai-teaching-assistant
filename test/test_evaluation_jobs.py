@@ -192,6 +192,37 @@ def test_export_turn_snapshots_to_s3_writes_jsonl_and_manifest(monkeypatch) -> N
     assert exported_rows[1]["trace"]["turn_id"] == "turn-2"
 
 
+def test_export_turn_snapshots_to_s3_raises_friendly_error_on_empty_scope(
+    monkeypatch,
+) -> None:
+    """Regression test: an empty result set used to raise a bare RuntimeError
+    ("No evaluation rows were found for the requested scope."), which every
+    caller's exception mapper turns into an opaque 500. It must now be a
+    ValueError (so it maps to a clean 400) with a message naming the actual
+    date window and scope, not just the generic template."""
+    monkeypatch.setattr(
+        "rag_eng.evaluation_jobs._query_turn_snapshots",
+        lambda *_args, **_kwargs: [],
+    )
+
+    try:
+        export_turn_snapshots_to_s3(
+            database_url="postgresql://example",
+            bucket="codingrabbit-data-dev",
+            prefix="evaluation/offline/run-123/input",
+            start_date=date(2026, 6, 1),
+            end_date=date(2026, 7, 16),
+            section_id="cs50-section-01",
+        )
+        assert False, "expected a ValueError"
+    except ValueError as exc:
+        message = str(exc)
+        assert "cs50-section-01" in message
+        assert "2026-06-01" in message
+        assert "2026-07-16" in message
+        assert "No activity to evaluate" in message
+
+
 def test_launch_evaluation_run_submits_task_and_returns_summary(monkeypatch) -> None:
     request = EvaluationRunCreate(
         judge_provider="bedrock",

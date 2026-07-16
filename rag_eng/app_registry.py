@@ -42,6 +42,13 @@ from rag_eng.schemas import (
     AnalyticsPedagogicalActionPoint,
     AnalyticsFrustrationPoint,
     AnalyticsPasteIncident,
+    TaEffectivenessMetricResult,
+    TaEffectivenessRosterEntry,
+    TaEffectivenessSectionRoster,
+    TaEffectivenessSessionScore,
+    TaEffectivenessSessionTurns,
+    TaEffectivenessStudentDetail,
+    TaEffectivenessTurnScore,
     ProfessorSectionSummary,
     ProfessorStudentFeedbackEntry,
     ReportIssuePayload,
@@ -2863,6 +2870,295 @@ def get_professor_section_student_analytics(
         paste_incidents=paste_incidents,
         generated_at=_format_timestamp(datetime.now(timezone.utc)),
     )
+
+
+def _metric_results_from_jsonb(
+    raw: dict[str, Any] | None,
+) -> dict[str, TaEffectivenessMetricResult]:
+    if not raw:
+        return {}
+    results: dict[str, TaEffectivenessMetricResult] = {}
+    for name, payload in raw.items():
+        if isinstance(payload, dict):
+            results[name] = TaEffectivenessMetricResult(
+                value=payload.get("value"),
+                reason=_clean_text(payload.get("reason")),
+            )
+        else:
+            results[name] = TaEffectivenessMetricResult(value=payload)
+    return results
+
+
+def _session_score_from_row(row: tuple[Any, ...]) -> TaEffectivenessSessionScore:
+    return TaEffectivenessSessionScore(
+        session_id=_clean_text(row[0]),
+        evaluation_run_id=_clean_text(row[1]),
+        mode=_clean_text(row[2]),
+        session_effectiveness_score=float(row[3]) if row[3] is not None else None,
+        session_passed=row[4],
+        macro_metric_results=_metric_results_from_jsonb(row[5]),
+        pedagogical_impact_score=float(row[6]) if row[6] is not None else None,
+        turn_count=int(row[7]) if row[7] is not None else 0,
+        drift_delta=float(row[8]) if row[8] is not None else None,
+        drift_flag=bool(row[9]),
+        code_leak_turn_index=int(row[10]) if row[10] is not None else None,
+        scored_at=_format_timestamp(row[11]),
+    )
+
+
+def get_ta_effectiveness_section_roster(
+    current_user: CurrentUser,
+    section_id: str,
+    *,
+    runtime: AppRegistryRuntimeConfig | None = None,
+) -> TaEffectivenessSectionRoster:
+    """Per-student TA effectiveness aggregates for a section, worst-effectiveness first.
+
+    Only the latest evaluation run's scores per session are used (a section
+    can be re-evaluated, so a stale/fresh blend would be misleading).
+    """
+    runtime = runtime or load_app_registry_runtime_config()
+    database_url = _require_database_url(runtime)
+    require_section_membership(
+        current_user,
+        section_id,
+        allowed_roles={"professor", "ta"},
+        runtime=runtime,
+    )
+
+    with _connect_postgres(database_url, runtime.connect_timeout_seconds) as connection:
+        section_row = _load_section_by_id(connection, section_id)
+        if section_row is None:
+            raise SectionNotFoundError(f"Section {section_id} was not found.")
+
+        membership_rows = _load_section_memberships_by_section(connection, section_id)
+        counts = {"professor": 0, "ta": 0, "student": 0}
+        for row in membership_rows:
+            role_in_section = _clean_text(row[5])
+            status = _clean_text(row[6])
+            if status == "active" and role_in_section in counts:
+                counts[role_in_section] += 1
+
+        section_summary = ProfessorSectionSummary(
+            **_section_summary_from_row(section_row),
+            professor_count=counts["professor"],
+            ta_count=counts["ta"],
+            student_count=counts["student"],
+        )
+
+        roster_rows = _fetch_all_rows(
+            connection,
+            """
+            WITH latest_session_scores AS (
+              SELECT DISTINCT ON (session_id) *
+              FROM ta_effectiveness_session_scores
+              WHERE section_id = %s
+              ORDER BY session_id, scored_at DESC
+            )
+            SELECT
+              u.user_id,
+              u.cognito_sub,
+              u.email,
+              u.display_name,
+              sm.role_in_section,
+              sm.status,
+              COUNT(*) AS session_count,
+              AVG(s.session_effectiveness_score) AS avg_session_effectiveness,
+              AVG(s.pedagogical_impact_score) AS avg_pedagogical_impact,
+              AVG(CASE WHEN s.drift_flag THEN 1.0 ELSE 0.0 END) AS drift_rate,
+              BOOL_OR(s.code_leak_turn_index IS NOT NULL) AS has_code_leak,
+              MAX(s.scored_at) AS last_scored_at
+            FROM latest_session_scores s
+            JOIN users u ON u.user_id = s.app_user_id
+            JOIN section_memberships sm
+              ON sm.section_id = s.section_id AND sm.user_id = s.app_user_id
+            WHERE sm.role_in_section = 'student'
+            GROUP BY u.user_id, u.cognito_sub, u.email, u.display_name,
+                     sm.role_in_section, sm.status
+            ORDER BY avg_session_effectiveness ASC NULLS LAST
+            """,
+            (section_id,),
+        )
+
+    entries = [
+        TaEffectivenessRosterEntry(
+            student=ProfessorSectionStudent(
+                user_id=_clean_text(row[0]),
+                cognito_sub=_clean_text(row[1]) or None,
+                email=_clean_text(row[2]),
+                display_name=_clean_text(row[3]),
+                membership_status=_clean_text(row[5]),
+                role_in_section=_clean_text(row[4]),
+                session_count=int(row[6]) if row[6] is not None else 0,
+                last_session_at=_format_timestamp(row[11]),
+            ),
+            session_count=int(row[6]) if row[6] is not None else 0,
+            avg_session_effectiveness=float(row[7]) if row[7] is not None else None,
+            avg_pedagogical_impact=float(row[8]) if row[8] is not None else None,
+            drift_rate=float(row[9]) if row[9] is not None else None,
+            has_code_leak=bool(row[10]),
+            last_scored_at=_format_timestamp(row[11]),
+        )
+        for row in roster_rows
+    ]
+
+    return TaEffectivenessSectionRoster(
+        section=section_summary,
+        entries=entries,
+        generated_at=_format_timestamp(datetime.now(timezone.utc)),
+    )
+
+
+def get_ta_effectiveness_student_detail(
+    current_user: CurrentUser,
+    section_id: str,
+    student_user_id: str,
+    *,
+    runtime: AppRegistryRuntimeConfig | None = None,
+) -> TaEffectivenessStudentDetail:
+    """Every scored session for one student in a section, most recent first."""
+    runtime = runtime or load_app_registry_runtime_config()
+    database_url = _require_database_url(runtime)
+    require_section_membership(
+        current_user,
+        section_id,
+        allowed_roles={"professor", "ta"},
+        runtime=runtime,
+    )
+
+    with _connect_postgres(database_url, runtime.connect_timeout_seconds) as connection:
+        section_row = _load_section_by_id(connection, section_id)
+        if section_row is None:
+            raise SectionNotFoundError(f"Section {section_id} was not found.")
+
+        membership_rows = _load_section_memberships_by_section(connection, section_id)
+        counts = {"professor": 0, "ta": 0, "student": 0}
+        for row in membership_rows:
+            role_in_section = _clean_text(row[5])
+            status = _clean_text(row[6])
+            if status == "active" and role_in_section in counts:
+                counts[role_in_section] += 1
+
+        student_row = _load_user_by_id(connection, student_user_id)
+        if student_row is None:
+            raise AppUserNotFoundError(f"User {student_user_id} was not found.")
+
+        membership_row = _fetch_one_row(
+            connection,
+            """
+            SELECT sm.role_in_section, sm.status
+            FROM section_memberships AS sm
+            WHERE sm.section_id = %s AND sm.user_id = %s
+            """,
+            (section_id, student_user_id),
+        )
+        if membership_row is None:
+            raise MembershipNotFoundError(
+                f"Student {student_user_id} is not assigned to section {section_id}."
+            )
+        membership_role = _clean_text(membership_row[0])
+        membership_status = _clean_text(membership_row[1])
+        if membership_role != "student":
+            raise MembershipAccessDeniedError(
+                f"User {student_user_id} is not a student in section {section_id}."
+            )
+        if membership_status not in {"active", "invited"}:
+            raise MembershipAccessDeniedError(
+                f"Student {student_user_id} is not active in section {section_id}."
+            )
+
+        session_rows = _fetch_all_rows(
+            connection,
+            """
+            WITH latest_sessions AS (
+              SELECT DISTINCT ON (session_id) *
+              FROM ta_effectiveness_session_scores
+              WHERE section_id = %s AND app_user_id = %s
+              ORDER BY session_id, scored_at DESC
+            )
+            SELECT
+              session_id, evaluation_run_id, mode, session_effectiveness_score, session_passed,
+              macro_metric_results, pedagogical_impact_score, turn_count,
+              drift_delta, drift_flag, code_leak_turn_index, scored_at
+            FROM latest_sessions
+            ORDER BY scored_at DESC
+            """,
+            (section_id, student_user_id),
+        )
+
+    section_summary = ProfessorSectionSummary(
+        **_section_summary_from_row(section_row),
+        professor_count=counts["professor"],
+        ta_count=counts["ta"],
+        student_count=counts["student"],
+    )
+    student_summary = ProfessorSectionStudent(
+        user_id=_clean_text(student_row[0]),
+        cognito_sub=_clean_text(student_row[1]) or None,
+        email=_clean_text(student_row[2]),
+        display_name=_clean_text(student_row[3]),
+        membership_status=membership_status,
+        role_in_section=membership_role,
+    )
+    sessions = [_session_score_from_row(row) for row in session_rows]
+
+    return TaEffectivenessStudentDetail(
+        section=section_summary,
+        student=student_summary,
+        sessions=sessions,
+    )
+
+
+def get_ta_effectiveness_session_turns(
+    current_user: CurrentUser,
+    section_id: str,
+    session_id: str,
+    evaluation_run_id: str,
+    *,
+    runtime: AppRegistryRuntimeConfig | None = None,
+) -> TaEffectivenessSessionTurns:
+    """Per-turn judge scores for one scored session, scoped to a single run.
+
+    Scoping by evaluation_run_id (not just session_id) avoids mixing turns
+    from two different runs that both happened to touch the same session.
+    """
+    runtime = runtime or load_app_registry_runtime_config()
+    database_url = _require_database_url(runtime)
+    require_section_membership(
+        current_user,
+        section_id,
+        allowed_roles={"professor", "ta"},
+        runtime=runtime,
+    )
+
+    with _connect_postgres(database_url, runtime.connect_timeout_seconds) as connection:
+        turn_rows = _fetch_all_rows(
+            connection,
+            """
+            SELECT turn_id, turn_index, mode, pedagogical_turn_score, turn_passed,
+                   micro_metric_results, input_action, output_action
+            FROM ta_effectiveness_turn_scores
+            WHERE session_id = %s AND evaluation_run_id = %s AND section_id = %s
+            ORDER BY turn_index ASC
+            """,
+            (session_id, evaluation_run_id, section_id),
+        )
+
+    turns = [
+        TaEffectivenessTurnScore(
+            turn_id=_clean_text(row[0]),
+            turn_index=int(row[1]) if row[1] is not None else None,
+            mode=_clean_text(row[2]),
+            pedagogical_turn_score=float(row[3]) if row[3] is not None else None,
+            turn_passed=row[4],
+            micro_metric_results=_metric_results_from_jsonb(row[5]),
+            input_action=_clean_text(row[6]),
+            output_action=_clean_text(row[7]),
+        )
+        for row in turn_rows
+    ]
+
+    return TaEffectivenessSessionTurns(session_id=session_id, turns=turns)
 
 
 def list_professor_section_launch_configs(

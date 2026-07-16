@@ -46,6 +46,7 @@ import { TeachingPlanWeekReferencesEditor } from "../components/professor/Teachi
 import { ProfessorAnalyticsCharts } from "../components/professor/ProfessorAnalyticsCharts";
 import { ProfessorStudentFeedback } from "../components/professor/ProfessorStudentFeedback";
 import { ProfessorPrivacyPanel } from "../components/professor/ProfessorPrivacyPanel";
+import { TaEffectivenessPanel } from "../components/professor/TaEffectivenessPanel";
 import type { AppView } from "../types/navigation";
 import { getWeekLaunchUrl, isWeekLaunchReady } from "../data/codespaces";
 
@@ -182,7 +183,7 @@ export function ProfessorDashboard({
     string | null
   >(null);
   const [studentDrillDownTab, setStudentDrillDownTab] = useState<
-    "analytics" | "feedback"
+    "analytics" | "feedback" | "ta-effectiveness"
   >("analytics");
   const [launchConfigError, setLaunchConfigError] = useState<string | null>(
     null,
@@ -2327,6 +2328,19 @@ export function ProfessorDashboard({
                   />
                 ) : null}
               </Card>
+              {selectedSectionId && (
+                <div style={{ marginBottom: 12 }}>
+                  <TaEffectivenessPanel
+                    mode="roster"
+                    sectionId={selectedSectionId}
+                    accessToken={accessToken}
+                    onSelectStudent={(studentUserId) => {
+                      setSelectedStudentId(studentUserId);
+                      setStudentDrillDownTab("ta-effectiveness");
+                    }}
+                  />
+                </div>
+              )}
               <Card style={{ marginBottom: 12 }}>
                 <div
                   style={{
@@ -2426,6 +2440,25 @@ export function ProfessorDashboard({
                         }}
                       >
                         Feedback
+                      </button>
+                      <button
+                        onClick={() => setStudentDrillDownTab("ta-effectiveness")}
+                        style={{
+                          background:
+                            studentDrillDownTab === "ta-effectiveness"
+                              ? D.surface
+                              : "transparent",
+                          border: `1px solid ${studentDrillDownTab === "ta-effectiveness" ? D.border : "transparent"}`,
+                          color: D.text,
+                          padding: "6px 12px",
+                          borderRadius: 6,
+                          fontSize: 13,
+                          cursor: "pointer",
+                          fontWeight:
+                            studentDrillDownTab === "ta-effectiveness" ? 600 : 400,
+                        }}
+                      >
+                        TA Effectiveness
                       </button>
                     </div>
 
@@ -2611,6 +2644,19 @@ export function ProfessorDashboard({
                         )}
                       </div>
                     )}
+
+                    {studentDrillDownTab === "ta-effectiveness" &&
+                      selectedSectionId &&
+                      selectedStudentId && (
+                        <div style={{ marginTop: 12 }}>
+                          <TaEffectivenessPanel
+                            mode="drilldown"
+                            sectionId={selectedSectionId}
+                            studentUserId={selectedStudentId}
+                            accessToken={accessToken}
+                          />
+                        </div>
+                      )}
                   </div>
                 ) : (
                   <div style={{ fontSize: 12, color: D.dim }}>

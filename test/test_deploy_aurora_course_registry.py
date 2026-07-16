@@ -32,7 +32,7 @@ def test_split_sql_statements_ignores_comments_and_blank_lines() -> None:
 def test_load_sql_statements_reads_repo_bootstrap_file() -> None:
     statements = load_sql_statements(DEFAULT_SQL_FILE)
 
-    assert len(statements) == 47
+    assert len(statements) == 61
     assert statements[0].startswith("CREATE EXTENSION IF NOT EXISTS pgcrypto")
     assert statements[1].startswith("CREATE TABLE IF NOT EXISTS courses")
     assert statements[2].startswith("CREATE TABLE IF NOT EXISTS course_aliases")
@@ -112,21 +112,45 @@ def test_load_sql_statements_reads_repo_bootstrap_file() -> None:
     assert statements[34].startswith("CREATE TABLE IF NOT EXISTS tutor_sessions")
     assert statements[35].startswith("CREATE TABLE IF NOT EXISTS tutor_turns")
     assert statements[36].startswith(
+        "CREATE TABLE IF NOT EXISTS ta_effectiveness_session_scores"
+    )
+    assert statements[37].startswith(
+        "CREATE TABLE IF NOT EXISTS ta_effectiveness_turn_scores"
+    )
+    assert statements[38].startswith(
+        "CREATE INDEX IF NOT EXISTS ta_effectiveness_session_scores_section_user_idx"
+    )
+    assert statements[39].startswith(
+        "CREATE INDEX IF NOT EXISTS ta_effectiveness_session_scores_run_idx"
+    )
+    assert statements[40].startswith(
+        "CREATE INDEX IF NOT EXISTS ta_effectiveness_session_scores_session_idx"
+    )
+    assert statements[41].startswith(
+        "CREATE INDEX IF NOT EXISTS ta_effectiveness_turn_scores_session_idx"
+    )
+    assert statements[42].startswith(
+        "CREATE INDEX IF NOT EXISTS ta_effectiveness_turn_scores_run_idx"
+    )
+    assert statements[43].startswith(
+        "CREATE INDEX IF NOT EXISTS ta_effectiveness_turn_scores_user_idx"
+    )
+    assert statements[44].startswith(
         "CREATE TABLE IF NOT EXISTS tutor_turn_snapshots"
     )
-    assert statements[37].startswith("CREATE TABLE IF NOT EXISTS telemetry_events")
-    assert statements[38].startswith("ALTER TABLE tutor_sessions")
-    assert statements[39].startswith("ALTER TABLE tutor_turns")
-    assert statements[40].startswith("ALTER TABLE tutor_turn_snapshots")
-    assert statements[41].startswith("ALTER TABLE telemetry_events")
-    assert statements[42].startswith("ALTER TABLE teaching_plan_weeks")
-    assert statements[43].startswith("ALTER TABLE teaching_plan_weeks")
-    assert statements[44].startswith("ALTER TABLE teaching_plan_weeks")
-    assert statements[45].startswith("INSERT INTO courses")
-    assert statements[46].startswith("INSERT INTO course_aliases")
-    assert "'course_knowledge'" in statements[45]
-    assert "'mit14_course_BAAI_bge_large_en_v1_5'" in statements[45]
-    assert "'harvard_cs50_BAAI_bge_large_en_v1_5'" in statements[45]
+    assert statements[45].startswith("CREATE TABLE IF NOT EXISTS telemetry_events")
+    assert statements[46].startswith("ALTER TABLE tutor_sessions")
+    assert statements[47].startswith("ALTER TABLE tutor_turns")
+    assert statements[48].startswith("ALTER TABLE tutor_turn_snapshots")
+    assert statements[49].startswith("ALTER TABLE telemetry_events")
+    assert statements[50].startswith("ALTER TABLE teaching_plan_weeks")
+    assert statements[51].startswith("ALTER TABLE teaching_plan_weeks")
+    assert statements[52].startswith("ALTER TABLE teaching_plan_weeks")
+    assert statements[53].startswith("INSERT INTO courses")
+    assert statements[54].startswith("INSERT INTO course_aliases")
+    assert "'course_knowledge'" in statements[53]
+    assert "'mit14_course_BAAI_bge_large_en_v1_5'" in statements[53]
+    assert "'harvard_cs50_BAAI_bge_large_en_v1_5'" in statements[53]
 
 
 class _ApplySchemaClient:

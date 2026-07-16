@@ -27,6 +27,7 @@ from rag_eng.llm_clients import (
     invoke_openai_chat_completion,
 )
 from rag_eng.schemas import EvaluationRunArtifact, EvaluationRunMetric, EvaluationRunSummary
+from rag_eng.ta_effectiveness_ingest import ingest_ta_effectiveness_scores
 
 try:
     from . import eval_functions as ef
@@ -1061,6 +1062,31 @@ def run_evaluation_job(settings: EvaluationWorkerSettings) -> EvaluationRunSumma
     macro_results = ef.run_marco_eval(macro_samples, judge_model, macro_judge_prompt)
     micro_results = ef.run_mirco_eval(micro_samples, judge_model, micro_judge_prompt)
     drift = ef.compute_drift(micro_results)
+
+    # Join judge output back to students/sections and persist it for the
+    # professor-facing TA Effectiveness dashboard. This never reads
+    # settings.section_id/course_id — each session's own tutor_sessions row
+    # supplies those, so a run spanning many sections fans out correctly.
+    # A bug here must not crash the run's primary bookkeeping below.
+    if settings.write_aurora and settings.database_url:
+        try:
+            with _aurora_connection(settings) as connection:
+                ingest_ta_effectiveness_scores(
+                    connection,
+                    evaluation_run_id=settings.evaluation_run_id,
+                    macro_results=macro_results,
+                    micro_results=micro_results,
+                    drift_results=drift,
+                    macro_metric_names=ef.macro_metrics,
+                    micro_metric_names=ef.micro_metrics,
+                    scored_at=datetime.now(timezone.utc),
+                )
+        except Exception:
+            logger.exception(
+                "TA effectiveness ingestion failed for run %s",
+                settings.evaluation_run_id,
+            )
+
     macro_df = pd.DataFrame(macro_results)
     micro_df = pd.DataFrame(micro_results)
     macro_pass_rate = (

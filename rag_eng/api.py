@@ -51,6 +51,10 @@ from rag_eng.app_registry import (
     get_professor_section_analytics,
     get_professor_section_student_analytics,
     get_professor_section_student_feedback,
+    get_ta_effectiveness_section_roster,
+    get_ta_effectiveness_student_detail,
+    get_ta_effectiveness_session_turns,
+    require_section_membership,
     list_professor_section_launch_configs,
     get_professor_section_teaching_plan,
     get_professor_section_teaching_plan_week,
@@ -151,7 +155,12 @@ from rag_eng.schemas import (
     SectionInstructionSettingsUpdate,
     SectionLaunchConfig,
     EvaluationRunCreate,
+    EvaluationRunScope,
     EvaluationRunSummary,
+    ProfessorTaEffectivenessRefreshRequest,
+    TaEffectivenessSectionRoster,
+    TaEffectivenessSessionTurns,
+    TaEffectivenessStudentDetail,
     OutputGuardrailDiagnosticResponse,
     OutputGuardrailReviewRequest,
     QueryPayload,
@@ -1041,6 +1050,98 @@ def create_app() -> FastAPI:
             )
         except Exception as exc:
             raise _app_registry_http_error(exc) from exc
+
+    @app.get(
+        "/professor/sections/{section_id}/ta-effectiveness",
+        response_model=TaEffectivenessSectionRoster,
+        dependencies=[Depends(require_authenticated_user)],
+    )
+    def professor_get_ta_effectiveness_roster(
+        section_id: str,
+        current_user=Depends(require_authenticated_user),
+    ) -> TaEffectivenessSectionRoster:
+        try:
+            return get_ta_effectiveness_section_roster(current_user, section_id)
+        except Exception as exc:
+            raise _app_registry_http_error(exc) from exc
+
+    @app.get(
+        "/professor/sections/{section_id}/students/{student_user_id}/ta-effectiveness",
+        response_model=TaEffectivenessStudentDetail,
+        dependencies=[Depends(require_authenticated_user)],
+    )
+    def professor_get_ta_effectiveness_student_detail(
+        section_id: str,
+        student_user_id: str,
+        current_user=Depends(require_authenticated_user),
+    ) -> TaEffectivenessStudentDetail:
+        try:
+            return get_ta_effectiveness_student_detail(
+                current_user, section_id, student_user_id
+            )
+        except Exception as exc:
+            raise _app_registry_http_error(exc) from exc
+
+    @app.get(
+        "/professor/sections/{section_id}/ta-effectiveness/sessions/{session_id}/turns",
+        response_model=TaEffectivenessSessionTurns,
+        dependencies=[Depends(require_authenticated_user)],
+    )
+    def professor_get_ta_effectiveness_session_turns(
+        section_id: str,
+        session_id: str,
+        evaluation_run_id: str,
+        current_user=Depends(require_authenticated_user),
+    ) -> TaEffectivenessSessionTurns:
+        try:
+            return get_ta_effectiveness_session_turns(
+                current_user, section_id, session_id, evaluation_run_id
+            )
+        except Exception as exc:
+            raise _app_registry_http_error(exc) from exc
+
+    @app.post(
+        "/professor/sections/{section_id}/ta-effectiveness/refresh",
+        response_model=EvaluationRunSummary,
+        dependencies=[Depends(require_authenticated_user)],
+    )
+    def professor_launch_ta_effectiveness_refresh(
+        section_id: str,
+        payload: ProfessorTaEffectivenessRefreshRequest,
+        current_user=Depends(require_authenticated_user),
+    ) -> EvaluationRunSummary:
+        try:
+            # Ownership check first; export_scope.section_id below is always
+            # forced to the path param, never taken from the request body —
+            # launch_evaluation_run() itself does no ownership validation.
+            require_section_membership(
+                current_user, section_id, allowed_roles={"professor", "ta"}
+            )
+        except Exception as exc:
+            # _evaluation_http_error doesn't know about MembershipAccessDeniedError
+            # (a PermissionError, not a LookupError/ValueError) and would
+            # otherwise map a legitimate 403 down to a 500.
+            raise _app_registry_http_error(exc) from exc
+
+        try:
+            config = get_evaluation_config_payload()
+            # start_date/end_date pass through as-is; export_turn_snapshots_to_s3
+            # defaults an omitted range to "today only" in runtime.export_timezone.
+            # The professor UI pre-fills a date range (defaulting to today) and
+            # lets the professor widen it, rather than the backend guessing.
+            request = EvaluationRunCreate(
+                judge_provider=payload.judge_provider or config["default_judge_provider"],
+                judge_model=payload.judge_model or config["default_judge_model"],
+                export_scope=EvaluationRunScope(
+                    section_id=section_id,
+                    start_date=payload.start_date,
+                    end_date=payload.end_date,
+                ),
+                run_label=payload.run_label or f"TA effectiveness refresh - {section_id}",
+            )
+            return launch_evaluation_run(request, current_user=current_user)
+        except Exception as exc:
+            raise _evaluation_http_error(exc) from exc
 
     @app.get(
         "/professor/sections/{section_id}/deletion-requests",
