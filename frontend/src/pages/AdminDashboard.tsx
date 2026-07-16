@@ -14,8 +14,17 @@ import {
 } from "../api/adminLlmApi";
 import { listAdminCourses, type AdminCourse } from "../api/adminCoursesApi";
 import {
-  Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart,
-  ResponsiveContainer, Tooltip, XAxis, YAxis,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Legend,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
 } from "recharts";
 import { Btn, Card, Stat, Tag } from "../design/atoms";
 import { chartTooltipStyle, D, mono } from "../design/tokens";
@@ -41,7 +50,9 @@ interface AdminDashboardProps {
   accessToken: string;
 }
 const HEALTH_POLL_INTERVAL_SECONDS = (() => {
-  const parsed = Number(import.meta.env.VITE_HEALTH_POLL_INTERVAL_SECONDS ?? "15");
+  const parsed = Number(
+    import.meta.env.VITE_HEALTH_POLL_INTERVAL_SECONDS ?? "15",
+  );
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 15;
 })();
 
@@ -69,7 +80,10 @@ interface HealthState {
   error: string | null;
 }
 
-function describeHealthService(configured?: boolean, reachable?: boolean): string {
+function describeHealthService(
+  configured?: boolean,
+  reachable?: boolean,
+): string {
   if (configured === false) return "not configured";
   if (reachable === false) return "configured, unreachable";
   if (configured === true && reachable === true) return "configured, reachable";
@@ -97,16 +111,24 @@ function formatHealthTooltip(state: HealthState): string {
 
   const snapshot = state.snapshot;
   if (snapshot) {
-    lines.push(`Qdrant: ${describeHealthService(snapshot.qdrant_configured, snapshot.qdrant_reachable)}`);
+    lines.push(
+      `Qdrant: ${describeHealthService(snapshot.qdrant_configured, snapshot.qdrant_reachable)}`,
+    );
     lines.push(
       `Course registry: ${describeHealthService(
         snapshot.course_registry_configured,
         snapshot.course_registry_reachable,
       )}`,
     );
-    lines.push(`Cohere: ${describeHealthService(snapshot.cohere_configured, snapshot.cohere_reachable)}`);
-    lines.push(`OpenAI: ${describeHealthService(snapshot.openai_configured, snapshot.openai_reachable)}`);
-    lines.push(`Bedrock: ${describeHealthService(snapshot.bedrock_configured, snapshot.bedrock_reachable)}`);
+    lines.push(
+      `Cohere: ${describeHealthService(snapshot.cohere_configured, snapshot.cohere_reachable)}`,
+    );
+    lines.push(
+      `OpenAI: ${describeHealthService(snapshot.openai_configured, snapshot.openai_reachable)}`,
+    );
+    lines.push(
+      `Bedrock: ${describeHealthService(snapshot.bedrock_configured, snapshot.bedrock_reachable)}`,
+    );
   }
 
   if (state.checkedAt) {
@@ -142,7 +164,9 @@ export function AdminDashboard({
     checkedAt: null,
     error: null,
   });
-  const [cohereConfigured, setCohereConfigured] = useState<boolean | null>(null);
+  const [cohereConfigured, setCohereConfigured] = useState<boolean | null>(
+    null,
+  );
   const [gradioAvailable, setGradioAvailable] = useState<boolean | null>(null);
   const [config, setConfig] = useState<AdminLlmConfig | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -150,14 +174,18 @@ export function AdminDashboard({
   const [saving, setSaving] = useState(false);
   const [restarting, setRestarting] = useState(false);
   const [ragProvider, setRagProvider] = useState<LlmProvider>("cohere");
-  const [ragModelChoice, setRagModelChoice] = useState("command-xlarge-nightly");
+  const [ragModelChoice, setRagModelChoice] = useState(
+    "command-xlarge-nightly",
+  );
   const [ragCustomModel, setRagCustomModel] = useState("");
   const [chatProvider, setChatProvider] = useState<LlmProvider>("ollama");
   const [chatModelChoice, setChatModelChoice] = useState("qwen3.5:9b");
   const [chatCustomModel, setChatCustomModel] = useState("");
   const [showOpenaiSecretEditor, setShowOpenaiSecretEditor] = useState(false);
   const [openaiApiKey, setOpenaiApiKey] = useState("");
-  const [openaiBaseUrl, setOpenaiBaseUrl] = useState("https://api.openai.com/v1");
+  const [openaiBaseUrl, setOpenaiBaseUrl] = useState(
+    "https://api.openai.com/v1",
+  );
   const gradioUrl = getGradioUrl();
 
   const [courses, setCourses] = useState<AdminCourse[]>([]);
@@ -210,7 +238,8 @@ export function AdminDashboard({
         if (err instanceof DOMException && err.name === "AbortError") {
           return;
         }
-        const message = err instanceof Error ? err.message : "Unable to load backend health.";
+        const message =
+          err instanceof Error ? err.message : "Unable to load backend health.";
         setHealthState((prev) => ({
           loading: false,
           refreshing: false,
@@ -261,12 +290,16 @@ export function AdminDashboard({
         setConfig(data);
         setRagProvider(data.rag.provider);
         const ragOptions = getModelOptions(data.rag.provider);
-        const ragHasModel = ragOptions.some((option) => option.value === data.rag.model);
+        const ragHasModel = ragOptions.some(
+          (option) => option.value === data.rag.model,
+        );
         setRagModelChoice(ragHasModel ? data.rag.model : CUSTOM_MODEL_VALUE);
         setRagCustomModel(ragHasModel ? "" : data.rag.model);
         setChatProvider(data.chat.provider);
         const chatOptions = getModelOptions(data.chat.provider);
-        const chatHasModel = chatOptions.some((option) => option.value === data.chat.model);
+        const chatHasModel = chatOptions.some(
+          (option) => option.value === data.chat.model,
+        );
         setChatModelChoice(chatHasModel ? data.chat.model : CUSTOM_MODEL_VALUE);
         setChatCustomModel(chatHasModel ? "" : data.chat.model);
         setOpenaiBaseUrl(data.openai_base_url || "https://api.openai.com/v1");
@@ -299,8 +332,12 @@ export function AdminDashboard({
     return [...baseAdminTabs, backendConsoleTab];
   }, [gradioAvailable]);
 
-  const [timezoneFilter, setTimezoneFilter] = useState<string>("America/Los_Angeles");
-  const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
+  const [timezoneFilter, setTimezoneFilter] = useState<string>(
+    "America/Los_Angeles",
+  );
+  const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(
+    null,
+  );
   const [statsError, setStatsError] = useState<boolean>(false);
   const [exportStartDate, setExportStartDate] = useState("");
   const [exportEndDate, setExportEndDate] = useState("");
@@ -317,7 +354,11 @@ export function AdminDashboard({
     let cancelled = false;
 
     const fetchStats = () => {
-      getAdminDashboardStats(accessToken, courseFilter === "all" ? undefined : courseFilter, timezoneFilter)
+      getAdminDashboardStats(
+        accessToken,
+        courseFilter === "all" ? undefined : courseFilter,
+        timezoneFilter,
+      )
         .then((data) => {
           if (!cancelled) {
             setDashboardStats(data);
@@ -345,12 +386,12 @@ export function AdminDashboard({
 
     const fetchFeedback = () => {
       getAdminDashboardFeedback(
-        accessToken, 
-        courseFilter === "all" ? undefined : courseFilter, 
+        accessToken,
+        courseFilter === "all" ? undefined : courseFilter,
         50,
         feedbackStartDate ? feedbackStartDate : undefined,
         feedbackEndDate ? feedbackEndDate : undefined,
-        timezoneFilter
+        timezoneFilter,
       )
         .then((data) => {
           if (!cancelled) {
@@ -371,28 +412,45 @@ export function AdminDashboard({
       cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, [accessToken, courseFilter, timezoneFilter, feedbackStartDate, feedbackEndDate]);
+  }, [
+    accessToken,
+    courseFilter,
+    timezoneFilter,
+    feedbackStartDate,
+    feedbackEndDate,
+  ]);
 
   const handleExport = async () => {
     if (!accessToken) return;
     setExporting(true);
     setExportResult(null);
     try {
-      const res = await triggerChatLogExport(accessToken, courseFilter, exportStartDate, exportEndDate, timezoneFilter);
-      setExportResult(`Success: ${res.message} (Total records: ${res.total_records})`);
+      const res = await triggerChatLogExport(
+        accessToken,
+        courseFilter,
+        exportStartDate,
+        exportEndDate,
+        timezoneFilter,
+      );
+      setExportResult(
+        `Success: ${res.message} (Total records: ${res.total_records})`,
+      );
     } catch (err: unknown) {
-      setExportResult(`Error: ${err instanceof Error ? err.message : String(err)}`);
+      setExportResult(
+        `Error: ${err instanceof Error ? err.message : String(err)}`,
+      );
     } finally {
       setExporting(false);
     }
   };
 
-    const activeTab = tab;
-  const healthBadgeColor = healthState.loading || healthState.refreshing
-    ? D.yellow
-    : healthState.healthy
-      ? D.green
-      : D.red;
+  const activeTab = tab;
+  const healthBadgeColor =
+    healthState.loading || healthState.refreshing
+      ? D.yellow
+      : healthState.healthy
+        ? D.green
+        : D.red;
   const healthBadgeLabel = healthState.loading
     ? "○ CHECKING..."
     : healthState.refreshing
@@ -411,18 +469,20 @@ export function AdminDashboard({
             ? "Backend responded, but one or more services are unavailable"
             : "Backend unreachable"
           : "One or more services are unavailable";
-  const healthTooltip = useMemo(() => formatHealthTooltip(healthState), [healthState]);
+  const healthTooltip = useMemo(
+    () => formatHealthTooltip(healthState),
+    [healthState],
+  );
 
   const footer = (
     <Card style={{ padding: "10px 12px", marginTop: 12, borderRadius: 8 }}>
-      <div
-        title={healthTooltip}
-        style={{ cursor: "help" }}
-      >
+      <div title={healthTooltip} style={{ cursor: "help" }}>
         <div style={{ ...mono, fontSize: 11, color: healthBadgeColor }}>
           {healthBadgeLabel}
         </div>
-        <div style={{ fontSize: 11, color: D.muted, marginTop: 3 }}>{healthSubtext}</div>
+        <div style={{ fontSize: 11, color: D.muted, marginTop: 3 }}>
+          {healthSubtext}
+        </div>
         <div style={{ fontSize: 10, color: D.dim, marginTop: 3 }}>
           Polling every {HEALTH_POLL_INTERVAL_SECONDS}s
         </div>
@@ -446,7 +506,10 @@ export function AdminDashboard({
         throw new Error("Select or enter a chat model.");
       }
       const payload = {
-        rag: { provider: ragProvider, model: ragProvider === "sagemaker" ? "" : nextRagModel },
+        rag: {
+          provider: ragProvider,
+          model: ragProvider === "sagemaker" ? "" : nextRagModel,
+        },
         chat: {
           provider: chatProvider,
           model: chatProvider === "sagemaker" ? "" : nextChatModel,
@@ -460,7 +523,9 @@ export function AdminDashboard({
       setShowOpenaiSecretEditor(false);
       setFormStatus("Configuration saved.");
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : "Unable to save configuration.");
+      setFormError(
+        err instanceof Error ? err.message : "Unable to save configuration.",
+      );
     } finally {
       setSaving(false);
     }
@@ -486,7 +551,7 @@ export function AdminDashboard({
     value: string,
     customValue: string,
     onValueChange: (next: string) => void,
-    onCustomValueChange: (next: string) => void
+    onCustomValueChange: (next: string) => void,
   ) => {
     const options = getModelOptions(provider);
     if (provider === "sagemaker") {
@@ -506,7 +571,8 @@ export function AdminDashboard({
             }}
           >
             <span style={{ fontSize: 13, color: D.dim }}>
-              SageMaker uses the configured endpoint directly. No model name is required here.
+              SageMaker uses the configured endpoint directly. No model name is
+              required here.
             </span>
           </div>
         </label>
@@ -538,7 +604,9 @@ export function AdminDashboard({
         </label>
         {value === CUSTOM_MODEL_VALUE && (
           <label style={{ display: "grid", gap: 6 }}>
-            <span style={{ fontSize: 11, color: D.muted }}>Custom model name</span>
+            <span style={{ fontSize: 11, color: D.muted }}>
+              Custom model name
+            </span>
             <input
               value={customValue}
               onChange={(e) => onCustomValueChange(e.target.value)}
@@ -593,7 +661,9 @@ export function AdminDashboard({
     }));
   }
 
-  const formatEngagementTooltip = (value: unknown): [string, string | undefined] => {
+  const formatEngagementTooltip = (
+    value: unknown,
+  ): [string, string | undefined] => {
     const display = Array.isArray(value)
       ? value.join(", ")
       : typeof value === "number" || typeof value === "string"
@@ -621,20 +691,28 @@ export function AdminDashboard({
         onSignOut={onSignOut}
       />
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
-        <Sidebar tabs={adminTabs} active={activeTab} onTab={setTab} footer={footer} />
+        <Sidebar
+          tabs={adminTabs}
+          active={activeTab}
+          onTab={setTab}
+          footer={footer}
+        />
 
         <div
           style={{
             flex: 1,
             overflow: "auto",
-            padding:
-              activeTab === "backend-console"
-                ? 0
-                : 22,
+            padding: activeTab === "backend-console" ? 0 : 22,
           }}
         >
           {activeTab === "backend-console" && gradioAvailable && (
-            <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                height: "100%",
+              }}
+            >
               <div
                 style={{
                   display: "flex",
@@ -645,11 +723,15 @@ export function AdminDashboard({
                   flexShrink: 0,
                 }}
               >
-                <div style={{ fontSize: 16, fontWeight: 600 }}>Backend Diagnostic Console</div>
+                <div style={{ fontSize: 16, fontWeight: 600 }}>
+                  Backend Diagnostic Console
+                </div>
                 <Btn
                   small
                   variant="ghost"
-                  onClick={() => window.open(gradioUrl, "_blank", "noopener,noreferrer")}
+                  onClick={() =>
+                    window.open(gradioUrl, "_blank", "noopener,noreferrer")
+                  }
                 >
                   Open in new tab ↗
                 </Btn>
@@ -675,13 +757,13 @@ export function AdminDashboard({
                   Backend Diagnostic Console
                 </div>
                 <div style={{ fontSize: 13, color: D.muted, lineHeight: 1.5 }}>
-                  The Gradio diagnostics app is not available right now. Start the
-                  `rag_eng` backend with the diagnostic console enabled to use this
-                  tab.
+                  The Gradio diagnostics app is not available right now. Start
+                  the `rag_eng` backend with the diagnostic console enabled to
+                  use this tab.
                 </div>
                 <div style={{ fontSize: 12, color: D.dim }}>
-                  The sidebar will keep this tab selected by default once the backend
-                  console is available.
+                  The sidebar will keep this tab selected by default once the
+                  backend console is available.
                 </div>
               </Card>
             </div>
@@ -689,13 +771,30 @@ export function AdminDashboard({
 
           {activeTab === "stats" && (
             <div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
-                <div style={{ fontSize: 18, fontWeight: 600 }}>Live Operational Dashboard</div>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: 18,
+                }}
+              >
+                <div style={{ fontSize: 18, fontWeight: 600 }}>
+                  Live Operational Dashboard
+                </div>
                 <div style={{ display: "flex", gap: 12 }}>
                   <select
                     value={timezoneFilter}
                     onChange={(e) => setTimezoneFilter(e.target.value)}
-                    style={{ padding: "6px 12px", borderRadius: 6, border: `1px solid ${D.border}`, background: D.surface, color: D.text, fontSize: 13, cursor: "pointer" }}
+                    style={{
+                      padding: "6px 12px",
+                      borderRadius: 6,
+                      border: `1px solid ${D.border}`,
+                      background: D.surface,
+                      color: D.text,
+                      fontSize: 13,
+                      cursor: "pointer",
+                    }}
                   >
                     <option value="America/Los_Angeles">US Pacific (PT)</option>
                     <option value="America/Denver">US Mountain (MT)</option>
@@ -706,153 +805,517 @@ export function AdminDashboard({
                   <select
                     value={courseFilter}
                     onChange={(e) => setCourseFilter(e.target.value)}
-                    style={{ padding: "6px 12px", borderRadius: 6, border: `1px solid ${D.border}`, background: D.surface, color: D.text, fontSize: 13, cursor: "pointer" }}
+                    style={{
+                      padding: "6px 12px",
+                      borderRadius: 6,
+                      border: `1px solid ${D.border}`,
+                      background: D.surface,
+                      color: D.text,
+                      fontSize: 13,
+                      cursor: "pointer",
+                    }}
                   >
                     <option value="all">All Courses</option>
-                    {courses.map(c => (
-                      <option key={c.course_id} value={c.course_id}>{c.course_id.toUpperCase()}</option>
+                    {courses.map((c) => (
+                      <option key={c.course_id} value={c.course_id}>
+                        {c.course_id.toUpperCase()}
+                      </option>
                     ))}
                   </select>
                 </div>
               </div>
 
-              <div style={{ ...mono, fontSize: 11, color: D.muted, marginBottom: 8 }}>// Daily:</div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12, marginBottom: 18 }}>
-                <Stat label="Sessions" value={dashboardStats?.sessions_today?.toString() ?? "..."} />
-                <Stat label="Requests" value={dashboardStats?.requests_today?.toString() ?? "..."} color={D.blue} />
-                <Stat label="Chat" value={dashboardStats?.chat_seconds_today !== undefined ? formatTime(dashboardStats.chat_seconds_today) : "..."} color={D.purple} />
-                <Stat label="Editor" value={dashboardStats?.editor_seconds_today !== undefined ? formatTime(dashboardStats.editor_seconds_today) : "..."} color={D.purple} />
-                <Stat label="Terminal" value={dashboardStats?.terminal_seconds_today !== undefined ? formatTime(dashboardStats.terminal_seconds_today) : "..."} color={D.purple} />
-                <Stat label="Rewards" value={dashboardStats?.total_rewards_given?.toString() ?? "..."} color={D.green} />
-                <Stat label="Style Nudged" value={dashboardStats?.total_style_nudges?.toString() ?? "..."} color={D.orange} />
-                <Stat label="System Errors" value={statsError ? "ERR_FETCH" : dashboardStats?.system_errors?.toString() ?? "..."} color={D.red} />
+              <div
+                style={{
+                  ...mono,
+                  fontSize: 11,
+                  color: D.muted,
+                  marginBottom: 8,
+                }}
+              >
+                // Daily:
+              </div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+                  gap: 12,
+                  marginBottom: 18,
+                }}
+              >
+                <Stat
+                  label="Sessions"
+                  value={dashboardStats?.sessions_today?.toString() ?? "..."}
+                />
+                <Stat
+                  label="Requests"
+                  value={dashboardStats?.requests_today?.toString() ?? "..."}
+                  color={D.blue}
+                />
+                <Stat
+                  label="Chat"
+                  value={
+                    dashboardStats?.chat_seconds_today !== undefined
+                      ? formatTime(dashboardStats.chat_seconds_today)
+                      : "..."
+                  }
+                  color={D.purple}
+                />
+                <Stat
+                  label="Editor"
+                  value={
+                    dashboardStats?.editor_seconds_today !== undefined
+                      ? formatTime(dashboardStats.editor_seconds_today)
+                      : "..."
+                  }
+                  color={D.purple}
+                />
+                <Stat
+                  label="Terminal"
+                  value={
+                    dashboardStats?.terminal_seconds_today !== undefined
+                      ? formatTime(dashboardStats.terminal_seconds_today)
+                      : "..."
+                  }
+                  color={D.purple}
+                />
+                <Stat
+                  label="Rewards"
+                  value={
+                    dashboardStats?.total_rewards_given?.toString() ?? "..."
+                  }
+                  color={D.green}
+                />
+                <Stat
+                  label="Style Nudged"
+                  value={
+                    dashboardStats?.total_style_nudges?.toString() ?? "..."
+                  }
+                  color={D.orange}
+                />
+                <Stat
+                  label="System Errors"
+                  value={
+                    statsError
+                      ? "ERR_FETCH"
+                      : (dashboardStats?.system_errors?.toString() ?? "...")
+                  }
+                  color={D.red}
+                />
               </div>
 
               <Card style={{ marginBottom: 18 }}>
-                <div style={{ ...mono, fontSize: 11, color: D.muted, marginBottom: 14 }}>// export_chat_logs</div>
-                <div style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>
-                  <label style={{ display: "grid", gap: 6, flex: 1, minWidth: 150 }}>
-                    <span style={{ fontSize: 12, color: D.muted }}>Start Date (Optional)</span>
-                    <input type="date" value={exportStartDate} onChange={(e) => setExportStartDate(e.target.value)} style={{ padding: "6px 12px", borderRadius: 6, border: `1px solid ${D.border}`, background: D.surface, color: D.text, fontSize: 13 }} />
+                <div
+                  style={{
+                    ...mono,
+                    fontSize: 11,
+                    color: D.muted,
+                    marginBottom: 14,
+                  }}
+                >
+                  // export_chat_logs
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 12,
+                    alignItems: "flex-end",
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <label
+                    style={{ display: "grid", gap: 6, flex: 1, minWidth: 150 }}
+                  >
+                    <span style={{ fontSize: 12, color: D.muted }}>
+                      Start Date (Optional)
+                    </span>
+                    <input
+                      type="date"
+                      value={exportStartDate}
+                      onChange={(e) => setExportStartDate(e.target.value)}
+                      style={{
+                        padding: "6px 12px",
+                        borderRadius: 6,
+                        border: `1px solid ${D.border}`,
+                        background: D.surface,
+                        color: D.text,
+                        fontSize: 13,
+                      }}
+                    />
                   </label>
-                  <label style={{ display: "grid", gap: 6, flex: 1, minWidth: 150 }}>
-                    <span style={{ fontSize: 12, color: D.muted }}>End Date (Optional)</span>
-                    <input type="date" value={exportEndDate} onChange={(e) => setExportEndDate(e.target.value)} style={{ padding: "6px 12px", borderRadius: 6, border: `1px solid ${D.border}`, background: D.surface, color: D.text, fontSize: 13 }} />
+                  <label
+                    style={{ display: "grid", gap: 6, flex: 1, minWidth: 150 }}
+                  >
+                    <span style={{ fontSize: 12, color: D.muted }}>
+                      End Date (Optional)
+                    </span>
+                    <input
+                      type="date"
+                      value={exportEndDate}
+                      onChange={(e) => setExportEndDate(e.target.value)}
+                      style={{
+                        padding: "6px 12px",
+                        borderRadius: 6,
+                        border: `1px solid ${D.border}`,
+                        background: D.surface,
+                        color: D.text,
+                        fontSize: 13,
+                      }}
+                    />
                   </label>
                   <Btn onClick={handleExport} disabled={exporting}>
                     {exporting ? "Exporting..." : "Export to JSON"}
                   </Btn>
                 </div>
                 {exportResult && (
-                  <div style={{ marginTop: 12, fontSize: 12, color: exportResult.startsWith("Error") ? D.red : D.green }}>
+                  <div
+                    style={{
+                      marginTop: 12,
+                      fontSize: 12,
+                      color: exportResult.startsWith("Error") ? D.red : D.green,
+                    }}
+                  >
                     {exportResult}
                   </div>
                 )}
               </Card>
 
-              <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 14, marginBottom: 14 }}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
+                  gap: 14,
+                  marginBottom: 14,
+                }}
+              >
                 <Card>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-                    <div style={{ ...mono, fontSize: 11, color: D.muted }}>// request_volume (7 days)</div>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      marginBottom: 14,
+                    }}
+                  >
+                    <div style={{ ...mono, fontSize: 11, color: D.muted }}>
+                      // request_volume (7 days)
+                    </div>
                     <div style={{ fontSize: 11, color: D.muted }}>
-                      <span style={{ color: D.blue }}>■</span> Homework Assist &nbsp;&nbsp;
+                      <span style={{ color: D.blue }}>■</span> Homework Assist
+                      &nbsp;&nbsp;
                       <span style={{ color: D.orange }}>■</span> Study Assist
                     </div>
                   </div>
                   <ResponsiveContainer width="100%" height={220}>
                     <BarChart data={dashboardStats?.session_data || []}>
-                      <CartesianGrid strokeDasharray="3 3" stroke={D.border} vertical={false} />
-                      <XAxis dataKey="day" stroke={D.muted} tick={{ fontSize: 11, fill: D.muted }} />
-                      <YAxis stroke={D.muted} tick={{ fontSize: 11, fill: D.muted }} />
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        stroke={D.border}
+                        vertical={false}
+                      />
+                      <XAxis
+                        dataKey="day"
+                        stroke={D.muted}
+                        tick={{ fontSize: 11, fill: D.muted }}
+                      />
+                      <YAxis
+                        stroke={D.muted}
+                        tick={{ fontSize: 11, fill: D.muted }}
+                      />
                       <Tooltip {...chartTooltipStyle} />
-                      <Legend iconSize={8} wrapperStyle={{ fontSize: 11, color: D.muted }} />
+                      <Legend
+                        iconSize={8}
+                        wrapperStyle={{ fontSize: 11, color: D.muted }}
+                      />
                       {dashboardStats?.homework_keys?.map((k, i) => (
-                        <Bar key={k} dataKey={k} name={k.split(": ")[1] || k} stackId="homework" fill={[D.blue, D.purple, "#0ea5e9"][i % 3]} />
+                        <Bar
+                          key={k}
+                          dataKey={k}
+                          name={k.split(": ")[1] || k}
+                          stackId="homework"
+                          fill={[D.blue, D.purple, "#0ea5e9"][i % 3]}
+                        />
                       ))}
                       {dashboardStats?.study_keys?.map((k, i) => (
-                        <Bar key={k} dataKey={k} name={k.split(": ")[1] || k} stackId="study" fill={[D.orange, D.yellow, D.red][i % 3]} />
+                        <Bar
+                          key={k}
+                          dataKey={k}
+                          name={k.split(": ")[1] || k}
+                          stackId="study"
+                          fill={[D.orange, D.yellow, D.red][i % 3]}
+                        />
                       ))}
                     </BarChart>
                   </ResponsiveContainer>
                 </Card>
 
                 <Card>
-                  <div style={{ ...mono, fontSize: 11, color: D.muted, marginBottom: 14 }}>// guardrail_interventions</div>
+                  <div
+                    style={{
+                      ...mono,
+                      fontSize: 11,
+                      color: D.muted,
+                      marginBottom: 14,
+                    }}
+                  >
+                    // guardrail_interventions
+                  </div>
                   <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
-                    <div style={{ flex: 1, padding: 12, background: `${D.red}10`, borderRadius: 6, border: `1px solid ${D.red}30` }}>
-                      <div style={{ fontSize: 24, fontWeight: 600, color: D.red }}>{dashboardStats?.guardrails?.input_blocks || 0}</div>
-                      <div style={{ fontSize: 11, color: D.dim, ...mono }}>Input Blocks</div>
+                    <div
+                      style={{
+                        flex: 1,
+                        padding: 12,
+                        background: `${D.red}10`,
+                        borderRadius: 6,
+                        border: `1px solid ${D.red}30`,
+                      }}
+                    >
+                      <div
+                        style={{ fontSize: 24, fontWeight: 600, color: D.red }}
+                      >
+                        {dashboardStats?.guardrails?.input_blocks || 0}
+                      </div>
+                      <div style={{ fontSize: 11, color: D.dim, ...mono }}>
+                        Input Blocks
+                      </div>
                     </div>
-                    <div style={{ flex: 1, padding: 12, background: `${D.orange}10`, borderRadius: 6, border: `1px solid ${D.orange}30` }}>
-                      <div style={{ fontSize: 24, fontWeight: 600, color: D.orange }}>{dashboardStats?.guardrails?.output_blocks || 0}</div>
-                      <div style={{ fontSize: 11, color: D.dim, ...mono }}>Output Blocks</div>
+                    <div
+                      style={{
+                        flex: 1,
+                        padding: 12,
+                        background: `${D.orange}10`,
+                        borderRadius: 6,
+                        border: `1px solid ${D.orange}30`,
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 24,
+                          fontWeight: 600,
+                          color: D.orange,
+                        }}
+                      >
+                        {dashboardStats?.guardrails?.output_blocks || 0}
+                      </div>
+                      <div style={{ fontSize: 11, color: D.dim, ...mono }}>
+                        Output Blocks
+                      </div>
                     </div>
-                    <div style={{ flex: 1, padding: 12, background: `${D.yellow}10`, borderRadius: 6, border: `1px solid ${D.yellow}30` }}>
-                      <div style={{ fontSize: 24, fontWeight: 600, color: D.yellow }}>{dashboardStats?.guardrails?.input_dry_runs || 0}</div>
-                      <div style={{ fontSize: 11, color: D.dim, ...mono }}>Input Dry-Runs</div>
+                    <div
+                      style={{
+                        flex: 1,
+                        padding: 12,
+                        background: `${D.yellow}10`,
+                        borderRadius: 6,
+                        border: `1px solid ${D.yellow}30`,
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 24,
+                          fontWeight: 600,
+                          color: D.yellow,
+                        }}
+                      >
+                        {dashboardStats?.guardrails?.input_dry_runs || 0}
+                      </div>
+                      <div style={{ fontSize: 11, color: D.dim, ...mono }}>
+                        Input Dry-Runs
+                      </div>
                     </div>
-                    <div style={{ flex: 1, padding: 12, background: `${D.yellow}10`, borderRadius: 6, border: `1px solid ${D.yellow}30` }}>
-                      <div style={{ fontSize: 24, fontWeight: 600, color: D.yellow }}>{dashboardStats?.guardrails?.output_dry_runs || 0}</div>
-                      <div style={{ fontSize: 11, color: D.dim, ...mono }}>Output Dry-Runs</div>
+                    <div
+                      style={{
+                        flex: 1,
+                        padding: 12,
+                        background: `${D.yellow}10`,
+                        borderRadius: 6,
+                        border: `1px solid ${D.yellow}30`,
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 24,
+                          fontWeight: 600,
+                          color: D.yellow,
+                        }}
+                      >
+                        {dashboardStats?.guardrails?.output_dry_runs || 0}
+                      </div>
+                      <div style={{ fontSize: 11, color: D.dim, ...mono }}>
+                        Output Dry-Runs
+                      </div>
                     </div>
                   </div>
                   <ResponsiveContainer width="100%" height={120}>
                     <PieChart>
                       <Pie
                         data={dashboardStats?.guardrails?.violation_types || []}
-                        cx="50%" cy="50%"
+                        cx="50%"
+                        cy="50%"
                         outerRadius={50}
                         dataKey="value"
                         nameKey="name"
                         strokeWidth={0}
                       >
-                        {(dashboardStats?.guardrails?.violation_types || []).map((_, i) => (
-                          <Cell key={i} fill={[D.red, D.orange, D.yellow, D.green, D.blue, D.purple][i % 6]} />
+                        {(
+                          dashboardStats?.guardrails?.violation_types || []
+                        ).map((_, i) => (
+                          <Cell
+                            key={i}
+                            fill={
+                              [
+                                D.red,
+                                D.orange,
+                                D.yellow,
+                                D.green,
+                                D.blue,
+                                D.purple,
+                              ][i % 6]
+                            }
+                          />
                         ))}
                       </Pie>
                       <Tooltip {...chartTooltipStyle} />
-                      <Legend iconSize={8} wrapperStyle={{ fontSize: 11, color: D.muted }} layout="vertical" verticalAlign="middle" align="right" />
+                      <Legend
+                        iconSize={8}
+                        wrapperStyle={{ fontSize: 11, color: D.muted }}
+                        layout="vertical"
+                        verticalAlign="middle"
+                        align="right"
+                      />
                     </PieChart>
                   </ResponsiveContainer>
                 </Card>
                 <Card>
-                  <div style={{ ...mono, fontSize: 11, color: D.muted, marginBottom: 14 }}>// rewards_and_nudges (7 days)</div>
+                  <div
+                    style={{
+                      ...mono,
+                      fontSize: 11,
+                      color: D.muted,
+                      marginBottom: 14,
+                    }}
+                  >
+                    // rewards_and_nudges (7 days)
+                  </div>
                   <ResponsiveContainer width="100%" height={220}>
                     <BarChart data={dashboardStats?.weekly_rewards || []}>
-                      <CartesianGrid strokeDasharray="3 3" stroke={D.border} vertical={false} />
-                      <XAxis dataKey="day" stroke={D.muted} tick={{ fontSize: 11, fill: D.muted }} />
-                      <YAxis stroke={D.muted} tick={{ fontSize: 11, fill: D.muted }} />
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        stroke={D.border}
+                        vertical={false}
+                      />
+                      <XAxis
+                        dataKey="day"
+                        stroke={D.muted}
+                        tick={{ fontSize: 11, fill: D.muted }}
+                      />
+                      <YAxis
+                        stroke={D.muted}
+                        tick={{ fontSize: 11, fill: D.muted }}
+                      />
                       <Tooltip {...chartTooltipStyle} />
-                      <Legend iconSize={8} wrapperStyle={{ fontSize: 11, color: D.muted }} />
-                      <Bar dataKey="rewards_given" name="Rewards" fill={D.green} />
-                      <Bar dataKey="style_nudges" name="Style Nudged" fill={D.orange} />
+                      <Legend
+                        iconSize={8}
+                        wrapperStyle={{ fontSize: 11, color: D.muted }}
+                      />
+                      <Bar
+                        dataKey="rewards_given"
+                        name="Rewards"
+                        fill={D.green}
+                      />
+                      <Bar
+                        dataKey="style_nudges"
+                        name="Style Nudged"
+                        fill={D.orange}
+                      />
                     </BarChart>
                   </ResponsiveContainer>
                 </Card>
 
                 <Card>
-                  <div style={{ ...mono, fontSize: 11, color: D.muted, marginBottom: 14 }}>// engagement_time (7 days, in {engagementUnit})</div>
+                  <div
+                    style={{
+                      ...mono,
+                      fontSize: 11,
+                      color: D.muted,
+                      marginBottom: 14,
+                    }}
+                  >
+                    // engagement_time (7 days, in {engagementUnit})
+                  </div>
                   <ResponsiveContainer width="100%" height={220}>
                     <BarChart data={scaledEngagementData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke={D.border} vertical={false} />
-                      <XAxis dataKey="day" stroke={D.muted} tick={{ fontSize: 11, fill: D.muted }} />
-                      <YAxis stroke={D.muted} tick={{ fontSize: 11, fill: D.muted }} />
-                      <Tooltip {...chartTooltipStyle} formatter={formatEngagementTooltip} />
-                      <Legend iconSize={8} wrapperStyle={{ fontSize: 11, color: D.muted }} />
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        stroke={D.border}
+                        vertical={false}
+                      />
+                      <XAxis
+                        dataKey="day"
+                        stroke={D.muted}
+                        tick={{ fontSize: 11, fill: D.muted }}
+                      />
+                      <YAxis
+                        stroke={D.muted}
+                        tick={{ fontSize: 11, fill: D.muted }}
+                      />
+                      <Tooltip
+                        {...chartTooltipStyle}
+                        formatter={formatEngagementTooltip}
+                      />
+                      <Legend
+                        iconSize={8}
+                        wrapperStyle={{ fontSize: 11, color: D.muted }}
+                      />
                       <Bar dataKey="chat_seconds" name="Chat" fill={D.purple} />
-                      <Bar dataKey="editor_seconds" name="Editor" fill={D.blue} />
-                      <Bar dataKey="terminal_seconds" name="Terminal" fill={D.orange} />
+                      <Bar
+                        dataKey="editor_seconds"
+                        name="Editor"
+                        fill={D.blue}
+                      />
+                      <Bar
+                        dataKey="terminal_seconds"
+                        name="Terminal"
+                        fill={D.orange}
+                      />
                     </BarChart>
                   </ResponsiveContainer>
                 </Card>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 14 }}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
+                  gap: 14,
+                }}
+              >
                 <Card>
-                  <div style={{ ...mono, fontSize: 11, color: D.muted, marginBottom: 14 }}>// latency_metrics (ms)</div>
-                  <table style={{ width: "100%", fontSize: 13, textAlign: "left", borderCollapse: "collapse" }}>
+                  <div
+                    style={{
+                      ...mono,
+                      fontSize: 11,
+                      color: D.muted,
+                      marginBottom: 14,
+                    }}
+                  >
+                    // latency_metrics (ms)
+                  </div>
+                  <table
+                    style={{
+                      width: "100%",
+                      fontSize: 13,
+                      textAlign: "left",
+                      borderCollapse: "collapse",
+                    }}
+                  >
                     <thead>
-                      <tr style={{ borderBottom: `1px solid ${D.border}`, color: D.muted }}>
+                      <tr
+                        style={{
+                          borderBottom: `1px solid ${D.border}`,
+                          color: D.muted,
+                        }}
+                      >
                         <th style={{ padding: 8, fontWeight: 500 }}>Phase</th>
                         <th style={{ padding: 8, fontWeight: 500 }}>P50</th>
                         <th style={{ padding: 8, fontWeight: 500 }}>P90</th>
@@ -862,49 +1325,142 @@ export function AdminDashboard({
                     <tbody>
                       <tr style={{ borderBottom: `1px solid ${D.border}` }}>
                         <td style={{ padding: 8 }}>Input Guardrail</td>
-                        <td style={{ padding: 8, ...mono }}>{dashboardStats?.latencies?.input_guardrail?.p50 || 0}</td>
-                        <td style={{ padding: 8, ...mono }}>{dashboardStats?.latencies?.input_guardrail?.p90 || 0}</td>
-                        <td style={{ padding: 8, ...mono, color: (dashboardStats?.latencies?.input_guardrail?.p99 || 0) > 1000 ? D.red : D.text }}>{dashboardStats?.latencies?.input_guardrail?.p99 || 0}</td>
+                        <td style={{ padding: 8, ...mono }}>
+                          {dashboardStats?.latencies?.input_guardrail?.p50 || 0}
+                        </td>
+                        <td style={{ padding: 8, ...mono }}>
+                          {dashboardStats?.latencies?.input_guardrail?.p90 || 0}
+                        </td>
+                        <td
+                          style={{
+                            padding: 8,
+                            ...mono,
+                            color:
+                              (dashboardStats?.latencies?.input_guardrail
+                                ?.p99 || 0) > 1000
+                                ? D.red
+                                : D.text,
+                          }}
+                        >
+                          {dashboardStats?.latencies?.input_guardrail?.p99 || 0}
+                        </td>
                       </tr>
                       <tr style={{ borderBottom: `1px solid ${D.border}` }}>
                         <td style={{ padding: 8 }}>Retrieval (RAG)</td>
-                        <td style={{ padding: 8, ...mono }}>{dashboardStats?.latencies?.rag?.p50 || 0}</td>
-                        <td style={{ padding: 8, ...mono }}>{dashboardStats?.latencies?.rag?.p90 || 0}</td>
-                        <td style={{ padding: 8, ...mono, color: (dashboardStats?.latencies?.rag?.p99 || 0) > 2000 ? D.red : D.text }}>{dashboardStats?.latencies?.rag?.p99 || 0}</td>
+                        <td style={{ padding: 8, ...mono }}>
+                          {dashboardStats?.latencies?.rag?.p50 || 0}
+                        </td>
+                        <td style={{ padding: 8, ...mono }}>
+                          {dashboardStats?.latencies?.rag?.p90 || 0}
+                        </td>
+                        <td
+                          style={{
+                            padding: 8,
+                            ...mono,
+                            color:
+                              (dashboardStats?.latencies?.rag?.p99 || 0) > 2000
+                                ? D.red
+                                : D.text,
+                          }}
+                        >
+                          {dashboardStats?.latencies?.rag?.p99 || 0}
+                        </td>
                       </tr>
                       <tr style={{ borderBottom: `1px solid ${D.border}` }}>
                         <td style={{ padding: 8 }}>LLM Generation</td>
-                        <td style={{ padding: 8, ...mono }}>{dashboardStats?.latencies?.llm?.p50 || 0}</td>
-                        <td style={{ padding: 8, ...mono }}>{dashboardStats?.latencies?.llm?.p90 || 0}</td>
-                        <td style={{ padding: 8, ...mono, color: (dashboardStats?.latencies?.llm?.p99 || 0) > 10000 ? D.red : D.text }}>{dashboardStats?.latencies?.llm?.p99 || 0}</td>
+                        <td style={{ padding: 8, ...mono }}>
+                          {dashboardStats?.latencies?.llm?.p50 || 0}
+                        </td>
+                        <td style={{ padding: 8, ...mono }}>
+                          {dashboardStats?.latencies?.llm?.p90 || 0}
+                        </td>
+                        <td
+                          style={{
+                            padding: 8,
+                            ...mono,
+                            color:
+                              (dashboardStats?.latencies?.llm?.p99 || 0) > 10000
+                                ? D.red
+                                : D.text,
+                          }}
+                        >
+                          {dashboardStats?.latencies?.llm?.p99 || 0}
+                        </td>
                       </tr>
                       <tr>
                         <td style={{ padding: 8 }}>Output Guardrail</td>
-                        <td style={{ padding: 8, ...mono }}>{dashboardStats?.latencies?.output_guardrail?.p50 || 0}</td>
-                        <td style={{ padding: 8, ...mono }}>{dashboardStats?.latencies?.output_guardrail?.p90 || 0}</td>
-                        <td style={{ padding: 8, ...mono, color: (dashboardStats?.latencies?.output_guardrail?.p99 || 0) > 1000 ? D.red : D.text }}>{dashboardStats?.latencies?.output_guardrail?.p99 || 0}</td>
+                        <td style={{ padding: 8, ...mono }}>
+                          {dashboardStats?.latencies?.output_guardrail?.p50 ||
+                            0}
+                        </td>
+                        <td style={{ padding: 8, ...mono }}>
+                          {dashboardStats?.latencies?.output_guardrail?.p90 ||
+                            0}
+                        </td>
+                        <td
+                          style={{
+                            padding: 8,
+                            ...mono,
+                            color:
+                              (dashboardStats?.latencies?.output_guardrail
+                                ?.p99 || 0) > 1000
+                                ? D.red
+                                : D.text,
+                          }}
+                        >
+                          {dashboardStats?.latencies?.output_guardrail?.p99 ||
+                            0}
+                        </td>
                       </tr>
                     </tbody>
                   </table>
                 </Card>
                 <Card>
-                  <div style={{ ...mono, fontSize: 11, color: D.muted, marginBottom: 14 }}>// model_share (7 days)</div>
+                  <div
+                    style={{
+                      ...mono,
+                      fontSize: 11,
+                      color: D.muted,
+                      marginBottom: 14,
+                    }}
+                  >
+                    // model_share (7 days)
+                  </div>
                   <ResponsiveContainer width="100%" height={130}>
                     <PieChart>
                       <Pie
                         data={dashboardStats?.model_share || []}
-                        cx="50%" cy="50%"
+                        cx="50%"
+                        cy="50%"
                         outerRadius={54}
                         dataKey="value"
                         nameKey="name"
                         strokeWidth={0}
                       >
                         {(dashboardStats?.model_share || []).map((_, i) => (
-                          <Cell key={i} fill={[D.blue, D.orange, D.green, D.red, D.purple, D.yellow][i % 6]} />
+                          <Cell
+                            key={i}
+                            fill={
+                              [
+                                D.blue,
+                                D.orange,
+                                D.green,
+                                D.red,
+                                D.purple,
+                                D.yellow,
+                              ][i % 6]
+                            }
+                          />
                         ))}
                       </Pie>
                       <Tooltip {...chartTooltipStyle} />
-                      <Legend iconSize={8} wrapperStyle={{ fontSize: 11, color: D.muted }} layout="vertical" verticalAlign="middle" align="right" />
+                      <Legend
+                        iconSize={8}
+                        wrapperStyle={{ fontSize: 11, color: D.muted }}
+                        layout="vertical"
+                        verticalAlign="middle"
+                        align="right"
+                      />
                     </PieChart>
                   </ResponsiveContainer>
                 </Card>
@@ -918,91 +1474,248 @@ export function AdminDashboard({
 
           {activeTab === "feedback" && (
             <div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
-                <div style={{ fontSize: 18, fontWeight: 600 }}>Student Feedback</div>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: 18,
+                }}
+              >
+                <div style={{ fontSize: 18, fontWeight: 600 }}>
+                  Student Feedback
+                </div>
                 <div style={{ display: "flex", gap: 12 }}>
-                  <input 
+                  <input
                     type="date"
                     value={feedbackStartDate}
                     onChange={(e) => setFeedbackStartDate(e.target.value)}
-                    style={{ padding: "6px 12px", borderRadius: 6, border: `1px solid ${D.border}`, background: D.surface, color: D.text, fontSize: 13 }}
+                    style={{
+                      padding: "6px 12px",
+                      borderRadius: 6,
+                      border: `1px solid ${D.border}`,
+                      background: D.surface,
+                      color: D.text,
+                      fontSize: 13,
+                    }}
                   />
-                  <span style={{ alignSelf: "center", color: D.muted }}>to</span>
-                  <input 
+                  <span style={{ alignSelf: "center", color: D.muted }}>
+                    to
+                  </span>
+                  <input
                     type="date"
                     value={feedbackEndDate}
                     onChange={(e) => setFeedbackEndDate(e.target.value)}
-                    style={{ padding: "6px 12px", borderRadius: 6, border: `1px solid ${D.border}`, background: D.surface, color: D.text, fontSize: 13 }}
+                    style={{
+                      padding: "6px 12px",
+                      borderRadius: 6,
+                      border: `1px solid ${D.border}`,
+                      background: D.surface,
+                      color: D.text,
+                      fontSize: 13,
+                    }}
                   />
                   <select
                     value={courseFilter}
                     onChange={(e) => setCourseFilter(e.target.value)}
-                    style={{ padding: "6px 12px", borderRadius: 6, border: `1px solid ${D.border}`, background: D.surface, color: D.text, fontSize: 13 }}
+                    style={{
+                      padding: "6px 12px",
+                      borderRadius: 6,
+                      border: `1px solid ${D.border}`,
+                      background: D.surface,
+                      color: D.text,
+                      fontSize: 13,
+                    }}
                   >
                     <option value="all">All Courses</option>
-                    {courses.map(c => (
-                      <option key={c.course_id} value={c.course_id}>{c.course_id.toUpperCase()}</option>
+                    {courses.map((c) => (
+                      <option key={c.course_id} value={c.course_id}>
+                        {c.course_id.toUpperCase()}
+                      </option>
                     ))}
                   </select>
                 </div>
               </div>
 
               {feedbackError ? (
-                <div style={{ color: D.red, padding: 12, background: `${D.red}10`, borderRadius: 8 }}>
+                <div
+                  style={{
+                    color: D.red,
+                    padding: 12,
+                    background: `${D.red}10`,
+                    borderRadius: 8,
+                  }}
+                >
                   Failed to load feedback data.
                 </div>
               ) : feedbackData.length === 0 ? (
-                <div style={{ color: D.muted, padding: 24, textAlign: "center" }}>
+                <div
+                  style={{ color: D.muted, padding: 24, textAlign: "center" }}
+                >
                   No Feedback Received
                 </div>
               ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                <div
+                  style={{ display: "flex", flexDirection: "column", gap: 16 }}
+                >
                   {feedbackData.map((f, i) => (
-                    <Card key={i} style={{ display: "flex", flexDirection: "column", gap: 12, padding: 16 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <span style={{ fontSize: 16 }}>{f.rating === "positive" ? "👍" : "👎"}</span>
-                          <span style={{ fontWeight: 600, color: f.rating === "positive" ? D.green : D.red }}>
+                    <Card
+                      key={i}
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 12,
+                        padding: 16,
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                          }}
+                        >
+                          <span style={{ fontSize: 16 }}>
+                            {f.rating === "positive" ? "👍" : "👎"}
+                          </span>
+                          <span
+                            style={{
+                              fontWeight: 600,
+                              color: f.rating === "positive" ? D.green : D.red,
+                            }}
+                          >
                             {f.rating === "positive" ? "Positive" : "Negative"}
                           </span>
                           {f.explanation && (
-                            <span style={{ fontSize: 14, color: D.text, marginLeft: 8 }}>"{f.explanation}"</span>
+                            <span
+                              style={{
+                                fontSize: 14,
+                                color: D.text,
+                                marginLeft: 8,
+                              }}
+                            >
+                              "{f.explanation}"
+                            </span>
                           )}
                         </div>
                         <div style={{ ...mono, fontSize: 11, color: D.muted }}>
-                          {f.created_at ? new Date(f.created_at).toLocaleString() : "Unknown date"} • Turn {f.turn_index}
+                          {f.created_at
+                            ? new Date(f.created_at).toLocaleString()
+                            : "Unknown date"}{" "}
+                          • Turn {f.turn_index}
+                          {f.section_id && ` • Section: ${f.section_id}`}
+                          {f.professor_names && ` • Prof: ${f.professor_names}`}
                         </div>
                       </div>
 
-                      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 8,
+                          marginTop: 8,
+                        }}
+                      >
                         {f.rag_sources && f.rag_sources.length > 0 && (
                           <>
-                            <div style={{ fontSize: 12, color: D.muted, ...mono }}>// rag_sources</div>
-                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                              {f.rag_sources.map(src => (
-                                <Tag key={src} color={D.orange}>{src}</Tag>
+                            <div
+                              style={{ fontSize: 12, color: D.muted, ...mono }}
+                            >
+                              // rag_sources
+                            </div>
+                            <div
+                              style={{
+                                display: "flex",
+                                gap: 8,
+                                flexWrap: "wrap",
+                              }}
+                            >
+                              {f.rag_sources.map((src) => (
+                                <Tag key={src} color={D.orange}>
+                                  {src}
+                                </Tag>
                               ))}
                             </div>
                           </>
                         )}
 
-                        <div style={{ fontSize: 12, color: D.muted, ...mono, marginTop: 4 }}>// student_message</div>
-                        <div style={{ background: `${D.blue}08`, padding: 12, borderRadius: 6, fontSize: 13, borderLeft: `3px solid ${D.blue}` }}>
-                          {f.student_message || <span style={{ color: D.muted, fontStyle: "italic" }}>No message text</span>}
+                        <div
+                          style={{
+                            fontSize: 12,
+                            color: D.muted,
+                            ...mono,
+                            marginTop: 4,
+                          }}
+                        >
+                          // student_message
+                        </div>
+                        <div
+                          style={{
+                            background: `${D.blue}08`,
+                            padding: 12,
+                            borderRadius: 6,
+                            fontSize: 13,
+                            borderLeft: `3px solid ${D.blue}`,
+                          }}
+                        >
+                          {f.student_message || (
+                            <span
+                              style={{ color: D.muted, fontStyle: "italic" }}
+                            >
+                              No message text
+                            </span>
+                          )}
                         </div>
 
                         {f.cot && Object.keys(f.cot).length > 0 && (
                           <>
-                            <div style={{ fontSize: 12, color: D.muted, ...mono, marginTop: 4 }}>// chain_of_thought</div>
-                            <div style={{ background: D.surface, padding: 12, borderRadius: 6, fontSize: 12, border: `1px solid ${D.border}` }}>
+                            <div
+                              style={{
+                                fontSize: 12,
+                                color: D.muted,
+                                ...mono,
+                                marginTop: 4,
+                              }}
+                            >
+                              // chain_of_thought
+                            </div>
+                            <div
+                              style={{
+                                background: D.surface,
+                                padding: 12,
+                                borderRadius: 6,
+                                fontSize: 12,
+                                border: `1px solid ${D.border}`,
+                              }}
+                            >
                               {Object.entries(f.cot).map(([key, val]) => (
                                 <div key={key} style={{ marginBottom: 4 }}>
-                                  <span style={{ fontWeight: 600, color: D.muted }}>{key}: </span>
+                                  <span
+                                    style={{ fontWeight: 600, color: D.muted }}
+                                  >
+                                    {key}:{" "}
+                                  </span>
                                   <span style={{ color: D.text }}>
-                                    {key === 'Pedagogical_Action' && typeof val === 'string'
-                                      ? (val.match(/([A-Z_]{2,})/) 
-                                          ? val.match(/([A-Z_]{2,})/)![1].split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ') 
-                                          : 'None')
+                                    {key === "Pedagogical_Action" &&
+                                    typeof val === "string"
+                                      ? val.match(/([A-Z_]{2,})/)
+                                        ? val
+                                            .match(/([A-Z_]{2,})/)![1]
+                                            .split("_")
+                                            .map(
+                                              (w) =>
+                                                w.charAt(0).toUpperCase() +
+                                                w.slice(1).toLowerCase(),
+                                            )
+                                            .join(" ")
+                                        : "None"
                                       : String(val)}
                                   </span>
                                 </div>
@@ -1011,12 +1724,51 @@ export function AdminDashboard({
                           </>
                         )}
 
-                        <div style={{ fontSize: 12, color: D.muted, ...mono, marginTop: 4 }}>// ai_response</div>
-                        <div style={{ background: `${D.purple}08`, padding: 12, borderRadius: 6, fontSize: 13, borderLeft: `3px solid ${D.purple}`, whiteSpace: "pre-wrap" }}>
-                          {f.ai_message ? f.ai_message.replace(/<think>[\s\S]*?<\/think>/g, '').replace(/<analysis>[\s\S]*?<\/analysis>/g, '').trim() : <span style={{ color: D.muted, fontStyle: "italic" }}>No response text</span>}
+                        <div
+                          style={{
+                            fontSize: 12,
+                            color: D.muted,
+                            ...mono,
+                            marginTop: 4,
+                          }}
+                        >
+                          // ai_response
+                        </div>
+                        <div
+                          style={{
+                            background: `${D.purple}08`,
+                            padding: 12,
+                            borderRadius: 6,
+                            fontSize: 13,
+                            borderLeft: `3px solid ${D.purple}`,
+                            whiteSpace: "pre-wrap",
+                          }}
+                        >
+                          {f.ai_message ? (
+                            f.ai_message
+                              .replace(/<think>[\s\S]*?<\/think>/g, "")
+                              .replace(/<analysis>[\s\S]*?<\/analysis>/g, "")
+                              .trim()
+                          ) : (
+                            <span
+                              style={{ color: D.muted, fontStyle: "italic" }}
+                            >
+                              No response text
+                            </span>
+                          )}
                         </div>
                       </div>
-                      <div style={{ fontSize: 11, color: D.dim, ...mono, textAlign: "right", marginTop: 8 }}>Session ID: {f.session_id}</div>
+                      <div
+                        style={{
+                          fontSize: 11,
+                          color: D.dim,
+                          ...mono,
+                          textAlign: "right",
+                          marginTop: 8,
+                        }}
+                      >
+                        Session ID: {f.session_id}
+                      </div>
                     </Card>
                   ))}
                 </div>
@@ -1045,20 +1797,30 @@ export function AdminDashboard({
                   }}
                 >
                   <label style={{ display: "grid", gap: 6 }}>
-                    <span style={{ fontSize: 12, color: D.muted }}>RAG provider</span>
+                    <span style={{ fontSize: 12, color: D.muted }}>
+                      RAG provider
+                    </span>
                     <select
                       value={ragProvider}
                       onChange={(e) => {
                         const next = e.target.value as LlmProvider;
                         setRagProvider(next);
                         const nextOptions = getModelOptions(next);
-                        const currentValue = resolveModelValue(ragModelChoice, ragCustomModel);
+                        const currentValue = resolveModelValue(
+                          ragModelChoice,
+                          ragCustomModel,
+                        );
                         if (nextOptions.length === 0) {
                           setRagModelChoice(CUSTOM_MODEL_VALUE);
                           setRagCustomModel("");
                           return;
                         }
-                        if (currentValue && nextOptions.some((option) => option.value === currentValue)) {
+                        if (
+                          currentValue &&
+                          nextOptions.some(
+                            (option) => option.value === currentValue,
+                          )
+                        ) {
                           setRagModelChoice(currentValue);
                           setRagCustomModel("");
                           return;
@@ -1085,7 +1847,7 @@ export function AdminDashboard({
                     ragModelChoice,
                     ragCustomModel,
                     setRagModelChoice,
-                    setRagCustomModel
+                    setRagCustomModel,
                   )}
                 </div>
 
@@ -1097,20 +1859,30 @@ export function AdminDashboard({
                   }}
                 >
                   <label style={{ display: "grid", gap: 6 }}>
-                    <span style={{ fontSize: 12, color: D.muted }}>Chat provider</span>
+                    <span style={{ fontSize: 12, color: D.muted }}>
+                      Chat provider
+                    </span>
                     <select
                       value={chatProvider}
                       onChange={(e) => {
                         const next = e.target.value as LlmProvider;
                         setChatProvider(next);
                         const nextOptions = getModelOptions(next);
-                        const currentValue = resolveModelValue(chatModelChoice, chatCustomModel);
+                        const currentValue = resolveModelValue(
+                          chatModelChoice,
+                          chatCustomModel,
+                        );
                         if (nextOptions.length === 0) {
                           setChatModelChoice(CUSTOM_MODEL_VALUE);
                           setChatCustomModel("");
                           return;
                         }
-                        if (currentValue && nextOptions.some((option) => option.value === currentValue)) {
+                        if (
+                          currentValue &&
+                          nextOptions.some(
+                            (option) => option.value === currentValue,
+                          )
+                        ) {
                           setChatModelChoice(currentValue);
                           setChatCustomModel("");
                           return;
@@ -1138,7 +1910,7 @@ export function AdminDashboard({
                     chatModelChoice,
                     chatCustomModel,
                     setChatModelChoice,
-                    setChatCustomModel
+                    setChatCustomModel,
                   )}
                 </div>
 
@@ -1151,7 +1923,10 @@ export function AdminDashboard({
                 >
                   <div style={{ display: "grid", gap: 6 }}>
                     <span style={{ fontSize: 12, color: D.muted }}>
-                      OpenAI secret {config?.openai_api_key_configured ? "(configured)" : "(not set)"}
+                      OpenAI secret{" "}
+                      {config?.openai_api_key_configured
+                        ? "(configured)"
+                        : "(not set)"}
                     </span>
                     {showOpenaiSecretEditor ? (
                       <>
@@ -1169,7 +1944,8 @@ export function AdminDashboard({
                           }}
                         />
                         <div style={{ fontSize: 11, color: D.muted }}>
-                          The saved key is not shown. Leave this blank to keep the existing secret.
+                          The saved key is not shown. Leave this blank to keep
+                          the existing secret.
                         </div>
                       </>
                     ) : (
@@ -1192,14 +1968,22 @@ export function AdminDashboard({
                             ? "Configured on the backend"
                             : "Not configured yet"}
                         </span>
-                        <Btn small variant="ghost" onClick={() => setShowOpenaiSecretEditor(true)}>
-                          {config?.openai_api_key_configured ? "Replace key" : "Set key"}
+                        <Btn
+                          small
+                          variant="ghost"
+                          onClick={() => setShowOpenaiSecretEditor(true)}
+                        >
+                          {config?.openai_api_key_configured
+                            ? "Replace key"
+                            : "Set key"}
                         </Btn>
                       </div>
                     )}
                   </div>
                   <label style={{ display: "grid", gap: 6 }}>
-                    <span style={{ fontSize: 12, color: D.muted }}>OpenAI base URL</span>
+                    <span style={{ fontSize: 12, color: D.muted }}>
+                      OpenAI base URL
+                    </span>
                     <input
                       value={openaiBaseUrl}
                       onChange={(e) => setOpenaiBaseUrl(e.target.value)}
@@ -1215,25 +1999,59 @@ export function AdminDashboard({
                   </label>
                 </div>
 
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                  <Btn variant="primary" small onClick={handleSaveConfig} disabled={saving || restarting}>
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 10,
+                    flexWrap: "wrap",
+                    alignItems: "center",
+                  }}
+                >
+                  <Btn
+                    variant="primary"
+                    small
+                    onClick={handleSaveConfig}
+                    disabled={saving || restarting}
+                  >
                     {saving ? "Saving..." : "Save configuration"}
                   </Btn>
-                  <Btn variant="ghost" small onClick={handleRestart} disabled={saving || restarting}>
+                  <Btn
+                    variant="ghost"
+                    small
+                    onClick={handleRestart}
+                    disabled={saving || restarting}
+                  >
                     {restarting ? "Restarting..." : "Apply / restart"}
                   </Btn>
                   {config && (
                     <span style={{ fontSize: 12, color: D.muted }}>
-                      Current route: RAG <span style={{ color: D.text }}>{config.rag.provider}</span> /{" "}
-                      {config.rag.provider !== "sagemaker" ? config.rag.model : "endpoint"} · Chat{" "}
-                      <span style={{ color: D.text }}>{config.chat.provider}</span>
-                      {config.chat.provider !== "sagemaker" ? ` / ${config.chat.model}` : " / endpoint"}
+                      Current route: RAG{" "}
+                      <span style={{ color: D.text }}>
+                        {config.rag.provider}
+                      </span>{" "}
+                      /{" "}
+                      {config.rag.provider !== "sagemaker"
+                        ? config.rag.model
+                        : "endpoint"}{" "}
+                      · Chat{" "}
+                      <span style={{ color: D.text }}>
+                        {config.chat.provider}
+                      </span>
+                      {config.chat.provider !== "sagemaker"
+                        ? ` / ${config.chat.model}`
+                        : " / endpoint"}
                     </span>
                   )}
                 </div>
 
-                {formError && <div style={{ color: D.red, fontSize: 12 }}>{formError}</div>}
-                {formStatus && <div style={{ color: D.green, fontSize: 12 }}>{formStatus}</div>}
+                {formError && (
+                  <div style={{ color: D.red, fontSize: 12 }}>{formError}</div>
+                )}
+                {formStatus && (
+                  <div style={{ color: D.green, fontSize: 12 }}>
+                    {formStatus}
+                  </div>
+                )}
               </Card>
 
               <div
@@ -1244,25 +2062,47 @@ export function AdminDashboard({
                 }}
               >
                 <Card>
-                  <div style={{ fontSize: 12, color: D.muted, marginBottom: 6 }}>RAG route</div>
+                  <div
+                    style={{ fontSize: 12, color: D.muted, marginBottom: 6 }}
+                  >
+                    RAG route
+                  </div>
                   <div style={{ ...mono, fontSize: 13 }}>
-                    {config ? `${config.rag.provider}${config.rag.provider === "sagemaker" ? "" : ` / ${config.rag.model}`}` : "Loading..."}
+                    {config
+                      ? `${config.rag.provider}${config.rag.provider === "sagemaker" ? "" : ` / ${config.rag.model}`}`
+                      : "Loading..."}
                   </div>
                 </Card>
                 <Card>
-                  <div style={{ fontSize: 12, color: D.muted, marginBottom: 6 }}>Chat route</div>
+                  <div
+                    style={{ fontSize: 12, color: D.muted, marginBottom: 6 }}
+                  >
+                    Chat route
+                  </div>
                   <div style={{ ...mono, fontSize: 13 }}>
-                    {config ? `${config.chat.provider}${config.chat.provider === "sagemaker" ? "" : ` / ${config.chat.model}`}` : "Loading..."}
+                    {config
+                      ? `${config.chat.provider}${config.chat.provider === "sagemaker" ? "" : ` / ${config.chat.model}`}`
+                      : "Loading..."}
                   </div>
                 </Card>
                 <Card>
-                  <div style={{ fontSize: 12, color: D.muted, marginBottom: 6 }}>OpenAI secret</div>
+                  <div
+                    style={{ fontSize: 12, color: D.muted, marginBottom: 6 }}
+                  >
+                    OpenAI secret
+                  </div>
                   <div style={{ ...mono, fontSize: 13 }}>
-                    {config?.openai_api_key_configured ? "Configured" : "Not configured"}
+                    {config?.openai_api_key_configured
+                      ? "Configured"
+                      : "Not configured"}
                   </div>
                 </Card>
                 <Card>
-                  <div style={{ fontSize: 12, color: D.muted, marginBottom: 6 }}>Cohere secret</div>
+                  <div
+                    style={{ fontSize: 12, color: D.muted, marginBottom: 6 }}
+                  >
+                    Cohere secret
+                  </div>
                   <div style={{ ...mono, fontSize: 13 }}>
                     {cohereConfigured === null
                       ? "Unknown"
@@ -1275,9 +2115,7 @@ export function AdminDashboard({
             </div>
           )}
 
-          {activeTab === "rag" && (
-            <RagDocsPanel accessToken={accessToken} />
-          )}
+          {activeTab === "rag" && <RagDocsPanel accessToken={accessToken} />}
 
           {activeTab === "users" && (
             <UserManagementPanel accessToken={accessToken} />

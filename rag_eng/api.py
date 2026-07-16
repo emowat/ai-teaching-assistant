@@ -2332,6 +2332,14 @@ def create_app() -> FastAPI:
                         SELECT
                             session_id,
                             turn_index,
+                            section_id,
+                            (
+                                SELECT string_agg(u.display_name, ', ')
+                                FROM section_memberships sm
+                                JOIN users u ON sm.user_id = u.user_id
+                                WHERE sm.section_id = tutor_turn_snapshots.section_id
+                                  AND sm.role_in_section = 'professor'
+                            ) as professor_names,
                             snapshot->'feedback'->>'thumbs_up' as rating,
                             snapshot->'feedback'->>'explanation' as explanation,
                             created_at,
@@ -2359,7 +2367,7 @@ def create_app() -> FastAPI:
                     rows = cursor.fetchall()
                     feedback_entries = []
                     for row in rows:
-                        rag_files = row[8]
+                        rag_files = row[10]
                         unique_sources = []
                         if rag_files and isinstance(rag_files, list):
                             for f_data in rag_files:
@@ -2367,7 +2375,7 @@ def create_app() -> FastAPI:
                                 if src and src not in unique_sources:
                                     unique_sources.append(src)
 
-                        raw_ai_message = row[6] if row[6] else ""
+                        raw_ai_message = row[8] if row[8] else ""
                         clean_ai_message = re.sub(
                             r"<analysis>.*?</analysis>",
                             "",
@@ -2376,17 +2384,21 @@ def create_app() -> FastAPI:
                         ).strip()
 
                         extracted_cot = (
-                            row[7] if row[7] and isinstance(row[7], dict) else {}
+                            row[9] if row[9] and isinstance(row[9], dict) else {}
                         )
 
                         feedback_entries.append(
                             {
                                 "session_id": row[0],
                                 "turn_index": row[1],
-                                "rating": row[2],
-                                "explanation": row[3],
-                                "created_at": row[4].isoformat() if row[4] else None,
-                                "student_message": row[5] if row[5] else None,
+                                "section_id": row[2],
+                                "professor_names": row[3]
+                                if row[3]
+                                else "Unknown Professor",
+                                "rating": row[4],
+                                "explanation": row[5],
+                                "created_at": row[6].isoformat() if row[6] else None,
+                                "student_message": row[7] if row[7] else None,
                                 "ai_message": clean_ai_message
                                 if clean_ai_message
                                 else None,

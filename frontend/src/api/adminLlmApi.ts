@@ -1,6 +1,7 @@
 import { API_BASE_URL } from "./client.ts";
 
-export type LlmProvider = "cohere" | "openai" | "ollama" | "sagemaker" | "bedrock";
+export type LlmProvider =
+  "cohere" | "openai" | "ollama" | "sagemaker" | "bedrock";
 
 export interface LlmRouteConfig {
   provider: LlmProvider;
@@ -31,7 +32,7 @@ export interface RestartResponse {
 async function adminFetch<T>(
   path: string,
   accessToken: string,
-  init?: RequestInit
+  init?: RequestInit,
 ): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
@@ -49,13 +50,15 @@ async function adminFetch<T>(
   return response.json() as Promise<T>;
 }
 
-export function getAdminLlmConfig(accessToken: string): Promise<AdminLlmConfig> {
+export function getAdminLlmConfig(
+  accessToken: string,
+): Promise<AdminLlmConfig> {
   return adminFetch<AdminLlmConfig>("/api/admin/llm/config", accessToken);
 }
 
 export function saveAdminLlmConfig(
   payload: AdminLlmConfigUpdate,
-  accessToken: string
+  accessToken: string,
 ): Promise<AdminLlmConfig> {
   return adminFetch<AdminLlmConfig>("/api/admin/llm/config", accessToken, {
     method: "POST",
@@ -78,9 +81,22 @@ export interface DashboardStats {
   chat_seconds_today: number;
   editor_seconds_today: number;
   terminal_seconds_today: number;
-  weekly_rewards: { day: string; rewards_given: number; style_nudges: number }[];
-  weekly_engagement: { day: string; chat_seconds: number; editor_seconds: number; terminal_seconds: number }[];
-  session_data: { day: string; sessions: number; [key: string]: string | number }[];
+  weekly_rewards: {
+    day: string;
+    rewards_given: number;
+    style_nudges: number;
+  }[];
+  weekly_engagement: {
+    day: string;
+    chat_seconds: number;
+    editor_seconds: number;
+    terminal_seconds: number;
+  }[];
+  session_data: {
+    day: string;
+    sessions: number;
+    [key: string]: string | number;
+  }[];
   homework_keys: string[];
   study_keys: string[];
   model_share: { name: string; value: number }[];
@@ -102,12 +118,19 @@ export interface DashboardStats {
   status: string;
 }
 
-export function getAdminDashboardStats(accessToken: string, courseId?: string, tz?: string): Promise<DashboardStats> {
+export function getAdminDashboardStats(
+  accessToken: string,
+  courseId?: string,
+  tz?: string,
+): Promise<DashboardStats> {
   const params = new URLSearchParams();
   if (courseId && courseId !== "all") params.append("course_id", courseId);
   if (tz) params.append("tz", tz);
   const qs = params.toString() ? `?${params.toString()}` : "";
-  return adminFetch<DashboardStats>(`/api/admin/dashboard/stats${qs}`, accessToken);
+  return adminFetch<DashboardStats>(
+    `/api/admin/dashboard/stats${qs}`,
+    accessToken,
+  );
 }
 
 export interface ChatLogExportResponse {
@@ -121,7 +144,7 @@ export function triggerChatLogExport(
   courseId?: string,
   startDate?: string,
   endDate?: string,
-  tz?: string
+  tz?: string,
 ): Promise<ChatLogExportResponse> {
   const params = new URLSearchParams();
   if (courseId && courseId !== "all") params.append("course_id", courseId);
@@ -130,15 +153,21 @@ export function triggerChatLogExport(
   if (tz) params.append("tz", tz);
 
   const qs = params.toString() ? `?${params.toString()}` : "";
-  return adminFetch<ChatLogExportResponse>(`/api/admin/export-chat-logs${qs}`, accessToken, {
-    method: "POST"
-  });
+  return adminFetch<ChatLogExportResponse>(
+    `/api/admin/export-chat-logs${qs}`,
+    accessToken,
+    {
+      method: "POST",
+    },
+  );
 }
 
 export interface FeedbackEntry {
   created_at: string;
   session_id: string;
   turn_index: number;
+  section_id?: string;
+  professor_names?: string;
   rating: "positive" | "negative";
   explanation: string | null;
   student_message: string | null;
@@ -152,12 +181,12 @@ export interface FeedbackResponse {
 }
 
 export function getAdminDashboardFeedback(
-  accessToken: string, 
-  courseId?: string, 
+  accessToken: string,
+  courseId?: string,
   limit: number = 50,
   startDate?: string,
   endDate?: string,
-  tz: string = Intl.DateTimeFormat().resolvedOptions().timeZone
+  tz: string = Intl.DateTimeFormat().resolvedOptions().timeZone,
 ): Promise<FeedbackResponse> {
   const params = new URLSearchParams();
   if (courseId && courseId !== "all") params.append("course_id", courseId);
@@ -166,5 +195,8 @@ export function getAdminDashboardFeedback(
   if (endDate) params.append("end_date", endDate);
   if (tz) params.append("tz", tz);
   const qs = `?${params.toString()}`;
-  return adminFetch<FeedbackResponse>(`/api/admin/dashboard/feedback${qs}`, accessToken);
+  return adminFetch<FeedbackResponse>(
+    `/api/admin/dashboard/feedback${qs}`,
+    accessToken,
+  );
 }
