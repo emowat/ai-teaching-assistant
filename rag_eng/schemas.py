@@ -296,11 +296,15 @@ class AdminSectionUpdate(BaseModel):
 
 
 class AdminSectionMembershipCreate(BaseModel):
-    """Payload used to create a section membership in Aurora."""
+    """Payload used to create a section membership in Aurora.
+
+    No status field: the initial status is derived server-side from whether
+    the target user has ever completed signup (see create_section_membership
+    in rag_eng/app_registry.py), not admin-chosen.
+    """
 
     user_id: str = Field(min_length=1)
     role_in_section: SectionMembershipRole
-    status: SectionMembershipStatus = "active"
 
 
 class AdminSectionMembershipUpdate(BaseModel):

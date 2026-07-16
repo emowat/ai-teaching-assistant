@@ -7,6 +7,7 @@ import uuid
 from types import SimpleNamespace
 
 import pytest
+from botocore.exceptions import ClientError
 
 import rag_eng.app_registry as app_registry
 from rag_eng.auth.models import CurrentUser
@@ -52,6 +53,7 @@ class _FakeCognitoClient:
     def __init__(self) -> None:
         self.created_users: list[dict[str, object]] = []
         self.group_additions: list[dict[str, object]] = []
+        self.deleted_usernames: list[str] = []
         self._users_by_email: dict[str, dict[str, object]] = {}
 
     def list_users(self, *, UserPoolId: str, Filter: str):  # noqa: N803
@@ -62,9 +64,20 @@ class _FakeCognitoClient:
 
     def admin_create_user(self, **kwargs):
         username = str(kwargs["Username"])
+        if kwargs.get("MessageAction") == "RESEND":
+            existing = self._users_by_email.get(username.casefold())
+            if existing is None:
+                raise ClientError(
+                    {"Error": {"Code": "UserNotFoundException", "Message": "not found"}},
+                    "AdminCreateUser",
+                )
+            self.created_users.append(kwargs)
+            return {"User": existing}
+
         sub = f"sub-{username}"
         user = {
             "Username": username,
+            "UserStatus": "FORCE_CHANGE_PASSWORD",
             "Attributes": [
                 {"Name": "sub", "Value": sub},
                 {"Name": "email", "Value": username},
@@ -76,6 +89,15 @@ class _FakeCognitoClient:
 
     def admin_add_user_to_group(self, **kwargs):
         self.group_additions.append(kwargs)
+
+    def admin_delete_user(self, *, UserPoolId: str, Username: str):  # noqa: N803
+        del UserPoolId
+        self.deleted_usernames.append(Username)
+        self._users_by_email = {
+            email: user
+            for email, user in self._users_by_email.items()
+            if user.get("Username") != Username
+        }
 
 
 class _FakeBoto3Session:
@@ -1216,6 +1238,19 @@ class _FakeCursor:
                 }
             )
             self.rowcount = 1
+            return
+
+        if sql.startswith(
+            "UPDATE section_memberships SET status = 'active', updated_at = now() WHERE user_id = %s AND status = 'invited'"
+        ):
+            user_id = str(params[0])
+            activated = 0
+            for record in self.state.memberships.values():
+                if str(record["user_id"]) == user_id and record["status"] == "invited":
+                    record["status"] = "active"
+                    record["updated_at"] = NOW
+                    activated += 1
+            self.rowcount = activated
             return
 
         if sql.startswith("UPDATE section_memberships SET"):
@@ -2724,6 +2759,310 @@ def test_professor_invite_student_creates_cognito_user_and_group_membership(
     assert fake_cognito.group_additions[0]["GroupName"] == "Students"
 
 
+def _resend_invite_base_state() -> _State:
+    state = _state()
+    state.users["prof-1"] = _user(
+        user_id="prof-1",
+        email="prof@example.edu",
+        display_name="Prof",
+        primary_role="professor",
+        status="active",
+        cognito_sub="sub-prof",
+    )
+    state.sections["mit14-fall-001"] = _section(
+        section_id="mit14-fall-001",
+        display_name="MIT 6.0014 Section A",
+    )
+    state.memberships[("mit14-fall-001", "prof-1")] = _membership(
+        section_id="mit14-fall-001",
+        user_id="prof-1",
+        role_in_section="professor",
+    )
+    return state
+
+
+def _patch_cognito(
+    monkeypatch: pytest.MonkeyPatch, fake_cognito: _FakeCognitoClient
+) -> None:
+    monkeypatch.setenv("COGNITO_REGION", "us-east-1")
+    monkeypatch.setenv("COGNITO_USER_POOL_ID", "us-east-1_test_pool")
+    monkeypatch.setattr(
+        "rag_eng.app_registry.boto3.Session",
+        lambda **kwargs: _FakeBoto3Session(fake_cognito, **kwargs),
+    )
+
+
+def test_professor_can_resend_invitation_to_same_email(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _resend_invite_base_state()
+    state.users["student-1"] = _user(
+        user_id="student-1",
+        email="student@example.edu",
+        display_name="Student",
+        primary_role="student",
+        status="invited",
+        cognito_sub="sub-student@example.edu",
+    )
+    state.memberships[("mit14-fall-001", "student-1")] = _membership(
+        section_id="mit14-fall-001",
+        user_id="student-1",
+        role_in_section="student",
+        status="invited",
+    )
+
+    fake_cognito = _FakeCognitoClient()
+    fake_cognito._users_by_email["student@example.edu"] = {
+        "Username": "student@example.edu",
+        "UserStatus": "FORCE_CHANGE_PASSWORD",
+        "Attributes": [
+            {"Name": "sub", "Value": "sub-student@example.edu"},
+            {"Name": "email", "Value": "student@example.edu"},
+        ],
+    }
+    _patch_cognito(monkeypatch, fake_cognito)
+    _patch_connection(monkeypatch, state)
+
+    roster = app_registry.resend_professor_section_student_invite(
+        CurrentUser(
+            cognito_sub="sub-prof", email="prof@example.edu", primary_role="professor"
+        ),
+        "mit14-fall-001",
+        "student-1",
+        ProfessorSectionStudentInviteCreate(
+            email="student@example.edu", display_name="Student"
+        ),
+        runtime=_runtime(),
+    )
+
+    assert any(student.email == "student@example.edu" for student in roster)
+    resend_calls = [
+        call
+        for call in fake_cognito.created_users
+        if call.get("MessageAction") == "RESEND"
+    ]
+    assert len(resend_calls) == 1
+    assert resend_calls[0]["Username"] == "student@example.edu"
+    assert fake_cognito.deleted_usernames == []
+    assert state.users["student-1"]["email"] == "student@example.edu"
+    assert state.users["student-1"]["cognito_sub"] == "sub-student@example.edu"
+
+
+def test_professor_resend_invite_sends_fresh_invite_when_no_cognito_account_exists(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Regression test: a student whose Aurora row predates the invite flow
+    # (e.g. added via admin section-assignment with only an Aurora entry,
+    # cognito_sub NULL) has no Cognito account to RESEND to. Same-email
+    # "resend" must fall back to creating a fresh invite instead of raising
+    # CognitoInviteError("No pending Cognito invitation exists ...").
+    state = _resend_invite_base_state()
+    state.users["student-1"] = _user(
+        user_id="student-1",
+        email="student@example.edu",
+        display_name="Student",
+        primary_role="student",
+        status="invited",
+        cognito_sub=None,
+    )
+    state.memberships[("mit14-fall-001", "student-1")] = _membership(
+        section_id="mit14-fall-001",
+        user_id="student-1",
+        role_in_section="student",
+        status="invited",
+    )
+
+    fake_cognito = _FakeCognitoClient()
+    _patch_cognito(monkeypatch, fake_cognito)
+    _patch_connection(monkeypatch, state)
+
+    roster = app_registry.resend_professor_section_student_invite(
+        CurrentUser(
+            cognito_sub="sub-prof", email="prof@example.edu", primary_role="professor"
+        ),
+        "mit14-fall-001",
+        "student-1",
+        ProfessorSectionStudentInviteCreate(
+            email="student@example.edu", display_name="Student"
+        ),
+        runtime=_runtime(),
+    )
+
+    assert any(student.email == "student@example.edu" for student in roster)
+    fresh_creates = [
+        call
+        for call in fake_cognito.created_users
+        if call.get("MessageAction") != "RESEND"
+    ]
+    assert len(fresh_creates) == 1
+    assert fresh_creates[0]["Username"] == "student@example.edu"
+    assert state.users["student-1"]["cognito_sub"] == "sub-student@example.edu"
+
+
+def test_professor_can_resend_invitation_with_corrected_email(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _resend_invite_base_state()
+    state.users["student-1"] = _user(
+        user_id="student-1",
+        email="typo@example.edu",
+        display_name="Student",
+        primary_role="student",
+        status="invited",
+        cognito_sub="sub-typo@example.edu",
+    )
+    state.memberships[("mit14-fall-001", "student-1")] = _membership(
+        section_id="mit14-fall-001",
+        user_id="student-1",
+        role_in_section="student",
+        status="invited",
+    )
+
+    fake_cognito = _FakeCognitoClient()
+    fake_cognito._users_by_email["typo@example.edu"] = {
+        "Username": "typo@example.edu",
+        "UserStatus": "FORCE_CHANGE_PASSWORD",
+        "Attributes": [
+            {"Name": "sub", "Value": "sub-typo@example.edu"},
+            {"Name": "email", "Value": "typo@example.edu"},
+        ],
+    }
+    _patch_cognito(monkeypatch, fake_cognito)
+    _patch_connection(monkeypatch, state)
+
+    roster = app_registry.resend_professor_section_student_invite(
+        CurrentUser(
+            cognito_sub="sub-prof", email="prof@example.edu", primary_role="professor"
+        ),
+        "mit14-fall-001",
+        "student-1",
+        ProfessorSectionStudentInviteCreate(
+            email="corrected@example.edu", display_name="Student"
+        ),
+        runtime=_runtime(),
+    )
+
+    assert fake_cognito.deleted_usernames == ["typo@example.edu"]
+    fresh_creates = [
+        call
+        for call in fake_cognito.created_users
+        if call.get("MessageAction") != "RESEND"
+    ]
+    assert len(fresh_creates) == 1
+    assert fresh_creates[0]["Username"] == "corrected@example.edu"
+    assert state.users["student-1"]["email"] == "corrected@example.edu"
+    assert state.users["student-1"]["cognito_sub"] == "sub-corrected@example.edu"
+    assert any(student.email == "corrected@example.edu" for student in roster)
+
+
+def test_professor_cannot_resend_invitation_for_confirmed_student(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _resend_invite_base_state()
+    state.users["student-1"] = _user(
+        user_id="student-1",
+        email="student@example.edu",
+        display_name="Student",
+        primary_role="student",
+        status="active",
+        cognito_sub="sub-student@example.edu",
+    )
+    state.memberships[("mit14-fall-001", "student-1")] = _membership(
+        section_id="mit14-fall-001",
+        user_id="student-1",
+        role_in_section="student",
+        status="active",
+    )
+
+    fake_cognito = _FakeCognitoClient()
+    fake_cognito._users_by_email["student@example.edu"] = {
+        "Username": "student@example.edu",
+        "UserStatus": "CONFIRMED",
+        "Attributes": [
+            {"Name": "sub", "Value": "sub-student@example.edu"},
+            {"Name": "email", "Value": "student@example.edu"},
+        ],
+    }
+    _patch_cognito(monkeypatch, fake_cognito)
+    _patch_connection(monkeypatch, state)
+
+    with pytest.raises(app_registry.AppUserConflictError):
+        app_registry.resend_professor_section_student_invite(
+            CurrentUser(
+                cognito_sub="sub-prof",
+                email="prof@example.edu",
+                primary_role="professor",
+            ),
+            "mit14-fall-001",
+            "student-1",
+            ProfessorSectionStudentInviteCreate(
+                email="student@example.edu", display_name="Student"
+            ),
+            runtime=_runtime(),
+        )
+
+    assert fake_cognito.deleted_usernames == []
+    assert fake_cognito.created_users == []
+
+
+def test_professor_cannot_resend_invitation_to_email_used_by_another_user(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _resend_invite_base_state()
+    state.users["student-1"] = _user(
+        user_id="student-1",
+        email="typo@example.edu",
+        display_name="Student",
+        primary_role="student",
+        status="invited",
+        cognito_sub="sub-typo@example.edu",
+    )
+    state.memberships[("mit14-fall-001", "student-1")] = _membership(
+        section_id="mit14-fall-001",
+        user_id="student-1",
+        role_in_section="student",
+        status="invited",
+    )
+    state.users["other-student"] = _user(
+        user_id="other-student",
+        email="taken@example.edu",
+        display_name="Other",
+        primary_role="student",
+        status="active",
+        cognito_sub="sub-taken@example.edu",
+    )
+
+    fake_cognito = _FakeCognitoClient()
+    fake_cognito._users_by_email["typo@example.edu"] = {
+        "Username": "typo@example.edu",
+        "UserStatus": "FORCE_CHANGE_PASSWORD",
+        "Attributes": [
+            {"Name": "sub", "Value": "sub-typo@example.edu"},
+            {"Name": "email", "Value": "typo@example.edu"},
+        ],
+    }
+    _patch_cognito(monkeypatch, fake_cognito)
+    _patch_connection(monkeypatch, state)
+
+    with pytest.raises(app_registry.AppUserConflictError):
+        app_registry.resend_professor_section_student_invite(
+            CurrentUser(
+                cognito_sub="sub-prof",
+                email="prof@example.edu",
+                primary_role="professor",
+            ),
+            "mit14-fall-001",
+            "student-1",
+            ProfessorSectionStudentInviteCreate(
+                email="taken@example.edu", display_name="Student"
+            ),
+            runtime=_runtime(),
+        )
+
+    assert fake_cognito.deleted_usernames == []
+    assert fake_cognito.created_users == []
+
+
 def test_professor_can_view_student_analytics_for_assigned_section(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2857,3 +3196,238 @@ def test_professor_can_view_student_analytics_for_assigned_section(
     assert len(analytics.weekly_activity) == 7
     assert sum(point.sessions for point in analytics.weekly_activity) == 2
     assert sum(point.turns for point in analytics.weekly_activity) == 2
+
+
+# --- Admin-driven student enrollment (Parts 1-4) ---
+
+
+def test_login_activates_all_invited_section_memberships_by_cognito_sub(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _state()
+    state.users["student-1"] = _user(
+        user_id="student-1",
+        email="student@example.edu",
+        display_name="Student",
+        primary_role="student",
+        status="invited",
+        cognito_sub="sub-student",
+    )
+    state.sections["mit14-fall-001"] = _section(
+        section_id="mit14-fall-001",
+        display_name="MIT 6.0014 Section A",
+    )
+    state.sections["mit14-fall-002"] = _section(
+        section_id="mit14-fall-002",
+        display_name="MIT 6.0014 Section B",
+    )
+    state.memberships[("mit14-fall-001", "student-1")] = _membership(
+        section_id="mit14-fall-001",
+        user_id="student-1",
+        role_in_section="student",
+        status="invited",
+    )
+    state.memberships[("mit14-fall-002", "student-1")] = _membership(
+        section_id="mit14-fall-002",
+        user_id="student-1",
+        role_in_section="student",
+        status="invited",
+    )
+    _patch_connection(monkeypatch, state)
+
+    app_registry.resolve_application_user(
+        CurrentUser(
+            cognito_sub="sub-student",
+            email="student@example.edu",
+            primary_role="student",
+        ),
+        runtime=_runtime(),
+    )
+
+    assert state.users["student-1"]["status"] == "active"
+    assert state.memberships[("mit14-fall-001", "student-1")]["status"] == "active"
+    assert state.memberships[("mit14-fall-002", "student-1")]["status"] == "active"
+
+
+def test_login_activates_invited_section_memberships_by_email_claim(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _state()
+    state.users["student-2"] = _user(
+        user_id="student-2",
+        email="student2@example.edu",
+        display_name="Student Two",
+        primary_role="student",
+        status="invited",
+    )
+    state.sections["mit14-fall-001"] = _section(
+        section_id="mit14-fall-001",
+        display_name="MIT 6.0014 Section A",
+    )
+    state.memberships[("mit14-fall-001", "student-2")] = _membership(
+        section_id="mit14-fall-001",
+        user_id="student-2",
+        role_in_section="student",
+        status="invited",
+    )
+    _patch_connection(monkeypatch, state)
+
+    app_registry.resolve_application_user(
+        CurrentUser(
+            cognito_sub="sub-student-2",
+            email="student2@example.edu",
+            primary_role="student",
+        ),
+        runtime=_runtime(),
+    )
+
+    assert state.users["student-2"]["status"] == "active"
+    assert state.memberships[("mit14-fall-001", "student-2")]["status"] == "active"
+
+
+def test_create_section_membership_derives_active_status_for_already_active_user(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _state()
+    state.users["prof-1"] = _user(
+        user_id="prof-1",
+        email="prof@example.edu",
+        display_name="Prof",
+        primary_role="professor",
+        status="active",
+        cognito_sub="sub-prof",
+    )
+    state.sections["mit14-fall-001"] = _section(
+        section_id="mit14-fall-001",
+        display_name="MIT 6.0014 Section A",
+    )
+    _patch_connection(monkeypatch, state)
+
+    app_registry.create_section_membership(
+        "mit14-fall-001",
+        AdminSectionMembershipCreate(user_id="prof-1", role_in_section="professor"),
+        runtime=_runtime(),
+    )
+
+    assert state.memberships[("mit14-fall-001", "prof-1")]["status"] == "active"
+
+
+def test_create_section_membership_derives_invited_status_for_not_yet_active_user(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _state()
+    state.users["student-1"] = _user(
+        user_id="student-1",
+        email="student@example.edu",
+        display_name="Student",
+        primary_role="student",
+        status="invited",
+    )
+    state.sections["mit14-fall-001"] = _section(
+        section_id="mit14-fall-001",
+        display_name="MIT 6.0014 Section A",
+    )
+    _patch_connection(monkeypatch, state)
+
+    app_registry.create_section_membership(
+        "mit14-fall-001",
+        AdminSectionMembershipCreate(user_id="student-1", role_in_section="student"),
+        runtime=_runtime(),
+    )
+
+    assert state.memberships[("mit14-fall-001", "student-1")]["status"] == "invited"
+
+
+def test_admin_invite_section_student_creates_cognito_and_aurora_records(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _state()
+    state.sections["mit14-fall-001"] = _section(
+        section_id="mit14-fall-001",
+        display_name="MIT 6.0014 Section A",
+    )
+    fake_cognito = _FakeCognitoClient()
+    _patch_cognito(monkeypatch, fake_cognito)
+    _patch_connection(monkeypatch, state)
+
+    result = app_registry.invite_admin_section_student(
+        "mit14-fall-001",
+        ProfessorSectionStudentInviteCreate(
+            email="newstudent@example.edu", display_name="New Student"
+        ),
+        runtime=_runtime(),
+    )
+
+    assert result.section_id == "mit14-fall-001"
+    invite_calls = [
+        call
+        for call in fake_cognito.created_users
+        if call.get("MessageAction") != "RESEND"
+    ]
+    assert len(invite_calls) == 1
+    assert invite_calls[0]["Username"] == "newstudent@example.edu"
+
+    created_user = next(
+        record
+        for record in state.users.values()
+        if record["email"] == "newstudent@example.edu"
+    )
+    assert created_user["status"] == "invited"
+    assert created_user["primary_role"] == "student"
+    membership = state.memberships[("mit14-fall-001", created_user["user_id"])]
+    assert membership["status"] == "invited"
+    assert membership["role_in_section"] == "student"
+    assert any(m.user_id == created_user["user_id"] for m in result.memberships)
+
+
+def test_admin_invite_section_student_does_not_require_admin_section_membership(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Regression guard: unlike the professor invite path, the admin path must
+    # not call require_section_membership — admins are not necessarily
+    # members of every section they administer.
+    state = _state()
+    state.sections["mit14-fall-001"] = _section(
+        section_id="mit14-fall-001",
+        display_name="MIT 6.0014 Section A",
+    )
+    fake_cognito = _FakeCognitoClient()
+    _patch_cognito(monkeypatch, fake_cognito)
+    _patch_connection(monkeypatch, state)
+
+    def _fail_if_called(*args, **kwargs):
+        raise AssertionError("require_section_membership should not be called for admin invites")
+
+    monkeypatch.setattr(
+        app_registry, "require_section_membership", _fail_if_called
+    )
+
+    result = app_registry.invite_admin_section_student(
+        "mit14-fall-001",
+        ProfessorSectionStudentInviteCreate(email="another@example.edu"),
+        runtime=_runtime(),
+    )
+
+    created_user = next(
+        record
+        for record in state.users.values()
+        if record["email"] == "another@example.edu"
+    )
+    assert any(m.user_id == created_user["user_id"] for m in result.memberships)
+
+
+def test_create_admin_user_rejects_student_role(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _state()
+    _patch_connection(monkeypatch, state)
+
+    with pytest.raises(ValueError):
+        app_registry.create_admin_user(
+            AdminUserCreate(
+                email="student@example.edu",
+                display_name="Student",
+                primary_role="student",
+            ),
+            runtime=_runtime(),
+        )

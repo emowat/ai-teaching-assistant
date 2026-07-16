@@ -518,6 +518,57 @@ def _invite_cognito_student_user(
     }
 
 
+def _resend_cognito_student_invite(email: str) -> None:
+    """Resend the Cognito invite email to an existing, still-pending user.
+
+    Cognito's admin_create_user supports MessageAction="RESEND" specifically
+    for this — it re-sends the temporary-password email to a user still in
+    FORCE_CHANGE_PASSWORD status without creating a new account.
+    """
+    config = _load_cognito_invite_config()
+    session = boto3.Session(region_name=config.region)
+    client = session.client("cognito-idp")
+    try:
+        client.admin_create_user(
+            UserPoolId=config.user_pool_id,
+            Username=email,
+            MessageAction="RESEND",
+            DesiredDeliveryMediums=["EMAIL"],
+        )
+    except (BotoCoreError, ClientError) as exc:
+        error_code = ""
+        if isinstance(exc, ClientError):
+            error_code = _clean_text(exc.response.get("Error", {}).get("Code"))
+        if error_code == "UserNotFoundException":
+            raise CognitoInviteError(
+                f"No pending Cognito invitation exists for {email}."
+            ) from exc
+        raise CognitoInviteError(f"Unable to resend invitation to {email}.") from exc
+
+
+def _delete_cognito_user(username: str) -> None:
+    """Delete a Cognito user.
+
+    Cognito usernames are immutable, so correcting a typo'd invite email
+    requires deleting the old identity and creating a new one under the
+    corrected address rather than patching the existing user in place.
+    """
+    config = _load_cognito_invite_config()
+    session = boto3.Session(region_name=config.region)
+    client = session.client("cognito-idp")
+    try:
+        client.admin_delete_user(UserPoolId=config.user_pool_id, Username=username)
+    except (BotoCoreError, ClientError) as exc:
+        error_code = ""
+        if isinstance(exc, ClientError):
+            error_code = _clean_text(exc.response.get("Error", {}).get("Code"))
+        if error_code == "UserNotFoundException":
+            return
+        raise CognitoInviteError(
+            f"Unable to remove previous Cognito identity for {username}."
+        ) from exc
+
+
 def _group_admin_users(
     user_rows: list[tuple[Any, ...]],
     membership_rows: list[tuple[Any, ...]],
@@ -1948,6 +1999,21 @@ def resolve_application_user(
                         """,
                         (str(row[0]),),
                     )
+                    # Cognito login is identity-level, not per-section — a
+                    # successful login clears every pending enrollment at
+                    # once, not just whichever section bootstrap runs first.
+                    # Without this, section_memberships.status never leaves
+                    # 'invited' anywhere in the codebase, permanently
+                    # locking out students who completed signup.
+                    cursor.execute(
+                        """
+                        UPDATE section_memberships
+                        SET status = 'active',
+                            updated_at = now()
+                        WHERE user_id = %s AND status = 'invited'
+                        """,
+                        (str(row[0]),),
+                    )
                 row = _load_user_by_cognito_sub(connection, cognito_sub) or row
         else:
             email = _normalize_email(current_user.email)
@@ -1979,6 +2045,15 @@ def resolve_application_user(
                         SET status = 'active',
                             updated_at = now()
                         WHERE user_id = %s
+                        """,
+                        (str(row[0]),),
+                    )
+                    cursor.execute(
+                        """
+                        UPDATE section_memberships
+                        SET status = 'active',
+                            updated_at = now()
+                        WHERE user_id = %s AND status = 'invited'
                         """,
                         (str(row[0]),),
                     )
@@ -2126,6 +2201,10 @@ def create_admin_user(
     display_name = _clean_text(payload.display_name)
     primary_role = _clean_text(payload.primary_role)
     status = _clean_text(payload.status)
+    if primary_role == "student":
+        raise ValueError(
+            "Create students via the section invite flow so they receive their Cognito invitation."
+        )
 
     with _connect_postgres(database_url, runtime.connect_timeout_seconds) as connection:
         if _load_user_by_email(connection, email) is not None:
@@ -2339,13 +2418,19 @@ def create_section_membership(
     database_url = _require_database_url(runtime)
     user_id = _clean_text(payload.user_id)
     role_in_section = _clean_text(payload.role_in_section)
-    status = _clean_text(payload.status)
 
     with _connect_postgres(database_url, runtime.connect_timeout_seconds) as connection:
         if _load_section_by_id(connection, section_id) is None:
             raise SectionNotFoundError(f"Section {section_id} was not found.")
-        if _load_user_by_id(connection, user_id) is None:
+        user_row = _load_user_by_id(connection, user_id)
+        if user_row is None:
             raise AppUserNotFoundError(f"User {user_id} was not found.")
+        # Carry the user's current status along rather than letting the
+        # admin pick one: someone who's already proven they can log in
+        # (anywhere) starts active in this new section too; everyone else
+        # starts 'invited' and gets activated automatically on their next
+        # login (see resolve_application_user).
+        status = "active" if _clean_text(user_row[5]) == "active" else "invited"
         existing = _fetch_one_row(
             connection,
             """
@@ -4371,23 +4456,19 @@ def list_professor_section_students(
     ]
 
 
-def invite_professor_section_student(
-    current_user: CurrentUser,
+def _upsert_invited_student(
     section_id: str,
     payload: ProfessorSectionStudentInviteCreate,
     *,
-    runtime: AppRegistryRuntimeConfig | None = None,
-) -> list[ProfessorSectionStudent]:
-    """Invite or refresh a student membership for a professor-managed section."""
-    runtime = runtime or load_app_registry_runtime_config()
-    database_url = _require_database_url(runtime)
-    require_section_membership(
-        current_user,
-        section_id,
-        allowed_roles={"professor", "ta"},
-        runtime=runtime,
-    )
+    runtime: AppRegistryRuntimeConfig,
+) -> str:
+    """Cognito invite + Aurora users/section_memberships upsert. Returns user_id.
 
+    Core logic shared by the professor and admin invite entry points — the
+    only difference between them is which auth check gates the call and
+    what shape the caller returns afterward.
+    """
+    database_url = _require_database_url(runtime)
     email = _normalize_email(payload.email)
     display_name = _clean_text(payload.display_name)
     if not email:
@@ -4498,6 +4579,175 @@ def invite_professor_section_student(
                         """,
                         (section_id, user_id),
                     )
+
+    return user_id
+
+
+def invite_professor_section_student(
+    current_user: CurrentUser,
+    section_id: str,
+    payload: ProfessorSectionStudentInviteCreate,
+    *,
+    runtime: AppRegistryRuntimeConfig | None = None,
+) -> list[ProfessorSectionStudent]:
+    """Invite or refresh a student membership for a professor-managed section."""
+    runtime = runtime or load_app_registry_runtime_config()
+    require_section_membership(
+        current_user,
+        section_id,
+        allowed_roles={"professor", "ta"},
+        runtime=runtime,
+    )
+    _upsert_invited_student(section_id, payload, runtime=runtime)
+    return list_professor_section_students(current_user, section_id, runtime=runtime)
+
+
+def invite_admin_section_student(
+    section_id: str,
+    payload: ProfessorSectionStudentInviteCreate,
+    *,
+    runtime: AppRegistryRuntimeConfig | None = None,
+) -> AdminSection:
+    """Registrar-style admin invite: Cognito invite + Aurora user + section membership in one step."""
+    runtime = runtime or load_app_registry_runtime_config()
+    _upsert_invited_student(section_id, payload, runtime=runtime)
+    return get_admin_section(section_id, runtime=runtime)
+
+
+def resend_professor_section_student_invite(
+    current_user: CurrentUser,
+    section_id: str,
+    student_user_id: str,
+    payload: ProfessorSectionStudentInviteCreate,
+    *,
+    runtime: AppRegistryRuntimeConfig | None = None,
+) -> list[ProfessorSectionStudent]:
+    """Resend a pending student invitation, optionally correcting the email first.
+
+    Gated on live Cognito state (UserStatus), not just Aurora's
+    section_memberships.status='invited': only a genuinely still-pending
+    user (FORCE_CHANGE_PASSWORD/UNCONFIRMED, never signed in) can be resent
+    an invite or have their email corrected. A student who already
+    completed signup is rejected rather than silently having their real
+    Cognito identity deleted.
+    """
+    runtime = runtime or load_app_registry_runtime_config()
+    database_url = _require_database_url(runtime)
+    require_section_membership(
+        current_user,
+        section_id,
+        allowed_roles={"professor", "ta"},
+        runtime=runtime,
+    )
+
+    new_email = _normalize_email(payload.email)
+    display_name = _clean_text(payload.display_name)
+    if not new_email:
+        raise ValueError("email is required.")
+
+    with _connect_postgres(database_url, runtime.connect_timeout_seconds) as connection:
+        student_row = _load_user_by_id(connection, student_user_id)
+        if student_row is None:
+            raise AppUserNotFoundError(f"User {student_user_id} was not found.")
+
+        membership_row = _fetch_one_row(
+            connection,
+            """
+            SELECT role_in_section, status
+            FROM section_memberships
+            WHERE section_id = %s AND user_id = %s
+            """,
+            (section_id, student_user_id),
+        )
+        if membership_row is None:
+            raise MembershipNotFoundError(
+                f"Student {student_user_id} is not assigned to section {section_id}."
+            )
+        if _clean_text(membership_row[0]) != "student":
+            raise MembershipAccessDeniedError(
+                f"User {student_user_id} is not a student in section {section_id}."
+            )
+
+        current_email = _clean_text(student_row[2])
+        current_display_name = _clean_text(student_row[3])
+
+        if new_email != _normalize_email(current_email):
+            other_row = _load_user_by_email(connection, new_email)
+            if other_row is not None and str(other_row[0]) != student_user_id:
+                raise AppUserConflictError(
+                    f"User with email {new_email} already exists."
+                )
+
+    config = _load_cognito_invite_config()
+    session = boto3.Session(region_name=config.region)
+    client = session.client("cognito-idp")
+    cognito_user = _load_cognito_user_by_email(
+        client,
+        user_pool_id=config.user_pool_id,
+        email=current_email,
+    )
+    if cognito_user is not None:
+        user_status = _clean_text(cognito_user.get("UserStatus"))
+        if user_status not in {"", "FORCE_CHANGE_PASSWORD", "UNCONFIRMED"}:
+            raise AppUserConflictError(
+                f"{current_email} has already completed signup and can't be resent an invitation."
+            )
+
+    if new_email == _normalize_email(current_email):
+        if cognito_user is not None:
+            _resend_cognito_student_invite(current_email)
+        else:
+            # No Cognito account exists at all yet — e.g. a student whose
+            # Aurora row predates the invite flow (added via admin section
+            # assignment, never actually invited). RESEND requires an
+            # existing Cognito user, so send a fresh invite instead.
+            cognito_invite = _invite_cognito_student_user(
+                current_email, display_name or current_display_name
+            )
+            with _connect_postgres(
+                database_url, runtime.connect_timeout_seconds
+            ) as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        UPDATE users
+                        SET cognito_sub = %s,
+                            display_name = %s,
+                            updated_at = now()
+                        WHERE user_id = %s
+                        """,
+                        (
+                            cognito_invite["cognito_sub"],
+                            display_name or current_display_name,
+                            student_user_id,
+                        ),
+                    )
+    else:
+        if cognito_user is not None:
+            _delete_cognito_user(current_email)
+        cognito_invite = _invite_cognito_student_user(
+            new_email, display_name or current_display_name
+        )
+        with _connect_postgres(
+            database_url, runtime.connect_timeout_seconds
+        ) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE users
+                    SET email = %s,
+                        cognito_sub = %s,
+                        display_name = %s,
+                        updated_at = now()
+                    WHERE user_id = %s
+                    """,
+                    (
+                        new_email,
+                        cognito_invite["cognito_sub"],
+                        display_name or current_display_name,
+                        student_user_id,
+                    ),
+                )
 
     return list_professor_section_students(current_user, section_id, runtime=runtime)
 

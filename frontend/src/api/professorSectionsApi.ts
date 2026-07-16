@@ -165,6 +165,22 @@ export function inviteProfessorSectionStudent(
   >(professorSectionStudentsPath(sectionId), payload, accessToken);
 }
 
+export function resendProfessorSectionStudentInvite(
+  sectionId: string,
+  studentUserId: string,
+  accessToken: string,
+  payload: ProfessorSectionStudentInvitePayload,
+): Promise<ProfessorSectionStudent[]> {
+  return apiPost<
+    ProfessorSectionStudentInvitePayload,
+    ProfessorSectionStudent[]
+  >(
+    `${professorSectionStudentsPath(sectionId)}/${encodeURIComponent(studentUserId)}/resend-invite`,
+    payload,
+    accessToken,
+  );
+}
+
 export function getProfessorSectionAnalytics(
   sectionId: string,
   accessToken: string,

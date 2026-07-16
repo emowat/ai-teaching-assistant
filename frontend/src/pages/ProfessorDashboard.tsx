@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   archiveProfessorSection,
   inviteProfessorSectionStudent,
+  resendProfessorSectionStudentInvite,
   getProfessorSectionAnalytics,
   getProfessorSectionStudentAnalytics,
   getProfessorSectionStudentFeedback,
@@ -226,6 +227,18 @@ export function ProfessorDashboard({
     null,
   );
   const [inviteStudentStatus, setInviteStudentStatus] = useState<string | null>(
+    null,
+  );
+  const [resendInviteStudentId, setResendInviteStudentId] = useState<
+    string | null
+  >(null);
+  const [resendInviteEmail, setResendInviteEmail] = useState("");
+  const [resendInviteDisplayName, setResendInviteDisplayName] = useState("");
+  const [resendingInvite, setResendingInvite] = useState(false);
+  const [resendInviteError, setResendInviteError] = useState<string | null>(
+    null,
+  );
+  const [resendInviteStatus, setResendInviteStatus] = useState<string | null>(
     null,
   );
   const [reportedIssues, setReportedIssues] = useState<ProfessorReportedIssue[] | null>(null);
@@ -1035,6 +1048,64 @@ export function ProfessorDashboard({
       );
     } finally {
       setInvitingStudent(false);
+    }
+  };
+
+  const openResendInvite = (student: ProfessorSectionStudent) => {
+    setResendInviteStudentId(student.user_id);
+    setResendInviteEmail(student.email);
+    setResendInviteDisplayName(student.display_name);
+    setResendInviteError(null);
+    setResendInviteStatus(null);
+  };
+
+  const closeResendInvite = () => {
+    setResendInviteStudentId(null);
+    setResendInviteEmail("");
+    setResendInviteDisplayName("");
+    setResendInviteError(null);
+  };
+
+  const submitResendInvite = async () => {
+    if (!selectedSectionId || !resendInviteStudentId || !resendInviteEmail.trim()) {
+      return;
+    }
+
+    const originalStudent = students.find(
+      (student) => student.user_id === resendInviteStudentId,
+    );
+    const emailChanged =
+      !!originalStudent &&
+      originalStudent.email.toLowerCase() !==
+        resendInviteEmail.trim().toLowerCase();
+
+    setResendingInvite(true);
+    setResendInviteError(null);
+    setResendInviteStatus(null);
+
+    try {
+      const nextStudents = await resendProfessorSectionStudentInvite(
+        selectedSectionId,
+        resendInviteStudentId,
+        accessToken,
+        {
+          email: resendInviteEmail.trim(),
+          display_name: resendInviteDisplayName.trim(),
+        },
+      );
+      setStudents(nextStudents);
+      setResendInviteStatus(
+        emailChanged
+          ? `Updated email and resent invitation to ${resendInviteEmail.trim()}.`
+          : `Invitation resent to ${resendInviteEmail.trim()}.`,
+      );
+      setResendInviteStudentId(null);
+    } catch (err) {
+      setResendInviteError(
+        err instanceof Error ? err.message : "Unable to resend invitation.",
+      );
+    } finally {
+      setResendingInvite(false);
     }
   };
 
@@ -2277,53 +2348,145 @@ export function ProfessorDashboard({
                   </div>
                 )}
                 {students.map((student) => (
-                  <Card
-                    key={student.user_id}
-                    onClick={() => setSelectedStudentId(student.user_id)}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 14,
-                      borderColor:
-                        student.user_id === selectedStudentId
-                          ? D.orangeBorder
-                          : D.border,
-                      background:
-                        student.user_id === selectedStudentId
-                          ? D.orangeGlow
-                          : D.card,
-                    }}
-                  >
-                    <Avatar name={student.display_name || student.email} />
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 13, fontWeight: 500 }}>
-                        {student.display_name}
-                      </div>
-                      <div style={{ fontSize: 11, color: D.muted }}>
-                        {student.email}
-                      </div>
-                    </div>
-                    <div
+                  <div key={student.user_id}>
+                    <Card
+                      onClick={() => setSelectedStudentId(student.user_id)}
                       style={{
                         display: "flex",
                         alignItems: "center",
-                        gap: 8,
-                        flexWrap: "wrap",
+                        gap: 14,
+                        borderColor:
+                          student.user_id === selectedStudentId
+                            ? D.orangeBorder
+                            : D.border,
+                        background:
+                          student.user_id === selectedStudentId
+                            ? D.orangeGlow
+                            : D.card,
                       }}
                     >
-                      <Tag color={D.green}>
-                        {student.session_count} sessions
-                      </Tag>
-                      <Tag color={D.blue}>{student.membership_status}</Tag>
-                      <Btn
-                        small
-                        onClick={() => openStudentAnalytics(student.user_id)}
+                      <Avatar name={student.display_name || student.email} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 13, fontWeight: 500 }}>
+                          {student.display_name}
+                        </div>
+                        <div style={{ fontSize: 11, color: D.muted }}>
+                          {student.email}
+                        </div>
+                      </div>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          flexWrap: "wrap",
+                        }}
                       >
-                        View analytics
-                      </Btn>
-                    </div>
-                  </Card>
+                        <Tag color={D.green}>
+                          {student.session_count} sessions
+                        </Tag>
+                        <Tag color={D.blue}>{student.membership_status}</Tag>
+                        {student.membership_status === "invited" && (
+                          <Btn
+                            small
+                            variant="ghost"
+                            onClick={() => openResendInvite(student)}
+                          >
+                            Resend invitation
+                          </Btn>
+                        )}
+                        <Btn
+                          small
+                          onClick={() => openStudentAnalytics(student.user_id)}
+                        >
+                          View analytics
+                        </Btn>
+                      </div>
+                    </Card>
+                    {resendInviteStudentId === student.user_id && (
+                      <Card
+                        style={{
+                          marginTop: 6,
+                          display: "grid",
+                          gap: 8,
+                          background: D.surface,
+                        }}
+                      >
+                        <div style={{ fontSize: 12, color: D.muted }}>
+                          Resend invitation — correct the email first if it
+                          was a typo.
+                        </div>
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "1fr 1fr",
+                            gap: 8,
+                          }}
+                        >
+                          <input
+                            value={resendInviteEmail}
+                            onChange={(event) =>
+                              setResendInviteEmail(event.target.value)
+                            }
+                            placeholder="student@example.edu"
+                            style={{
+                              background: D.bg,
+                              color: D.text,
+                              border: `1px solid ${D.border}`,
+                              borderRadius: 8,
+                              padding: "8px 10px",
+                              fontSize: 12,
+                            }}
+                          />
+                          <input
+                            value={resendInviteDisplayName}
+                            onChange={(event) =>
+                              setResendInviteDisplayName(event.target.value)
+                            }
+                            placeholder="Display name"
+                            style={{
+                              background: D.bg,
+                              color: D.text,
+                              border: `1px solid ${D.border}`,
+                              borderRadius: 8,
+                              padding: "8px 10px",
+                              fontSize: 12,
+                            }}
+                          />
+                        </div>
+                        {resendInviteError && (
+                          <div style={{ fontSize: 12, color: D.red }}>
+                            {resendInviteError}
+                          </div>
+                        )}
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <Btn
+                            small
+                            onClick={() => void submitResendInvite()}
+                            disabled={
+                              resendingInvite || !resendInviteEmail.trim()
+                            }
+                          >
+                            {resendingInvite ? "Sending..." : "Send"}
+                          </Btn>
+                          <Btn
+                            small
+                            variant="ghost"
+                            onClick={closeResendInvite}
+                            disabled={resendingInvite}
+                          >
+                            Cancel
+                          </Btn>
+                        </div>
+                      </Card>
+                    )}
+                  </div>
                 ))}
+                {resendInviteStatus && (
+                  <div style={{ fontSize: 12, color: D.green }}>
+                    {resendInviteStatus}
+                  </div>
+                )}
               </div>
             </div>
           ) : tab === "analytics" ? (

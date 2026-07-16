@@ -166,7 +166,7 @@ def test_admin_user_and_section_models_validate_defaults() -> None:
 
     assert user.status == "invited"
     assert section.is_active is True
-    assert membership.status == "active"
+    assert membership.user_id == "user-1"
 
     admin_user = AdminUser(
         user_id="user-1",

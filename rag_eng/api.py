@@ -44,7 +44,9 @@ from rag_eng.app_registry import (
     create_admin_user,
     get_admin_section,
     create_section_membership,
+    invite_admin_section_student,
     invite_professor_section_student,
+    resend_professor_section_student_invite,
     archive_professor_section_teaching_plan,
     list_admin_sections,
     list_admin_users,
@@ -951,6 +953,20 @@ def create_app() -> FastAPI:
         except Exception as exc:
             raise _app_registry_http_error(exc) from exc
 
+    @app.post(
+        "/admin/sections/{section_id}/students",
+        response_model=AdminSection,
+        dependencies=[Depends(_require_admin_access)],
+    )
+    def admin_invite_section_student(
+        section_id: str,
+        payload: ProfessorSectionStudentInviteCreate,
+    ) -> AdminSection:
+        try:
+            return invite_admin_section_student(section_id, payload)
+        except Exception as exc:
+            raise _app_registry_http_error(exc) from exc
+
     @app.patch(
         "/admin/sections/{section_id}/memberships/{user_id}",
         response_model=AdminSection,
@@ -1005,6 +1021,24 @@ def create_app() -> FastAPI:
     ) -> list[ProfessorSectionStudent]:
         try:
             return invite_professor_section_student(current_user, section_id, payload)
+        except Exception as exc:
+            raise _app_registry_http_error(exc) from exc
+
+    @app.post(
+        "/professor/sections/{section_id}/students/{student_user_id}/resend-invite",
+        response_model=list[ProfessorSectionStudent],
+        dependencies=[Depends(require_authenticated_user)],
+    )
+    def professor_resend_section_student_invite(
+        section_id: str,
+        student_user_id: str,
+        payload: ProfessorSectionStudentInviteCreate,
+        current_user=Depends(require_authenticated_user),
+    ) -> list[ProfessorSectionStudent]:
+        try:
+            return resend_professor_section_student_invite(
+                current_user, section_id, student_user_id, payload
+            )
         except Exception as exc:
             raise _app_registry_http_error(exc) from exc
 

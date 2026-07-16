@@ -38,7 +38,11 @@ export interface AdminSectionUpdatePayload {
 export interface AdminSectionMembershipCreatePayload {
   user_id: string;
   role_in_section: SectionMembershipRole;
-  status?: SectionMembershipStatus;
+}
+
+export interface AdminSectionStudentInvitePayload {
+  email: string;
+  display_name?: string;
 }
 
 export interface AdminSectionMembershipUpdatePayload {
@@ -76,6 +80,18 @@ export function createAdminSectionMembership(
 ): Promise<AdminSection> {
   return apiPost<AdminSectionMembershipCreatePayload, AdminSection>(
     `${sectionPath(sectionId)}/memberships`,
+    payload,
+    accessToken
+  );
+}
+
+export function inviteAdminSectionStudent(
+  sectionId: string,
+  accessToken: string,
+  payload: AdminSectionStudentInvitePayload
+): Promise<AdminSection> {
+  return apiPost<AdminSectionStudentInvitePayload, AdminSection>(
+    `${sectionPath(sectionId)}/students`,
     payload,
     accessToken
   );

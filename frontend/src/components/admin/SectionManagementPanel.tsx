@@ -3,6 +3,7 @@ import {
   archiveAdminSection,
   createAdminSection,
   createAdminSectionMembership,
+  inviteAdminSectionStudent,
   listAdminSections,
   updateAdminSection,
   updateAdminSectionMembership,
@@ -38,7 +39,11 @@ interface EditDraft {
 interface MembershipCreateDraft {
   user_id: string;
   role_in_section: SectionMembershipRole;
-  status: SectionMembershipStatus;
+}
+
+interface StudentInviteDraft {
+  email: string;
+  display_name: string;
 }
 
 interface MembershipEditDraft {
@@ -71,7 +76,6 @@ function emptyMembershipCreateDraft(users: AdminUser[]): MembershipCreateDraft {
   return {
     user_id: users[0]?.user_id ?? "",
     role_in_section: "student",
-    status: "active",
   };
 }
 
@@ -79,6 +83,13 @@ function emptyMembershipEditDraft(): MembershipEditDraft {
   return {
     role_in_section: "student",
     status: "active",
+  };
+}
+
+function emptyStudentInviteDraft(): StudentInviteDraft {
+  return {
+    email: "",
+    display_name: "",
   };
 }
 
@@ -98,10 +109,14 @@ export function SectionManagementPanel({ accessToken }: SectionManagementPanelPr
   const [membershipEditDraft, setMembershipEditDraft] = useState<MembershipEditDraft>(
     emptyMembershipEditDraft()
   );
+  const [studentInviteDraft, setStudentInviteDraft] = useState<StudentInviteDraft>(
+    emptyStudentInviteDraft()
+  );
   const [creating, setCreating] = useState(false);
   const [savingSectionId, setSavingSectionId] = useState<string | null>(null);
   const [archivingSectionId, setArchivingSectionId] = useState<string | null>(null);
   const [savingMembership, setSavingMembership] = useState(false);
+  const [invitingStudent, setInvitingStudent] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [formStatus, setFormStatus] = useState<string | null>(null);
 
@@ -162,6 +177,7 @@ export function SectionManagementPanel({ accessToken }: SectionManagementPanelPr
     setSelectedSectionId(section?.section_id ?? null);
     const firstMembershipUserId = section?.memberships[0]?.user_id ?? null;
     setSelectedMembershipUserId(firstMembershipUserId);
+    setStudentInviteDraft(emptyStudentInviteDraft());
 
     if (section === null) {
       setEditDraft(emptyEditDraft());
@@ -338,7 +354,6 @@ export function SectionManagementPanel({ accessToken }: SectionManagementPanelPr
       const updated = await createAdminSectionMembership(selectedSection.section_id, accessToken, {
         user_id: membershipCreateDraft.user_id.trim(),
         role_in_section: membershipCreateDraft.role_in_section,
-        status: membershipCreateDraft.status,
       });
       upsertSection(updated);
       applySelectedSection(updated);
@@ -347,6 +362,34 @@ export function SectionManagementPanel({ accessToken }: SectionManagementPanelPr
       setFormError(err instanceof Error ? err.message : "Unable to add membership.");
     } finally {
       setSavingMembership(false);
+    }
+  };
+
+  const handleInviteStudent = async () => {
+    if (selectedSection === null) {
+      return;
+    }
+
+    setInvitingStudent(true);
+    setFormError(null);
+    setFormStatus(null);
+
+    try {
+      const email = studentInviteDraft.email.trim();
+      if (!email) throw new Error("Email is required.");
+
+      const updated = await inviteAdminSectionStudent(selectedSection.section_id, accessToken, {
+        email,
+        display_name: studentInviteDraft.display_name.trim(),
+      });
+      upsertSection(updated);
+      applySelectedSection(updated);
+      setStudentInviteDraft(emptyStudentInviteDraft());
+      setFormStatus(`Invited ${email} to ${updated.section_id}.`);
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Unable to invite student.");
+    } finally {
+      setInvitingStudent(false);
     }
   };
 
@@ -646,6 +689,61 @@ export function SectionManagementPanel({ accessToken }: SectionManagementPanelPr
       >
         <Card style={{ display: "grid", gap: 12 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+            <div style={{ fontSize: 15, fontWeight: 600 }}>Invite student</div>
+            <Tag color={D.muted}>Cognito + Aurora</Tag>
+          </div>
+          {selectedSection ? (
+            <div style={{ display: "grid", gap: 10 }}>
+              <label style={{ display: "grid", gap: 5 }}>
+                <span style={{ fontSize: 12, color: D.muted }}>Email</span>
+                <input
+                  value={studentInviteDraft.email}
+                  onChange={(event) =>
+                    setStudentInviteDraft((current) => ({ ...current, email: event.target.value }))
+                  }
+                  placeholder="student@example.com"
+                  style={{
+                    background: D.bg,
+                    color: D.text,
+                    border: `1px solid ${D.border}`,
+                    borderRadius: 8,
+                    padding: "10px 12px",
+                  }}
+                />
+              </label>
+              <label style={{ display: "grid", gap: 5 }}>
+                <span style={{ fontSize: 12, color: D.muted }}>Display name (optional)</span>
+                <input
+                  value={studentInviteDraft.display_name}
+                  onChange={(event) =>
+                    setStudentInviteDraft((current) => ({ ...current, display_name: event.target.value }))
+                  }
+                  style={{
+                    background: D.bg,
+                    color: D.text,
+                    border: `1px solid ${D.border}`,
+                    borderRadius: 8,
+                    padding: "10px 12px",
+                  }}
+                />
+              </label>
+              <div style={{ fontSize: 11, color: D.dim }}>
+                Registers a new student, sends their Cognito invitation
+                email, and enrolls them in this section — all in one step.
+              </div>
+              <div>
+                <Btn small onClick={() => void handleInviteStudent()} disabled={invitingStudent}>
+                  {invitingStudent ? "Inviting..." : "Invite student"}
+                </Btn>
+              </div>
+            </div>
+          ) : (
+            <div style={{ fontSize: 12, color: D.dim }}>Select a section to invite a student.</div>
+          )}
+        </Card>
+
+        <Card style={{ display: "grid", gap: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
             <div style={{ fontSize: 15, fontWeight: 600 }}>Assign membership</div>
             <Tag color={D.muted}>Aurora</Tag>
           </div>
@@ -677,57 +775,35 @@ export function SectionManagementPanel({ accessToken }: SectionManagementPanelPr
                   ))}
                 </select>
               </label>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                <label style={{ display: "grid", gap: 5 }}>
-                  <span style={{ fontSize: 12, color: D.muted }}>Section role</span>
-                  <select
-                    value={membershipCreateDraft.role_in_section}
-                    onChange={(event) =>
-                      setMembershipCreateDraft((current) => ({
-                        ...current,
-                        role_in_section: event.target.value as SectionMembershipRole,
-                      }))
-                    }
-                    style={{
-                      background: D.bg,
-                      color: D.text,
-                      border: `1px solid ${D.border}`,
-                      borderRadius: 8,
-                      padding: "10px 12px",
-                    }}
-                  >
-                    {ROLE_OPTIONS.map((role) => (
-                      <option key={role} value={role}>
-                        {role}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label style={{ display: "grid", gap: 5 }}>
-                  <span style={{ fontSize: 12, color: D.muted }}>Status</span>
-                  <select
-                    value={membershipCreateDraft.status}
-                    onChange={(event) =>
-                      setMembershipCreateDraft((current) => ({
-                        ...current,
-                        status: event.target.value as SectionMembershipStatus,
-                      }))
-                    }
-                    style={{
-                      background: D.bg,
-                      color: D.text,
-                      border: `1px solid ${D.border}`,
-                      borderRadius: 8,
-                      padding: "10px 12px",
-                    }}
-                  >
-                    {STATUS_OPTIONS.map((status) => (
-                      <option key={status} value={status}>
-                        {status}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+              <label style={{ display: "grid", gap: 5 }}>
+                <span style={{ fontSize: 12, color: D.muted }}>Section role</span>
+                <select
+                  value={membershipCreateDraft.role_in_section}
+                  onChange={(event) =>
+                    setMembershipCreateDraft((current) => ({
+                      ...current,
+                      role_in_section: event.target.value as SectionMembershipRole,
+                    }))
+                  }
+                  style={{
+                    background: D.bg,
+                    color: D.text,
+                    border: `1px solid ${D.border}`,
+                    borderRadius: 8,
+                    padding: "10px 12px",
+                  }}
+                >
+                  {ROLE_OPTIONS.map((role) => (
+                    <option key={role} value={role}>
+                      {role}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div style={{ fontSize: 11, color: D.dim }}>
+                Status is carried over automatically from the user's own
+                signup state — active if they've already signed in
+                anywhere, invited otherwise.
               </div>
               <div>
                 <Btn small onClick={() => void handleCreateMembership()} disabled={savingMembership}>

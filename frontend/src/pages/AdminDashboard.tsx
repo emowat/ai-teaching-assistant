@@ -144,7 +144,7 @@ function formatHealthTooltip(state: HealthState): string {
 }
 
 const baseAdminTabs: SidebarTab[] = [
-  { key: "users", icon: "👥", label: "Users" },
+  { key: "users", icon: "👥", label: "Staff Accounts" },
   { key: "sections", icon: "🏫", label: "Sections" },
   { key: "courses", icon: "🎓", label: "Courses" },
   { key: "rag", icon: "📚", label: "RAG Docs" },

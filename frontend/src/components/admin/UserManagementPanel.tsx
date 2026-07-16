@@ -28,8 +28,15 @@ interface EditDraft {
   status: UserStatus;
 }
 
-const ROLE_OPTIONS: AppPrimaryRole[] = ["admin", "professor", "student"];
+// Students are onboarded exclusively through the section invite flow (Sections
+// tab), which sends the Cognito invite email this form has no way to send —
+// so this staff-only panel never lists, filters by, or creates them.
+const ROLE_OPTIONS: AppPrimaryRole[] = ["admin", "professor"];
 const STATUS_OPTIONS: UserStatus[] = ["invited", "active", "disabled"];
+
+function toStaffUsers(users: AdminUser[]): AdminUser[] {
+  return users.filter((user) => user.primary_role !== "student");
+}
 
 function emptyCreateDraft(): CreateDraft {
   return {
@@ -108,7 +115,7 @@ export function UserManagementPanel({ accessToken }: UserManagementPanelProps) {
     void listAdminUsers(accessToken)
       .then((nextUsers) => {
         if (cancelled) return;
-        syncUsers(nextUsers);
+        syncUsers(toStaffUsers(nextUsers));
       })
       .catch((err: Error) => {
         if (!cancelled) {
@@ -132,7 +139,7 @@ export function UserManagementPanel({ accessToken }: UserManagementPanelProps) {
     setFormStatus(null);
 
     try {
-      const nextUsers = await listAdminUsers(accessToken);
+      const nextUsers = toStaffUsers(await listAdminUsers(accessToken));
       syncUsers(nextUsers);
       setFormStatus(`Refreshed ${nextUsers.length} users.`);
     } catch (err) {
@@ -219,9 +226,9 @@ export function UserManagementPanel({ accessToken }: UserManagementPanelProps) {
       <Card style={{ display: "grid", gap: 10 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
           <div>
-            <div style={{ fontSize: 18, fontWeight: 600 }}>Users</div>
+            <div style={{ fontSize: 18, fontWeight: 600 }}>Staff Accounts</div>
             <div style={{ fontSize: 12, color: D.muted, marginTop: 4 }}>
-              Aurora-backed application users and their section memberships.
+              Aurora-backed admin and professor accounts and their section memberships.
             </div>
             <div style={{ fontSize: 11, color: D.dim, marginTop: 6, lineHeight: 1.4 }}>
               Invite users in Aurora first. On first Cognito sign-in, the app claims the Aurora record by email
@@ -324,6 +331,11 @@ export function UserManagementPanel({ accessToken }: UserManagementPanelProps) {
             <div style={{ fontSize: 15, fontWeight: 600 }}>Invite user</div>
             <Tag color={D.muted}>new</Tag>
           </div>
+          <div style={{ fontSize: 11, color: D.dim }}>
+            For admin and professor accounts only. Invite students from a section's
+            "Invite student" card on the Sections tab so they receive a Cognito
+            sign-up email.
+          </div>
           <div style={{ display: "grid", gap: 10 }}>
             <label style={{ display: "grid", gap: 5 }}>
               <span style={{ fontSize: 12, color: D.muted }}>Email</span>
@@ -332,7 +344,7 @@ export function UserManagementPanel({ accessToken }: UserManagementPanelProps) {
                 onChange={(event) =>
                   setCreateDraft((current) => ({ ...current, email: event.target.value }))
                 }
-                placeholder="student@example.edu"
+                placeholder="prof@example.edu"
                 style={{
                   background: D.bg,
                   color: D.text,
