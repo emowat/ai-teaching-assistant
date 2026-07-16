@@ -13,6 +13,8 @@ RUN apt-get update && apt-get install -y \
     python3-pip \
     git \
     curl \
+    unzip \
+    sudo \
     valgrind \
     vim \
     && rm -rf /var/lib/apt/lists/*
@@ -31,8 +33,11 @@ echo "[TA Hook] Sent context: \$@"\n\
 # Set the default shell to bash
 ENV SHELL=/bin/bash
 
-# Create a non-root student user
-RUN useradd -ms /bin/bash student
+# Create a non-root student user with passwordless sudo so they can install
+# any packages the instructor forgot to include without rebuilding the container.
+RUN useradd -ms /bin/bash student \
+    && echo 'student ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers.d/student \
+    && chmod 0440 /etc/sudoers.d/student
 
 # 1. Establish the base extensions directory for the student user
 RUN mkdir -p /home/student/.vscode-server/extensions \

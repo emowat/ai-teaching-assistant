@@ -7,6 +7,10 @@
         "vscode": {
             "settings": {
                 "terminal.integrated.defaultProfile.linux": "bash",
+                // Right-click in the terminal pastes the clipboard, so students can:
+                // select text in the README preview → Ctrl+C → right-click in terminal → Paste.
+                // (Ctrl+Shift+V also works as the standard terminal paste shortcut.)
+                "terminal.integrated.rightClickBehavior": "paste",
 
                 // 1. Disable Copilot across all languages in this container
                 "github.copilot.enable": {
@@ -47,7 +51,7 @@
                 "ms-vscode.cpptools",
                 "ms-vscode.cpptools-extension-pack",
                 "analytic-signal.preview-pdf",
-                "${containerWorkspaceFolder}/.devcontainer/coding-rabbit-0.4.2.vsix"
+                "${containerWorkspaceFolder}/.devcontainer/coding-rabbit-0.4.3.vsix"
             ]
         }
     },
