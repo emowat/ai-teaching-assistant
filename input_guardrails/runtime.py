@@ -1,8 +1,12 @@
 """Runtime orchestration for the input guardrail pipeline.
 
-Rules run first. If they pass, an optional CodeBERT classifier score can
-block the request before RAG/inference. The model stage is best-effort and
-fails open when the checkpoint is unavailable.
+Rules run first (this is "v1" - deterministic, near-zero latency). If they
+pass, an optional CodeBERT classifier score ("v2") can additionally block the
+request before RAG/inference; it's disabled by default (see
+V2_INPUTGUARD_DISABLE) since it was tuned for a smaller, more jailbreakable
+backend model and its ongoing cost (~2.5s/request, false positives) outweighs
+its value against a frontier model. The model stage is best-effort and fails
+open when the checkpoint is unavailable.
 """
 
 from __future__ import annotations
@@ -20,6 +24,14 @@ _CHECKPOINT_ENV_VAR = "INPUT_GUARDRAILS_CODEBERT_CHECKPOINT_DIR"
 _ENABLED_ENV_VAR = "INPUT_GUARDRAILS_ENABLED"
 _PASS_BELOW_ENV_VAR = "INPUT_GUARDRAILS_CODEBERT_PASS_BELOW"
 _BLOCK_ABOVE_ENV_VAR = "INPUT_GUARDRAILS_CODEBERT_BLOCK_ABOVE"
+# The CodeBERT model (the guardrail's "v2" stage - rules are "v1") was tuned
+# for a world where the tutor itself ran on a 14B model more susceptible to
+# jailbreaking. Against a frontier model, its jailbreak-prevention value is
+# largely redundant with the frontier model's own alignment, while it still
+# costs real latency (~2.5s/request) and has a demonstrated false-positive
+# rate on completely benign messages even after two retraining rounds. Off
+# by default; set to false to re-enable for retraining/evaluation work.
+_V2_DISABLE_ENV_VAR = "V2_INPUTGUARD_DISABLE"
 
 _DEFAULT_CHECKPOINT_DIR = (
     Path(__file__).resolve().parent / "models" / "checkpoints" / "input_codebert_v1"
@@ -166,7 +178,9 @@ def evaluate_input_guardrail(
         ide_context={"student_code": student_code} if student_code else None,
     )
     rule_data = rule_result.model_dump()
-    model_enabled = _env_bool(_ENABLED_ENV_VAR, True)
+    model_enabled = _env_bool(_ENABLED_ENV_VAR, True) and not _env_bool(
+        _V2_DISABLE_ENV_VAR, True
+    )
     resolved_checkpoint_dir = resolve_checkpoint_dir(checkpoint_dir)
 
     result: dict[str, Any] = {
