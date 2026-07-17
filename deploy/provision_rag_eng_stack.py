@@ -28,6 +28,7 @@ import sys
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs, quote, urlparse
 
 import boto3
 from botocore.exceptions import ClientError
@@ -49,9 +50,11 @@ SECRET_ENV_KEYS: tuple[str, ...] = (
     "OPENAI_API_KEY",
     "COHERE_API_KEY",
     "QDRANT_API_KEY",
-    "COURSE_REGISTRY_DATABASE_URL",
 )
 
+# COURSE_REGISTRY_DATABASE_URL is handled separately by
+# _sync_course_registry_secret, not the generic loop below - see its
+# docstring for why. It's still effectively required; that's enforced there.
 OPTIONAL_SECRET_ENV_KEYS: frozenset[str] = frozenset(
     {"OPENAI_API_KEY", "COHERE_API_KEY"}
 )
@@ -434,6 +437,7 @@ def _ensure_task_role(
     sagemaker_endpoint: str,
     evaluation_worker_cluster_name: str,
     evaluation_worker_task_definition: str,
+    course_registry_secret_arn: str,
     evaluation_worker_execution_role_arn: str,
     evaluation_worker_task_role_arn: str,
 ) -> str:
@@ -465,76 +469,92 @@ def _ensure_task_role(
     worker_task_definition_arn = (
         f"arn:aws:ecs:{region}:{account_id}:task-definition/{evaluation_worker_task_definition}:*"
     )
+    runtime_statements = [
+        {
+            "Sid": "S3AsyncIo",
+            "Effect": "Allow",
+            "Action": [
+                "s3:GetObject",
+                "s3:PutObject",
+                "s3:DeleteObject",
+                "s3:ListBucket",
+            ],
+            "Resource": [bucket_arn, f"{bucket_arn}/*"],
+        },
+        {
+            "Sid": "InvokeSageMakerAsync",
+            "Effect": "Allow",
+            "Action": [
+                "sagemaker:InvokeEndpointAsync",
+                "sagemaker:DescribeEndpoint",
+            ],
+            "Resource": [endpoint_arn],
+        },
+        {
+            "Sid": "CognitoUserManagement",
+            "Effect": "Allow",
+            "Action": [
+                "cognito-idp:GetUser",
+                "cognito-idp:ListUsers",
+                "cognito-idp:AdminCreateUser",
+                "cognito-idp:AdminAddUserToGroup",
+            ],
+            "Resource": ["*"],
+        },
+        {
+            "Sid": "UseBedrockConverse",
+            "Effect": "Allow",
+            "Action": [
+                "bedrock:Converse",
+                "bedrock:ConverseStream",
+                "bedrock:InvokeModel",
+                "bedrock:InvokeModelWithResponseStream",
+            ],
+            "Resource": ["*"],
+        },
+        {
+            "Sid": "BedrockMarketplaceAccess",
+            "Effect": "Allow",
+            # Anthropic Bedrock models can require Marketplace subscription
+            # authorization during first use.
+            "Action": [
+                "aws-marketplace:Subscribe",
+                "aws-marketplace:Unsubscribe",
+                "aws-marketplace:ViewSubscriptions",
+            ],
+            "Resource": ["*"],
+        },
+        {
+            "Sid": "CreateEvaluationLogGroup",
+            "Effect": "Allow",
+            "Action": [
+                "logs:CreateLogGroup",
+            ],
+            "Resource": ["*"],
+        },
+    ]
+    if course_registry_secret_arn:
+        # Lets the running app itself re-fetch the Aurora password from
+        # Secrets Manager if it authenticates with a stale one (Aurora
+        # rotates it on its own schedule, independent of app deploys) -
+        # see rag_eng/aurora_secret_refresh.py. Distinct from the execution
+        # role's own secretsmanager:GetSecretValue grant below, which ECS
+        # uses only once, at task launch, to seed the initial env var.
+        runtime_statements.append(
+            {
+                "Sid": "RefreshCourseRegistryPasswordOnRotation",
+                "Effect": "Allow",
+                "Action": ["secretsmanager:GetSecretValue"],
+                "Resource": [course_registry_secret_arn],
+            }
+        )
     client.put_role_policy(
         RoleName=TASK_ROLE_NAME,
         PolicyName="codingrabbit-rag-eng-runtime",
         PolicyDocument=json.dumps(
             {
                 "Version": "2012-10-17",
-                "Statement": [
-                    {
-                        "Sid": "S3AsyncIo",
-                        "Effect": "Allow",
-                        "Action": [
-                            "s3:GetObject",
-                            "s3:PutObject",
-                            "s3:DeleteObject",
-                            "s3:ListBucket",
-                        ],
-                        "Resource": [bucket_arn, f"{bucket_arn}/*"],
-                    },
-                    {
-                        "Sid": "InvokeSageMakerAsync",
-                        "Effect": "Allow",
-                        "Action": [
-                            "sagemaker:InvokeEndpointAsync",
-                            "sagemaker:DescribeEndpoint",
-                        ],
-                        "Resource": [endpoint_arn],
-                    },
-                    {
-                        "Sid": "CognitoUserManagement",
-                        "Effect": "Allow",
-                        "Action": [
-                            "cognito-idp:GetUser",
-                            "cognito-idp:ListUsers",
-                            "cognito-idp:AdminCreateUser",
-                            "cognito-idp:AdminAddUserToGroup",
-                        ],
-                        "Resource": ["*"],
-                    },
-                    {
-                        "Sid": "UseBedrockConverse",
-                        "Effect": "Allow",
-                        "Action": [
-                            "bedrock:Converse",
-                            "bedrock:ConverseStream",
-                            "bedrock:InvokeModel",
-                            "bedrock:InvokeModelWithResponseStream",
-                        ],
-                        "Resource": ["*"],
-                    },
-                    {
-                        "Sid": "BedrockMarketplaceAccess",
-                        "Effect": "Allow",
-                        # Anthropic Bedrock models can require Marketplace subscription
-                        # authorization during first use.
-                        "Action": [
-                            "aws-marketplace:Subscribe",
-                            "aws-marketplace:Unsubscribe",
-                            "aws-marketplace:ViewSubscriptions",
-                        ],
-                        "Resource": ["*"],
-                    },
-                    {
-                        "Sid": "CreateEvaluationLogGroup",
-                        "Effect": "Allow",
-                        "Action": [
-                            "logs:CreateLogGroup",
-                        ],
-                        "Resource": ["*"],
-                    },
-                ],
+                "Statement": runtime_statements,
             }
         ),
     )
@@ -697,20 +717,10 @@ def _resolve_secret_arns(config: DeployConfig) -> dict[str, str]:
         "OPENAI_API_KEY": "OpenAI API key for rag_eng chat routes.",
         "COHERE_API_KEY": "Cohere API key for rag_eng retrieval/chat routes.",
         "QDRANT_API_KEY": "Qdrant API key for rag_eng vector search.",
-        "COURSE_REGISTRY_DATABASE_URL": "Aurora/PostgreSQL URL for course routing and telemetry.",
     }
     for key in SECRET_ENV_KEYS:
         env_value = os.getenv(key, "").strip()
         secret_arn = secret_arns.get(key)
-        if key == "COURSE_REGISTRY_DATABASE_URL" and secret_arn:
-            if env_value:
-                live_value = _get_secret_value(sm, secret_id=secret_arn)
-                if env_value != live_value:
-                    print(
-                        "WARNING: ignoring local COURSE_REGISTRY_DATABASE_URL "
-                        "because the live Secrets Manager value is authoritative."
-                    )
-            continue
         if env_value:
             secret_arns[key] = _ensure_secret(
                 sm,
@@ -726,6 +736,96 @@ def _resolve_secret_arns(config: DeployConfig) -> dict[str, str]:
         if key in OPTIONAL_SECRET_ENV_KEYS and not secret_arn:
             secret_arns.pop(key, None)
     return secret_arns
+
+
+def _sync_course_registry_secret(
+    sm_client, rds_client, *, existing_app_secret_arn: str | None
+) -> tuple[str, str, dict[str, str]]:
+    """Keeps COURSE_REGISTRY_DATABASE_URL in sync with Aurora's actual,
+    AWS-rotated master password, and returns the AWS-managed secret's own
+    ARN for the app's own runtime refresh mechanism (see
+    rag_eng/aurora_secret_refresh.py) plus the stable connection details
+    (host/port/database/sslmode) that don't rotate.
+
+    Earlier deploys left this app's own secret permanently frozen at
+    whatever value it was first set to: Aurora rotates its real master
+    password on its own 7-day schedule via a *separate*, AWS-managed secret
+    (RDS's "Manage master user password" feature) that this code never read
+    from - so the app's secret silently went stale, and every subsequent
+    redeploy just re-served the same wrong password (see
+    `aws rds describe-db-clusters` -> MasterUserSecret.SecretArn to confirm).
+    This resolves the connection details (host/port/database/sslmode - those
+    don't rotate) from the existing stored URL, fetches live credentials
+    from Aurora's own AWS-managed secret, and force-writes a fresh URL back
+    into the app's secret on every deploy.
+
+    Returns (app_secret_arn, aws_managed_secret_arn, static_connection_env).
+    """
+    if not existing_app_secret_arn:
+        env_value = os.getenv("COURSE_REGISTRY_DATABASE_URL", "").strip()
+        if not env_value:
+            raise RuntimeError(
+                "COURSE_REGISTRY_DATABASE_URL must be set for first-time setup "
+                "(no existing secret ARN found in deploy/deployment.yaml)."
+            )
+        existing_app_secret_arn = _ensure_secret(
+            sm_client,
+            name=_secret_name("COURSE_REGISTRY_DATABASE_URL"),
+            value=env_value,
+            description="Aurora/PostgreSQL URL for course routing and telemetry.",
+        )
+
+    existing_url = _get_secret_value(sm_client, secret_id=existing_app_secret_arn)
+    parsed = urlparse(existing_url)
+    host = parsed.hostname
+    if not host:
+        raise RuntimeError(
+            "Could not parse a host out of the stored COURSE_REGISTRY_DATABASE_URL "
+            f"value ({existing_app_secret_arn}) to resolve Aurora's AWS-managed "
+            "password secret."
+        )
+    port = parsed.port or 5432
+    dbname = (parsed.path or "").lstrip("/") or "postgres"
+    sslmode = parse_qs(parsed.query).get("sslmode", ["require"])[0]
+
+    clusters = rds_client.describe_db_clusters()["DBClusters"]
+    matching = [cluster for cluster in clusters if cluster.get("Endpoint") == host]
+    if not matching:
+        raise RuntimeError(
+            f"No Aurora cluster found with endpoint {host!r} - can't resolve its "
+            "AWS-managed master password secret."
+        )
+    aws_managed_secret_arn = matching[0].get("MasterUserSecret", {}).get("SecretArn")
+    if not aws_managed_secret_arn:
+        raise RuntimeError(
+            f"Aurora cluster with endpoint {host!r} doesn't have AWS-managed "
+            "master password rotation enabled (MasterUserSecret is missing)."
+        )
+
+    credentials = json.loads(
+        _get_secret_value(sm_client, secret_id=aws_managed_secret_arn)
+    )
+    fresh_url = (
+        f"postgresql://{quote(str(credentials['username']), safe='')}:"
+        f"{quote(str(credentials['password']), safe='')}"
+        f"@{host}:{port}/{dbname}?sslmode={sslmode}"
+    )
+    if fresh_url != existing_url:
+        sm_client.put_secret_value(
+            SecretId=existing_app_secret_arn, SecretString=fresh_url
+        )
+        print(
+            "Synced COURSE_REGISTRY_DATABASE_URL with Aurora's current "
+            "AWS-managed password."
+        )
+
+    static_env = {
+        "COURSE_REGISTRY_DB_HOST": host,
+        "COURSE_REGISTRY_DB_PORT": str(port),
+        "COURSE_REGISTRY_DB_NAME": dbname,
+        "COURSE_REGISTRY_DB_SSLMODE": sslmode,
+    }
+    return existing_app_secret_arn, aws_managed_secret_arn, static_env
 
 
 def _pick_subnet_vpc_id(config: DeployConfig) -> str:
@@ -760,9 +860,19 @@ def provision_stack(config: DeployConfig) -> dict[str, Any]:
     elbv2 = _client(config, "elbv2")
     logs = _client(config, "logs")
     iam = _client(config, "iam")
+    rds = _client(config, "rds")
+    sm = _client(config, "secretsmanager")
 
     vpc_id = _pick_subnet_vpc_id(config)
     secret_arns = _resolve_secret_arns(config)
+    course_registry_secret_arn, aws_managed_db_secret_arn, course_registry_env = (
+        _sync_course_registry_secret(
+            sm,
+            rds,
+            existing_app_secret_arn=secret_arns.get("COURSE_REGISTRY_DATABASE_URL"),
+        )
+    )
+    secret_arns["COURSE_REGISTRY_DATABASE_URL"] = course_registry_secret_arn
     secret_arn_values = list(secret_arns.values())
 
     repository_uri = _ensure_ecr_repository(
@@ -828,6 +938,7 @@ def provision_stack(config: DeployConfig) -> dict[str, Any]:
         sagemaker_endpoint=config.sagemaker.endpoint_name,
         evaluation_worker_cluster_name=config.evaluation_worker.cluster,
         evaluation_worker_task_definition=config.evaluation_worker.task_definition,
+        course_registry_secret_arn=aws_managed_db_secret_arn,
         evaluation_worker_execution_role_arn=(
             config.evaluation_worker.execution_role_arn
             or config.rag_eng_ecs.execution_role_arn
@@ -855,6 +966,17 @@ def provision_stack(config: DeployConfig) -> dict[str, Any]:
             target_group_arn=target_group_arn,
             alb_security_group_id=alb_sg_id,
             secret_arn_map=secret_arns,
+            # Plain (non-secret) env vars: the AWS-managed secret's ARN itself
+            # (not our app secret's - that one is never touched by Aurora's
+            # rotation) so the running app can re-fetch current credentials if
+            # Aurora rotates mid-task-life, plus the stable connection details
+            # needed to rebuild a full URL from just username/password (see
+            # rag_eng/aurora_secret_refresh.py).
+            environment={
+                **config.rag_eng_ecs.environment,
+                **course_registry_env,
+                "COURSE_REGISTRY_DATABASE_URL_SECRET_ID": aws_managed_db_secret_arn,
+            },
         ),
     )
 

@@ -58,6 +58,87 @@ def test_connect_postgres_uses_interactive_retry_profile(monkeypatch) -> None:
     }
 
 
+def test_connect_postgres_refreshes_and_retries_on_password_auth_failure(
+    monkeypatch,
+) -> None:
+    import rag_eng.aurora_secret_refresh as aurora_secret_refresh
+    from rag_eng.telemetry import _connect_postgres
+
+    aurora_secret_refresh._refreshed_database_url = None
+    calls: list[str] = []
+    sentinel_connection = object()
+
+    def fake_connect_with_retry(database_url, **kwargs):
+        calls.append(database_url)
+        if database_url == "postgresql://stale":
+            raise RuntimeError('FATAL:  password authentication failed for user "cr_app"')
+        return sentinel_connection
+
+    monkeypatch.setattr(
+        "rag_eng.telemetry.connect_postgres_with_retry", fake_connect_with_retry
+    )
+    monkeypatch.setattr(
+        "rag_eng.telemetry.refresh_database_url_from_secrets_manager",
+        lambda: "postgresql://fresh",
+    )
+
+    connection = _connect_postgres("postgresql://stale", 3)
+
+    assert connection is sentinel_connection
+    assert calls == ["postgresql://stale", "postgresql://fresh"]
+
+
+def test_connect_postgres_does_not_refresh_on_non_auth_error(monkeypatch) -> None:
+    import rag_eng.aurora_secret_refresh as aurora_secret_refresh
+    from rag_eng.telemetry import _connect_postgres
+
+    aurora_secret_refresh._refreshed_database_url = None
+    refresh_calls: list[bool] = []
+
+    def fake_connect_with_retry(database_url, **kwargs):
+        raise RuntimeError("connection timeout expired")
+
+    monkeypatch.setattr(
+        "rag_eng.telemetry.connect_postgres_with_retry", fake_connect_with_retry
+    )
+    monkeypatch.setattr(
+        "rag_eng.telemetry.refresh_database_url_from_secrets_manager",
+        lambda: refresh_calls.append(True) or "postgresql://fresh",
+    )
+
+    try:
+        _connect_postgres("postgresql://example", 3)
+        assert False, "expected RuntimeError to propagate"
+    except RuntimeError as exc:
+        assert "connection timeout expired" in str(exc)
+
+    assert refresh_calls == []
+
+
+def test_connect_postgres_prefers_previously_cached_refresh(monkeypatch) -> None:
+    import rag_eng.aurora_secret_refresh as aurora_secret_refresh
+    from rag_eng.telemetry import _connect_postgres
+
+    aurora_secret_refresh._refreshed_database_url = "postgresql://already-fresh"
+    calls: list[str] = []
+    sentinel_connection = object()
+
+    def fake_connect_with_retry(database_url, **kwargs):
+        calls.append(database_url)
+        return sentinel_connection
+
+    monkeypatch.setattr(
+        "rag_eng.telemetry.connect_postgres_with_retry", fake_connect_with_retry
+    )
+
+    connection = _connect_postgres("postgresql://stale-from-env", 3)
+
+    assert connection is sentinel_connection
+    assert calls == ["postgresql://already-fresh"]
+
+    aurora_secret_refresh._refreshed_database_url = None
+
+
 def test_record_turn_snapshot_writes_aura_sql(monkeypatch) -> None:
     statements: list[tuple[str, tuple]] = []
     fake_connection = _FakeConnection(cursor_obj=_FakeCursor(statements))

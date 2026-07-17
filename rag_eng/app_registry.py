@@ -15,6 +15,11 @@ import boto3
 from dotenv import load_dotenv
 from botocore.exceptions import BotoCoreError, ClientError
 
+from rag_eng.aurora_secret_refresh import (
+    get_cached_refreshed_url,
+    is_password_auth_error,
+    refresh_database_url_from_secrets_manager,
+)
 from rag_eng.auth.models import CurrentUser
 from rag_eng.course_admin import CourseNotFoundError
 from rag_eng.config import get_runtime_policy_config
@@ -129,13 +134,29 @@ class AppRegistryRuntimeConfig:
 
 
 def _connect_postgres(database_url: str, connect_timeout_seconds: int):
-    """Create a psycopg connection lazily so tests can stub it."""
+    """Create a psycopg connection lazily so tests can stub it.
+
+    Prefers a previously Secrets-Manager-refreshed URL over the one passed in
+    (which every caller resolves from a process-lifetime-static env var), and
+    on a password-auth failure specifically, refreshes from Secrets Manager
+    and retries once - see aurora_secret_refresh for why a plain retry can't
+    recover from this on its own.
+    """
     try:
         import psycopg
     except ImportError as exc:  # pragma: no cover - exercised only when missing
         raise RuntimeError("psycopg is required for app registry operations.") from exc
 
-    return psycopg.connect(database_url, connect_timeout=connect_timeout_seconds)
+    effective_url = get_cached_refreshed_url() or database_url
+    try:
+        return psycopg.connect(effective_url, connect_timeout=connect_timeout_seconds)
+    except Exception as exc:
+        if not is_password_auth_error(exc):
+            raise
+        refreshed_url = refresh_database_url_from_secrets_manager()
+        if not refreshed_url or refreshed_url == effective_url:
+            raise
+        return psycopg.connect(refreshed_url, connect_timeout=connect_timeout_seconds)
 
 
 def load_app_registry_runtime_config(

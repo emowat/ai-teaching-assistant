@@ -3431,3 +3431,84 @@ def test_create_admin_user_rejects_student_role(
             ),
             runtime=_runtime(),
         )
+
+
+# --- Aurora password-rotation recovery (app_registry._connect_postgres) ---
+
+
+def test_app_registry_connect_postgres_refreshes_on_password_auth_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import psycopg
+    import rag_eng.aurora_secret_refresh as aurora_secret_refresh
+
+    aurora_secret_refresh._refreshed_database_url = None
+    calls: list[str] = []
+    sentinel_connection = object()
+
+    def fake_connect(database_url, *, connect_timeout):
+        calls.append(database_url)
+        if database_url == "postgresql://stale":
+            raise RuntimeError('FATAL:  password authentication failed for user "cr_app"')
+        return sentinel_connection
+
+    monkeypatch.setattr(psycopg, "connect", fake_connect)
+    monkeypatch.setattr(
+        app_registry, "refresh_database_url_from_secrets_manager", lambda: "postgresql://fresh"
+    )
+
+    connection = app_registry._connect_postgres("postgresql://stale", 5)
+
+    assert connection is sentinel_connection
+    assert calls == ["postgresql://stale", "postgresql://fresh"]
+
+    aurora_secret_refresh._refreshed_database_url = None
+
+
+def test_app_registry_connect_postgres_does_not_refresh_on_non_auth_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import psycopg
+    import rag_eng.aurora_secret_refresh as aurora_secret_refresh
+
+    aurora_secret_refresh._refreshed_database_url = None
+    refresh_calls: list[bool] = []
+
+    def fake_connect(database_url, *, connect_timeout):
+        raise RuntimeError("connection timeout expired")
+
+    monkeypatch.setattr(psycopg, "connect", fake_connect)
+    monkeypatch.setattr(
+        app_registry,
+        "refresh_database_url_from_secrets_manager",
+        lambda: refresh_calls.append(True) or "postgresql://fresh",
+    )
+
+    with pytest.raises(RuntimeError, match="connection timeout expired"):
+        app_registry._connect_postgres("postgresql://example", 5)
+
+    assert refresh_calls == []
+
+
+def test_app_registry_connect_postgres_prefers_previously_cached_refresh(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import psycopg
+    import rag_eng.aurora_secret_refresh as aurora_secret_refresh
+
+    aurora_secret_refresh._refreshed_database_url = "postgresql://already-fresh"
+    calls: list[str] = []
+    sentinel_connection = object()
+
+    def fake_connect(database_url, *, connect_timeout):
+        calls.append(database_url)
+        return sentinel_connection
+
+    monkeypatch.setattr(psycopg, "connect", fake_connect)
+
+    connection = app_registry._connect_postgres("postgresql://stale-from-env", 5)
+
+    assert connection is sentinel_connection
+    assert calls == ["postgresql://already-fresh"]
+
+    aurora_secret_refresh._refreshed_database_url = None

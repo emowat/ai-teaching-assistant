@@ -144,6 +144,9 @@ def test_ensure_task_role_writes_runtime_permissions() -> None:
         sagemaker_endpoint="codingrabbit-qwen-async",
         evaluation_worker_cluster_name="codingrabbit-rag-eng",
         evaluation_worker_task_definition="codingrabbit-evaluation-worker",
+        course_registry_secret_arn=(
+            "arn:aws:secretsmanager:us-east-1:123456789012:secret:codingrabbit/rag_eng/COURSE_REGISTRY_DATABASE_URL"
+        ),
         evaluation_worker_execution_role_arn=(
             "arn:aws:iam::123456789012:role/codingrabbit-rag-eng-execution-role"
         ),
@@ -185,6 +188,12 @@ def test_ensure_task_role_writes_runtime_permissions() -> None:
     ]
     assert statements["CreateEvaluationLogGroup"]["Action"] == [
         "logs:CreateLogGroup",
+    ]
+    assert statements["RefreshCourseRegistryPasswordOnRotation"]["Action"] == [
+        "secretsmanager:GetSecretValue",
+    ]
+    assert statements["RefreshCourseRegistryPasswordOnRotation"]["Resource"] == [
+        "arn:aws:secretsmanager:us-east-1:123456789012:secret:codingrabbit/rag_eng/COURSE_REGISTRY_DATABASE_URL"
     ]
 
     launch_policy = {
@@ -376,6 +385,181 @@ def test_resolve_secret_arns_uses_live_course_registry_secret_when_env_differs(
     )
     assert fake_client.created_secrets == []
     assert fake_client.updated_secrets == []
+
+
+class _FakeRdsClient:
+    def __init__(self, *, clusters: list[dict[str, object]]) -> None:
+        self._clusters = clusters
+
+    def describe_db_clusters(self):
+        return {"DBClusters": self._clusters}
+
+
+def _course_registry_cluster(
+    *, endpoint: str, master_user_secret_arn: str | None
+) -> dict[str, object]:
+    cluster: dict[str, object] = {"Endpoint": endpoint}
+    if master_user_secret_arn:
+        cluster["MasterUserSecret"] = {"SecretArn": master_user_secret_arn}
+    return cluster
+
+
+def test_sync_course_registry_secret_rewrites_stale_password(monkeypatch) -> None:
+    app_secret_arn = "arn:aws:secretsmanager:us-east-1:123456789012:secret:course-registry"
+    aws_managed_arn = "arn:aws:secretsmanager:us-east-1:123456789012:secret:rds!cluster-abc"
+    fake_sm = _FakeSecretsManagerClient(
+        existing={"codingrabbit/rag_eng/COURSE_REGISTRY_DATABASE_URL": app_secret_arn}
+    )
+    fake_sm._values[app_secret_arn] = (
+        "postgresql://cr_app:stale-password@aurora.example.com:5432/postgres?sslmode=require"
+    )
+    fake_sm._existing[aws_managed_arn] = aws_managed_arn
+    fake_sm._values[aws_managed_arn] = json.dumps(
+        {"username": "cr_app", "password": "fresh-password"}
+    )
+    fake_rds = _FakeRdsClient(
+        clusters=[
+            _course_registry_cluster(
+                endpoint="aurora.example.com", master_user_secret_arn=aws_managed_arn
+            )
+        ]
+    )
+
+    returned_app_arn, returned_aws_arn, static_env = provision._sync_course_registry_secret(
+        fake_sm, fake_rds, existing_app_secret_arn=app_secret_arn
+    )
+
+    assert returned_app_arn == app_secret_arn
+    assert returned_aws_arn == aws_managed_arn
+    assert static_env == {
+        "COURSE_REGISTRY_DB_HOST": "aurora.example.com",
+        "COURSE_REGISTRY_DB_PORT": "5432",
+        "COURSE_REGISTRY_DB_NAME": "postgres",
+        "COURSE_REGISTRY_DB_SSLMODE": "require",
+    }
+    assert fake_sm.updated_secrets == [
+        {
+            "SecretId": app_secret_arn,
+            "SecretString": (
+                "postgresql://cr_app:fresh-password@aurora.example.com:5432/postgres?sslmode=require"
+            ),
+        }
+    ]
+
+
+def test_sync_course_registry_secret_skips_write_when_password_unchanged() -> None:
+    app_secret_arn = "arn:aws:secretsmanager:us-east-1:123456789012:secret:course-registry"
+    aws_managed_arn = "arn:aws:secretsmanager:us-east-1:123456789012:secret:rds!cluster-abc"
+    current_url = (
+        "postgresql://cr_app:same-password@aurora.example.com:5432/postgres?sslmode=require"
+    )
+    fake_sm = _FakeSecretsManagerClient(
+        existing={"codingrabbit/rag_eng/COURSE_REGISTRY_DATABASE_URL": app_secret_arn}
+    )
+    fake_sm._values[app_secret_arn] = current_url
+    fake_sm._existing[aws_managed_arn] = aws_managed_arn
+    fake_sm._values[aws_managed_arn] = json.dumps(
+        {"username": "cr_app", "password": "same-password"}
+    )
+    fake_rds = _FakeRdsClient(
+        clusters=[
+            _course_registry_cluster(
+                endpoint="aurora.example.com", master_user_secret_arn=aws_managed_arn
+            )
+        ]
+    )
+
+    provision._sync_course_registry_secret(
+        fake_sm, fake_rds, existing_app_secret_arn=app_secret_arn
+    )
+
+    assert fake_sm.updated_secrets == []
+
+
+def test_sync_course_registry_secret_bootstraps_when_no_existing_arn(monkeypatch) -> None:
+    aws_managed_arn = "arn:aws:secretsmanager:us-east-1:123456789012:secret:rds!cluster-abc"
+    fake_sm = _FakeSecretsManagerClient()
+    fake_sm._existing[aws_managed_arn] = aws_managed_arn
+    fake_sm._values[aws_managed_arn] = json.dumps(
+        {"username": "cr_app", "password": "fresh-password"}
+    )
+    fake_rds = _FakeRdsClient(
+        clusters=[
+            _course_registry_cluster(
+                endpoint="aurora.example.com", master_user_secret_arn=aws_managed_arn
+            )
+        ]
+    )
+    monkeypatch.setenv(
+        "COURSE_REGISTRY_DATABASE_URL",
+        "postgresql://cr_app:bootstrap-password@aurora.example.com:5432/postgres?sslmode=require",
+    )
+
+    app_arn, returned_aws_arn, static_env = provision._sync_course_registry_secret(
+        fake_sm, fake_rds, existing_app_secret_arn=None
+    )
+
+    assert app_arn.endswith(":secret:codingrabbit/rag_eng/COURSE_REGISTRY_DATABASE_URL")
+    assert returned_aws_arn == aws_managed_arn
+    assert static_env["COURSE_REGISTRY_DB_HOST"] == "aurora.example.com"
+
+
+def test_sync_course_registry_secret_raises_without_existing_arn_or_env(monkeypatch) -> None:
+    monkeypatch.delenv("COURSE_REGISTRY_DATABASE_URL", raising=False)
+    fake_sm = _FakeSecretsManagerClient()
+    fake_rds = _FakeRdsClient(clusters=[])
+
+    try:
+        provision._sync_course_registry_secret(
+            fake_sm, fake_rds, existing_app_secret_arn=None
+        )
+        assert False, "expected RuntimeError"
+    except RuntimeError as exc:
+        assert "COURSE_REGISTRY_DATABASE_URL must be set" in str(exc)
+
+
+def test_sync_course_registry_secret_raises_when_no_matching_cluster() -> None:
+    app_secret_arn = "arn:aws:secretsmanager:us-east-1:123456789012:secret:course-registry"
+    fake_sm = _FakeSecretsManagerClient(
+        existing={"codingrabbit/rag_eng/COURSE_REGISTRY_DATABASE_URL": app_secret_arn}
+    )
+    fake_sm._values[app_secret_arn] = (
+        "postgresql://cr_app:pw@aurora.example.com:5432/postgres?sslmode=require"
+    )
+    fake_rds = _FakeRdsClient(clusters=[])
+
+    try:
+        provision._sync_course_registry_secret(
+            fake_sm, fake_rds, existing_app_secret_arn=app_secret_arn
+        )
+        assert False, "expected RuntimeError"
+    except RuntimeError as exc:
+        assert "No Aurora cluster found" in str(exc)
+
+
+def test_sync_course_registry_secret_raises_when_cluster_missing_managed_secret() -> None:
+    app_secret_arn = "arn:aws:secretsmanager:us-east-1:123456789012:secret:course-registry"
+    fake_sm = _FakeSecretsManagerClient(
+        existing={"codingrabbit/rag_eng/COURSE_REGISTRY_DATABASE_URL": app_secret_arn}
+    )
+    fake_sm._values[app_secret_arn] = (
+        "postgresql://cr_app:pw@aurora.example.com:5432/postgres?sslmode=require"
+    )
+    fake_rds = _FakeRdsClient(
+        clusters=[
+            _course_registry_cluster(
+                endpoint="aurora.example.com", master_user_secret_arn=None
+            )
+        ]
+    )
+
+    try:
+        provision._sync_course_registry_secret(
+            fake_sm, fake_rds, existing_app_secret_arn=app_secret_arn
+        )
+        assert False, "expected RuntimeError"
+    except RuntimeError as exc:
+        assert "AWS-managed master password rotation" in str(exc)
 
 
 def test_ensure_listener_updates_when_target_group_changes() -> None:
