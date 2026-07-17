@@ -13,6 +13,7 @@ __pycache__/
 # VS Code Extension build artifacts
 *.vsix
 !vscode-extension/assignment_template/.devcontainer/*.vsix
+!vscode-extension/assignment_template_cs50/.devcontainer/*.vsix
 node_modules/
 out/
 .npm-cache/

@@ -1,0 +1,28 @@
+{
+    "github.copilot.enable": {
+        "*": false
+    },
+    "github.copilot.chat.enable": false,
+    "chat.commandCenter.enabled": false,
+    "chat.editor.enable": false,
+    "inlineChat.enable": false,
+    "window.commandCenter": false,
+    "C_Cpp.intelliSenseEngine": "disabled",
+    "editor.suggest.showSnippets": false,
+    "editor.lightbulb.enabled": "off",
+    "editor.quickSuggestions": {
+        "other": "off",
+        "comments": "off",
+        "strings": "off"
+    },
+    "codingRabbit.apiBaseUrl": "http://codingrabbit-rag-eng-1327788709.us-east-1.elb.amazonaws.com",
+    "codingRabbit.auth.enabled": true,
+    "codingRabbit.cognitoDomain": "https://us-east-1z5dab8wni.auth.us-east-1.amazoncognito.com",
+    "codingRabbit.cognitoRegion": "us-east-1",
+    "codingRabbit.cognitoUserPoolId": "us-east-1_Z5DAb8wni",
+    "codingRabbit.cognitoClientId": "5k11ek5do9l3p6vhpev3aifh0f",
+    "codingRabbit.cognitoScopes": "openid email profile",
+    "codingRabbit.modelName": "codingrabbit-qwen",
+    "codingRabbit.courseId": "mit14",
+    "codingRabbit.currentWeek": 1
+}

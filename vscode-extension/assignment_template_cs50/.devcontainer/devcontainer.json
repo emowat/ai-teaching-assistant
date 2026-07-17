@@ -1,0 +1,82 @@
+{
+    "name": "C++ CodingRabbit Development Environment",
+    "build": {
+        "dockerfile": "Dockerfile",
+        // Pinned to match the Linux x64 binary baked into the CodingRabbit .vsix
+        // (node-pty is compiled for this specific platform/arch - see the
+        // extension's own build notes). Without this, Docker defaults to the
+        // host's native architecture, which would silently build an arm64
+        // container on Apple Silicon and break the terminal, even though real
+        // GitHub Codespaces machines are x64 and would've been fine.
+        "options": ["--platform=linux/amd64"]
+    },
+    "customizations": {
+        "vscode": {
+            "settings": {
+                "terminal.integrated.defaultProfile.linux": "bash",
+                // Right-click in the terminal pastes the clipboard, so students can:
+                // select text in the README preview → Ctrl+C → right-click in terminal → Paste.
+                // (Ctrl+Shift+V also works as the standard terminal paste shortcut.)
+                "terminal.integrated.rightClickBehavior": "paste",
+
+                // 1. Disable Copilot across all languages in this container
+                "github.copilot.enable": {
+                    "*": false
+                },
+                "github.copilot.chat.enable": false,
+                "chat.commandCenter.enabled": false,
+                "chat.editor.enable": false,
+                "inlineChat.enable": false,
+
+                // 2. Point CodingRabbit to the student tutor backend.
+                // Codespaces should provide the deployed rag_eng URL via RAG_ENG_URL.
+                // The extension prefers that env var and falls back to this local-dev setting.
+                "codingRabbit.apiUrl": "http://codingrabbit-rag-eng-1327788709.us-east-1.elb.amazonaws.com/api/chat",
+                "codingRabbit.modelName": "codingrabbit-ta",
+
+                // 2. Disable the noisy C++ Doxygen lightbulbs and snippets
+                "C_Cpp.doxygen.generateOnType": false,
+                "C_Cpp.doxygen.generateOnCodeAction": false,
+                "C_Cpp.suggestSnippets": false,
+                "C_Cpp.intelliSenseEngine": "disabled",
+
+                // 3. Disable built-in VS Code quick fixes and snippets globally to enforce CodingRabbit mode
+                "editor.suggest.showSnippets": false,
+                "editor.lightbulb.enabled": "off",
+                "editor.quickSuggestions": {
+                    "other": "off",
+                    "comments": "off",
+                    "strings": "off"
+                },
+
+                // 4. Natively force Markdown files to open in Preview mode rather than the raw text editor
+                "workbench.editorAssociations": {
+                    "*.md": "vscode.markdown.preview.editor"
+                }
+            },
+            "extensions": [
+                "ms-vscode.cpptools",
+                "ms-vscode.cpptools-extension-pack",
+                "analytic-signal.preview-pdf",
+                "${containerWorkspaceFolder}/.devcontainer/coding-rabbit-0.5.0.vsix"
+            ]
+        }
+    },
+
+    // Keeps the container running in the background cleanly
+    "overrideCommand": true,
+
+    // Run permissions needed if you intend to attach debuggers like GDB locally
+    "runArgs": ["--cap-add=SYS_PTRACE", "--security-opt", "seccomp=unconfined"],
+
+
+    // Ensures the user inside the container is root for easy workspace setup during testing
+    "updateRemoteUserUID": false,
+    // Needs sudo: the Dockerfile locks the dummy copilot placeholders down as
+    // root:root + 0555 specifically so "student" can't delete them, but this
+    // script's own job is to rm/chmod those same locked files (to re-plant them
+    // in case the real Copilot extension reinstalled itself since last start) -
+    // student has passwordless sudo for exactly this.
+    "postStartCommand": "sudo bash .devcontainer/block_copilot.sh",
+    "remoteUser": "student"
+}
