@@ -692,7 +692,7 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
                     break;
                 }
                 case 'exportChat': {
-                    this._exportChat(webviewView);
+                    this._exportChat();
                     break;
                 }
                 case 'toggleStopwatch': {
@@ -776,7 +776,7 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
         }
     }
 
-    private async _exportChat(webviewView: vscode.WebviewView) {
+    private async _exportChat() {
         if (this._conversationHistory.length === 0) {
             vscode.window.showInformationMessage("No chat history to export.");
             return;
@@ -824,13 +824,47 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
         const dateStr = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
         const filename = `chat_export_${dateStr}.md`;
 
-        webviewView.webview.postMessage({
-            type: 'triggerDownload',
-            filename: filename,
-            content: markdownContent
-        });
+        // Writing a blob and clicking a synthetic <a download> inside the webview
+        // (the old approach) silently does nothing in most Codespaces/browser
+        // contexts: the webview's iframe sandbox needs an explicit allow-downloads
+        // flag for that to work at all, and there's no way for this extension to
+        // know it was blocked - which is exactly the "nothing happened, no error"
+        // bug this replaces. vscode.workspace.fs is the reliable, documented way
+        // to write a file from an extension regardless of desktop vs. web host.
+        const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+        if (!workspaceFolder) {
+            vscode.window.showErrorMessage("Chat export requires an open workspace folder.");
+            return;
+        }
 
-        vscode.window.showInformationMessage("Chat export initiated. Check your browser downloads!");
+        const exportDir = vscode.Uri.joinPath(workspaceFolder.uri, 'chat_exports');
+        const exportUri = vscode.Uri.joinPath(exportDir, filename);
+        try {
+            await vscode.workspace.fs.createDirectory(exportDir);
+            await vscode.workspace.fs.writeFile(exportUri, Buffer.from(markdownContent, 'utf8'));
+        } catch (err) {
+            vscode.window.showErrorMessage(`Failed to save chat export: ${err}`);
+            return;
+        }
+
+        // Best-effort: select the new file in the Explorer, then trigger the
+        // same built-in command the Explorer's own right-click "Download..."
+        // menu item uses, so the browser download happens with no extra clicks.
+        // explorer.download isn't a documented/scriptable API - it reads
+        // whatever's currently selected in the Explorer rather than taking a
+        // URI argument - so if a future VS Code version changes this, the file
+        // is still safely saved and opened below regardless.
+        try {
+            await vscode.commands.executeCommand('revealInExplorer', exportUri);
+            await vscode.commands.executeCommand('explorer.download');
+        } catch {
+            // Ignore - fall through to opening the file so the export is still visible.
+        }
+
+        await vscode.window.showTextDocument(exportUri);
+        vscode.window.showInformationMessage(
+            `Chat exported to chat_exports/${filename}. If a browser download didn't start automatically, right-click the file in the Explorer and choose "Download...".`
+        );
     }
 
     private async _handleAskTA(userMessage: string, mode: string, webviewView: any, isHidden: boolean = false) {
@@ -2335,17 +2369,6 @@ ${terminalOutput}`;
                 case 'updateCarrots':
                     const cc = document.getElementById('carrotCount');
                     if (cc) cc.innerText = \`🥕 \${message.count} Carrots\`;
-                    break;
-                case 'triggerDownload':
-                    const blob = new Blob([message.content], { type: 'text/markdown' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = message.filename;
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    URL.revokeObjectURL(url);
                     break;
             }
         });

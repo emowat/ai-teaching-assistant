@@ -58,7 +58,7 @@
                 "ms-vscode.cpptools",
                 "ms-vscode.cpptools-extension-pack",
                 "analytic-signal.preview-pdf",
-                "${containerWorkspaceFolder}/.devcontainer/coding-rabbit-0.5.0.vsix"
+                "${containerWorkspaceFolder}/.devcontainer/coding-rabbit-0.5.1.vsix"
             ]
         }
     },
