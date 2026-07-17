@@ -10,6 +10,16 @@ import random
 from rag.schemas import AssistMode, RetrievedDoc, RetrievalResult
 
 
+def _source_line(doc: RetrievedDoc) -> str:
+    """Render the citation URL for a chunk as a `\\nSource: <url>` fragment.
+
+    Returns "" when no real URL is known, so the model is never handed a link to
+    cite that it would otherwise have to invent.
+    """
+    url = getattr(doc, "source_url", "") or ""
+    return f"\nSource: {url}" if url else ""
+
+
 def assemble_context(
     syllabus: RetrievedDoc | None,
     rules: list[RetrievedDoc],
@@ -57,20 +67,20 @@ def assemble_context(
 
     # Strict rules — prefixed for the TA to recognize as mandatory
     for doc in rules:
-        chunks.append(f"[Strict_Rules]\nWeek: {doc.week}\nContent: {doc.content}")
+        chunks.append(f"[Strict_Rules]\nWeek: {doc.week}{_source_line(doc)}\nContent: {doc.content}")
 
     # Pedagogical context
     for doc in pedagogical:
-        chunks.append(f"[Pedagogical_Context]\nWeek: {doc.week}\nContent: {doc.content}")
+        chunks.append(f"[Pedagogical_Context]\nWeek: {doc.week}{_source_line(doc)}\nContent: {doc.content}")
 
     # Supplementary
     for doc in supplementary:
-        chunks.append(f"[Supplementary]\nWeek: {doc.week}\nContent: {doc.content}")
+        chunks.append(f"[Supplementary]\nWeek: {doc.week}{_source_line(doc)}\nContent: {doc.content}")
 
     # C++ Core Guidelines — separate collection, no week tag
     if guidelines:
         for doc in guidelines:
-            chunks.append(f"[CppCoreGuidelines]\nContent: {doc.content}")
+            chunks.append(f"[CppCoreGuidelines]{_source_line(doc)}\nContent: {doc.content}")
 
     # If no RAG docs retrieved at all (syllabus-only or empty), avoid empty block
     if not chunks:

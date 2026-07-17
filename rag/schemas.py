@@ -138,6 +138,8 @@ class RetrievedDoc(BaseModel):
     score: float = 0.0                    # similarity or reranker score
     source_domain: SourceDomain = SourceDomain.MIT_OCW_LECTURE
     source_type: str = ""
+    file_name: str = ""                   # original document, e.g. "MIT6_S096IAP14_Lecture10.pdf"
+    source_url: str = ""                  # real, browsable citation URL (empty if none known)
 
 
 class RetrievalResult(BaseModel):

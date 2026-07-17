@@ -18,6 +18,7 @@ from qdrant_client.models import Filter
 
 from rag.schemas import DocCategory, RetrievedDoc, SourceDomain
 from rag.runtime import create_qdrant_client, get_runtime_config
+from rag.source_urls import build_source_url
 
 # ---------------------------------------------------------------------------
 # Shared state (initialized once, reused across calls)
@@ -151,6 +152,11 @@ def _hit_to_doc(
 ) -> RetrievedDoc:
     """Convert a Qdrant search hit to a RetrievedDoc."""
     p = hit.payload or {}
+    source_domain = _coerce_source_domain(
+        p.get("source_domain"),
+        default=default_source_domain,
+    )
+    file_name = p.get("file_name", "") or ""
     return RetrievedDoc(
         chunk_id=p.get("chunk_id", ""),
         content=p.get("content", ""),
@@ -158,11 +164,14 @@ def _hit_to_doc(
         week=p.get("week", 0),
         priority=p.get("priority", 3),
         score=hit.score,
-        source_domain=_coerce_source_domain(
-            p.get("source_domain"),
-            default=default_source_domain,
-        ),
+        source_domain=source_domain,
         source_type=p.get("source_type", ""),
+        file_name=file_name,
+        source_url=build_source_url(
+            source_domain=source_domain,
+            course_id=p.get("course_id", "") or "",
+            file_name=file_name,
+        ),
     )
 
 
