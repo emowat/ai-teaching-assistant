@@ -1,5 +1,6 @@
 .vscode/**
 .vscode-test/**
+.npm-cache/**
 out/**/*.map
 src/**
 test/**
@@ -7,3 +8,24 @@ test/**
 tsconfig.json
 **/*.map
 **/*.ts
+
+# node-pty ships one npm package with prebuilt binaries for every platform, but
+# we only ever run on Linux x64 (Codespaces containers) and compile that one
+# from source at packaging time (see build/Release/pty.node). None of the
+# other platforms' prebuilds, C++ source, or build-time-only tooling ever
+# get loaded at runtime, so don't ship them.
+node_modules/node-pty/prebuilds/**
+node_modules/node-pty/src/**
+node_modules/node-pty/deps/**
+node_modules/node-pty/third_party/**
+node_modules/node-pty/scripts/**
+node_modules/node-pty/typings/**
+node_modules/node-pty/node-addon-api/**
+node_modules/node-pty/binding.gyp
+# Hoisted copy of node-pty's build-time-only dependency (C++ headers for
+# compiling against N-API) - also unused once pty.node is already compiled.
+node_modules/node-addon-api/**
+node_modules/node-pty/build/binding.Makefile
+node_modules/node-pty/build/config.gypi
+node_modules/node-pty/build/Makefile
+node_modules/node-pty/build/pty.target.mk

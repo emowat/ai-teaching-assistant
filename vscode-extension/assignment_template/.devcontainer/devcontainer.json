@@ -1,7 +1,14 @@
 {
     "name": "C++ CodingRabbit Development Environment",
     "build": {
-        "dockerfile": "Dockerfile"
+        "dockerfile": "Dockerfile",
+        // Pinned to match the Linux x64 binary baked into the CodingRabbit .vsix
+        // (node-pty is compiled for this specific platform/arch - see the
+        // extension's own build notes). Without this, Docker defaults to the
+        // host's native architecture, which would silently build an arm64
+        // container on Apple Silicon and break the terminal, even though real
+        // GitHub Codespaces machines are x64 and would've been fine.
+        "options": ["--platform=linux/amd64"]
     },
     "customizations": {
         "vscode": {
@@ -51,7 +58,7 @@
                 "ms-vscode.cpptools",
                 "ms-vscode.cpptools-extension-pack",
                 "analytic-signal.preview-pdf",
-                "${containerWorkspaceFolder}/.devcontainer/coding-rabbit-0.4.3.vsix"
+                "${containerWorkspaceFolder}/.devcontainer/coding-rabbit-0.5.0.vsix"
             ]
         }
     },
@@ -65,6 +72,11 @@
 
     // Ensures the user inside the container is root for easy workspace setup during testing
     "updateRemoteUserUID": false,
-    "postStartCommand": "bash .devcontainer/block_copilot.sh",
+    // Needs sudo: the Dockerfile locks the dummy copilot placeholders down as
+    // root:root + 0555 specifically so "student" can't delete them, but this
+    // script's own job is to rm/chmod those same locked files (to re-plant them
+    // in case the real Copilot extension reinstalled itself since last start) -
+    // student has passwordless sudo for exactly this.
+    "postStartCommand": "sudo bash .devcontainer/block_copilot.sh",
     "remoteUser": "student"
 }

@@ -71,9 +71,12 @@ export async function activate(context: vscode.ExtensionContext) {
         const uri = document.uri.toString();
         const before = previousTextByUri.get(uri) ?? "";
         const after = document.getText();
+        // Update the baseline synchronously, before any awaiting below, so a
+        // fast follow-up edit can never be diffed against a stale "before"
+        // while this event's clipboard check is still in flight.
+        previousTextByUri.set(uri, after);
 
-        let likelyPaste = false;
-        let pastedCharCount = 0;
+        const candidates: { text: string; normalized: string }[] = [];
 
         for (const change of event.contentChanges) {
             // 1. Record significant deletions (to detect cut-and-paste or vim 'dd' -> 'p')
@@ -90,7 +93,12 @@ export async function activate(context: vscode.ExtensionContext) {
                 }
             }
 
-            // 2. Check for significant insertions (pastes)
+            // 2. Check for significant insertions (paste candidates). A large diff in
+            // one change event isn't proof of an external paste by itself: VS Code
+            // coalesces rapid keystrokes into a single edit for undo-grouping, and
+            // that happens more readily when the extension host is lagging - i.e.
+            // exactly the case a student typing normally can trip. Whether this is
+            // a real paste gets confirmed against the actual clipboard below.
             const insertedText = change.text.trim();
             if (insertedText.length > 30 || (change.text.includes("\n") && insertedText.length > 15)) {
                 // If the exact same text was recently deleted OR already exists elsewhere in the file, it's an internal move/copy.
@@ -104,27 +112,49 @@ export async function activate(context: vscode.ExtensionContext) {
                 const isInternalCut = recentlyDeletedHashes.has(insertedHash);
 
                 if (!isInternalCopy && !isInternalCut) {
-                    likelyPaste = true;
-                    pastedCharCount += change.text.length;
+                    candidates.push({ text: change.text, normalized: normalizedInserted });
                 }
             } else if (change.rangeLength > 30 && change.text.trim().length === 0) {
-                // This is likely an Undo of a previous paste or a large deletion
                 // This is likely an Undo of a previous paste or a large deletion
                 pasteStatusByUri.set(uri, 0);
             }
         }
 
-        if (likelyPaste) {
-            const currentCount = pasteStatusByUri.get(uri) || 0;
-            pasteStatusByUri.set(uri, currentCount + pastedCharCount);
-            const patch = createPatch(document.fileName, before, after, "before", "after");
-            output.appendLine("=".repeat(80));
-            output.appendLine(`File: ${document.fileName}`);
-            output.appendLine(`Likely EXTERNAL paste detected at ${new Date().toLocaleTimeString()}`);
-            output.appendLine(patch);
+        if (candidates.length === 0) {
+            return;
         }
 
-        previousTextByUri.set(uri, after);
+        // Confirm against the real clipboard asynchronously so the listener itself
+        // stays fast and synchronous for state bookkeeping above.
+        void (async () => {
+            let clipboardText: string;
+            try {
+                clipboardText = await vscode.env.clipboard.readText();
+            } catch (err) {
+                output.appendLine(
+                    `[${new Date().toLocaleTimeString()}] Could not read clipboard to verify a candidate paste in ${document.fileName}: ${err}`
+                );
+                return;
+            }
+
+            const normalizedClipboard = clipboardText.replace(/\s+/g, '');
+            let pastedCharCount = 0;
+            for (const candidate of candidates) {
+                if (normalizedClipboard.includes(candidate.normalized)) {
+                    pastedCharCount += candidate.text.length;
+                }
+            }
+
+            if (pastedCharCount > 0) {
+                const currentCount = pasteStatusByUri.get(uri) || 0;
+                pasteStatusByUri.set(uri, currentCount + pastedCharCount);
+                const patch = createPatch(document.fileName, before, after, "before", "after");
+                output.appendLine("=".repeat(80));
+                output.appendLine(`File: ${document.fileName}`);
+                output.appendLine(`Likely EXTERNAL paste detected at ${new Date().toLocaleTimeString()}`);
+                output.appendLine(patch);
+            }
+        })();
     });
 
     context.subscriptions.push(output, openListener, closeListener, changeListener);
