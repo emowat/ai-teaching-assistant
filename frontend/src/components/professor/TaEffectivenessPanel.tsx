@@ -196,6 +196,32 @@ function SessionTurnsPanel({
               {formatScore(turn.pedagogical_turn_score)}
             </Tag>
           </div>
+          {(turn.student_question || turn.ta_response) && (
+            <div
+              style={{
+                marginTop: 8,
+                display: "grid",
+                gap: 6,
+                padding: 8,
+                borderRadius: 6,
+                background: D.bg,
+                border: `1px solid ${D.border}`,
+              }}
+            >
+              {turn.student_question && (
+                <div style={{ fontSize: 12 }}>
+                  <span style={{ color: D.muted, fontWeight: 600 }}>Student: </span>
+                  {turn.student_question}
+                </div>
+              )}
+              {turn.ta_response && (
+                <div style={{ fontSize: 12, whiteSpace: "pre-wrap" }}>
+                  <span style={{ color: D.muted, fontWeight: 600 }}>TA: </span>
+                  {turn.ta_response}
+                </div>
+              )}
+            </div>
+          )}
           <div style={{ marginTop: 8 }}>
             <MetricResultList results={turn.micro_metric_results} />
           </div>

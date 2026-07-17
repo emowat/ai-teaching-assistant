@@ -31,6 +31,8 @@ export interface TaEffectivenessTurnScore {
   micro_metric_results: Record<string, TaEffectivenessMetricResult>;
   input_action: string;
   output_action: string;
+  student_question: string;
+  ta_response: string;
 }
 
 export interface TaEffectivenessRosterEntry {

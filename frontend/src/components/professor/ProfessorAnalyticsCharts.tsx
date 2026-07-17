@@ -107,7 +107,7 @@ export function ProfessorAnalyticsCharts({
   }));
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: 24, marginTop: 24 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 24, marginTop: 24 }}>
 
       {/* Cognitive Progression Heatmap */}
       <Card style={{ padding: 20, height: 350 }}>

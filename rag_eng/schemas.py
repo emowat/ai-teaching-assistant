@@ -585,6 +585,8 @@ class TaEffectivenessTurnScore(BaseModel):
     )
     input_action: str = ""
     output_action: str = ""
+    student_question: str = ""
+    ta_response: str = ""
 
 
 class TaEffectivenessRosterEntry(BaseModel):

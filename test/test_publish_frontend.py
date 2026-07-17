@@ -130,6 +130,7 @@ def test_publish_frontend_syncs_dist_and_invalidates_cloudfront(
         config,
         s3_client=fake_s3,
         cloudfront_client=fake_cloudfront,
+        skip_tests=True,
     )
 
     assert run_calls[0][0] == ["npm", "ci", "--include=dev"]
@@ -249,3 +250,70 @@ def test_build_frontend_falls_back_to_docker_when_node_is_old(
         f"{Path(config.frontend_web.app_dir).parent}:/workspace"
     )
     assert run_calls[0][0][workdir_index] == "/workspace/frontend"
+
+
+def test_build_frontend_runs_tests_before_build(tmp_path, monkeypatch) -> None:
+    config = load_deploy_config(_write_config(tmp_path))
+    run_calls: list[tuple[list[str], dict[str, str]]] = []
+    from deploy.publish_frontend import _build_frontend
+
+    monkeypatch.delenv("FRONTEND_SKIP_TESTS", raising=False)
+    monkeypatch.setattr(
+        "deploy.publish_frontend._local_frontend_build_supported",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        "deploy.publish_frontend._run_command",
+        lambda cmd, *, cwd, env: run_calls.append((cmd, env)),
+    )
+
+    _build_frontend(config)
+
+    assert run_calls[0][0] == ["npm", "ci", "--include=dev"]
+    assert run_calls[1][0] == ["npm", "run", "test:components"]
+    assert run_calls[2][0] == ["npm", "run", "build"]
+
+
+def test_build_frontend_skips_tests_when_requested(tmp_path, monkeypatch) -> None:
+    config = load_deploy_config(_write_config(tmp_path))
+    run_calls: list[tuple[list[str], dict[str, str]]] = []
+    from deploy.publish_frontend import _build_frontend
+
+    monkeypatch.setattr(
+        "deploy.publish_frontend._local_frontend_build_supported",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        "deploy.publish_frontend._run_command",
+        lambda cmd, *, cwd, env: run_calls.append((cmd, env)),
+    )
+
+    _build_frontend(config, skip_tests=True)
+
+    assert [call[0] for call in run_calls] == [
+        ["npm", "ci", "--include=dev"],
+        ["npm", "run", "build"],
+    ]
+
+
+def test_build_frontend_skips_tests_via_env_var(tmp_path, monkeypatch) -> None:
+    config = load_deploy_config(_write_config(tmp_path))
+    run_calls: list[tuple[list[str], dict[str, str]]] = []
+    from deploy.publish_frontend import _build_frontend
+
+    monkeypatch.setenv("FRONTEND_SKIP_TESTS", "1")
+    monkeypatch.setattr(
+        "deploy.publish_frontend._local_frontend_build_supported",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        "deploy.publish_frontend._run_command",
+        lambda cmd, *, cwd, env: run_calls.append((cmd, env)),
+    )
+
+    _build_frontend(config)
+
+    assert [call[0] for call in run_calls] == [
+        ["npm", "ci", "--include=dev"],
+        ["npm", "run", "build"],
+    ]

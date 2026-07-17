@@ -3423,17 +3423,26 @@ def get_ta_effectiveness_session_turns(
     )
 
     with _connect_postgres(database_url, runtime.connect_timeout_seconds) as connection:
+        # Joined to tutor_turn_snapshots so the judge scores can be read
+        # alongside what the student actually asked and what the TA actually
+        # said - without this, debugging a low micro-judge score means
+        # cross-referencing a separate export by turn_id by hand.
         turn_rows = _fetch_all_rows(
             connection,
             """
-            SELECT turn_id, turn_index, mode, pedagogical_turn_score, turn_passed,
-                   micro_metric_results, input_action, output_action
-            FROM ta_effectiveness_turn_scores
-            WHERE session_id = %s AND evaluation_run_id = %s AND section_id = %s
-            ORDER BY turn_index ASC
+            SELECT t.turn_id, t.turn_index, t.mode, t.pedagogical_turn_score, t.turn_passed,
+                   t.micro_metric_results, t.input_action, t.output_action,
+                   s.snapshot->'student_phase'->>'raw_input' AS student_question,
+                   s.snapshot->'orchestrator_phase'->>'final_rendered_text' AS ta_response
+            FROM ta_effectiveness_turn_scores t
+            LEFT JOIN tutor_turn_snapshots s ON s.turn_id = t.turn_id
+            WHERE t.session_id = %s AND t.evaluation_run_id = %s AND t.section_id = %s
+            ORDER BY t.turn_index ASC
             """,
             (session_id, evaluation_run_id, section_id),
         )
+
+    import re
 
     turns = [
         TaEffectivenessTurnScore(
@@ -3445,6 +3454,13 @@ def get_ta_effectiveness_session_turns(
             micro_metric_results=_metric_results_from_jsonb(row[5]),
             input_action=_clean_text(row[6]),
             output_action=_clean_text(row[7]),
+            student_question=_clean_text(row[8]),
+            ta_response=re.sub(
+                r"<analysis>.*?</analysis>",
+                "",
+                _clean_text(row[9]),
+                flags=re.DOTALL,
+            ).strip(),
         )
         for row in turn_rows
     ]

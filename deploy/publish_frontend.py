@@ -106,6 +106,17 @@ def _run_command(cmd: list[str], *, cwd: Path, env: dict[str, str]) -> None:
     subprocess.run(cmd, cwd=str(cwd), env=env, check=True)
 
 
+def _tests_disabled(skip_tests: bool) -> bool:
+    if skip_tests:
+        return True
+    return os.getenv("FRONTEND_SKIP_TESTS", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
 def _load_publish_config() -> DeployConfig:
     """Load deployment config while ignoring local frontend build env overrides.
 
@@ -130,6 +141,7 @@ def _docker_build_command(
     *,
     app_dir: Path,
     env: dict[str, str],
+    skip_tests: bool,
 ) -> list[str]:
     docker_env_flags: list[str] = []
     for key in sorted(env):
@@ -139,6 +151,7 @@ def _docker_build_command(
 
     workspace_root = app_dir.parent
     relative_app_dir = app_dir.relative_to(workspace_root).as_posix()
+    test_step = "" if skip_tests else "npm run test:components && "
     return [
         "docker",
         "run",
@@ -157,11 +170,11 @@ def _docker_build_command(
         FRONTEND_BUILD_DOCKER_IMAGE,
         "bash",
         "-lc",
-        "npm ci --include=dev && NODE_ENV=production npm run build",
+        f"npm ci --include=dev && {test_step}NODE_ENV=production npm run build",
     ]
 
 
-def _build_frontend(config: DeployConfig) -> None:
+def _build_frontend(config: DeployConfig, *, skip_tests: bool = False) -> None:
     app_dir = _repo_path(config.frontend_web.app_dir)
     workspace_root = app_dir.parent
     package_json = app_dir / "package.json"
@@ -178,6 +191,13 @@ def _build_frontend(config: DeployConfig) -> None:
             else ["npm", "install", "--include=dev"]
         )
         _run_command(install_cmd, cwd=app_dir, env=install_env)
+        if _tests_disabled(skip_tests):
+            print("    Frontend tests skipped")
+        else:
+            print("    Running frontend test suite (npm run test:components)")
+            _run_command(
+                ["npm", "run", "test:components"], cwd=app_dir, env=install_env
+            )
         _run_command(["npm", "run", "build"], cwd=app_dir, env=build_env)
         return
 
@@ -187,7 +207,11 @@ def _build_frontend(config: DeployConfig) -> None:
     )
     docker_env = _frontend_env(config, production=True)
     _run_command(
-        _docker_build_command(app_dir=app_dir, env=docker_env),
+        _docker_build_command(
+            app_dir=app_dir,
+            env=docker_env,
+            skip_tests=_tests_disabled(skip_tests),
+        ),
         cwd=workspace_root,
         env=os.environ.copy(),
     )
@@ -394,12 +418,13 @@ def publish_frontend(
     session: boto3.Session | None = None,
     s3_client: Any | None = None,
     cloudfront_client: Any | None = None,
+    skip_tests: bool = False,
 ) -> dict[str, Any]:
     if missing_publish_values(config):
         missing = ", ".join(missing_publish_values(config))
         raise RuntimeError(f"Frontend publish configuration is incomplete: {missing}")
 
-    _build_frontend(config)
+    _build_frontend(config, skip_tests=skip_tests)
 
     session = session or _session(config)
     s3_client = s3_client or session.client("s3")
@@ -441,6 +466,14 @@ def main() -> None:
         choices=["describe", "publish"],
         help="describe | publish",
     )
+    parser.add_argument(
+        "--skip-tests",
+        action="store_true",
+        help=(
+            "Skip the frontend test suite gate (npm run test:components) before "
+            "building. Can also be set via FRONTEND_SKIP_TESTS=1."
+        ),
+    )
     args = parser.parse_args()
 
     config = _load_publish_config()
@@ -450,7 +483,7 @@ def main() -> None:
             print(line)
         return
 
-    summary = publish_frontend(config)
+    summary = publish_frontend(config, skip_tests=args.skip_tests)
     _print_summary(summary)
 
 

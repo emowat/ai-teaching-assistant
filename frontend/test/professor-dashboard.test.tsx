@@ -36,9 +36,16 @@ import {
 vi.mock("../src/api/professorSectionsApi", () => ({
   getProfessorSectionAnalytics: vi.fn(),
   getProfessorSectionStudentAnalytics: vi.fn(),
+  getProfessorSectionStudentFeedback: vi.fn(),
   inviteProfessorSectionStudent: vi.fn(),
+  resendProfessorSectionStudentInvite: vi.fn(),
   listProfessorSections: vi.fn(),
   listProfessorSectionStudents: vi.fn(),
+  fetchProfessorReportedIssues: vi.fn().mockResolvedValue({ issues: [] }),
+  resolveProfessorReportedIssue: vi.fn(),
+  fetchProfessorDataDeletionRequests: vi.fn().mockResolvedValue({ requests: [] }),
+  scrubProfessorUserData: vi.fn(),
+  archiveProfessorSection: vi.fn(),
 }));
 
 vi.mock("../src/api/sectionLaunchConfigsApi", () => ({
@@ -161,6 +168,16 @@ describe("ProfessorDashboard", () => {
           last_session_at: "2026-07-08T01:02:03Z",
         },
       ],
+      cognitive_progression: [
+        { x: "Week 1", stage_name: "Understand", count: 2 },
+      ],
+      pedagogical_actions: [
+        { stage_name: "Understand", scaffold_name: "Conceptual Integration", count: 2 },
+      ],
+      frustration_by_week: [{ week: "Week 1", frustration: 1, queries: 3 }],
+      time_utilization: [
+        { assignment: "Assignment 1", chat: 10, editor: 20, terminal: 5 },
+      ],
       generated_at: "2026-07-08T00:00:00Z",
     });
     mockedGetProfessorSectionStudentAnalytics.mockResolvedValue({
@@ -198,6 +215,18 @@ describe("ProfessorDashboard", () => {
         { day: "Mon", sessions: 1, turns: 2 },
         { day: "Tue", sessions: 2, turns: 3 },
       ],
+      cognitive_progression: [
+        { x: "Week 1", stage_name: "Understand", count: 2 },
+      ],
+      pedagogical_actions: [
+        { stage_name: "Understand", scaffold_name: "Conceptual Integration", count: 2 },
+      ],
+      frustration_by_week: [{ week: "Week 1", frustration: 1, queries: 3 }],
+      time_utilization: [
+        { assignment: "Assignment 1", chat: 10, editor: 20, terminal: 5 },
+      ],
+      external_paste_count: 0,
+      paste_incidents: [],
       generated_at: "2026-07-08T00:00:00Z",
     });
     mockedGetProfessorTeachingPlan.mockResolvedValue({
@@ -320,7 +349,7 @@ describe("ProfessorDashboard", () => {
 
     expect(await screen.findByText("Section analytics")).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: /back to roster/i })).toBeInTheDocument();
-    expect(screen.getByText("student sessions in section")).toBeInTheDocument();
+    expect(screen.getByText("total sessions")).toBeInTheDocument();
     expect(screen.getByText("// student_drill_down")).toBeInTheDocument();
     expect(mockedGetProfessorSectionStudentAnalytics).toHaveBeenCalledWith(
       "mit14-fall-001",
