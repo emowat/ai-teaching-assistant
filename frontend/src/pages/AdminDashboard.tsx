@@ -1323,7 +1323,8 @@ export function AdminDashboard({
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
+                  gridTemplateColumns:
+                    "minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr)",
                   gap: 14,
                 }}
               >
@@ -1489,6 +1490,57 @@ export function AdminDashboard({
                             }
                           />
                         ))}
+                      </Pie>
+                      <Tooltip {...chartTooltipStyle} />
+                      <Legend
+                        iconSize={8}
+                        wrapperStyle={{ fontSize: 11, color: D.muted }}
+                        layout="vertical"
+                        verticalAlign="middle"
+                        align="right"
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </Card>
+                <Card>
+                  <div
+                    style={{
+                      ...mono,
+                      fontSize: 11,
+                      color: D.muted,
+                      marginBottom: 14,
+                    }}
+                  >
+                    // evaluation_model_share (7 days)
+                  </div>
+                  <ResponsiveContainer width="100%" height={130}>
+                    <PieChart>
+                      <Pie
+                        data={dashboardStats?.evaluation_model_share || []}
+                        cx="50%"
+                        cy="50%"
+                        outerRadius={54}
+                        dataKey="value"
+                        nameKey="name"
+                        strokeWidth={0}
+                      >
+                        {(dashboardStats?.evaluation_model_share || []).map(
+                          (_, i) => (
+                            <Cell
+                              key={i}
+                              fill={
+                                [
+                                  D.blue,
+                                  D.orange,
+                                  D.green,
+                                  D.red,
+                                  D.purple,
+                                  D.yellow,
+                                ][i % 6]
+                              }
+                            />
+                          )
+                        )}
                       </Pie>
                       <Tooltip {...chartTooltipStyle} />
                       <Legend

@@ -2475,14 +2475,18 @@ def create_app() -> FastAPI:
                     system_errors = row[0] if row else 0
 
                     # 8. Models Used
+                    # model_name lives on the LAST entry of generation_history
+                    # (a JSONB array - one entry per LLM attempt, since a
+                    # code-leakage detection can trigger a retry with a fresh
+                    # attempt), not directly on ta_generation_phase itself.
                     cursor.execute(
                         f"""
                         SELECT
-                            snapshot->'ta_generation_phase'->>'model_name' as model,
+                            snapshot->'ta_generation_phase'->'generation_history'->-1->>'model_name' as model,
                             COUNT(*) as count
                         FROM tutor_turn_snapshots
                         WHERE created_at >= (CURRENT_TIMESTAMP AT TIME ZONE '{tz}')::DATE - INTERVAL '6 days'
-                          AND snapshot->'ta_generation_phase'->>'model_name' IS NOT NULL
+                          AND snapshot->'ta_generation_phase'->'generation_history'->-1->>'model_name' IS NOT NULL
                           {course_filter}
                         GROUP BY model
                     """,
@@ -2491,6 +2495,28 @@ def create_app() -> FastAPI:
                     model_rows = cursor.fetchall()
                     model_share = [
                         {"name": r[0] or "unknown", "value": r[1]} for r in model_rows
+                    ]
+
+                    # 8b. Evaluation (judge) models used - offline TA
+                    # Effectiveness runs, distinct from the generation models
+                    # above. One row per evaluation_runs row (a run uses one
+                    # judge model throughout), not per session/turn.
+                    cursor.execute(
+                        f"""
+                        SELECT
+                            judge_provider || '/' || judge_model as model,
+                            COUNT(*) as count
+                        FROM evaluation_runs
+                        WHERE created_at >= (CURRENT_TIMESTAMP AT TIME ZONE '{tz}')::DATE - INTERVAL '6 days'
+                          {course_filter}
+                        GROUP BY model
+                    """,
+                        params,
+                    )
+                    evaluation_model_rows = cursor.fetchall()
+                    evaluation_model_share = [
+                        {"name": r[0] or "unknown", "value": r[1]}
+                        for r in evaluation_model_rows
                     ]
 
                     # 9. Weekly Rewards & Nudges
@@ -2591,6 +2617,7 @@ def create_app() -> FastAPI:
                 "homework_keys": homework_keys,
                 "study_keys": study_keys,
                 "model_share": model_share,
+                "evaluation_model_share": evaluation_model_share,
                 "guardrails": {
                     "input_blocks": input_blocks,
                     "output_blocks": output_blocks,

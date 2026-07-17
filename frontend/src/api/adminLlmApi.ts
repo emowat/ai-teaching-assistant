@@ -100,6 +100,7 @@ export interface DashboardStats {
   homework_keys: string[];
   study_keys: string[];
   model_share: { name: string; value: number }[];
+  evaluation_model_share: { name: string; value: number }[];
   guardrails: {
     input_blocks: number;
     output_blocks: number;

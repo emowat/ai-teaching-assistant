@@ -92,6 +92,7 @@ describe("AdminDashboard", () => {
       homework_keys: [],
       study_keys: [],
       model_share: [],
+      evaluation_model_share: [],
       guardrails: {
         input_blocks: 0,
         output_blocks: 0,
