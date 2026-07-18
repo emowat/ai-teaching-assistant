@@ -58,31 +58,39 @@ export function ProfessorAnalyticsCharts({
   const activeActions = activeTab === 'homework' ? homeworkActions : studyActions;
 
   const ALL_COGNITIVE_STAGES = ["Conceptualizing", "Implementing", "Refactoring", "Debugging"];
-  const firstWeek = cognitive_progression.length > 0 ? cognitive_progression[0].x.replace('Week ', '') : "1";
 
-  const augmentedCognitiveProgression = cognitive_progression.map(d => ({
-    Week: d.x.replace('Week ', ''),
-    Stage: d.stage_name,
-    Count: d.count
-  }));
-
-  for (const stage of ALL_COGNITIVE_STAGES) {
-    if (!augmentedCognitiveProgression.some(d => d.Stage === stage)) {
-      augmentedCognitiveProgression.push({ Week: firstWeek, Stage: stage, Count: 0 });
-    }
-  }
-  
   const weekNumber = (label: string): number => {
     const match = label.match(/(\d+)/);
     return match ? parseInt(match[1], 10) : Number.POSITIVE_INFINITY;
   };
 
-  // Recharts builds the category axis order from first-appearance in the data
-  // array, so the Week axis is ordered by sorting here rather than via the
-  // XAxis `ticks` prop (which drops labels for a category axis in this
-  // Recharts version). The Stage (Y) axis order is unaffected since it uses
-  // its own fixed `ticks` array independent of data order.
-  augmentedCognitiveProgression.sort((a, b) => weekNumber(a.Week) - weekNumber(b.Week));
+  // Recharts builds each category axis's order from first-appearance in the
+  // data array - both the Week (X) and Stage (Y) axes read from this same
+  // array, so a single sort key can't independently guarantee both orders.
+  // Build a full week x stage grid instead, in nested order, so the very
+  // first week's block establishes the correct Stage order and each
+  // subsequent week block appears in ascending order.
+  const rawCognitiveProgression = cognitive_progression.map(d => ({
+    Week: d.x.replace('Week ', ''),
+    Stage: d.stage_name,
+    Count: d.count,
+  }));
+  const cognitiveProgressionWeeks = Array.from(
+    new Set(rawCognitiveProgression.map(d => d.Week))
+  ).sort((a, b) => weekNumber(a) - weekNumber(b));
+  if (cognitiveProgressionWeeks.length === 0) {
+    cognitiveProgressionWeeks.push("1");
+  }
+  const cognitiveProgressionCounts = new Map(
+    rawCognitiveProgression.map(d => [`${d.Week}__${d.Stage}`, d.Count])
+  );
+  const augmentedCognitiveProgression = cognitiveProgressionWeeks.flatMap(week =>
+    ALL_COGNITIVE_STAGES.map(stage => ({
+      Week: week,
+      Stage: stage,
+      Count: cognitiveProgressionCounts.get(`${week}__${stage}`) ?? 0,
+    }))
+  );
 
   const activeActionsFormatted = activeActions.map(d => ({
     Stage: d.stage_name,
