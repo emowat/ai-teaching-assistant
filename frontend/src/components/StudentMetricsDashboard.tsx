@@ -207,9 +207,9 @@ export function StudentMetricsDashboard({ accessToken }: StudentMetricsDashboard
                 formatter={(value: any, name: any) => [`${value}${timeUnit}`, name]}
               />
               <Legend wrapperStyle={{ fontSize: 12, color: D.muted }} />
-              <Bar dataKey="chat" name="Chat" stackId="a" fill="#3b82f6" />
-              <Bar dataKey="editor" name="Editor" stackId="a" fill="#8b5cf6" />
-              <Bar dataKey="terminal" name="Terminal" stackId="a" fill="#ec4899" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="chat" name="Chat" stackId="a" fill={D.blue} fillOpacity={0.75} />
+              <Bar dataKey="editor" name="Editor" stackId="a" fill={D.orange} fillOpacity={0.75} />
+              <Bar dataKey="terminal" name="Terminal" stackId="a" fill={D.green} fillOpacity={0.75} radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </Card>
