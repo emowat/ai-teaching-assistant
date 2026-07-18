@@ -2901,7 +2901,13 @@ def create_app() -> FastAPI:
                         """
                         SELECT
                             COALESCE('Week ' || (snapshot->'instructional_context_phase'->>'effective_week'), 'Week Unknown') as week,
-                            COALESCE(INITCAP(REPLACE(SUBSTRING(snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Cognitive_Stage' FROM '([a-zA-Z]{5,})'), '_', ' ')), 'Unknown') as stage,
+                            CASE
+                                WHEN snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Cognitive_Stage' ILIKE '%%conceptualizing%%' THEN 'Conceptualizing'
+                                WHEN snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Cognitive_Stage' ILIKE '%%implementing%%' THEN 'Implementing'
+                                WHEN snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Cognitive_Stage' ILIKE '%%refactoring%%' THEN 'Refactoring'
+                                WHEN snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Cognitive_Stage' ILIKE '%%debugging%%' THEN 'Debugging'
+                                ELSE 'Unknown'
+                            END as stage,
                             COUNT(*) as count
                         FROM tutor_turn_snapshots
                         WHERE app_user_id = %s """
@@ -2909,6 +2915,7 @@ def create_app() -> FastAPI:
                         + """
                           AND snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Cognitive_Stage' IS NOT NULL
                         GROUP BY week, stage
+                        ORDER BY MIN(NULLIF(snapshot->'instructional_context_phase'->>'effective_week', '')::int) NULLS LAST
                     """,
                         (user_id, *course_filter_params),
                     )
@@ -2930,6 +2937,7 @@ def create_app() -> FastAPI:
                         + course_filter_sql.replace("course_id", "t.course_id")
                         + """
                         GROUP BY assignment
+                        ORDER BY MIN(NULLIF(s.snapshot->'instructional_context_phase'->>'effective_week', '')::int) NULLS LAST
                     """,
                         (user_id, *course_filter_params),
                     )
@@ -2939,7 +2947,13 @@ def create_app() -> FastAPI:
                     cursor.execute(
                         """
                         SELECT
-                            COALESCE(INITCAP(REPLACE(SUBSTRING(snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Cognitive_Stage' FROM '([a-zA-Z]{5,})'), '_', ' ')), 'Unknown') as stage,
+                            CASE
+                                WHEN snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Cognitive_Stage' ILIKE '%%conceptualizing%%' THEN 'Conceptualizing'
+                                WHEN snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Cognitive_Stage' ILIKE '%%implementing%%' THEN 'Implementing'
+                                WHEN snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Cognitive_Stage' ILIKE '%%refactoring%%' THEN 'Refactoring'
+                                WHEN snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Cognitive_Stage' ILIKE '%%debugging%%' THEN 'Debugging'
+                                ELSE 'Unknown'
+                            END as stage,
                             COALESCE(INITCAP(REPLACE(SUBSTRING(snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Pedagogical_Action' FROM '([A-Z_]{2,})'), '_', ' ')), 'None') as category,
                             COUNT(*) as count
                         FROM tutor_turn_snapshots
@@ -2964,6 +2978,7 @@ def create_app() -> FastAPI:
                         + course_filter_sql
                         + """
                         GROUP BY week, frustration
+                        ORDER BY MIN(NULLIF(snapshot->'instructional_context_phase'->>'effective_week', '')::int) NULLS LAST
                     """,
                         (user_id, *course_filter_params),
                     )

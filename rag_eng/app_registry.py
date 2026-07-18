@@ -2717,12 +2717,19 @@ def get_professor_section_analytics(
             """
             SELECT
                 COALESCE('Week ' || (snapshot->'instructional_context_phase'->>'effective_week'), 'Week Unknown') as week,
-                COALESCE(INITCAP(REPLACE(SUBSTRING(snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Cognitive_Stage' FROM '([a-zA-Z]{5,})'), '_', ' ')), 'Unknown') as stage,
+                CASE
+                    WHEN snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Cognitive_Stage' ILIKE '%%conceptualizing%%' THEN 'Conceptualizing'
+                    WHEN snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Cognitive_Stage' ILIKE '%%implementing%%' THEN 'Implementing'
+                    WHEN snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Cognitive_Stage' ILIKE '%%refactoring%%' THEN 'Refactoring'
+                    WHEN snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Cognitive_Stage' ILIKE '%%debugging%%' THEN 'Debugging'
+                    ELSE 'Unknown'
+                END as stage,
                 COUNT(*) as count
             FROM tutor_turn_snapshots
             WHERE section_id = %s
               AND snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Cognitive_Stage' IS NOT NULL
             GROUP BY week, stage
+            ORDER BY MIN(NULLIF(snapshot->'instructional_context_phase'->>'effective_week', '')::int) NULLS LAST
             """,
             (section_id,),
         )
@@ -2739,6 +2746,7 @@ def get_professor_section_analytics(
             WHERE t.event_type = 'out_of_band_telemetry'
             AND t.section_id = %s
             GROUP BY assignment
+            ORDER BY MIN(NULLIF(s.snapshot->'instructional_context_phase'->>'effective_week', '')::int) NULLS LAST
             """,
             (section_id,),
         )
@@ -2746,7 +2754,13 @@ def get_professor_section_analytics(
             connection,
             """
             SELECT
-                COALESCE(INITCAP(REPLACE(SUBSTRING(snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Cognitive_Stage' FROM '([a-zA-Z]{5,})'), '_', ' ')), 'Unknown') as stage,
+                CASE
+                    WHEN snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Cognitive_Stage' ILIKE '%%conceptualizing%%' THEN 'Conceptualizing'
+                    WHEN snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Cognitive_Stage' ILIKE '%%implementing%%' THEN 'Implementing'
+                    WHEN snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Cognitive_Stage' ILIKE '%%refactoring%%' THEN 'Refactoring'
+                    WHEN snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Cognitive_Stage' ILIKE '%%debugging%%' THEN 'Debugging'
+                    ELSE 'Unknown'
+                END as stage,
                 COALESCE(INITCAP(REPLACE(SUBSTRING(snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Pedagogical_Action' FROM '([A-Z_]{2,})'), '_', ' ')), 'None') as category,
                 COUNT(*) as count
             FROM tutor_turn_snapshots
@@ -2766,6 +2780,7 @@ def get_professor_section_analytics(
             FROM tutor_turn_snapshots
             WHERE section_id = %s
             GROUP BY week, frustration
+            ORDER BY MIN(NULLIF(snapshot->'instructional_context_phase'->>'effective_week', '')::int) NULLS LAST
             """,
             (section_id,),
         )
@@ -2980,13 +2995,20 @@ def get_professor_section_student_analytics(
             """
             SELECT
                 COALESCE('Week ' || (snapshot->'instructional_context_phase'->>'effective_week'), 'Week Unknown') as week,
-                COALESCE(INITCAP(REPLACE(SUBSTRING(snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Cognitive_Stage' FROM '([a-zA-Z]{5,})'), '_', ' ')), 'Unknown') as stage,
+                CASE
+                    WHEN snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Cognitive_Stage' ILIKE '%%conceptualizing%%' THEN 'Conceptualizing'
+                    WHEN snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Cognitive_Stage' ILIKE '%%implementing%%' THEN 'Implementing'
+                    WHEN snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Cognitive_Stage' ILIKE '%%refactoring%%' THEN 'Refactoring'
+                    WHEN snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Cognitive_Stage' ILIKE '%%debugging%%' THEN 'Debugging'
+                    ELSE 'Unknown'
+                END as stage,
                 COUNT(*) as count
             FROM tutor_turn_snapshots
             WHERE section_id = %s
               AND (user_sub = %s OR app_user_id::text = %s)
               AND snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Cognitive_Stage' IS NOT NULL
             GROUP BY week, stage
+            ORDER BY MIN(NULLIF(snapshot->'instructional_context_phase'->>'effective_week', '')::int) NULLS LAST
             """,
             (section_id, *activity_params),
         )
@@ -3004,6 +3026,7 @@ def get_professor_section_student_analytics(
               AND t.section_id = %s
               AND (t.user_sub = %s OR t.app_user_id::text = %s)
             GROUP BY assignment
+            ORDER BY MIN(NULLIF(s.snapshot->'instructional_context_phase'->>'effective_week', '')::int) NULLS LAST
             """,
             (section_id, *activity_params),
         )
@@ -3011,7 +3034,13 @@ def get_professor_section_student_analytics(
             connection,
             """
             SELECT
-                COALESCE(INITCAP(REPLACE(SUBSTRING(snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Cognitive_Stage' FROM '([a-zA-Z]{5,})'), '_', ' ')), 'Unknown') as stage,
+                CASE
+                    WHEN snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Cognitive_Stage' ILIKE '%%conceptualizing%%' THEN 'Conceptualizing'
+                    WHEN snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Cognitive_Stage' ILIKE '%%implementing%%' THEN 'Implementing'
+                    WHEN snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Cognitive_Stage' ILIKE '%%refactoring%%' THEN 'Refactoring'
+                    WHEN snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Cognitive_Stage' ILIKE '%%debugging%%' THEN 'Debugging'
+                    ELSE 'Unknown'
+                END as stage,
                 COALESCE(INITCAP(REPLACE(SUBSTRING(snapshot->'ta_generation_phase'->'generation_history'->-1->'cot_keys'->>'Pedagogical_Action' FROM '([A-Z_]{2,})'), '_', ' ')), 'None') as category,
                 COUNT(*) as count
             FROM tutor_turn_snapshots
@@ -3033,6 +3062,7 @@ def get_professor_section_student_analytics(
             WHERE section_id = %s
               AND (user_sub = %s OR app_user_id::text = %s)
             GROUP BY week, frustration
+            ORDER BY MIN(NULLIF(snapshot->'instructional_context_phase'->>'effective_week', '')::int) NULLS LAST
             """,
             (section_id, *activity_params),
         )

@@ -75,7 +75,17 @@ export function StudentMetricsDashboard({ accessToken }: StudentMetricsDashboard
     }
   }
   
-  augmentedCognitiveProgression.sort((a, b) => ALL_COGNITIVE_STAGES.indexOf(a.Stage) - ALL_COGNITIVE_STAGES.indexOf(b.Stage));
+  const weekNumber = (label: string): number => {
+    const match = label.match(/(\d+)/);
+    return match ? parseInt(match[1], 10) : Number.POSITIVE_INFINITY;
+  };
+
+  // Recharts builds the category axis order from first-appearance in the data
+  // array, so the Week axis is ordered by sorting here rather than via the
+  // XAxis `ticks` prop (which drops labels for a category axis in this
+  // Recharts version). The Stage (Y) axis order is unaffected since it uses
+  // its own fixed `ticks` array independent of data order.
+  augmentedCognitiveProgression.sort((a, b) => weekNumber(a.Week) - weekNumber(b.Week));
 
   const activeActionsFormatted = activeActions.map(d => ({
     Stage: d.stage_name,
@@ -235,16 +245,15 @@ export function StudentMetricsDashboard({ accessToken }: StudentMetricsDashboard
                 <CartesianGrid strokeDasharray="3 3" stroke={D.border} />
                 <XAxis
                   type="category"
-                  dataKey="Stage"
+                  dataKey="Scaffold"
                   allowDuplicatedCategory={false}
                   stroke={D.muted}
                   fontSize={10}
                   tickMargin={8}
                   padding={{ left: 20, right: 20 }}
                   interval={0}
-                  ticks={ALL_COGNITIVE_STAGES}
                 />
-                <YAxis type="category" dataKey="Scaffold" allowDuplicatedCategory={false} stroke={D.muted} fontSize={11} width={110} padding={{ top: 30, bottom: 30 }} interval={0} />
+                <YAxis type="category" dataKey="Stage" allowDuplicatedCategory={false} stroke={D.muted} fontSize={11} width={110} padding={{ top: 30, bottom: 30 }} interval={0} ticks={["Refactoring", "Debugging", "Implementing", "Conceptualizing"]} />
                 <ZAxis dataKey="Count" range={[0, 100]} />
                 <RechartsTooltip
                   cursor={{ strokeDasharray: '3 3' }}
@@ -269,7 +278,7 @@ export function StudentMetricsDashboard({ accessToken }: StudentMetricsDashboard
           <ResponsiveContainer width="100%" height="100%">
             <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={D.border} />
-              <XAxis type="category" dataKey="week" name="Week" stroke={D.muted} fontSize={12} />
+              <XAxis type="category" dataKey="week" name="Week" allowDuplicatedCategory={false} stroke={D.muted} fontSize={12} />
               <YAxis type="number" dataKey="frustration" name="Frustration Level" domain={[0, 'dataMax + 1']} stroke={D.muted} fontSize={12} label={{ value: 'Frustration →', angle: -90, position: 'insideLeft', fill: D.muted, fontSize: 12 }} />
               <ZAxis type="number" dataKey="queries" range={[100, 1000]} name="Volume" />
               <RechartsTooltip
