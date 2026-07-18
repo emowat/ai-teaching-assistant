@@ -48,7 +48,11 @@ import { TeachingPlanWeekReferencesEditor } from "../components/professor/Teachi
 import { ProfessorAnalyticsCharts } from "../components/professor/ProfessorAnalyticsCharts";
 import { ProfessorStudentFeedback } from "../components/professor/ProfessorStudentFeedback";
 import { ProfessorPrivacyPanel } from "../components/professor/ProfessorPrivacyPanel";
-import { TaEffectivenessPanel } from "../components/professor/TaEffectivenessPanel";
+import { TaEffectivenessPanel, simpleAverage } from "../components/professor/TaEffectivenessPanel";
+import {
+  getTaEffectivenessRoster,
+  type TaEffectivenessSectionRoster,
+} from "../api/professorTaEffectivenessApi";
 import type { AppView } from "../types/navigation";
 import { getWeekLaunchUrl, isWeekLaunchReady } from "../data/codespaces";
 
@@ -148,6 +152,10 @@ export function ProfessorDashboard({
   const [analyticsSectionId, setAnalyticsSectionId] = useState<string | null>(
     null,
   );
+  const [taEffectivenessRoster, setTaEffectivenessRoster] =
+    useState<TaEffectivenessSectionRoster | null>(null);
+  const [taEffectivenessRosterSectionId, setTaEffectivenessRosterSectionId] =
+    useState<string | null>(null);
   const [studentAnalytics, setStudentAnalytics] =
     useState<ProfessorSectionStudentAnalytics | null>(null);
   const [studentAnalyticsSectionId, setStudentAnalyticsSectionId] = useState<
@@ -261,6 +269,31 @@ export function ProfessorDashboard({
   const activeAnalytics = useMemo(
     () => (analyticsSectionId === selectedSectionId ? analytics : null),
     [analytics, analyticsSectionId, selectedSectionId],
+  );
+  const activeTaEffectivenessRoster = useMemo(
+    () =>
+      taEffectivenessRosterSectionId === selectedSectionId
+        ? taEffectivenessRoster
+        : null,
+    [selectedSectionId, taEffectivenessRoster, taEffectivenessRosterSectionId],
+  );
+  const overallImpact = useMemo(
+    () =>
+      simpleAverage(
+        (activeTaEffectivenessRoster?.entries ?? []).map(
+          (entry) => entry.avg_pedagogical_impact,
+        ),
+      ),
+    [activeTaEffectivenessRoster],
+  );
+  const overallEffectiveness = useMemo(
+    () =>
+      simpleAverage(
+        (activeTaEffectivenessRoster?.entries ?? []).map(
+          (entry) => entry.avg_session_effectiveness,
+        ),
+      ),
+    [activeTaEffectivenessRoster],
   );
   const activeStudentAnalytics = useMemo(
     () =>
@@ -463,6 +496,31 @@ export function ProfessorDashboard({
       })
       .finally(() => {
         if (!cancelled) setAnalyticsFetchComplete(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken, selectedSectionId]);
+
+  useEffect(() => {
+    if (!selectedSectionId || !accessToken) {
+      return;
+    }
+
+    let cancelled = false;
+
+    void getTaEffectivenessRoster(selectedSectionId, accessToken)
+      .then((nextRoster) => {
+        if (cancelled) return;
+        setTaEffectivenessRoster(nextRoster);
+        setTaEffectivenessRosterSectionId(selectedSectionId);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setTaEffectivenessRoster(null);
+          setTaEffectivenessRosterSectionId(selectedSectionId);
+        }
       });
 
     return () => {
@@ -2529,6 +2587,26 @@ export function ProfessorDashboard({
                   value={activeAnalytics?.active_students_last_7_days ?? 0}
                   sub="distinct student authors"
                   color={D.blue}
+                />
+                <Stat
+                  label="// avg_impact"
+                  value={
+                    overallImpact === null
+                      ? "—"
+                      : `${Math.round(overallImpact * 100)}%`
+                  }
+                  sub="TA Effectiveness roster average"
+                  color={D.purple}
+                />
+                <Stat
+                  label="// avg_effectiveness"
+                  value={
+                    overallEffectiveness === null
+                      ? "—"
+                      : `${Math.round(overallEffectiveness * 100)}%`
+                  }
+                  sub="TA Effectiveness roster average"
+                  color={D.purple}
                 />
                 <Stat
                   label="// section_roster"

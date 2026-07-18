@@ -84,6 +84,12 @@ function scoreColor(value: number | null | undefined): string {
   return D.red;
 }
 
+export function simpleAverage(values: (number | null)[]): number | null {
+  const present = values.filter((value): value is number => value !== null && !Number.isNaN(value));
+  if (present.length === 0) return null;
+  return present.reduce((sum, value) => sum + value, 0) / present.length;
+}
+
 function metricValueColor(value: TaEffectivenessMetricResult["value"]): string {
   if (value === "NA" || value === "N/A" || value === null || value === undefined) {
     return D.dim;
