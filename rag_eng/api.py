@@ -2727,12 +2727,25 @@ def create_app() -> FastAPI:
                                     unique_sources.append(src)
 
                         raw_ai_message = row[8] if row[8] else ""
-                        clean_ai_message = re.sub(
-                            r"<analysis>.*?</analysis>",
-                            "",
-                            raw_ai_message,
-                            flags=re.DOTALL,
-                        ).strip()
+                        clean_ai_message = raw_ai_message
+                        for tag in ("analysis", "thinking", "think"):
+                            clean_ai_message = re.sub(
+                                rf"<{tag}>.*?</{tag}>",
+                                "",
+                                clean_ai_message,
+                                flags=re.DOTALL,
+                            )
+                            # A generation can be truncated mid-block (hit a
+                            # token limit before the closing tag); strip from
+                            # a dangling opening tag through the end instead
+                            # of leaving the raw block on display.
+                            clean_ai_message = re.sub(
+                                rf"<{tag}>.*",
+                                "",
+                                clean_ai_message,
+                                flags=re.DOTALL,
+                            )
+                        clean_ai_message = clean_ai_message.strip()
 
                         extracted_cot = (
                             row[9] if row[9] and isinstance(row[9], dict) else {}

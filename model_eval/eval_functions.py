@@ -113,6 +113,15 @@ def pretty_print_jsonl(filename):
             except json.JSONDecodeError:
                 print(f"Error decoding JSON on line {i+1}")
 
+def strip_cot_tags(text): #remove <analysis> and <thinking> blocks so only the student-visible reply remains
+  text = text or ''
+  for tag in ('analysis', 'thinking', 'think'):
+    text = re.sub(r'<' + tag + r'>[\s\S]*?</' + tag + '>', '', text)
+    #a generation can be truncated mid-block (hit token limit before the closing tag) - strip dangling opening tag through the end too
+    text = re.sub(r'<' + tag + r'>[\s\S]*', '', text)
+  return text.strip()
+
+
 def build_context_(record):       #retrived chuck on the session
   brp= record.get("backend_retrieval_phase") or {} #adjustments to account for turn logs where backend_retrieval_phase is none
   chuncks= brp.get("retrieved_rag_chunks") or []
@@ -151,7 +160,7 @@ def get_genration(record ):   #CoT + reply + plan for turn
   last_= history_[-1] if history_ else {}
   CoT= last_.get( "cot_keys", {}) or {}
   CoT_text= "\n".join("-" +key  + ": "+ str(value) for key, value in CoT.items() )
-  visible_text= ta_g.get( "final_rendered_text") or last_.get("raw_generation") or "" #if None then backups
+  visible_text= strip_cot_tags(ta_g.get( "final_rendered_text") or last_.get("raw_generation") or "") #if None then backups; strip CoT tags so this is actually the visible reply
   pedagogical_act= CoT.get("Pedagogical_Action", "N/A")
   return "<analysis>\n" + CoT_text + "\n</analysis>\n"+ visible_text, visible_text,  pedagogical_act
 
@@ -283,9 +292,7 @@ def build_Macro_samples(dataset ):
         user_message= message["content"] #grab user message
         NumOfTurns.append("User: "+ user_message + "\n\n") #add user message
       elif message["role"]== "assistant":
-        ta_message= message["content"] #grab TA messages
-        if "</analysis>" in ta_message:
-          ta_message= ta_message.split( "</analysis>")[1] #grab only visable message (user sees) for MACRO only
+        ta_message= strip_cot_tags(message["content"]) #grab TA messages, visible only (user sees) for MACRO only
         NumOfTurns.append("TA: "+ ta_message + "\n\n") #add TA message
 
     conversation_full= "".join(NumOfTurns) #grab all turns
@@ -393,7 +400,7 @@ def build_micro_samples(dataset,  max_turns_per_convo=None):
             "extra_signals": "", #placeholder
             "feedback": "", #placeholder
             "frustration": "" , #placeholder
-            "visible_text": (message["content"].split( "</analysis>")[1] if "</analysis>" in message["content"] else message["content"]),
+            "visible_text": strip_cot_tags(message["content"]),
             "input_action": "NA", #placeholder
             "output_action": "NA", #placeholder
             })

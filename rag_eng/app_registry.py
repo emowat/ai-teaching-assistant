@@ -198,6 +198,27 @@ def _normalize_email(value: object | None) -> str:
     return _clean_text(value).casefold()
 
 
+def _strip_cot_tags(text: str) -> str:
+    """Remove <analysis>/<thinking>/<think> blocks so only the visible TA reply remains.
+
+    <think> was used by an earlier Qwen 14B model; newer models emit
+    <thinking> - both are real and need stripping, matching the VS Code
+    extension's client-side handling (TAChatViewProvider.ts).
+
+    A generation can be truncated mid-block (e.g. hit a token limit before the
+    closing tag was emitted), leaving no real visible reply at all - in that
+    case strip from the dangling opening tag through the end of the string
+    rather than leaving the raw, unterminated block on display.
+    """
+    import re
+
+    cleaned = text
+    for tag in ("analysis", "thinking", "think"):
+        cleaned = re.sub(rf"<{tag}>.*?</{tag}>", "", cleaned, flags=re.DOTALL)
+        cleaned = re.sub(rf"<{tag}>.*", "", cleaned, flags=re.DOTALL)
+    return cleaned.strip()
+
+
 def _user_summary_from_row(row: tuple[Any, ...]) -> dict[str, Any]:
     (
         user_id,
@@ -3472,8 +3493,6 @@ def get_ta_effectiveness_session_turns(
             (session_id, evaluation_run_id, section_id),
         )
 
-    import re
-
     turns = [
         TaEffectivenessTurnScore(
             turn_id=_clean_text(row[0]),
@@ -3485,12 +3504,7 @@ def get_ta_effectiveness_session_turns(
             input_action=_clean_text(row[6]),
             output_action=_clean_text(row[7]),
             student_question=_clean_text(row[8]),
-            ta_response=re.sub(
-                r"<analysis>.*?</analysis>",
-                "",
-                _clean_text(row[9]),
-                flags=re.DOTALL,
-            ).strip(),
+            ta_response=_strip_cot_tags(_clean_text(row[9])),
         )
         for row in turn_rows
     ]
@@ -5014,14 +5028,7 @@ def get_professor_section_student_feedback(
                         unique_sources.append(src)
 
             raw_ai_message = row[6] if row[6] else ""
-            import re
-
-            clean_ai_message = re.sub(
-                r"<analysis>.*?</analysis>",
-                "",
-                raw_ai_message,
-                flags=re.DOTALL,
-            ).strip()
+            clean_ai_message = _strip_cot_tags(raw_ai_message)
 
             feedback_entries.append(
                 ProfessorStudentFeedbackEntry(
