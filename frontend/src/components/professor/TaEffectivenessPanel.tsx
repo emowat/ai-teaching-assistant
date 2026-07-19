@@ -64,7 +64,11 @@ function formatMetricLabel(name: string): string {
   return name
     .split("_")
     .filter(Boolean)
-    .map((word) => word[0].toUpperCase() + word.slice(1))
+    .map((word) =>
+      word.toUpperCase() === "ZPD"
+        ? "Zone of Proximal Development (ZPD)"
+        : word[0].toUpperCase() + word.slice(1),
+    )
     .join(" ");
 }
 
