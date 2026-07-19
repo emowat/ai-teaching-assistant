@@ -189,9 +189,10 @@ def test_run_retrieval_uses_registry_collection_name(monkeypatch) -> None:
     )
     monkeypatch.setattr("rag.pipeline.build_course_query", lambda query: "dense query")
     monkeypatch.setattr("rag.pipeline.build_cpp_query", lambda query: "")
-    monkeypatch.setattr("rag.pipeline.embed_query", lambda text: [0.0])
+    monkeypatch.setattr("rag.pipeline.embed_query", lambda text, *, bypass_cache=False: [0.0])
     monkeypatch.setattr(
-        "rag.pipeline.embed_queries", lambda texts: [[0.0] for _ in texts]
+        "rag.pipeline.embed_queries",
+        lambda texts, *, bypass_cache=None: [[0.0] for _ in texts],
     )
     monkeypatch.setattr(
         "rag.pipeline.retrieve_guidelines",
@@ -273,13 +274,13 @@ def test_run_retrieval_precomputes_query_vectors_before_parallel_calls(
     monkeypatch.setattr("rag.pipeline.build_course_query", lambda query: "dense query")
     monkeypatch.setattr("rag.pipeline.build_cpp_query", lambda query: "cpp hints")
 
-    def fake_embed_query(text: str):
+    def fake_embed_query(text: str, *, bypass_cache: bool = False):
         embed_query_calls = captured["embed_query_calls"]
         assert isinstance(embed_query_calls, list)
         embed_query_calls.append(text)
         return [float(len(text))]
 
-    def fake_embed_queries(texts: list[str]):
+    def fake_embed_queries(texts: list[str], *, bypass_cache=None):
         embed_queries_calls = captured["embed_queries_calls"]
         assert isinstance(embed_queries_calls, list)
         embed_queries_calls.append(list(texts))
@@ -354,9 +355,10 @@ def test_run_retrieval_applies_rerank_strategy_controls(monkeypatch) -> None:
     )
     monkeypatch.setattr("rag.pipeline.build_course_query", lambda query: "dense query")
     monkeypatch.setattr("rag.pipeline.build_cpp_query", lambda query: "cpp hints")
-    monkeypatch.setattr("rag.pipeline.embed_query", lambda text: [0.0])
+    monkeypatch.setattr("rag.pipeline.embed_query", lambda text, *, bypass_cache=False: [0.0])
     monkeypatch.setattr(
-        "rag.pipeline.embed_queries", lambda texts: [[float(len(text))] for text in texts]
+        "rag.pipeline.embed_queries",
+        lambda texts, *, bypass_cache=None: [[float(len(text))] for text in texts],
     )
 
     def fake_guidelines(query_vector, top_k, threshold):

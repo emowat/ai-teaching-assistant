@@ -26,7 +26,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from rag.course_registry import resolve_course_route
 from rag.schemas import AssistMode, CourseSource, QueryInput, RetrievalResult
-from rag.query_builder import build_course_query, build_cpp_query
+from rag.query_builder import build_course_query, build_cpp_query, is_low_signal
 from rag.retrievers import (
     embed_query,
     embed_queries,
@@ -137,15 +137,28 @@ def run_retrieval(query: QueryInput) -> RetrievalResult:
     course_query = build_course_query(query)
     cpp_query = build_cpp_query(query)
 
+    # Don't cache course queries that aren't reusable standalone questions:
+    #  - a contextualized follow-up (retrieval_query set) is unique per turn, and
+    #  - a low-signal message ("Check now") is contextless noise.
+    # Both only churn the LRU and evict genuinely reusable entries. They are
+    # still batched into the single encode call; only the cache write is skipped.
+    # The cpp_query (AST hints) stays cached — it recurs across turns.
+    skip_course_cache = (
+        bool(getattr(query, "retrieval_query", None)) or is_low_signal(course_query)
+    )
+    bypass = {course_query} if skip_course_cache else None
+
     # Embed the query strings once, up front and off the thread pool below. The
     # semantic and rules lanes share the single course vector instead of each
     # re-encoding the same text, and batching the course + cpp strings into one
     # encode call keeps the CPU-bound embedding work on a single thread. The
     # worker pool below then only runs I/O-bound Qdrant queries in parallel.
     if cpp_query:
-        course_vector, cpp_vector = embed_queries([course_query, cpp_query])
+        course_vector, cpp_vector = embed_queries(
+            [course_query, cpp_query], bypass_cache=bypass
+        )
     else:
-        course_vector = embed_query(course_query)
+        course_vector = embed_query(course_query, bypass_cache=bool(bypass))
         cpp_vector = None
 
     # Determine course-content retrieval callables

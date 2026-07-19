@@ -68,14 +68,25 @@ _embed_cache: "OrderedDict[str, list[float]]" = OrderedDict()
 _embed_cache_lock = Lock()
 
 
-def embed_queries(texts: list[str]) -> list[list[float]]:
-    """Encode query strings into Qdrant-ready vectors, cached and batched."""
+def embed_queries(
+    texts: list[str],
+    *,
+    bypass_cache: "set[str] | None" = None,
+) -> list[list[float]]:
+    """Encode query strings into Qdrant-ready vectors, cached and batched.
+
+    Texts in ``bypass_cache`` are still batched into the single encode call but
+    are neither read from nor written to the LRU. Use it for single-use strings
+    (e.g. a contextualized follow-up query, unique per turn) that would only
+    churn the cache and evict genuinely reusable entries.
+    """
+    bypass = bypass_cache or set()
     results: list[list[float] | None] = [None] * len(texts)
     miss_positions: OrderedDict[str, list[int]] = OrderedDict()
 
     with _embed_cache_lock:
         for index, text in enumerate(texts):
-            cached = _embed_cache.get(text)
+            cached = None if text in bypass else _embed_cache.get(text)
             if cached is not None:
                 _embed_cache.move_to_end(text)
                 results[index] = cached
@@ -91,6 +102,8 @@ def embed_queries(texts: list[str]) -> list[list[float]]:
                 vector_list = vector.tolist()
                 for position in miss_positions[text]:
                     results[position] = vector_list
+                if text in bypass:
+                    continue
                 _embed_cache[text] = vector_list
                 _embed_cache.move_to_end(text)
             while len(_embed_cache) > _EMBED_CACHE_MAX:
@@ -99,9 +112,9 @@ def embed_queries(texts: list[str]) -> list[list[float]]:
     return [vector for vector in results if vector is not None]
 
 
-def embed_query(text: str) -> list[float]:
+def embed_query(text: str, *, bypass_cache: bool = False) -> list[float]:
     """Encode a single query string into a Qdrant-ready vector (cached)."""
-    return embed_queries([text])[0]
+    return embed_queries([text], bypass_cache={text} if bypass_cache else None)[0]
 
 
 def close_client() -> None:

@@ -221,9 +221,13 @@ def _is_topical(token: str) -> bool:
     return zipf < _ZIPF_WEAK and token in _corpus_terms()
 
 
-def _is_low_signal(question: str) -> bool:
-    """True when a follow-up has no topical word and needs conversation context."""
-    if _zipf_frequency is None:      # detector unavailable → don't contextualize
+def is_low_signal(question: str) -> bool:
+    """True when a question has no topical word (contentless follow-up).
+
+    Used both to decide whether to contextualize a follow-up and to decide
+    whether a query string is worth caching (low-signal strings are not).
+    """
+    if _zipf_frequency is None:      # detector unavailable → treat as specific
         return False
     return not any(_is_topical(t) for t in _TOKEN.findall(question.lower()))
 
@@ -270,7 +274,7 @@ def build_retrieval_query(messages: list[dict]) -> str | None:
     ]
     if len(questions) < 2:
         return None
-    if not current_question or not _is_low_signal(current_question):
+    if not current_question or not is_low_signal(current_question):
         return None
 
     # Low-signal follow-up: anchor + recent window + current code & terminal.
