@@ -15,6 +15,7 @@ from rag_eng.config import (
     SageMakerGenerationConfig,
     SageMakerInferenceConfig,
 )
+from rag_eng.service import _build_retrieval_query
 from rag_eng.service import _extract_chat_context
 from rag_eng.service import get_health
 from rag_eng.service import run_input_guardrail_diagnostic
@@ -80,6 +81,112 @@ def test_extract_chat_context_cpp_brackets_not_truncated() -> None:
             f"student_message truncated for: {question!r}\n"
             f"got: {ctx['student_message']!r}"
         )
+
+
+def test_build_retrieval_query_first_turn_returns_none() -> None:
+    """A single user turn is already self-contained — no rewrite needed."""
+    assert _build_retrieval_query(
+        [{"role": "user", "content": "How do I extract the mantissa bits?"}]
+    ) is None
+    # No user turns at all is also a no-op.
+    assert _build_retrieval_query([]) is None
+    assert _build_retrieval_query(
+        [{"role": "assistant", "content": "Hi!"}]
+    ) is None
+
+
+def test_build_retrieval_query_low_signal_followup_concatenates_history() -> None:
+    """A low-signal follow-up gets the prior student questions prepended."""
+    messages = [
+        {"role": "user", "content": "My IEEE 754 mantissa extraction gives wrong bits"},
+        {"role": "assistant", "content": "What mask are you using?"},
+        {"role": "user", "content": "How about now"},
+    ]
+    rq = _build_retrieval_query(messages)
+    # Prior question + current, oldest first — restores the lost retrieval signal.
+    assert rq == "My IEEE 754 mantissa extraction gives wrong bits How about now"
+
+
+def test_build_retrieval_query_specific_followup_returns_none() -> None:
+    """A follow-up that carries its own signal is embedded as-is (no look-back)."""
+    messages = [
+        {"role": "user", "content": "How do I isolate the exponent field?"},
+        {"role": "assistant", "content": "Which mask?"},
+        {"role": "user", "content": "Is my mantissa mask 0x7FFFFF correct?"},
+    ]
+    assert _build_retrieval_query(messages) is None
+
+
+def test_build_retrieval_query_anchors_and_windows_recent() -> None:
+    """A low-signal follow-up keeps the problem anchor + recent window, drops the gap."""
+    messages = [
+        {"role": "user", "content": "I'm on problem 1, the floating point one"},  # anchor (names problem)
+        {"role": "assistant", "content": "ok"},
+        {"role": "user", "content": "how do I read the sign bit"},                # gap → dropped
+        {"role": "assistant", "content": "ok"},
+        {"role": "user", "content": "and the exponent field"},                    # recent window
+        {"role": "assistant", "content": "ok"},
+        {"role": "user", "content": "then the mantissa bits"},                    # recent window
+        {"role": "assistant", "content": "ok"},
+        {"role": "user", "content": "what about the bias"},                       # recent window
+        {"role": "assistant", "content": "ok"},
+        {"role": "user", "content": "how about now"},                             # current (low-signal)
+    ]
+    rq = _build_retrieval_query(messages)
+    # Anchor (turn 1) survives even though it is outside the recent 4-turn window;
+    # the mid-conversation "sign bit" turn falls in neither and is dropped.
+    assert rq == (
+        "I'm on problem 1, the floating point one "
+        "and the exponent field then the mantissa bits what about the bias how about now"
+    )
+    assert "how do I read the sign bit" not in rq
+
+
+def test_build_retrieval_query_low_signal_pulls_code_and_terminal() -> None:
+    """When the current turn is low-signal, its code + terminal add retrieval signal."""
+    messages = [
+        {"role": "user", "content": "My float decoder is wrong"},
+        {"role": "assistant", "content": "Show me the mask."},
+        {"role": "user", "content":
+            "[Code_Context]\nmantissa & (1 << 22)\n"
+            "[Terminal_Context]\nexpected 1.5 got 3.0\n"
+            "[Student_Question]\nhow about now"},
+    ]
+    rq = _build_retrieval_query(messages)
+    assert "My float decoder is wrong" in rq
+    assert "how about now" in rq
+    assert "mantissa & (1 << 22)" in rq        # code pulled in
+    assert "expected 1.5 got 3.0" in rq         # terminal pulled in
+
+
+def test_build_retrieval_query_extracts_student_question_blocks() -> None:
+    """Prior turns wrapped in extension blocks contribute only the question text."""
+    prior = (
+        "[State_Tracking]\nMode: Homework Assist\n"
+        "[Code_Context]\nfloat f = decode(bits);\n"
+        "[Terminal_Context]\nwrong output\n"
+        "[Student_Question]\nWhy is my exponent bias off?"
+    )
+    messages = [
+        {"role": "user", "content": prior},
+        {"role": "assistant", "content": "Let's check the bias."},
+        {"role": "user", "content": "[Student_Question]\nHow about now"},
+    ]
+    rq = _build_retrieval_query(messages)
+    # Only the [Student_Question] text is used — never the code/terminal/state blocks.
+    assert rq == "Why is my exponent bias off? How about now"
+    assert "float f = decode" not in rq
+    assert "State_Tracking" not in rq
+
+
+def test_build_retrieval_query_falls_back_to_raw_message() -> None:
+    """Turns without explicit blocks use the raw message content."""
+    messages = [
+        {"role": "user", "content": "how do denormals work"},
+        {"role": "assistant", "content": "Good question."},
+        {"role": "user", "content": "and now"},
+    ]
+    assert _build_retrieval_query(messages) == "how do denormals work and now"
 
 
 def test_get_health_reports_course_registry_status_when_unconfigured(monkeypatch):
