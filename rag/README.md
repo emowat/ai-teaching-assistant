@@ -62,8 +62,9 @@ See `/rag/experiments/experiment_results.md` for details
 | File | Responsibility |
 |------|---------------|
 | `schemas.py` | Pydantic contracts: `QueryInput`, `RetrievalResult`, `ChunkPayload`, `ASTFeatures`, `DocCategory`, `SourceDomain`, `CourseSource`, `AssistMode` |
-| `query_builder.py` | Fuses student NL + AST features + terminal output → dense embedding query string |
-| `retrievers.py` | Five parallel retrievers: syllabus (exact), semantic (vector), rules (vector+filter), guidelines (separate collection), CS50 (separate collection, week-filtered) |
+| `query_builder.py` | Builds **two** dense queries — `build_course_query` (student NL only, with **follow-up contextualization** for low-signal turns) for course collections, and `build_cpp_query` (AST + `std::` hints only) for the C++ reference. Hosts the shared follow-up condenser `build_retrieval_query` and the systematic low-signal detector |
+| `corpus_terms.json` / `experiments/build_corpus_terms.py` | Corpus-term artifact (tokens in ≥2 course chunks) + its builder, used by the low-signal detector alongside `wordfreq` |
+| `retrievers.py` | Parallel vector retrievers: `retrieve_semantic`, `retrieve_strict_rules` (vector + category filter + score threshold), `retrieve_guidelines` (separate C++ collection, week-agnostic), and CS50 variants `retrieve_harvard` / `retrieve_harvard_rules`. Syllabus is **not** retrieved — it is injected via `query.syllabus_matrix` |
 | `reranker.py` | Post-processing: deduplicate → category weighting → MMR diversify → group by category |
 | `context_assembler.py` | Formats retrieval results into `[Vector_Database_Results]` block matching CodingRabbit prompt format |
 | `pipeline.py` | Orchestrator: `run_retrieval(query) → RetrievalResult` (context only), `generate_response(query, llm) → str` (full TA answer). Routes to MIT14, CS50, or MIT13 collection based on `course_source` |
@@ -256,33 +257,34 @@ The loader's interface (`load_all() → list[ChunkPayload]`) stays the same — 
 
 Collection names are configured via environment variables in `rag/runtime.py` (`QDRANT_COLLECTION_MIT14`, `QDRANT_COLLECTION_CS50`, `QDRANT_COLLECTION_GUIDELINES`) with sensible defaults. When `QDRANT_URL` is set, the pipeline connects to Qdrant Cloud (gRPC, port 6334); otherwise it uses local disk-backed Qdrant.
 
+Collection names are suffixed with the embedding model (defaults in `rag/runtime.py`),
+so switching embeddings does not clobber an existing index.
+
 ```
-Qdrant (single instance, local-on-disk or Qdrant Cloud)
+Qdrant (single instance, local-on-disk or Qdrant Cloud)   —  BAAI/bge-large-en-v1.5, 1024-dim, Dot product
 │
-├── Collection: mit14_course                  (768-dim, Dot product)
+├── Collection: mit14_course_BAAI_bge_large_en_v1_5
 │   ├── Source: MIT 6.0014 (IAP 2014)
-│   ├── Content: lecture blocks, syllabus, assignment solutions
-│   ├── ~1,500+ chunks (parsed from ~11 lecture PDFs + assignments + syllabus)
+│   ├── Content: lecture blocks + assignment solutions (~336 chunks)
 │   ├── Payload indexes: week (int), category (keyword),
 │   │   priority (int), source_domain (keyword)
 │   └── Week range: 1-8, filtered per query
 │
-├── Collection: cs50_course                   (768-dim, Dot product)
-│   ├── Source: Harvard CS50 (2025 Fall)
+├── Collection: harvard_cs50_BAAI_bge_large_en_v1_5
+│   ├── Source: Harvard CS50
 │   ├── Content: lecture notes (one chunk per section) + transcripts (one chunk per paragraph)
-│   ├── Payload indexes: week (int), category (keyword),
-│   │   source_domain (keyword)
+│   ├── Payload indexes: week (int), category (keyword), source_domain (keyword)
 │   └── Week range: 0-5, filtered per query
 │
-└── Collection: cpp_knowledge                 (768-dim, Dot product)
-    ├── Source: C++ Core Guidelines + cppreference.com (offline HTML book, ~6K pages)
+└── Collection: cpp_guidelines_BAAI_bge_large_en_v1_5
+    ├── Source: C++ Core Guidelines + cppreference.com (offline HTML book)
     ├── Content: guidelines rules/examples + API reference (summary, section, example, member)
-    ├── ~25,000+ chunks total
+    ├── ~62K chunks total
     ├── Payload indexes: source_domain (keyword)
     └── Week: always 0 (global, week-agnostic)
 
-Legacy (not currently indexed by default):
-  └── Collection: mit13_course — MIT 6.0013 (6.S096), ~405 chunks
+Legacy (not indexed by default):
+  └── Collection: mit13_course_BAAI_bge_large_en_v1_5 — MIT 6.0013 (6.S096)
 ```
 
 ### Retrieval routing
@@ -291,24 +293,26 @@ Each query hits **exactly two collections** — one course collection (MIT14 or 
 
 ```python
 # pipeline.py — run_retrieval()
+course_query = build_course_query(query)   # student NL (contextualized for follow-ups)
+cpp_query    = build_cpp_query(query)       # AST / std:: hints only
 
-guidelines = retrieve_guidelines(dense_query)       # → cpp_knowledge (always)
+# C++ reference lane fires only when there are AST/std:: hints to query with:
+if cpp_query:
+    guidelines = retrieve_guidelines(cpp_vector)      # → cpp_guidelines (week-agnostic)
 
-if query.course_source == CourseSource.MIT_14:       # default
-    syllabus = retrieve_syllabus(week)               # → mit14_course
-    semantic = retrieve_semantic(dense_query, week)  # → mit14_course
-    rules    = retrieve_strict_rules(dense_query, week)
+if query.course_source == CourseSource.MIT_14:        # default
+    semantic = retrieve_semantic(course_vector, week)     # → mit14_course
+    rules    = retrieve_strict_rules(course_vector, week) # → mit14_course
 elif query.course_source == CourseSource.CS50:
-    semantic = retrieve_harvard(dense_query, week)   # → cs50_course
-    rules    = retrieve_harvard_rules(dense_query, week)
-    syllabus = retrieve_syllabus(week)               # → cs50_course
-else:  # CourseSource.MIT_13 (legacy)
-    syllabus = retrieve_syllabus(week)               # → mit13_course
-    semantic = retrieve_semantic(dense_query, week)  # → mit13_course
-    rules    = retrieve_strict_rules(dense_query, week)
+    semantic = retrieve_harvard(course_vector, week)      # → cs50_course
+    rules    = retrieve_harvard_rules(course_vector, week)
+# syllabus is NOT retrieved — the week's syllabus is injected via
+# query.syllabus_matrix during context assembly.
 ```
 
-Results from both collections are merged, weighted, diversified, and formatted into a single `[Vector_Database_Results]` block.
+The course lane and the C++ reference lane run in parallel on a thread pool. Results
+are merged, category-weighted, MMR-diversified, and formatted into a single
+`[Vector_Database_Results]` block.
 
 ### Qdrant Cloud integration
 
@@ -318,9 +322,10 @@ Collection names are configurable, not hardcoded. `rag/runtime.py` reads environ
 # .env — Qdrant Cloud
 QDRANT_URL=https://your-cluster.qdrant.cloud
 QDRANT_API_KEY=your-api-key
-QDRANT_COLLECTION_MIT14=mit14_course        # optional override
-QDRANT_COLLECTION_CS50=cs50_course          # optional override
-QDRANT_COLLECTION_GUIDELINES=cpp_knowledge  # optional override
+# Collection defaults (override only if your index uses different names):
+QDRANT_COLLECTION_MIT14=mit14_course_BAAI_bge_large_en_v1_5
+QDRANT_COLLECTION_CS50=harvard_cs50_BAAI_bge_large_en_v1_5
+QDRANT_COLLECTION_GUIDELINES=cpp_guidelines_BAAI_bge_large_en_v1_5
 ```
 
 When `QDRANT_URL` is set, `create_qdrant_client()` uses gRPC (port 6334) with keepalive; otherwise it falls back to local disk-backed Qdrant at `QDRANT_PATH`.
@@ -329,8 +334,8 @@ When `QDRANT_URL` is set, `create_qdrant_client()` uses gRPC (port 6334) with ke
 
 - Each collection has its own **vector space**, **HNSW index**, and **payload storage** — no cross-contamination
 - Concurrent queries to different collections have **no interference**
-- Embedding is computed **once per query** — the same 768-dim vector is used to search both the course and C++ knowledge collections
-- GUIDELINES and REFERENCE are stored together in `cpp_knowledge` (week = 0, source_domain distinguishes them)
+- Embedding is computed **once per query string** — the course NL query and the AST/`std::` query are encoded (batched) up front and reused across lanes
+- GUIDELINES and REFERENCE are stored together in the `cpp_guidelines` collection (week = 0, source_domain distinguishes them)
 - Collection names are resolved via `rag.runtime.get_runtime_config()` at query time, not hardcoded — switching between local and Qdrant Cloud requires only environment variables
 
 ---
@@ -345,7 +350,8 @@ When `QDRANT_URL` is set, `create_qdrant_client()` uses gRPC (port 6334) with ke
                         │
                         ▼
               ┌─────────────────────┐
-              │  query_builder.py   │  ← fuse NL, AST hints, terminal error → dense query string
+              │  query_builder.py   │  ← course_query (student NL, contextualized for
+              │                     │    follow-ups) + cpp_query (AST / std:: hints)
               └─────────┬───────────┘
                         │
                         │     course_source ──→ MIT_14 (default) ───────┐
@@ -355,11 +361,11 @@ When `QDRANT_URL` is set, `create_qdrant_client()` uses gRPC (port 6334) with ke
           ┌─────────────┼──────────────────────────────┐               │││
           ▼                           ▼                 ▼              │││
   retrievers.py               retrievers.py      retrievers.py        │││
-  ├─ syllabus(week)          ├─ semantic(...)    ├─ strict_rules(...)  │││
-  │  exact payload filter     │  vector search    │  vector + category │││
-  │  (all courses)           │  week: exact or   │  filter + threshold│││
+  (syllabus via              ├─ semantic(...)    ├─ strict_rules(...)  │││
+   query.syllabus_matrix,    │  vector search    │  vector + category │││
+   not retrieved)            │  week: exact or   │  filter + threshold│││
   │                          │  cumulative       │  week: exact or    │││
-  │                          │  top_k: 8         │  cumulative        │││
+  │                          │  top_k: 5         │  cumulative        │││
   │                          │                   │                    │││
   │     ┌────────────────────┼───────────────────┼────────────────────┘││
   │     │                    │                   │                     ││
@@ -375,7 +381,7 @@ When `QDRANT_URL` is set, `create_qdrant_client()` uses gRPC (port 6334) with ke
   │                          │                   │                      │
   │     ┌────────────────────┼───────────────────┼──────────────────────┐│
   │     │                    │                   │                      ││
-  │     │    collection:     │  cpp_knowledge    │  (always queried)    ││
+  │     │    collection:     │  cpp_guidelines   │  (when cpp_query set)││
   │     │                    │  week-agnostic    │  guidelines + ref    ││
   │     └────────────────────┴───────────────────┴──────────────────────┘│
   │                                                                     │
@@ -404,6 +410,61 @@ When `QDRANT_URL` is set, `create_qdrant_client()` uses gRPC (port 6334) with ke
               ├─ .harvard
               └─ .formatted_context  ← ready-to-inject into TA system prompt
 ```
+
+---
+
+## Query Building & Follow-up Contextualization
+
+`query_builder.py` produces **two independent query strings** (filters live in
+`retrievers.py`):
+
+- **`build_course_query(query)`** — the student's natural-language question, used
+  to search the course collection. AST hints are excluded so they don't pull
+  unrelated technical chunks into a conceptual question.
+- **`build_cpp_query(query)`** — AST-derived keyword hints (`has_pointer`,
+  `has_stl_algorithm`, …) plus any `std::` identifiers named in the message, used
+  to search the C++ reference collection. The guidelines lane runs **only** when
+  this string is non-empty.
+
+### Follow-up contextualization
+
+Retrieval is single-turn, but multi-turn follow-ups like *"How about now"*,
+*"Check the code"*, or *"-127"* carry no standalone signal — embedding them raw
+retrieves wrap-up / boilerplate noise. The backend condenses conversation history
+into a standalone query and passes it through an optional field; the pipeline
+prefers it when present:
+
+```python
+# schemas.py
+QueryInput.retrieval_query: str | None = None      # backend-built for follow-ups
+
+# query_builder.py
+def build_course_query(input):
+    return input.retrieval_query or input.student_message
+```
+
+`build_retrieval_query(messages)` (shared by the backend `rag_eng/service.py` and
+the retrieval eval, so both embed the identical string) is **adaptive**:
+
+| Current turn | Query used |
+|---|---|
+| First turn / **specific** (has a topical word) | the message as-is (returns `None`) |
+| **Low-signal** ("how about now") | **anchor** (turn naming the week/problem, else turn 1) + **recent** student turns + current **code/terminal** |
+
+The specific-vs-general decision is **systematic**, not a hand-maintained word
+list. A word is *topical* iff it is specialized in general English (low `wordfreq`
+zipf) and/or salient in the course corpus (in `corpus_terms.json`, tokens
+appearing in ≥2 course chunks):
+
+```python
+topical(token) = zipf(token) < 3.5                       # specialized in general English
+              OR (zipf(token) < 4.6 AND token in corpus)  # uncommon AND a course term
+low_signal(question) = no topical token → contextualize
+```
+
+See [`experiments/add_historical_turns.md`](experiments/add_historical_turns.md)
+for the design, the results comparison against production logs, and the recall
+analysis.
 
 ---
 
@@ -533,15 +594,15 @@ class CourseSource(str, Enum):
 ```python
 # Default: MIT 2014
 result = run_retrieval(QueryInput(..., week=3))
-# → queries mit14_course + cpp_knowledge
+# → queries mit14_course (+ cpp_guidelines when AST/std:: hints are present)
 
 # Explicit Harvard CS50
 result = run_retrieval(QueryInput(..., week=2, course_source=CourseSource.CS50))
-# → queries cs50_course + cpp_knowledge
+# → queries cs50_course (+ cpp_guidelines when AST/std:: hints are present)
 
 # Legacy MIT 6.0013
 result = run_retrieval(QueryInput(..., week=3, course_source=CourseSource.MIT_13))
-# → queries mit13_course + cpp_knowledge
+# → queries mit13_course (+ cpp_guidelines when AST/std:: hints are present)
 ```
 
 ### Why separate collections instead of a single shared one

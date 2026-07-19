@@ -106,6 +106,11 @@ class EngagementMetrics(BaseModel):
 class QueryInput(BaseModel):
     """What the TA orchestration layer sends to the retrieval endpoint."""
     student_message: str
+    # Optional standalone query for retrieval. The backend fills this for
+    # follow-up turns (e.g. "How about now") whose current message carries no
+    # standalone signal; retrieval embeds it instead of student_message.
+    # Generation is unaffected — it consumes the full message history natively.
+    retrieval_query: str | None = None
     code_raw: str = ""                    # raw C++ code in editor (with line numbers ok)
     terminal_output: str = ""
     exit_code: int = 0

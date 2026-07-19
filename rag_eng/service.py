@@ -12,6 +12,11 @@ from types import SimpleNamespace
 from typing import Any, AsyncIterator
 
 from rag import build_prompt, generate_response_from_result, run_retrieval
+from rag.query_builder import (
+    build_retrieval_query as _build_retrieval_query,
+    extract_block as _extract_block,
+    extract_student_question as _extract_student_question,
+)
 from rag.runtime import create_qdrant_client
 
 from rag.course_registry import get_course_registry_status, get_course_registry
@@ -646,7 +651,6 @@ def _apply_pipeline_guardrails(
             "conversation_turns": len(conversation_history),
         },
     )
-    import re
     visible_answer = re.sub(r"<analysis>.*?</analysis>", "", answer, flags=re.DOTALL).strip()
 
     guardrail_started = time.perf_counter()
@@ -1262,28 +1266,10 @@ def _extract_chat_context(messages: list[dict]) -> dict:
     )
     content = last_user["content"] if last_user else ""
 
-    # Exact block tags emitted by the VS Code extension — used as delimiters.
-    # Using an explicit allowlist avoids false matches on C++ identifiers like
-    # [MAX_SIZE_BUFFER], lambda captures [&]/[=]/[], or any other [] in student text.
-    _KNOWN_TAGS = (
-        "Code_Context|Terminal_Context|Student_Question"
-        "|State_Tracking|/State_Tracking"
-    )
-    _TAG_BOUNDARY = rf"(?=\[(?:{_KNOWN_TAGS})\]|$)"
-
-    def _block(tag: str) -> str:
-        m = re.search(rf"\[{tag}\](.*?){_TAG_BOUNDARY}", content, re.DOTALL)
-        return m.group(1).strip() if m else ""
-
     mode = "Study Assist" if "Mode: Study Assist" in content else "Homework Assist"
-    code_raw = _block("Code_Context")
-    terminal_output = _block("Terminal_Context")
-    student_message = _block("Student_Question")
-    if not student_message:
-        # Strip only the known block markers and their content from raw message
-        student_message = re.sub(
-            rf"\[(?:{_KNOWN_TAGS})\][\s\S]*?{_TAG_BOUNDARY}", "", content
-        ).strip()
+    code_raw = _extract_block(content, "Code_Context")
+    terminal_output = _extract_block(content, "Terminal_Context")
+    student_message = _extract_student_question(content)
 
     def _extract_bool(key: str) -> bool:
         m = re.search(rf"{key}:\s*(true|false)", content, re.IGNORECASE)
@@ -1471,6 +1457,9 @@ async def run_chat(
 
     query_kwargs: dict[str, object] = {
         "student_message": ctx["student_message"],
+        # Standalone retrieval query for follow-ups (None on the first turn).
+        # Retrieval embeds this; generation still sees the full history natively.
+        "retrieval_query": _build_retrieval_query(messages),
         "code_raw": ctx["code_raw"],
         "terminal_output": ctx["terminal_output"],
         "mode": ctx["mode"],

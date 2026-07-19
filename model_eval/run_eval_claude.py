@@ -52,7 +52,7 @@ load_dotenv(ROOT_DIR/".env")
 REPO_ROOT= ROOT_DIR.parent
 sys.path.insert(0, str(REPO_ROOT))
 sys.path.insert(0, str(REPO_ROOT / "rag" / "experiments"))
-from retrieval_experiment import _write_json
+from retrieval_experiment import _get_s3_client, _parse_s3_url, _read_text, _write_json
 
 
 #load scecret form .env file
@@ -71,12 +71,16 @@ load_env()
 
 #config (override with enviroment variabels)
 
-EVAL_DIR= os.environ.get("EVAL_DIR", "eval")
-RESULTS_DIR= os.environ.get("RESULTS_DIR", "evaluation/model_eval_results/log_results")
+DEFAULT_EVAL_SOURCES= [
+    f"s3://codingrabbit-data-dev/eval/chat_logs/turn_logs/course_id=mit14/date=2026-07-{day:02d}/"
+    for day in range(5, 12)
+]
+EVAL_SOURCES= [os.environ["EVAL_DIR"]] if os.environ.get("EVAL_DIR") else DEFAULT_EVAL_SOURCES
+RESULTS_DIR= os.environ.get("RESULTS_DIR", "model_eval/evaluation/model_eval_results/claude_eval_turn_logs")
 #S3 checkpoint prefix for the JSON results; set to "" to disable and stay local-only
 RESULTS_S3_PREFIX= os.environ.get(
     "RESULTS_S3_PREFIX",
-    "s3://codingrabbit-data-dev/evaluation/model_eval_results/results_claude_as_judge/",
+    "s3://codingrabbit-data-dev/evaluation/model_eval_results/turn_logs_results_claude/",
 )
 DATASET_NAME= os.environ.get("DATASET_NAME", "eval_log")
 model_=os.environ.get("MODEL", "claude-sonnet-4-6")           #CLI model alias ("sonnet") or full id
@@ -131,15 +135,41 @@ class ClaudeCLIJudge:
                         raise
         return results
 
-def load_all_logs(eval_dir):
-    rows, files= [], sorted(glob.glob(os.path.join(eval_dir, "**", "*.jsonl"), recursive= True))
-    print("found", len(files), "jsonl files under", eval_dir)
+def _s3_jsonl_files(prefix):
+    if prefix.endswith(".jsonl"):
+        return [prefix]
+    bucket, key= _parse_s3_url(prefix)
+    files, token= [], None
+    s3= _get_s3_client()
+    while True:
+        kwargs= {"Bucket": bucket, "Prefix": key or ""}
+        if token:
+            kwargs["ContinuationToken"]= token
+        response= s3.list_objects_v2(**kwargs)
+        files.extend(
+            f"s3://{bucket}/{obj['Key']}"
+            for obj in response.get("Contents", [])
+            if obj["Key"].endswith(".jsonl")
+        )
+        if not response.get("IsTruncated"):
+            return sorted(files)
+        token= response.get("NextContinuationToken")
+
+def load_all_logs(eval_sources):
+    rows, files= [], []
+    for source in eval_sources:
+        if source.startswith("s3://"):
+            source_files= _s3_jsonl_files(source)
+        else:
+            source_files= sorted(glob.glob(os.path.join(source, "**", "*.jsonl"), recursive= True))
+        files.extend(source_files)
+        print("found", len(source_files), "jsonl files under", source)
     for path in files:
-        with open(path) as f:
-            for line in f:
-                line=line.strip()
-                if line:
-                    rows.append(json.loads(line))
+        text= _read_text(path) if path.startswith("s3://") else Path(path).read_text(encoding="utf-8")
+        for line in text.splitlines():
+            line=line.strip()
+            if line:
+                rows.append(json.loads(line))
     print("loaded" , len(rows), "log turns total")
     return rows
 
@@ -162,13 +192,13 @@ def main():
     os.makedirs(RESULTS_DIR, exist_ok=True)
     ef.results_dir= RESULTS_DIR
     
-    log_dataset= load_all_logs(EVAL_DIR)
+    log_dataset= load_all_logs(EVAL_SOURCES)
     if not log_dataset:
         print("no log turns found nothing to do"); return
     judge_model= ClaudeCLIJudge(model=model_)
 
     #optional subset: cap homework/study sessions (adversarial are always kept in full).
-    #Defaults keep every session; e.g. EVAL_HOMEWORK_N=30 EVAL_STUDY_N=15 for a quick run.
+    #Defaults keep every session; e.g. EVAL_HOMEWORK_N=20 EVAL_STUDY_N=20 for a quick run.
     ef.homework_number= int(os.environ.get("EVAL_HOMEWORK_N", ef.homework_number))
     ef.study_number= int(os.environ.get("EVAL_STUDY_N", ef.study_number))
     print(f"sampling caps: homework<= {ef.homework_number}, study<= {ef.study_number} (adversarial: all)")
@@ -183,9 +213,9 @@ def main():
     micro_results= ef.run_mirco_eval(micro_samples, judge_model , micro_judge_prompt)
     drift= ef.compute_drift(micro_results)
     
-    save_json(macro_results, f"Macro_{DATASET_NAME}_LLM-as-a-judge_c_plus_plus_dataset.json")
-    save_json(micro_results, f"Micro_{DATASET_NAME}_LLM-as-a-judge_c_plus_plus_dataset.json")
-    save_json(drift, f"Drift_{DATASET_NAME}_LLM-as-a-judge_c_plus_plus_dataset.json")
+    save_json(macro_results, f"Macro_{DATASET_NAME}_turn_logs.json")
+    save_json(micro_results, f"Micro_{DATASET_NAME}_turn_logs.json")
+    save_json(drift, f"Drift_{DATASET_NAME}_turn_logs.json")
     
     macro_df, micro_df= pd.DataFrame(macro_results), pd.DataFrame(micro_results)
     summary= {DATASET_NAME: {
@@ -196,7 +226,7 @@ def main():
         "code_leak_rate": drift.get("code_leak_rate"),
         }}
     
-    save_json(summary, "Summary_LLM-as-a-judge_c_plus_plus_dataset.json")
+    save_json(summary, "Summary_turn_logs.json")
     print(json.dumps(summary, indent=2))
     
     try:
