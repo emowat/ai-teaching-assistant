@@ -98,4 +98,22 @@ describe("LandingPage", () => {
 
     expect(signinRedirect).toHaveBeenCalledTimes(1);
   });
+
+  it("shows all team members and sends Try CodingRabbit through Cognito", () => {
+    window.sessionStorage.setItem("codingrabbit.capstone-intro-seen", "true");
+    render(<LandingPage onNavigate={vi.fn()} />);
+
+    expect(screen.getByText("Carlos Schrupp")).toBeInTheDocument();
+    expect(screen.getByText("Alex Alvarez")).toBeInTheDocument();
+    expect(screen.getByText("Ligong Zhang")).toBeInTheDocument();
+    expect(screen.getByText("Lyn Wang")).toBeInTheDocument();
+    expect(screen.getByText("Eric Mowat")).toBeInTheDocument();
+    expect(screen.getByText("Infrastructure, AWS backend, and UI")).toBeInTheDocument();
+    expect(screen.getByText("Model guardrails")).toBeInTheDocument();
+    expect(screen.getByText("RAG pipeline")).toBeInTheDocument();
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Try CodingRabbit" })[0]);
+
+    expect(signinRedirect).toHaveBeenCalledTimes(1);
+  });
 });

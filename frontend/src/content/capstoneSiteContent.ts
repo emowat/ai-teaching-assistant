@@ -1,3 +1,9 @@
+import alexAlvarezPortrait from "../assets/team/alex-alvarez.jpg";
+import carlosSchruppPortrait from "../assets/team/carlos-schrupp.png";
+import ericMowatPortrait from "../assets/team/eric-mowat.jpg";
+import ligongZhangPortrait from "../assets/team/ligong-zhang.jpg";
+import lynWangPortrait from "../assets/team/lyn-wang.png";
+
 export interface LearningPrinciple {
   label: string;
   title: string;
@@ -24,6 +30,12 @@ export interface ComparisonRow {
   capability: string;
   precedent: string;
   codingRabbit: string;
+}
+
+export interface TeamMember {
+  name: string;
+  contributions: string;
+  portrait: string;
 }
 
 export const centralResearchQuestion =
@@ -173,6 +185,34 @@ export const architectureSteps = [
   "Model routing",
   "Output guardrails",
   "Aurora and offline evaluation",
+] as const;
+
+export const teamMembers: readonly TeamMember[] = [
+  {
+    name: "Carlos Schrupp",
+    contributions: "Infrastructure, AWS backend, and UI",
+    portrait: carlosSchruppPortrait,
+  },
+  {
+    name: "Alex Alvarez",
+    contributions: "Project manager, chief facilitator, and model evaluation",
+    portrait: alexAlvarezPortrait,
+  },
+  {
+    name: "Ligong Zhang",
+    contributions: "Model guardrails",
+    portrait: ligongZhangPortrait,
+  },
+  {
+    name: "Lyn Wang",
+    contributions: "RAG pipeline",
+    portrait: lynWangPortrait,
+  },
+  {
+    name: "Eric Mowat",
+    contributions: "Team lead, synthetic transcript generation, and PEFT training",
+    portrait: ericMowatPortrait,
+  },
 ] as const;
 
 export const researchSources = [

@@ -12,6 +12,7 @@ import {
   learningPrinciples,
   researchSources,
   roleStories,
+  teamMembers,
 } from "../content/capstoneSiteContent";
 import {
   getRedirectOrigin,
@@ -127,20 +128,20 @@ export function LandingPage({ onNavigate, demoMode = false }: LandingPageProps) 
               the learning environment, and evaluates the system end to end.
             </p>
             <div className="hero-actions">
-              <a className="pill-link" href="#product">
-                Watch the demo
-              </a>
-              <a className="pill-link pill-link-secondary" href="#approach">
-                Explore how it works
-              </a>
               <button
                 type="button"
-                className="text-button hero-sign-in"
+                className="pill-button"
                 onClick={handleLogin}
                 disabled={loginDisabled}
               >
-                Sign in to CodingRabbit →
+                Try CodingRabbit
               </button>
+              <a className="pill-link pill-link-secondary" href="#product">
+                Explore the MVP
+              </a>
+              <a className="text-button hero-sign-in" href="#approach">
+                Explore how it works
+              </a>
             </div>
             <ul className="proof-list" aria-label="Product highlights">
               <li>VS Code native</li>
@@ -496,20 +497,23 @@ export function LandingPage({ onNavigate, demoMode = false }: LandingPageProps) 
               <p className="eyebrow">Built at UC Berkeley</p>
               <h2>A MIDS capstone exploring effective learning with AI.</h2>
               <p>
-                Add the final team story, contributor ownership, advisors, and
-                approved project links before public release.
+                We combine learning design, applied AI, RAG, guardrails, and
+                cloud infrastructure to study how AI can support learning
+                without replacing the learner's own reasoning.
               </p>
             </div>
-            <div className="team-placeholder-grid">
-              {["Team member", "Team member", "Team member", "Team member"].map(
-                (label, index) => (
-                  <div className="team-placeholder" key={`${label}-${index}`}>
-                    <span>{String(index + 1).padStart(2, "0")}</span>
-                    <strong>{label} placeholder</strong>
-                    <small>Role and project ownership</small>
+            <div className="team-grid">
+              {teamMembers.map((member) => (
+                <article className="team-card" key={member.name}>
+                  <div className="team-portrait">
+                    <img src={member.portrait} alt={`Portrait of ${member.name}`} />
                   </div>
-                ),
-              )}
+                  <div className="team-card-copy">
+                    <h3>{member.name}</h3>
+                    <p>{member.contributions}</p>
+                  </div>
+                </article>
+              ))}
             </div>
           </div>
         </section>
@@ -526,7 +530,7 @@ export function LandingPage({ onNavigate, demoMode = false }: LandingPageProps) 
             onClick={handleLogin}
             disabled={loginDisabled}
           >
-            Sign in to CodingRabbit
+            Try CodingRabbit
           </button>
         </section>
 
