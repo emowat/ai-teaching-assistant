@@ -67,6 +67,8 @@ DEFAULT_MODEL = {
     "cohere": "command-r-08-2024",  # https://docs.cohere.com/docs/command-r
     "google": "gemini-3.1-flash-lite",  # https://ai.google.dev/gemini-api/docs/models/gemini-3.1-flash-lite
     "bedrock": "amazon.nova-2-lite-v1:0",  # https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-nova-2-lite.html
+    "bedrock_claude_haiku": "us.anthropic.claude-haiku-4-5-20251001-v1:0",  # https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-haiku-4-5.html
+    "bedrock_claude_sonnet": "us.anthropic.claude-sonnet-4-6",  #https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-sonnet-4-6.html
 }
 judge_MODEL_Name = DEFAULT_MODEL.get(judge_)
 
@@ -106,6 +108,27 @@ def make_judge(judge_: str, model: str, temperature: float = 0):
             provider="amazon",
             region_name=os.environ.get("AWS_DEFAULT_REGION", "us-east-1"),
         )
+    if judge_ == "bedrock_claude_haiku":
+        from langchain_aws import ChatBedrockConverse
+
+        model_id = model if model.split(".", 1)[0] in ("us", "eu", "apac") else "us." + model
+        return ChatBedrockConverse(
+            model=model_id,
+            temperature=temperature,
+            provider="amazon",
+            region_name=os.environ.get("AWS_DEFAULT_REGION", "us-east-1"),
+        )
+    if judge_ == "bedrock_claude_sonnet":
+            from langchain_aws import ChatBedrockConverse
+    
+            model_id = model if model.split(".", 1)[0] in ("us", "eu", "apac") else "us." + model
+            return ChatBedrockConverse(
+                model=model_id,
+                temperature=temperature,
+                provider="amazon",
+                region_name=os.environ.get("AWS_DEFAULT_REGION", "us-east-1"),
+            )
+        
     raise ValueError(f"Unknown judge: {judge_!r}. Use openai, cohere, google, or bedrock")
 
 

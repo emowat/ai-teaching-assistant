@@ -123,7 +123,9 @@ def strip_cot_tags(text): #remove <analysis> and <thinking> blocks so only the s
 
 
 def build_context_(record):       #retrived chuck on the session
-  chuncks= record['backend_retrieval_phase'][ "retrieved_rag_chunks"]
+  brp= record.get("backend_retrieval_phase") or {} #adjustments to account for turn logs where backend_retrieval_phase is none
+  chuncks= brp.get("retrieved_rag_chunks") or []
+  
   part= []
   for c in  chuncks:
     label= c.get( "label", "Chunk")
@@ -344,7 +346,7 @@ def build_micro_samples(dataset,  max_turns_per_convo=None):
             "turn_index": ta_count, #which turn this is
             "turn_id": r.get("turn_id"), #get log turn id with session id form final_eval_log format record
             "session_id": r.get("session_id"), #get log turn id with session id form final_eval_log format record
-            "problem_id": r['ide_context']['active_file'].replace(".cpp", ""),
+            "problem_id": (((r.get('ide_context') or {}).get('active_file') or "unknown").replace(".cpp", "")),
             "student_code": r['ide_context'].get('raw_code_snippet') or "",
             "sys_prompt": rule_for(mode)+ '\n\n'+ context_, #rules +context
             "user_turn": get_user_turn(r), #student message to TA

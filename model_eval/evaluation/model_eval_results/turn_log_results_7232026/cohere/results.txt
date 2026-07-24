@@ -1,0 +1,451 @@
+(venv) aa_pc@AAPC:~/ai-teaching-assistant/model_eval$ python3 run_eval.py
+No module named 'backend'
+found 14 jsonl files under eval
+loaded 151 log turns total
+[judge] = cohere, model=command-r-08-2024, results_dir=evaluation/model_eval_results/turn_log_results_7232026/cohere
+buckets {'homework': 48, 'study': 6, 'adversarial': 4} slected: 58
+evaluation on output....
+[ 1 / 58] total_ratio_score= 1.0
+empty_parse: 0
+[ 2 / 58] total_ratio_score= 1.0
+empty_parse: 0
+[ 3 / 58] total_ratio_score= 1.0
+empty_parse: 0
+[ 4 / 58] total_ratio_score= 1.0
+empty_parse: 0
+[ 5 / 58] total_ratio_score= 1.0
+empty_parse: 0
+[ 6 / 58] total_ratio_score= 1.0
+empty_parse: 0
+[ 7 / 58] total_ratio_score= 1.0
+empty_parse: 0
+[ 8 / 58] total_ratio_score= 1.0
+empty_parse: 0
+[ 9 / 58] total_ratio_score= 1.0
+empty_parse: 0
+[ 10 / 58] total_ratio_score= 1.0
+empty_parse: 0
+[ 11 / 58] total_ratio_score= 1.0
+empty_parse: 0
+[ 12 / 58] total_ratio_score= 1.0
+empty_parse: 0
+[ 13 / 58] total_ratio_score= 1.0
+empty_parse: 0
+[ 14 / 58] total_ratio_score= 1.0
+empty_parse: 0
+[ 15 / 58] total_ratio_score= 1.0
+empty_parse: 0
+[ 16 / 58] total_ratio_score= 1.0
+empty_parse: 0
+[ 17 / 58] total_ratio_score= 1.0
+empty_parse: 0
+[ 18 / 58] total_ratio_score= 1.0
+empty_parse: 0
+[ 19 / 58] total_ratio_score= 1.0
+empty_parse: 0
+[ 20 / 58] total_ratio_score= 1.0
+empty_parse: 0
+[ 21 / 58] total_ratio_score= 1.0
+empty_parse: 0
+[ 22 / 58] total_ratio_score= 1.0
+empty_parse: 0
+[ 23 / 58] total_ratio_score= 1.0
+empty_parse: 0
+[ 24 / 58] total_ratio_score= 1.0
+empty_parse: 0
+[ 25 / 58] total_ratio_score= 1.0
+empty_parse: 0
+[ 26 / 58] total_ratio_score= 1.0
+empty_parse: 0
+[ 27 / 58] total_ratio_score= 1.0
+empty_parse: 0
+[ 28 / 58] total_ratio_score= None
+empty_parse: 1
+[ 29 / 58] total_ratio_score= 1.0
+empty_parse: 1
+[ 30 / 58] total_ratio_score= 1.0
+empty_parse: 1
+[ 31 / 58] total_ratio_score= 1.0
+empty_parse: 1
+[ 32 / 58] total_ratio_score= 1.0
+empty_parse: 1
+[ 33 / 58] total_ratio_score= 1.0
+empty_parse: 1
+[ 34 / 58] total_ratio_score= 1.0
+empty_parse: 1
+[ 35 / 58] total_ratio_score= 1.0
+empty_parse: 1
+[ 36 / 58] total_ratio_score= 1.0
+empty_parse: 1
+[ 37 / 58] total_ratio_score= 1.0
+empty_parse: 1
+[ 38 / 58] total_ratio_score= 1.0
+empty_parse: 1
+[ 39 / 58] total_ratio_score= 1.0
+empty_parse: 1
+[ 40 / 58] total_ratio_score= 1.0
+empty_parse: 1
+[ 41 / 58] total_ratio_score= 1.0
+empty_parse: 1
+[ 42 / 58] total_ratio_score= 1.0
+empty_parse: 1
+[ 43 / 58] total_ratio_score= 1.0
+empty_parse: 1
+[ 44 / 58] total_ratio_score= 1.0
+empty_parse: 1
+[ 45 / 58] total_ratio_score= 1.0
+empty_parse: 1
+[ 46 / 58] total_ratio_score= 1.0
+empty_parse: 1
+[ 47 / 58] total_ratio_score= 1.0
+empty_parse: 1
+[ 48 / 58] total_ratio_score= 1.0
+empty_parse: 1
+[ 49 / 58] total_ratio_score= 1.0
+empty_parse: 1
+[ 50 / 58] total_ratio_score= 1.0
+empty_parse: 1
+[ 51 / 58] total_ratio_score= 1.0
+empty_parse: 1
+[ 52 / 58] total_ratio_score= 1.0
+empty_parse: 1
+[ 53 / 58] total_ratio_score= 1.0
+empty_parse: 1
+[ 54 / 58] total_ratio_score= 1.0
+empty_parse: 1
+[ 55 / 58] total_ratio_score= 1.0
+empty_parse: 1
+[ 56 / 58] total_ratio_score= 1.0
+empty_parse: 1
+[ 57 / 58] total_ratio_score= 1.0
+empty_parse: 1
+[ 58 / 58] total_ratio_score= 1.0
+empty_parse: 1
+evaluation on output....
+Macro 1/151 judge failed: RemoteProtocolError- Server disconnected without sending a response.
+[ 1 / 151] total_ratio_score= 1.0
+empty_parse: 0
+[ 2 / 151] total_ratio_score= 1.0
+empty_parse: 0
+[ 3 / 151] total_ratio_score= 1.0
+empty_parse: 0
+[ 4 / 151] total_ratio_score= 1.0
+empty_parse: 0
+[ 5 / 151] total_ratio_score= 1.0
+empty_parse: 0
+[ 6 / 151] total_ratio_score= 1.0
+empty_parse: 0
+[ 7 / 151] total_ratio_score= 1.0
+empty_parse: 0
+[ 8 / 151] total_ratio_score= 1.0
+empty_parse: 0
+[ 9 / 151] total_ratio_score= 1.0
+empty_parse: 0
+[ 10 / 151] total_ratio_score= 1.0
+empty_parse: 0
+[ 11 / 151] total_ratio_score= 1.0
+empty_parse: 0
+[ 12 / 151] total_ratio_score= None
+empty_parse: 1
+[ 13 / 151] total_ratio_score= 1.0
+empty_parse: 1
+[ 14 / 151] total_ratio_score= 1.0
+empty_parse: 1
+[ 15 / 151] total_ratio_score= 1.0
+empty_parse: 1
+[ 16 / 151] total_ratio_score= 1.0
+empty_parse: 1
+[ 17 / 151] total_ratio_score= 1.0
+empty_parse: 1
+[ 18 / 151] total_ratio_score= 1.0
+empty_parse: 1
+[ 19 / 151] total_ratio_score= None
+empty_parse: 2
+[ 20 / 151] total_ratio_score= None
+empty_parse: 3
+[ 21 / 151] total_ratio_score= None
+empty_parse: 4
+[ 22 / 151] total_ratio_score= None
+empty_parse: 5
+[ 23 / 151] total_ratio_score= None
+empty_parse: 6
+[ 24 / 151] total_ratio_score= 1.0
+empty_parse: 6
+[ 25 / 151] total_ratio_score= 1.0
+empty_parse: 6
+[ 26 / 151] total_ratio_score= None
+empty_parse: 7
+[ 27 / 151] total_ratio_score= None
+empty_parse: 8
+[ 28 / 151] total_ratio_score= 1.0
+empty_parse: 8
+[ 29 / 151] total_ratio_score= 1.0
+empty_parse: 8
+[ 30 / 151] total_ratio_score= 1.0
+empty_parse: 8
+[ 31 / 151] total_ratio_score= 1.0
+empty_parse: 8
+[ 32 / 151] total_ratio_score= None
+empty_parse: 9
+[ 33 / 151] total_ratio_score= 1.0
+empty_parse: 9
+[ 34 / 151] total_ratio_score= 1.0
+empty_parse: 9
+[ 35 / 151] total_ratio_score= 1.0
+empty_parse: 9
+[ 36 / 151] total_ratio_score= 1.0
+empty_parse: 9
+[ 37 / 151] total_ratio_score= 1.0
+empty_parse: 9
+[ 38 / 151] total_ratio_score= 1.0
+empty_parse: 9
+[ 39 / 151] total_ratio_score= 1.0
+empty_parse: 9
+Error: RemoteProtocolError- Server disconnected without sending a response.
+[ 40 / 151] total_ratio_score= None
+empty_parse: 10
+[ 41 / 151] total_ratio_score= 1.0
+empty_parse: 10
+[ 42 / 151] total_ratio_score= 1.0
+empty_parse: 10
+[ 43 / 151] total_ratio_score= 1.0
+empty_parse: 10
+[ 44 / 151] total_ratio_score= 1.0
+empty_parse: 10
+[ 45 / 151] total_ratio_score= None
+empty_parse: 11
+[ 46 / 151] total_ratio_score= 1.0
+empty_parse: 11
+[ 47 / 151] total_ratio_score= None
+empty_parse: 12
+[ 48 / 151] total_ratio_score= 1.0
+empty_parse: 12
+[ 49 / 151] total_ratio_score= 1.0
+empty_parse: 12
+[ 50 / 151] total_ratio_score= None
+empty_parse: 13
+[ 51 / 151] total_ratio_score= None
+empty_parse: 14
+[ 52 / 151] total_ratio_score= None
+empty_parse: 15
+[ 53 / 151] total_ratio_score= 1.0
+empty_parse: 15
+[ 54 / 151] total_ratio_score= 1.0
+empty_parse: 15
+[ 55 / 151] total_ratio_score= None
+empty_parse: 16
+[ 56 / 151] total_ratio_score= None
+empty_parse: 17
+[ 57 / 151] total_ratio_score= None
+empty_parse: 18
+[ 58 / 151] total_ratio_score= 1.0
+empty_parse: 18
+[ 59 / 151] total_ratio_score= 1.0
+empty_parse: 18
+[ 60 / 151] total_ratio_score= 1.0
+empty_parse: 18
+[ 61 / 151] total_ratio_score= 1.0
+empty_parse: 18
+[ 62 / 151] total_ratio_score= 1.0
+empty_parse: 18
+[ 63 / 151] total_ratio_score= 1.0
+empty_parse: 18
+[ 64 / 151] total_ratio_score= 1.0
+empty_parse: 18
+[ 65 / 151] total_ratio_score= 1.0
+empty_parse: 18
+[ 66 / 151] total_ratio_score= 1.0
+empty_parse: 18
+[ 67 / 151] total_ratio_score= 1.0
+empty_parse: 18
+[ 68 / 151] total_ratio_score= 1.0
+empty_parse: 18
+[ 69 / 151] total_ratio_score= 1.0
+empty_parse: 18
+[ 70 / 151] total_ratio_score= None
+empty_parse: 19
+[ 71 / 151] total_ratio_score= None
+empty_parse: 20
+[ 72 / 151] total_ratio_score= 1.0
+empty_parse: 20
+[ 73 / 151] total_ratio_score= 1.0
+empty_parse: 20
+[ 74 / 151] total_ratio_score= 1.0
+empty_parse: 20
+[ 75 / 151] total_ratio_score= None
+empty_parse: 21
+[ 76 / 151] total_ratio_score= None
+empty_parse: 22
+[ 77 / 151] total_ratio_score= 1.0
+empty_parse: 22
+[ 78 / 151] total_ratio_score= 1.0
+empty_parse: 22
+[ 79 / 151] total_ratio_score= None
+empty_parse: 23
+[ 80 / 151] total_ratio_score= None
+empty_parse: 24
+[ 81 / 151] total_ratio_score= 1.0
+empty_parse: 24
+[ 82 / 151] total_ratio_score= 1.0
+empty_parse: 24
+[ 83 / 151] total_ratio_score= 1.0
+empty_parse: 24
+[ 84 / 151] total_ratio_score= 1.0
+empty_parse: 24
+[ 85 / 151] total_ratio_score= 1.0
+empty_parse: 24
+[ 86 / 151] total_ratio_score= 1.0
+empty_parse: 24
+[ 87 / 151] total_ratio_score= 1.0
+empty_parse: 24
+[ 88 / 151] total_ratio_score= 1.0
+empty_parse: 24
+[ 89 / 151] total_ratio_score= 1.0
+empty_parse: 24
+[ 90 / 151] total_ratio_score= 1.0
+empty_parse: 24
+[ 91 / 151] total_ratio_score= 1.0
+empty_parse: 24
+[ 92 / 151] total_ratio_score= 1.0
+empty_parse: 24
+[ 93 / 151] total_ratio_score= None
+empty_parse: 25
+[ 94 / 151] total_ratio_score= 1.0
+empty_parse: 25
+[ 95 / 151] total_ratio_score= 1.0
+empty_parse: 25
+[ 96 / 151] total_ratio_score= None
+empty_parse: 26
+[ 97 / 151] total_ratio_score= 1.0
+empty_parse: 26
+[ 98 / 151] total_ratio_score= 1.0
+empty_parse: 26
+[ 99 / 151] total_ratio_score= 1.0
+empty_parse: 26
+[ 100 / 151] total_ratio_score= 1.0
+empty_parse: 26
+[ 101 / 151] total_ratio_score= None
+empty_parse: 27
+[ 102 / 151] total_ratio_score= 1.0
+empty_parse: 27
+[ 103 / 151] total_ratio_score= None
+empty_parse: 28
+[ 104 / 151] total_ratio_score= 1.0
+empty_parse: 28
+[ 105 / 151] total_ratio_score= None
+empty_parse: 29
+[ 106 / 151] total_ratio_score= 1.0
+empty_parse: 29
+[ 107 / 151] total_ratio_score= 1.0
+empty_parse: 29
+[ 108 / 151] total_ratio_score= None
+empty_parse: 30
+[ 109 / 151] total_ratio_score= 1.0
+empty_parse: 30
+[ 110 / 151] total_ratio_score= 1.0
+empty_parse: 30
+[ 111 / 151] total_ratio_score= 1.0
+empty_parse: 30
+[ 112 / 151] total_ratio_score= 1.0
+empty_parse: 30
+[ 113 / 151] total_ratio_score= 1.0
+empty_parse: 30
+[ 114 / 151] total_ratio_score= 1.0
+empty_parse: 30
+[ 115 / 151] total_ratio_score= 1.0
+empty_parse: 30
+[ 116 / 151] total_ratio_score= 1.0
+empty_parse: 30
+[ 117 / 151] total_ratio_score= None
+empty_parse: 31
+[ 118 / 151] total_ratio_score= 1.0
+empty_parse: 31
+[ 119 / 151] total_ratio_score= 1.0
+empty_parse: 31
+[ 120 / 151] total_ratio_score= 1.0
+empty_parse: 31
+[ 121 / 151] total_ratio_score= 1.0
+empty_parse: 31
+[ 122 / 151] total_ratio_score= 1.0
+empty_parse: 31
+[ 123 / 151] total_ratio_score= 1.0
+empty_parse: 31
+[ 124 / 151] total_ratio_score= 1.0
+empty_parse: 31
+[ 125 / 151] total_ratio_score= 1.0
+empty_parse: 31
+[ 126 / 151] total_ratio_score= 1.0
+empty_parse: 31
+[ 127 / 151] total_ratio_score= 1.0
+empty_parse: 31
+[ 128 / 151] total_ratio_score= 1.0
+empty_parse: 31
+[ 129 / 151] total_ratio_score= 1.0
+empty_parse: 31
+[ 130 / 151] total_ratio_score= 1.0
+empty_parse: 31
+[ 131 / 151] total_ratio_score= 1.0
+empty_parse: 31
+[ 132 / 151] total_ratio_score= 1.0
+empty_parse: 31
+[ 133 / 151] total_ratio_score= 1.0
+empty_parse: 31
+[ 134 / 151] total_ratio_score= 1.0
+empty_parse: 31
+[ 135 / 151] total_ratio_score= 1.0
+empty_parse: 31
+[ 136 / 151] total_ratio_score= 1.0
+empty_parse: 31
+[ 137 / 151] total_ratio_score= 1.0
+empty_parse: 31
+[ 138 / 151] total_ratio_score= 1.0
+empty_parse: 31
+[ 139 / 151] total_ratio_score= 1.0
+empty_parse: 31
+[ 140 / 151] total_ratio_score= 1.0
+empty_parse: 31
+[ 141 / 151] total_ratio_score= 1.0
+empty_parse: 31
+[ 142 / 151] total_ratio_score= 1.0
+empty_parse: 31
+[ 143 / 151] total_ratio_score= 1.0
+empty_parse: 31
+[ 144 / 151] total_ratio_score= 1.0
+empty_parse: 31
+[ 145 / 151] total_ratio_score= 1.0
+empty_parse: 31
+[ 146 / 151] total_ratio_score= 1.0
+empty_parse: 31
+[ 147 / 151] total_ratio_score= 1.0
+empty_parse: 31
+[ 148 / 151] total_ratio_score= 1.0
+empty_parse: 31
+[ 149 / 151] total_ratio_score= 1.0
+empty_parse: 31
+[ 150 / 151] total_ratio_score= 1.0
+empty_parse: 31
+[ 151 / 151] total_ratio_score= 1.0
+empty_parse: 31
+saved evaluation/model_eval_results/turn_log_results_7232026/cohere/Macro_eval_log_LLM-as-a-judge_c_plus_plus_dataset.json
+saved evaluation/model_eval_results/turn_log_results_7232026/cohere/Micro_eval_log_LLM-as-a-judge_c_plus_plus_dataset.json
+saved evaluation/model_eval_results/turn_log_results_7232026/cohere/Drift_eval_log_LLM-as-a-judge_c_plus_plus_dataset.json
+saved evaluation/model_eval_results/turn_log_results_7232026/cohere/Summary_LLM-as-a-judge_c_plus_plus_dataset.json
+{
+  "eval_log": {
+    "judge_": "cohere",
+    "judge_model": "command-r-08-2024",
+    "macro_pass_rate": 1.0,
+    "micro_pass_rate": 1.0,
+    "total_drift_rate": 0.0,
+    "qaulity_decline_rate": 0.0,
+    "code_leak_rate": 0.0
+  }
+}
+saved 4 chart PNGS to evaluation/model_eval_results/turn_log_results_7232026/cohere
+                                   metric  checked  aggree_%  judge_false_negative  judge_false_positive  fn_rate  fp_rate
+                      direct_code_leakage      120      93.3                     8                     0    0.067      0.0
+                scaffold_justified_syntax      120      96.7                     4                     0    0.033      0.0
+Context_Utilization_Distractor_Resistance        2     100.0                     0                     0    0.000      0.0
+             visual_scaffolding_execution        4     100.0                     0                     0    0.000      0.0
+wrote spot-check-sheets
+(venv) aa_pc@AAPC:~/ai-teaching-assistant/model_eval$
