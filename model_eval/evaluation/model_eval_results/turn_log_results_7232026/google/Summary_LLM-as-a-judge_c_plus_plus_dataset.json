@@ -1,0 +1,11 @@
+{
+  "eval_log": {
+    "judge_": "google",
+    "judge_model": "gemini-3.1-flash-lite",
+    "macro_pass_rate": 0.9482758620689655,
+    "micro_pass_rate": 0.9072847682119205,
+    "total_drift_rate": 0.0,
+    "qaulity_decline_rate": 0.0,
+    "code_leak_rate": 0.0
+  }
+}
