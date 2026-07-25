@@ -18,6 +18,11 @@ from dotenv import load_dotenv
 
 from deploy.deployment_config import load_deploy_config
 from rag_eng.aurora_retry import connect_postgres_with_retry
+from rag_eng.aurora_secret_refresh import (
+    get_cached_refreshed_url,
+    is_password_auth_error,
+    refresh_database_url_from_secrets_manager,
+)
 from rag_eng.auth.models import CurrentUser
 from rag_eng.app_registry import sync_application_user
 from rag_eng.schemas import (
@@ -31,6 +36,40 @@ from rag_eng.schemas import (
 load_dotenv()
 
 logger = logging.getLogger(__name__)
+
+
+def _connect_postgres_with_secret_refresh(
+    database_url: str,
+    *,
+    profile: str = "reliable",
+    connect_timeout_seconds: int | None = None,
+):
+    """Connect to Aurora, self-healing from a rotated master password.
+
+    Prefers a previously Secrets-Manager-refreshed URL over the one passed in
+    (which every caller resolves from a process-lifetime-static env var), and
+    on a password-auth failure specifically, refreshes from Secrets Manager
+    and retries once - see rag_eng/aurora_secret_refresh.py for why a plain
+    retry can't recover from this on its own (it just retries the same
+    now-wrong password). This module's evaluation-launch path was missing
+    this self-heal even though app_registry.py/telemetry.py already had it,
+    which is why a launch could 500 with a stale password days after the
+    last deploy while the rest of the app kept working.
+    """
+    effective_url = get_cached_refreshed_url() or database_url
+    try:
+        return connect_postgres_with_retry(
+            effective_url, profile=profile, connect_timeout_seconds=connect_timeout_seconds
+        )
+    except Exception as exc:
+        if not is_password_auth_error(exc):
+            raise
+        refreshed_url = refresh_database_url_from_secrets_manager()
+        if not refreshed_url or refreshed_url == effective_url:
+            raise
+        return connect_postgres_with_retry(
+            refreshed_url, profile=profile, connect_timeout_seconds=connect_timeout_seconds
+        )
 
 
 def _format_timestamp(value: object | None) -> str:
@@ -267,7 +306,7 @@ def _query_turn_snapshots(
     sql.append("ORDER BY created_at ASC, session_id ASC, turn_index ASC, turn_id ASC")
     query = "\n".join(sql)
 
-    with connect_postgres_with_retry(
+    with _connect_postgres_with_secret_refresh(
         database_url,
         profile="reliable",
         connect_timeout_seconds=connect_timeout_seconds,
@@ -959,7 +998,7 @@ def get_evaluation_run(
     if not runtime.database_url:
         raise RuntimeError("Evaluation run database URL is not configured.")
 
-    with connect_postgres_with_retry(
+    with _connect_postgres_with_secret_refresh(
         runtime.database_url,
         profile="reliable",
         connect_timeout_seconds=runtime.connect_timeout_seconds,
@@ -989,7 +1028,7 @@ def list_evaluation_runs(
         params.append(status)
     params.append(limit)
 
-    with connect_postgres_with_retry(
+    with _connect_postgres_with_secret_refresh(
         runtime.database_url,
         profile="reliable",
         connect_timeout_seconds=runtime.connect_timeout_seconds,
@@ -1063,7 +1102,7 @@ def get_evaluation_overview(
     if not runtime.database_url:
         raise RuntimeError("Evaluation run database URL is not configured.")
 
-    with connect_postgres_with_retry(
+    with _connect_postgres_with_secret_refresh(
         runtime.database_url,
         profile="reliable",
         connect_timeout_seconds=runtime.connect_timeout_seconds,
@@ -1149,7 +1188,7 @@ def launch_evaluation_run(
 
     assert dataset_s3_uri is not None
 
-    with connect_postgres_with_retry(
+    with _connect_postgres_with_secret_refresh(
         runtime.database_url,
         profile="reliable",
         connect_timeout_seconds=runtime.connect_timeout_seconds,
@@ -1215,7 +1254,7 @@ def launch_evaluation_run(
         failures = ecs_summary["failures"]
         launch_failed = bool(failures) or not task_arn
 
-        with connect_postgres_with_retry(
+        with _connect_postgres_with_secret_refresh(
             runtime.database_url,
             profile="reliable",
             connect_timeout_seconds=runtime.connect_timeout_seconds,
@@ -1243,7 +1282,7 @@ def launch_evaluation_run(
                     started=True,
                 )
     except Exception as exc:
-        with connect_postgres_with_retry(
+        with _connect_postgres_with_secret_refresh(
             runtime.database_url,
             profile="reliable",
             connect_timeout_seconds=runtime.connect_timeout_seconds,

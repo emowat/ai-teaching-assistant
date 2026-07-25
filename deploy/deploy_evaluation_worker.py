@@ -39,6 +39,16 @@ WORKER_ENV_KEYS: tuple[str, ...] = (
     "EVALUATION_JUDGE_MAX_CONCURRENCY",
     "EVALUATION_JUDGE_MAX_TOKENS",
     "LOG_LEVEL",
+    # Plain (non-secret) env vars needed to self-heal from an Aurora master
+    # password rotation mid-run: the AWS-managed secret's ARN itself (not our
+    # app secret's - that one is never touched by Aurora's rotation) plus the
+    # stable connection details needed to rebuild a full URL from just a
+    # refreshed username/password. See rag_eng/aurora_secret_refresh.py.
+    "COURSE_REGISTRY_DATABASE_URL_SECRET_ID",
+    "COURSE_REGISTRY_DB_HOST",
+    "COURSE_REGISTRY_DB_PORT",
+    "COURSE_REGISTRY_DB_NAME",
+    "COURSE_REGISTRY_DB_SSLMODE",
 )
 
 BACKEND_ENV_KEYS: tuple[str, ...] = (

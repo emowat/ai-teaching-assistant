@@ -19,6 +19,11 @@ import pandas as pd
 from dotenv import load_dotenv
 
 from rag_eng.aurora_retry import connect_postgres_with_retry
+from rag_eng.aurora_secret_refresh import (
+    get_cached_refreshed_url,
+    is_password_auth_error,
+    refresh_database_url_from_secrets_manager,
+)
 from rag_eng.config import normalize_bedrock_model_id
 from rag_eng.llm_clients import (
     BedrockChatConfig,
@@ -717,12 +722,28 @@ def _upload_directory_to_s3(
 
 
 def _aurora_connection(settings: EvaluationWorkerSettings):
+    """Open an Aurora connection, self-healing from a rotated master password.
+
+    Prefers a previously Secrets-Manager-refreshed URL over the one passed in
+    (which the process resolves once, from a static env var, at task launch),
+    and on a password-auth failure specifically, refreshes from Secrets
+    Manager and retries once - see rag_eng/aurora_secret_refresh.py for why a
+    plain retry can't recover from this on its own (it just retries the same
+    now-wrong password). Evaluation runs can take a while, so a password
+    rotation mid-run hits this exact failure mode without this self-heal.
+    """
     if not settings.database_url:
         raise RuntimeError("No Aurora database URL configured for evaluation runs.")
-    return connect_postgres_with_retry(
-        settings.database_url,
-        profile="reliable",
-    )
+    effective_url = get_cached_refreshed_url() or settings.database_url
+    try:
+        return connect_postgres_with_retry(effective_url, profile="reliable")
+    except Exception as exc:
+        if not is_password_auth_error(exc):
+            raise
+        refreshed_url = refresh_database_url_from_secrets_manager()
+        if not refreshed_url or refreshed_url == effective_url:
+            raise
+        return connect_postgres_with_retry(refreshed_url, profile="reliable")
 
 
 def _persist_run_state(

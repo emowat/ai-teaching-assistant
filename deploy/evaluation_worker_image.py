@@ -35,6 +35,7 @@ _WORKER_SOURCE_FILES: tuple[Path, ...] = (
     Path("rag/schemas.py"),
     Path("rag_eng/__init__.py"),
     Path("rag_eng/aurora_retry.py"),
+    Path("rag_eng/aurora_secret_refresh.py"),
     Path("rag_eng/config.py"),
     Path("rag_eng/llm_clients.py"),
     Path("rag_eng/schemas.py"),
