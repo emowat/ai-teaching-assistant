@@ -695,6 +695,16 @@ export class TAChatViewProvider implements vscode.WebviewViewProvider {
                     this._exportChat();
                     break;
                 }
+                case 'clearChatRequest': {
+                    this._resetStudentConversationState();
+                    webviewView.webview.postMessage({ type: 'clearChat' });
+                    webviewView.webview.postMessage({
+                        type: 'addResponse',
+                        text: 'Hello! I am your C++ CodingRabbit. What are you working on today?',
+                        isThinking: false,
+                    });
+                    break;
+                }
                 case 'toggleStopwatch': {
                     if (!data.isPaused) {
                         this._recordActivity('chat'); // Manual resume triggers activity
@@ -2208,6 +2218,7 @@ ${terminalOutput}`;
             <div style="display: flex; gap: 4px; margin-top: 4px;">
                 <button id="terminalBtn" style="background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); flex: 1;">Start Tracked Terminal</button>
                 <button id="exportBtn" style="background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); flex: 1;">Export Chat</button>
+                <button id="clearChatBtn" style="background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); flex: 1;">Clear Chat</button>
                 <button id="stopwatchBtn" style="background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); flex: 1;">⏸ Pause Time</button>
             </div>
         </div>
@@ -2219,6 +2230,7 @@ ${terminalOutput}`;
         const sectionSelect = document.getElementById('sectionSelect');
         const terminalBtn = document.getElementById('terminalBtn');
         const exportBtn = document.getElementById('exportBtn');
+        const clearChatBtn = document.getElementById('clearChatBtn');
         const stopwatchBtn = document.getElementById('stopwatchBtn');
         const signOutBtn = document.getElementById('signOutBtn');
         const messages = document.getElementById('messages');
@@ -2278,7 +2290,11 @@ ${terminalOutput}`;
         exportBtn.addEventListener('click', () => {
             vscode.postMessage({ type: 'exportChat' });
         });
-        
+
+        clearChatBtn.addEventListener('click', () => {
+            vscode.postMessage({ type: 'clearChatRequest' });
+        });
+
         stopwatchBtn.addEventListener('click', () => {
             // Manual toggle sends a fake activity burst if resuming, or force-sets state temporarily
             // Note: Auto-timer will naturally override this after 5s of inactivity
