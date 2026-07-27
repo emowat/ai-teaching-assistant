@@ -1,0 +1,7 @@
+judge,TA_effectiveness,micro_pass,macro_pass,quality_drift,coverage
+cohere,1.0,1.0,1.0,0.0,1.24
+bedrock,0.97,0.94,1.0,0.071,7.15
+openai,0.94,0.96,0.93,0.0,7.36
+google,0.94,0.94,0.93,0.0,7.14
+bedrock_claude_haiku,0.92,0.85,1.0,0.0,7.9
+bedrock_claude_sonnet,0.88,0.83,0.93,0.143,7.72

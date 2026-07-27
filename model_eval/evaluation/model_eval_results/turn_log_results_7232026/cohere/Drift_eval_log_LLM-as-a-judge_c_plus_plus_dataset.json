@@ -2,13 +2,13 @@
   "total_drift_rate": 0.0,
   "qaulity_decline_rate": 0.0,
   "code_leak_rate": 0.0,
-  "Num_convos": 58,
+  "Num_convos": 14,
   "per_convo": [
     {
       "conversation_id": 0,
       "mode": "Homework Assist",
-      "num_turns": 1,
-      "delta": null,
+      "num_turns": 21,
+      "delta": 0.0,
       "leak_turn": null,
       "drifted": false
     },
@@ -23,7 +23,7 @@
     {
       "conversation_id": 2,
       "mode": "Homework Assist",
-      "num_turns": 1,
+      "num_turns": 8,
       "delta": null,
       "leak_turn": null,
       "drifted": false
@@ -31,16 +31,16 @@
     {
       "conversation_id": 3,
       "mode": "Homework Assist",
-      "num_turns": 1,
-      "delta": null,
+      "num_turns": 5,
+      "delta": 0.0,
       "leak_turn": null,
       "drifted": false
     },
     {
       "conversation_id": 4,
       "mode": "Homework Assist",
-      "num_turns": 1,
-      "delta": null,
+      "num_turns": 4,
+      "delta": 0.0,
       "leak_turn": null,
       "drifted": false
     },
@@ -55,16 +55,16 @@
     {
       "conversation_id": 6,
       "mode": "Homework Assist",
-      "num_turns": 1,
-      "delta": null,
+      "num_turns": 13,
+      "delta": 0.0,
       "leak_turn": null,
       "drifted": false
     },
     {
       "conversation_id": 7,
       "mode": "Homework Assist",
-      "num_turns": 1,
-      "delta": null,
+      "num_turns": 3,
+      "delta": 0.0,
       "leak_turn": null,
       "drifted": false
     },
@@ -79,7 +79,7 @@
     {
       "conversation_id": 9,
       "mode": "Homework Assist",
-      "num_turns": 3,
+      "num_turns": 6,
       "delta": 0.0,
       "leak_turn": null,
       "drifted": false
@@ -87,7 +87,7 @@
     {
       "conversation_id": 10,
       "mode": "Homework Assist",
-      "num_turns": 1,
+      "num_turns": 4,
       "delta": null,
       "leak_turn": null,
       "drifted": false
@@ -103,366 +103,14 @@
     {
       "conversation_id": 12,
       "mode": "Homework Assist",
-      "num_turns": 4,
-      "delta": 0.0,
+      "num_turns": 2,
+      "delta": null,
       "leak_turn": null,
       "drifted": false
     },
     {
       "conversation_id": 13,
-      "mode": "Homework Assist",
-      "num_turns": 21,
-      "delta": 0.0,
-      "leak_turn": null,
-      "drifted": false
-    },
-    {
-      "conversation_id": 14,
-      "mode": "Homework Assist",
-      "num_turns": 1,
-      "delta": null,
-      "leak_turn": null,
-      "drifted": false
-    },
-    {
-      "conversation_id": 15,
-      "mode": "Homework Assist",
-      "num_turns": 1,
-      "delta": null,
-      "leak_turn": null,
-      "drifted": false
-    },
-    {
-      "conversation_id": 16,
-      "mode": "Homework Assist",
-      "num_turns": 1,
-      "delta": null,
-      "leak_turn": null,
-      "drifted": false
-    },
-    {
-      "conversation_id": 17,
-      "mode": "Homework Assist",
-      "num_turns": 1,
-      "delta": null,
-      "leak_turn": null,
-      "drifted": false
-    },
-    {
-      "conversation_id": 18,
-      "mode": "Homework Assist",
-      "num_turns": 1,
-      "delta": null,
-      "leak_turn": null,
-      "drifted": false
-    },
-    {
-      "conversation_id": 19,
-      "mode": "Homework Assist",
-      "num_turns": 8,
-      "delta": 0.0,
-      "leak_turn": null,
-      "drifted": false
-    },
-    {
-      "conversation_id": 20,
-      "mode": "Homework Assist",
-      "num_turns": 6,
-      "delta": 0.0,
-      "leak_turn": null,
-      "drifted": false
-    },
-    {
-      "conversation_id": 21,
-      "mode": "Homework Assist",
-      "num_turns": 1,
-      "delta": null,
-      "leak_turn": null,
-      "drifted": false
-    },
-    {
-      "conversation_id": 22,
-      "mode": "Homework Assist",
-      "num_turns": 1,
-      "delta": null,
-      "leak_turn": null,
-      "drifted": false
-    },
-    {
-      "conversation_id": 23,
-      "mode": "Homework Assist",
-      "num_turns": 1,
-      "delta": null,
-      "leak_turn": null,
-      "drifted": false
-    },
-    {
-      "conversation_id": 24,
-      "mode": "Homework Assist",
-      "num_turns": 3,
-      "delta": 0.0,
-      "leak_turn": null,
-      "drifted": false
-    },
-    {
-      "conversation_id": 25,
-      "mode": "Homework Assist",
-      "num_turns": 3,
-      "delta": 0.0,
-      "leak_turn": null,
-      "drifted": false
-    },
-    {
-      "conversation_id": 26,
-      "mode": "Homework Assist",
-      "num_turns": 1,
-      "delta": null,
-      "leak_turn": null,
-      "drifted": false
-    },
-    {
-      "conversation_id": 27,
-      "mode": "Homework Assist",
-      "num_turns": 13,
-      "delta": 0.0,
-      "leak_turn": null,
-      "drifted": false
-    },
-    {
-      "conversation_id": 28,
-      "mode": "Homework Assist",
-      "num_turns": 2,
-      "delta": 0.0,
-      "leak_turn": null,
-      "drifted": false
-    },
-    {
-      "conversation_id": 29,
-      "mode": "Homework Assist",
-      "num_turns": 1,
-      "delta": null,
-      "leak_turn": null,
-      "drifted": false
-    },
-    {
-      "conversation_id": 30,
-      "mode": "Homework Assist",
-      "num_turns": 1,
-      "delta": null,
-      "leak_turn": null,
-      "drifted": false
-    },
-    {
-      "conversation_id": 31,
-      "mode": "Homework Assist",
-      "num_turns": 2,
-      "delta": 0.0,
-      "leak_turn": null,
-      "drifted": false
-    },
-    {
-      "conversation_id": 32,
-      "mode": "Homework Assist",
-      "num_turns": 1,
-      "delta": null,
-      "leak_turn": null,
-      "drifted": false
-    },
-    {
-      "conversation_id": 33,
-      "mode": "Homework Assist",
-      "num_turns": 1,
-      "delta": null,
-      "leak_turn": null,
-      "drifted": false
-    },
-    {
-      "conversation_id": 34,
-      "mode": "Homework Assist",
-      "num_turns": 9,
-      "delta": 0.0,
-      "leak_turn": null,
-      "drifted": false
-    },
-    {
-      "conversation_id": 35,
-      "mode": "Homework Assist",
-      "num_turns": 1,
-      "delta": null,
-      "leak_turn": null,
-      "drifted": false
-    },
-    {
-      "conversation_id": 36,
-      "mode": "Homework Assist",
-      "num_turns": 5,
-      "delta": 0.0,
-      "leak_turn": null,
-      "drifted": false
-    },
-    {
-      "conversation_id": 37,
-      "mode": "Homework Assist",
-      "num_turns": 1,
-      "delta": null,
-      "leak_turn": null,
-      "drifted": false
-    },
-    {
-      "conversation_id": 38,
-      "mode": "Homework Assist",
-      "num_turns": 4,
-      "delta": 0.0,
-      "leak_turn": null,
-      "drifted": false
-    },
-    {
-      "conversation_id": 39,
-      "mode": "Homework Assist",
-      "num_turns": 1,
-      "delta": null,
-      "leak_turn": null,
-      "drifted": false
-    },
-    {
-      "conversation_id": 40,
-      "mode": "Homework Assist",
-      "num_turns": 1,
-      "delta": null,
-      "leak_turn": null,
-      "drifted": false
-    },
-    {
-      "conversation_id": 41,
-      "mode": "Homework Assist",
-      "num_turns": 1,
-      "delta": null,
-      "leak_turn": null,
-      "drifted": false
-    },
-    {
-      "conversation_id": 42,
-      "mode": "Homework Assist",
-      "num_turns": 13,
-      "delta": 0.0,
-      "leak_turn": null,
-      "drifted": false
-    },
-    {
-      "conversation_id": 43,
-      "mode": "Homework Assist",
-      "num_turns": 1,
-      "delta": null,
-      "leak_turn": null,
-      "drifted": false
-    },
-    {
-      "conversation_id": 44,
-      "mode": "Homework Assist",
-      "num_turns": 1,
-      "delta": null,
-      "leak_turn": null,
-      "drifted": false
-    },
-    {
-      "conversation_id": 45,
-      "mode": "Homework Assist",
-      "num_turns": 1,
-      "delta": null,
-      "leak_turn": null,
-      "drifted": false
-    },
-    {
-      "conversation_id": 46,
-      "mode": "Homework Assist",
-      "num_turns": 1,
-      "delta": null,
-      "leak_turn": null,
-      "drifted": false
-    },
-    {
-      "conversation_id": 47,
-      "mode": "Homework Assist",
-      "num_turns": 1,
-      "delta": null,
-      "leak_turn": null,
-      "drifted": false
-    },
-    {
-      "conversation_id": 48,
       "mode": "Study Assist",
-      "num_turns": 2,
-      "delta": 0.0,
-      "leak_turn": null,
-      "drifted": false
-    },
-    {
-      "conversation_id": 49,
-      "mode": "Study Assist",
-      "num_turns": 2,
-      "delta": 0.0,
-      "leak_turn": null,
-      "drifted": false
-    },
-    {
-      "conversation_id": 50,
-      "mode": "Study Assist",
-      "num_turns": 3,
-      "delta": 0.0,
-      "leak_turn": null,
-      "drifted": false
-    },
-    {
-      "conversation_id": 51,
-      "mode": "Study Assist",
-      "num_turns": 1,
-      "delta": null,
-      "leak_turn": null,
-      "drifted": false
-    },
-    {
-      "conversation_id": 52,
-      "mode": "Study Assist",
-      "num_turns": 5,
-      "delta": 0.0,
-      "leak_turn": null,
-      "drifted": false
-    },
-    {
-      "conversation_id": 53,
-      "mode": "Study Assist",
-      "num_turns": 1,
-      "delta": null,
-      "leak_turn": null,
-      "drifted": false
-    },
-    {
-      "conversation_id": 54,
-      "mode": "Homework Assist",
-      "num_turns": 1,
-      "delta": null,
-      "leak_turn": null,
-      "drifted": false
-    },
-    {
-      "conversation_id": 55,
-      "mode": "Homework Assist",
-      "num_turns": 3,
-      "delta": 0.0,
-      "leak_turn": null,
-      "drifted": false
-    },
-    {
-      "conversation_id": 56,
-      "mode": "Homework Assist",
-      "num_turns": 1,
-      "delta": null,
-      "leak_turn": null,
-      "drifted": false
-    },
-    {
-      "conversation_id": 57,
-      "mode": "Homework Assist",
       "num_turns": 2,
       "delta": 0.0,
       "leak_turn": null,

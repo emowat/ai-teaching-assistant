@@ -2,10 +2,10 @@
   "eval_log": {
     "judge_": "bedrock_claude_sonnet",
     "judge_model": "us.anthropic.claude-sonnet-4-6",
-    "macro_pass_rate": 0.8620689655172413,
-    "micro_pass_rate": 0.82,
-    "total_drift_rate": 0.034,
+    "macro_pass_rate": 0.9285714285714286,
+    "micro_pass_rate": 0.8333333333333334,
+    "total_drift_rate": 0.143,
     "qaulity_decline_rate": 0.0,
-    "code_leak_rate": 0.034
+    "code_leak_rate": 0.143
   }
 }
