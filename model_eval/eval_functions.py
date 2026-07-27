@@ -15,6 +15,9 @@ import time
 import sys
 from statistics import NormalDist
 from math import sqrt
+import glob
+import csv
+
 try:
   from .prompts import (macro_metrics, macro_critical, micro_metrics, micro_critical)
 except ImportError:
@@ -27,7 +30,7 @@ except Exception:
 random.seed(42) #set a seed
 homework_number= 100000 #how many conversations are we collecting for this mode
 study_number= 100000 #how many conversations are we collecting for this mode
-Pass_threshold= 0.8 #a sample pass >80% of its non NA metrics are 1
+Pass_threshold= 0.80 #a sample pass >80% of its non NA metrics are 1
 results_dir=""
 
 
@@ -822,14 +825,14 @@ def make_visuals(name):
 
 #new visual for catagories
 macro_groups= {
-    "Pedagogical Quality": ["ZPD_progression", "Pedagogical_Guidance", "bug_naming_penalty"],
-    "Accuracy": ["direct_code_leakage", "degugging_path_correctness"],
+    "Pedagogy": ["ZPD_progression", "Pedagogical_Guidance", "bug_naming_penalty"],
+    "Correctness ": ["direct_code_leakage", "degugging_path_correctness"],
     "Conversational Reilience": ["patience_and_repetition", "conceptual_pivot", "adversarial_warning", "human_ta_referral"]
     }
 micro_groups= {
-    "Scaffolding & Syntax": ["scaffold_justified_syntax", "visual_scaffolding_execution"],
-    "Accuracy": ["direct_code_leakage", "code_correctness"],
-    "Rag / Context": ["Context_Precision_Retriever_Evaluation", "Context_Utilization_Distractor_Resistance", "Syllabus_Adherence"],
+    "Pedagogy": ["scaffold_justified_syntax", "visual_scaffolding_execution"],
+    "Correctness ": ["direct_code_leakage", "code_correctness"],
+    "RAG Grounding": ["Context_Precision_Retriever_Evaluation", "Context_Utilization_Distractor_Resistance", "Syllabus_Adherence"],
     "Guardrails":[ "Pre_Generation_Input_Guardrail_Accuracy", "Post_Generation_Output_Guardrail_Accuracy"]
     }
 
@@ -1037,3 +1040,188 @@ def score_spotcheck(sheet):
         "fp_rate": round( fp.sum()/ n, 3)
     })
   return pd.DataFrame(ro)
+
+
+
+#create ta metrics from results and agg results
+def load_judge_summaries(reuslts_dir):
+  rows=[]
+  for folder in sorted(glob.glob(os.path.join(results_dir,"*"))):
+    if not os.path.isdir(folder):continue
+    files= glob.glob(os.path.join(folder, "Summary_*.json"))
+    if not files:continue #skip with no summnary
+    data= json.load(open(files[0]))
+    inner= data[list(data)[0]]
+    rows.append({
+      "judge": os.path.basename(folder), #model folder name
+      "micro_pass": inner.get("micro_pass_rate"), #per reply pass rate
+      "macro_pass": inner.get("macro_pass_rate"), # per convo pass rate
+      "qaulity_decline_rate": inner.get("total_drift_rate") #quality drift rate
+    })
+  return rows
+
+# coverage to meaasure if a judge abstained a lot to not trust the result. ave # of micro metrics judge score per turn
+def judge_coverage(reults_dir, judge):
+  files= glob.glob(os.path.join(results_dir, judge, "Micro_*.json"))
+  if not files: return None
+  recs= json.load(open(files[0]))
+  if not recs: return None
+  scored= sum(sum(1 for m in micro_metrics if str(r.get(m)) != "NA") for r in recs) #count non na
+  return round(scored/len(recs), 2)
+
+
+#single metric to measure overall performance 
+def ta_effectiveness(micro_pass, macro_pass):
+  if micro_pass is None or macro_pass is None:
+    return None #cannt score without both
+  return round((micro_pass+ macro_pass)/2, 2)
+
+
+
+def build_ta_effectiveness(results_dir): # format of judfges metrics
+  rows=[]
+  for r in load_judge_summaries(results_dir):
+    rows.append({
+      "judge": r["judge"], 
+      "TA_effectiveness": ta_effectiveness(r["micro_pass"], r["macro_pass"]),#blended rate
+      "micro_pass": round(r["micro_pass"], 2) if r["micro_pass"] is not None else None,
+      "macro_pass": round(r["macro_pass"], 2) if r["macro_pass"] is not None else None,
+      "quality_drift": r["qaulity_decline_rate"],
+      "coverage": judge_coverage(results_dir, r["judge"]),
+    })
+  df= pd.DataFrame(rows).sort_values(by="TA_effectiveness", ascending= False)
+  return df
+
+
+
+def plot_ta_effectiveness(df, title): #chart showing performance of the judges 
+  pretty={"openai": "gpt-4o-mini",
+          "cohere": "command-r-08-2024",
+          "google": "gemini-3.1-flash-lite",
+          "bedrock": "amazon.nova-2-lite-v1:0",
+          "bedrock_claude_haiku": "anthropic.claude-haiku-4-5",
+          "bedrock_claude_sonnet": "anthropic.claude-sonnet-4-6",
+          }
+  
+  names= [pretty.get(j, j) for j in df["judge"].tolist()]
+  scores= df["TA_effectiveness"].tolist()
+  
+  #cons= df["coverage"].tolist()
+  #colors=["green" if (c is not None and c>=4) else "red" for c in cons] #reliable judge is green else red
+  
+  plt.figure(figsize= (10,5))
+  plt.barh(names, scores, color="#E77732", edgecolor="none") #update color
+  plt.xlim(0,1.05)
+  #plt.axvline(0.8, color="red",lw=1.5 , label="0.8 pass line" )
+  
+  for i, v in enumerate(scores):
+    plt.text(v+ 0.012 , i, f"{v:.1%}", va="center", fontweight= "bold" , fontsize=12)
+  plt.gca().invert_yaxis() #best judge on top
+  plt.xlabel("TA Effectiveness = mean(micro, macro)") # and green = reliable judge, red= abstains
+  plt.title(title, fontweight="bold", fontsize=14)
+  #plt.legend(loc="lower right")
+  
+  plt.tight_layout()
+  plt.show()
+
+
+def build_ta_cats(results_dir, judge): #one judge per cat showing pass rate and WIlSON CI 
+  files=glob.glob(os.path.join(results_dir, judge, "Micro_*.json"))
+  if not files: return []
+  
+  recs=json.load( open(files[0])) #results of judge
+  out=[]
+  
+  for cat, metrics in micro_groups.items(): #FOUR  cats to display
+    vals= [parse_score(r.get(m)) for r in recs for m in metrics]
+    vals= [ v for v in vals if v is not None] #drop NAs
+    passes, n = sum(vals), len(vals)
+    low, high= wilson_score_interval(passes, n) if n else (0.0, 0.0) #wilson ci 95% 
+    out.append({"category": cat, "pass": round(passes/n, 2) if n else 0.0, "low": low, "high": high, "n":n})
+  return out
+
+
+def plat_ta_cats(cats, title):# bar chart of judge's category pass rate with ci wiskers 
+  names= [c["category"] for c in cats]
+  scores= [c["pass"] for c in cats]
+  lower=[c["pass"]- c["low"] for c in cats] #distrance down to ci low
+  upper= [c["high"]- c["pass"] for c in cats]# distance up to the CI high
+  
+  plt.figure(figsize=(9,5))
+  plt.barh(names, scores, xerr=[lower, upper],capsize=5, color="#E77732", edgecolor="none") #update color and ci 
+  plt.xlim(0,1.05)
+  #plt.axvline(0.8, color="red",lw=1.5 , label="0.8 pass line" )
+    
+  for i, v in enumerate(scores):
+    plt.text(v+ upper[i]+0.015 , i, f"{v:.0%}", va="center", fontweight= "bold" , fontsize=12) #label ci
+  plt.gca().invert_yaxis() #first cat on  top
+  plt.xlabel("Pass rate (95% Wilson CI)")
+  plt.title(title, fontweight="bold", fontsize=14)
+  #plt.legend(loc="lower right")
+    
+  plt.tight_layout()
+  plt.show()
+  
+  
+  
+def _load_micro(results_dir, judge):#load micro results
+  files= glob.glob(os.path.join(results_dir, judge, "Micro_*.json"))
+  return json.load(open(files[0])) if files else []
+
+def baseline_agreements(results_dir, judge): #see how often did the judge agree with determinitic checks
+  path= os.path.join(results_dir, judge, "Log_disagreements.csv")
+  if not os.path.exists(path): return None
+  rows=list(csv.DictReader(open(path)))
+  if not rows: return None
+  return round(sum(1 for r in rows if r["note"]=="agree")/len(rows), 2)
+
+def judge_agreement(results_dir, primary , others): #how often are other judges given the same rubcric agreeing with selected judge
+  prim= {r.get("turn_id"): r for r in _load_micro(results_dir, primary)}
+  scores={}
+  for other in others:
+    o= {r.get("turn_id"): r for r in _load_micro(results_dir, other)}
+    match= total=0
+    for turn_id in set(prim) & set(o):
+      for m in micro_metrics:
+        a, b= parse_score(prim[turn_id].get(m)), parse_score(o[turn_id].get(m))
+        if a is not None and b is not None:
+          total +=1
+          if a==b : match +=1
+      scores[other]= round(match/ total, 2) if total else None
+    return scores
+
+def build_main_slide(results_dir, primary):
+  s_files= glob.glob(os.path.join(results_dir, primary, "Summary_*.json"))
+  if not s_files:return pd.DataFrame()
+  s= json.load(open(s_files[0])) ; s=s[list(s)[0]]
+  
+  micro, macro= s.get("micro_pass_rate"), s.get("macro_pass_rate")
+  drift= s.get("total_drift_rate") or 0
+  leak= s.get("code_leak_rate") or 0
+  
+  base= baseline_agreements(results_dir, primary) #deterministc rule check
+  others= [os.path.basename(f) for f in glob.glob(os.path.join(results_dir, "*"))
+           if os.path.isdir(f) and os.path.basename(f) not in (primary, "cohere") ]
+  agr= judge_agreement(results_dir, primary, others)
+  arg_val= [v for v in agr.values() if v is not None]
+  
+  agr_mean= round( sum(arg_val)/ len(arg_val), 2) if arg_val else None
+  
+  rows=[
+    {"metric": "judge", "value":primary, "explaination": "The judge used to highligh"},
+    {"metric": "TA_effectiveness", "value": ta_effectiveness(micro, macro ), "explaination": "Mean of the micro and macro pass rate"},
+    {"metric":"micro_pass_rate", "value": round(micro, 2) if micro is not None else None,  "explaination": "per reply pass rate"},
+    {"metric":"macro_pass_rate", "value": round(macro, 2) if macro is not None else None,  "explaination": "per conversation pass rate"},
+    {"metric":"baseline_agreement", "value":base,  "explaination": "non-LLM checks agree with Judge"},
+    {"metric":"cross_judge_agreement", "value":agr_mean,  "explaination": "other judges agree with the selected judge"},
+    {"metric":"quality_drift", "value":drift,  "explaination": "conversation got worse over the session"},
+    {"metric":"code_leak_rate", "value":leak,  "explaination": "judge_flagged leak rate"},
+  ]
+  recs=_load_micro(results_dir, primary)#the 4 cars pass rates
+  for cat, metrics in micro_groups.items():
+    vals= [parse_score(r.get(m)) for r in recs for m in metrics]
+    vals= [v for v in vals if v is not None]
+    n=len(vals)
+    rows.append({"metric": "category_" + cat, "value": round(sum(vals)/n, 2) if n else 0.0,
+                 "explaination": cat+ "category pass rate"})
+  return pd.DataFrame(rows)

@@ -2,10 +2,10 @@
   "eval_log": {
     "judge_": "bedrock_claude_haiku",
     "judge_model": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
-    "macro_pass_rate": 0.9827586206896551,
-    "micro_pass_rate": 0.847682119205298,
-    "total_drift_rate": 0.052,
-    "qaulity_decline_rate": 0.034,
-    "code_leak_rate": 0.017
+    "macro_pass_rate": 1.0,
+    "micro_pass_rate": 0.8472222222222222,
+    "total_drift_rate": 0.0,
+    "qaulity_decline_rate": 0.0,
+    "code_leak_rate": 0.0
   }
 }

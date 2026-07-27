@@ -1,0 +1,13 @@
+metric,value,explaination
+judge,bedrock_claude_haiku,The judge used to highligh
+TA_effectiveness,0.92,Mean of the micro and macro pass rate
+micro_pass_rate,0.85,per reply pass rate
+macro_pass_rate,1.0,per conversation pass rate
+baseline_agreement,0.95,non-LLM checks agree with Judge
+cross_judge_agreement,0.96,other judges agree with the selected judge
+quality_drift,0,conversation got worse over the session
+code_leak_rate,0,judge_flagged leak rate
+category_Pedagogy,0.96,Pedagogycategory pass rate
+category_Correctness ,1.0,Correctness category pass rate
+category_RAG Grounding,0.82,RAG Groundingcategory pass rate
+category_Guardrails,0.94,Guardrailscategory pass rate
