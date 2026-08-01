@@ -23,6 +23,11 @@ from urllib.parse import urlparse
 from dotenv import load_dotenv
 
 from rag_eng.aurora_retry import connect_postgres_with_retry
+from rag_eng.aurora_secret_refresh import (
+    get_cached_refreshed_url,
+    is_password_auth_error,
+    refresh_database_url_from_secrets_manager,
+)
 from rag_eng.ta_effectiveness_ingest import ingest_ta_effectiveness_scores
 
 try:
@@ -35,6 +40,26 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 _ARTIFACT_TYPES = ("macro", "micro", "drift")
+
+
+def _connect_postgres_with_secret_refresh(database_url: str, *, profile: str = "reliable"):
+    """Connect to Aurora, self-healing from a rotated master password.
+
+    Prefers a previously Secrets-Manager-refreshed URL over the one passed in,
+    and on a password-auth failure specifically, refreshes from Secrets
+    Manager and retries once - see rag_eng/aurora_secret_refresh.py for why a
+    plain retry can't recover from this on its own.
+    """
+    effective_url = get_cached_refreshed_url() or database_url
+    try:
+        return connect_postgres_with_retry(effective_url, profile=profile)
+    except Exception as exc:
+        if not is_password_auth_error(exc):
+            raise
+        refreshed_url = refresh_database_url_from_secrets_manager()
+        if not refreshed_url or refreshed_url == effective_url:
+            raise
+        return connect_postgres_with_retry(refreshed_url, profile=profile)
 
 
 def _parse_s3_uri(s3_uri: str) -> tuple[str, str]:
@@ -192,7 +217,7 @@ def main(argv: list[str] | None = None) -> int:
     region = (args.aws_region or env.get("AWS_REGION") or env.get("AWS_DEFAULT_REGION") or "us-east-1").strip()
     profile_name = args.aws_profile or env.get("AWS_PROFILE") or None
 
-    connection = connect_postgres_with_retry(database_url, profile="reliable")
+    connection = _connect_postgres_with_secret_refresh(database_url, profile="reliable")
     s3_client = _build_s3_client(region=region, profile_name=profile_name)
 
     totals = {"sessions_written": 0, "turns_written": 0, "sessions_skipped_no_session_row": 0, "runs_processed": 0}
