@@ -1,4 +1,4 @@
-import { apiGet, apiPatch, apiPost } from "./client.ts";
+import { apiDelete, apiGet, apiPatch, apiPost } from "./client.ts";
 import type {
   SectionMembershipRole,
   SectionMembershipStatus,
@@ -106,6 +106,17 @@ export function updateAdminSectionMembership(
   return apiPatch<AdminSectionMembershipUpdatePayload, AdminSection>(
     `${sectionPath(sectionId)}/memberships/${encodeURIComponent(userId)}`,
     payload,
+    accessToken
+  );
+}
+
+export function removeAdminSectionMembership(
+  sectionId: string,
+  userId: string,
+  accessToken: string
+): Promise<AdminSection> {
+  return apiDelete<AdminSection>(
+    `${sectionPath(sectionId)}/memberships/${encodeURIComponent(userId)}`,
     accessToken
   );
 }

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { addAdminCourseAliases, createAdminCourse, listAdminCourses, removeAdminCourseAlias, type AdminCourse, type AdminCourseSource, updateAdminCourse } from "../../api/adminCoursesApi";
 import { Btn, Card, Tag } from "../../design/atoms";
 import { D, mono } from "../../design/tokens";
+import { LaunchConfigsEditor, StyleGuideEditor, SyllabusMatrixEditor } from "./CourseFieldEditors";
 
 interface CourseManagementPanelProps {
   accessToken: string;
@@ -139,6 +140,10 @@ export function CourseManagementPanel({ accessToken }: CourseManagementPanelProp
   const [createCollectionTouched, setCreateCollectionTouched] = useState(false);
   const [createDraft, setCreateDraft] = useState<CreateDraft>(emptyCreateDraft());
   const [editDraft, setEditDraft] = useState<EditDraft>(emptyEditDraft());
+  // Bumped on "Reset" so the field editors below (keyed off course_id + this)
+  // remount and re-read the now-blank editDraft strings instead of keeping
+  // their own stale row state, which a course_id-only key wouldn't catch.
+  const [editDraftResetNonce, setEditDraftResetNonce] = useState(0);
   const [aliasInput, setAliasInput] = useState("");
 
   const selectedCourse = courses.find((course) => course.course_id === selectedCourseId) ?? null;
@@ -537,63 +542,30 @@ export function CourseManagementPanel({ accessToken }: CourseManagementPanelProp
               </div>
             </label>
             <label style={{ display: "grid", gap: 5 }}>
-              <span style={{ fontSize: 12, color: D.muted }}>Syllabus matrix (JSON array/object)</span>
-              <textarea
-                value={createDraft.syllabus_matrix}
-                onChange={(e) =>
-                  setCreateDraft((current) => ({ ...current, syllabus_matrix: e.target.value }))
+              <span style={{ fontSize: 12, color: D.muted }}>Syllabus matrix</span>
+              <SyllabusMatrixEditor
+                initialValue={createDraft.syllabus_matrix}
+                onChange={(value) =>
+                  setCreateDraft((current) => ({ ...current, syllabus_matrix: value }))
                 }
-                rows={4}
-                style={{
-                  background: D.bg,
-                  color: D.text,
-                  border: `1px solid ${D.border}`,
-                  borderRadius: 8,
-                  padding: "10px 12px",
-                  ...mono,
-                  fontSize: 12,
-                }}
-                placeholder='{"1": {"allowed": "...", "forbidden": "..."}}'
               />
             </label>
             <label style={{ display: "grid", gap: 5 }}>
-              <span style={{ fontSize: 12, color: D.muted }}>Style guide (Markdown/Text)</span>
-              <textarea
-                value={createDraft.style_guide}
-                onChange={(e) =>
-                  setCreateDraft((current) => ({ ...current, style_guide: e.target.value }))
+              <span style={{ fontSize: 12, color: D.muted }}>Style guide</span>
+              <StyleGuideEditor
+                initialValue={createDraft.style_guide}
+                onChange={(value) =>
+                  setCreateDraft((current) => ({ ...current, style_guide: value }))
                 }
-                rows={4}
-                style={{
-                  background: D.bg,
-                  color: D.text,
-                  border: `1px solid ${D.border}`,
-                  borderRadius: 8,
-                  padding: "10px 12px",
-                  ...mono,
-                  fontSize: 12,
-                }}
-                placeholder="- Indentation: 4 spaces&#10;- Braces: K&R style"
               />
             </label>
             <label style={{ display: "grid", gap: 5 }}>
-              <span style={{ fontSize: 12, color: D.muted }}>Launch configs (JSON array)</span>
-              <textarea
-                value={createDraft.launch_configs}
-                onChange={(e) =>
-                  setCreateDraft((current) => ({ ...current, launch_configs: e.target.value }))
+              <span style={{ fontSize: 12, color: D.muted }}>Launch configs</span>
+              <LaunchConfigsEditor
+                initialValue={createDraft.launch_configs}
+                onChange={(value) =>
+                  setCreateDraft((current) => ({ ...current, launch_configs: value }))
                 }
-                rows={4}
-                style={{
-                  background: D.bg,
-                  color: D.text,
-                  border: `1px solid ${D.border}`,
-                  borderRadius: 8,
-                  padding: "10px 12px",
-                  ...mono,
-                  fontSize: 12,
-                }}
-                placeholder='[{"repo_url": "https://github.com/...", "label": "Week 1", "launch_id": "week1"}]'
               />
             </label>
             <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: D.muted }}>
@@ -723,63 +695,33 @@ export function CourseManagementPanel({ accessToken }: CourseManagementPanelProp
                 )}
               </label>
               <label style={{ display: "grid", gap: 5 }}>
-                <span style={{ fontSize: 12, color: D.muted }}>Syllabus matrix (JSON array/object)</span>
-                <textarea
-                  value={editDraft.syllabus_matrix}
-                  onChange={(e) =>
-                    setEditDraft((current) => ({ ...current, syllabus_matrix: e.target.value }))
+                <span style={{ fontSize: 12, color: D.muted }}>Syllabus matrix</span>
+                <SyllabusMatrixEditor
+                  key={`${selectedCourse.course_id}-${editDraftResetNonce}`}
+                  initialValue={editDraft.syllabus_matrix}
+                  onChange={(value) =>
+                    setEditDraft((current) => ({ ...current, syllabus_matrix: value }))
                   }
-                  rows={4}
-                  style={{
-                    background: D.bg,
-                    color: D.text,
-                    border: `1px solid ${D.border}`,
-                    borderRadius: 8,
-                    padding: "10px 12px",
-                    ...mono,
-                    fontSize: 12,
-                  }}
-                  placeholder='{"1": {"allowed": "...", "forbidden": "..."}}'
                 />
               </label>
               <label style={{ display: "grid", gap: 5 }}>
-                <span style={{ fontSize: 12, color: D.muted }}>Style guide (Markdown/Text)</span>
-                <textarea
-                  value={editDraft.style_guide}
-                  onChange={(e) =>
-                    setEditDraft((current) => ({ ...current, style_guide: e.target.value }))
+                <span style={{ fontSize: 12, color: D.muted }}>Style guide</span>
+                <StyleGuideEditor
+                  key={`${selectedCourse.course_id}-${editDraftResetNonce}`}
+                  initialValue={editDraft.style_guide}
+                  onChange={(value) =>
+                    setEditDraft((current) => ({ ...current, style_guide: value }))
                   }
-                  rows={4}
-                  style={{
-                    background: D.bg,
-                    color: D.text,
-                    border: `1px solid ${D.border}`,
-                    borderRadius: 8,
-                    padding: "10px 12px",
-                    ...mono,
-                    fontSize: 12,
-                  }}
-                  placeholder="- Indentation: 4 spaces&#10;- Braces: K&R style"
                 />
               </label>
               <label style={{ display: "grid", gap: 5 }}>
-                <span style={{ fontSize: 12, color: D.muted }}>Launch configs (JSON array)</span>
-                <textarea
-                  value={editDraft.launch_configs}
-                  onChange={(e) =>
-                    setEditDraft((current) => ({ ...current, launch_configs: e.target.value }))
+                <span style={{ fontSize: 12, color: D.muted }}>Launch configs</span>
+                <LaunchConfigsEditor
+                  key={`${selectedCourse.course_id}-${editDraftResetNonce}`}
+                  initialValue={editDraft.launch_configs}
+                  onChange={(value) =>
+                    setEditDraft((current) => ({ ...current, launch_configs: value }))
                   }
-                  rows={4}
-                  style={{
-                    background: D.bg,
-                    color: D.text,
-                    border: `1px solid ${D.border}`,
-                    borderRadius: 8,
-                    padding: "10px 12px",
-                    ...mono,
-                    fontSize: 12,
-                  }}
-                  placeholder='[{"repo_url": "https://github.com/...", "label": "Week 1", "launch_id": "week1"}]'
                 />
               </label>
               <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: D.muted }}>
@@ -803,7 +745,10 @@ export function CourseManagementPanel({ accessToken }: CourseManagementPanelProp
                 <Btn
                   small
                   variant="ghost"
-                  onClick={() => setEditDraft(emptyEditDraft())}
+                  onClick={() => {
+                    setEditDraft(emptyEditDraft());
+                    setEditDraftResetNonce((n) => n + 1);
+                  }}
                 >
                   Reset
                 </Btn>

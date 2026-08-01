@@ -57,7 +57,7 @@ describe("UserManagementPanel", () => {
     render(<UserManagementPanel accessToken="access-token-1" />);
 
     expect(
-      await screen.findByText(/invite users in aurora first/i),
+      await screen.findByText(/sends them a Cognito sign-in email/i),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /refresh/i })).toBeInTheDocument();
 

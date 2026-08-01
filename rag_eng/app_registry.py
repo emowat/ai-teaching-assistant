@@ -433,6 +433,8 @@ class _CognitoInviteConfig:
     region: str
     user_pool_id: str
     student_group_name: str = "Students"
+    professor_group_name: str = "Professors"
+    admin_group_name: str = "Admins"
 
 
 def _load_cognito_invite_config() -> _CognitoInviteConfig:
@@ -444,10 +446,14 @@ def _load_cognito_invite_config() -> _CognitoInviteConfig:
         )
 
     student_group_name = _clean_text(os.getenv("COGNITO_STUDENT_GROUP")) or "Students"
+    professor_group_name = _clean_text(os.getenv("COGNITO_PROFESSOR_GROUP")) or "Professors"
+    admin_group_name = _clean_text(os.getenv("COGNITO_ADMIN_GROUP")) or "Admins"
     return _CognitoInviteConfig(
         region=region,
         user_pool_id=user_pool_id,
         student_group_name=student_group_name,
+        professor_group_name=professor_group_name,
+        admin_group_name=admin_group_name,
     )
 
 
@@ -475,10 +481,21 @@ def _load_cognito_user_by_email(
     return users[0]
 
 
-def _invite_cognito_student_user(
+def _invite_cognito_user(
     email: str,
     display_name: str,
+    *,
+    group_name: str | None,
 ) -> dict[str, Any]:
+    """Create (or reuse) a Cognito user and trigger its invite email.
+
+    Shared by every role's invite path - students, professors, and admins all
+    need the same admin_create_user + email-delivery flow, since this User
+    Pool has self-service sign-up disabled (AllowAdminCreateUserOnly=true).
+    group_name is optional: students get added to the student group, staff
+    (professor/admin) roles are authorized purely off the Aurora primary_role
+    column and don't need a Cognito group at all.
+    """
     config = _load_cognito_invite_config()
     session = boto3.Session(region_name=config.region)
     client = session.client("cognito-idp")
@@ -527,16 +544,17 @@ def _invite_cognito_student_user(
         raise CognitoInviteError(f"Unable to resolve Cognito user record for {email}.")
 
     username = _clean_text(cognito_user.get("Username")) or email
-    try:
-        client.admin_add_user_to_group(
-            UserPoolId=config.user_pool_id,
-            Username=username,
-            GroupName=config.student_group_name,
-        )
-    except (BotoCoreError, ClientError) as exc:
-        raise CognitoInviteError(
-            f"Unable to add Cognito user {email} to group {config.student_group_name}."
-        ) from exc
+    if group_name:
+        try:
+            client.admin_add_user_to_group(
+                UserPoolId=config.user_pool_id,
+                Username=username,
+                GroupName=group_name,
+            )
+        except (BotoCoreError, ClientError) as exc:
+            raise CognitoInviteError(
+                f"Unable to add Cognito user {email} to group {group_name}."
+            ) from exc
 
     cognito_sub = _cognito_attribute_value(cognito_user, "sub")
     if not cognito_sub:
@@ -558,6 +576,39 @@ def _invite_cognito_student_user(
         "cognito_sub": cognito_sub,
         "created": created,
     }
+
+
+def _invite_cognito_student_user(
+    email: str,
+    display_name: str,
+) -> dict[str, Any]:
+    config = _load_cognito_invite_config()
+    return _invite_cognito_user(email, display_name, group_name=config.student_group_name)
+
+
+def _invite_cognito_staff_user(
+    email: str,
+    display_name: str,
+    *,
+    primary_role: str,
+) -> dict[str, Any]:
+    """Invite a professor/admin - same Cognito delivery as students.
+
+    The frontend's dashboard routing (App.tsx / getUserGroups.ts) reads the
+    Cognito group straight off the JWT to decide which view to show - it does
+    not consult Aurora primary_role at all. So staff still need a group, just
+    a different one than students: "Admins" or "Professors" rather than
+    "Students". Getting this wrong doesn't block sign-in, it strands the user
+    on the "No Cognito group assigned" screen after a successful login.
+    """
+    config = _load_cognito_invite_config()
+    if primary_role == "admin":
+        group_name = config.admin_group_name
+    elif primary_role == "professor":
+        group_name = config.professor_group_name
+    else:
+        raise ValueError(f"Unsupported staff primary_role for Cognito invite: {primary_role}")
+    return _invite_cognito_user(email, display_name, group_name=group_name)
 
 
 def _resend_cognito_student_invite(email: str) -> None:
@@ -2251,6 +2302,13 @@ def create_admin_user(
     with _connect_postgres(database_url, runtime.connect_timeout_seconds) as connection:
         if _load_user_by_email(connection, email) is not None:
             raise AppUserConflictError(f"User with email {email} already exists.")
+
+    # Self-service sign-up is disabled on this User Pool (AllowAdminCreateUserOnly),
+    # so admin/professor accounts need the same explicit Cognito invite students get -
+    # otherwise the Aurora row we're about to insert has no way to ever be claimed.
+    cognito_invite = _invite_cognito_staff_user(email, display_name, primary_role=primary_role)
+
+    with _connect_postgres(database_url, runtime.connect_timeout_seconds) as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
@@ -2261,10 +2319,10 @@ def create_admin_user(
                   primary_role,
                   status
                 )
-                VALUES (NULL, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s)
                 RETURNING user_id
                 """,
-                (email, display_name, primary_role, status),
+                (cognito_invite["cognito_sub"], email, display_name, primary_role, status),
             )
             user_id = str(cursor.fetchone()[0])
 
@@ -2537,6 +2595,38 @@ def update_section_membership(
                   AND user_id = %s
                 """,
                 tuple(values + [section_id, user_id]),
+            )
+            if cursor.rowcount == 0:
+                raise MembershipNotFoundError(
+                    f"Membership for user {user_id} in section {section_id} was not found."
+                )
+
+    return get_admin_section(section_id, runtime=runtime)
+
+
+def remove_section_membership(
+    section_id: str,
+    user_id: str,
+    *,
+    runtime: AppRegistryRuntimeConfig | None = None,
+) -> AdminSection:
+    """Delete a single section membership row (any role).
+
+    Distinct from archive_section_data (which only ever touches student
+    memberships, section-wide, as part of an irreversible end-of-course
+    scrub) and from scrub_user_data (which deletes a user's memberships
+    everywhere as part of full account deletion). This is the narrow,
+    reversible-by-re-adding operation: remove one person from one section.
+    The user account and their memberships in every other section are
+    untouched.
+    """
+    runtime = runtime or load_app_registry_runtime_config()
+    database_url = _require_database_url(runtime)
+    with _connect_postgres(database_url, runtime.connect_timeout_seconds) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM section_memberships WHERE section_id = %s AND user_id = %s",
+                (section_id, user_id),
             )
             if cursor.rowcount == 0:
                 raise MembershipNotFoundError(

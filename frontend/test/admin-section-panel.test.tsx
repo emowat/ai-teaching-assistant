@@ -6,6 +6,7 @@ import {
   createAdminSection,
   createAdminSectionMembership,
   listAdminSections,
+  removeAdminSectionMembership,
   updateAdminSection,
   updateAdminSectionMembership,
 } from "../src/api/adminSectionsApi";
@@ -15,6 +16,7 @@ vi.mock("../src/api/adminSectionsApi", () => ({
   createAdminSection: vi.fn(),
   createAdminSectionMembership: vi.fn(),
   listAdminSections: vi.fn(),
+  removeAdminSectionMembership: vi.fn(),
   updateAdminSection: vi.fn(),
   updateAdminSectionMembership: vi.fn(),
 }));
@@ -29,6 +31,7 @@ const mockedCreateAdminSection = vi.mocked(createAdminSection);
 const mockedUpdateAdminSection = vi.mocked(updateAdminSection);
 const mockedCreateAdminSectionMembership = vi.mocked(createAdminSectionMembership);
 const mockedUpdateAdminSectionMembership = vi.mocked(updateAdminSectionMembership);
+const mockedRemoveAdminSectionMembership = vi.mocked(removeAdminSectionMembership);
 
 describe("SectionManagementPanel", () => {
   beforeEach(() => {
@@ -38,6 +41,7 @@ describe("SectionManagementPanel", () => {
     mockedUpdateAdminSection.mockReset();
     mockedCreateAdminSectionMembership.mockReset();
     mockedUpdateAdminSectionMembership.mockReset();
+    mockedRemoveAdminSectionMembership.mockReset();
   });
 
   it("refreshes the section roster from Aurora", async () => {
@@ -117,5 +121,117 @@ describe("SectionManagementPanel", () => {
       expect(mockedListAdminSections).toHaveBeenCalledTimes(2);
       expect(mockedListAdminUsers).toHaveBeenCalledTimes(2);
     });
+  });
+
+  it("removes a membership from the section entirely", async () => {
+    const membership = {
+      section_id: "mit14-fall-001",
+      user_id: "user-1",
+      section_display_name: "Section A",
+      course_id: "mit14",
+      course_display_name: "MIT 6.0014",
+      role_in_section: "professor" as const,
+      status: "active" as const,
+      created_at: "2026-07-09T00:00:00Z",
+      updated_at: "2026-07-09T00:00:00Z",
+    };
+    const section = {
+      section_id: "mit14-fall-001",
+      course_id: "mit14",
+      course_display_name: "MIT 6.0014",
+      display_name: "Section A",
+      term: "Fall 2026",
+      is_active: true,
+      professor_count: 1,
+      ta_count: 0,
+      student_count: 0,
+      memberships: [membership],
+      created_at: "2026-07-09T00:00:00Z",
+      updated_at: "2026-07-09T00:00:00Z",
+      archived_at: "",
+    };
+
+    mockedListAdminSections.mockResolvedValue([section]);
+    mockedListAdminUsers.mockResolvedValue([
+      {
+        user_id: "user-1",
+        cognito_sub: "sub-1",
+        email: "prof@example.edu",
+        display_name: "Prof One",
+        primary_role: "professor",
+        status: "active",
+        section_memberships: [],
+        created_at: "2026-07-09T00:00:00Z",
+        updated_at: "2026-07-09T00:00:00Z",
+      },
+    ]);
+    mockedRemoveAdminSectionMembership.mockResolvedValue({
+      ...section,
+      memberships: [],
+    });
+
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    render(<SectionManagementPanel accessToken="access-token-1" />);
+
+    const removeButton = await screen.findByRole("button", { name: "Remove from section" });
+    removeButton.click();
+
+    await waitFor(() => {
+      expect(mockedRemoveAdminSectionMembership).toHaveBeenCalledWith(
+        "mit14-fall-001",
+        "user-1",
+        "access-token-1"
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: "Remove from section" })).not.toBeInTheDocument();
+    });
+    expect(screen.getByText("Select a membership to edit it.")).toBeInTheDocument();
+    confirmSpy.mockRestore();
+  });
+
+  it("does not call the API when the removal confirm dialog is cancelled", async () => {
+    const membership = {
+      section_id: "mit14-fall-001",
+      user_id: "user-1",
+      section_display_name: "Section A",
+      course_id: "mit14",
+      course_display_name: "MIT 6.0014",
+      role_in_section: "professor" as const,
+      status: "active" as const,
+      created_at: "2026-07-09T00:00:00Z",
+      updated_at: "2026-07-09T00:00:00Z",
+    };
+    mockedListAdminSections.mockResolvedValue([
+      {
+        section_id: "mit14-fall-001",
+        course_id: "mit14",
+        course_display_name: "MIT 6.0014",
+        display_name: "Section A",
+        term: "Fall 2026",
+        is_active: true,
+        professor_count: 1,
+        ta_count: 0,
+        student_count: 0,
+        memberships: [membership],
+        created_at: "2026-07-09T00:00:00Z",
+        updated_at: "2026-07-09T00:00:00Z",
+        archived_at: "",
+      },
+    ]);
+    mockedListAdminUsers.mockResolvedValue([]);
+
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+
+    render(<SectionManagementPanel accessToken="access-token-1" />);
+
+    const removeButton = await screen.findByRole("button", { name: "Remove from section" });
+    removeButton.click();
+
+    await waitFor(() => expect(confirmSpy).toHaveBeenCalled());
+    expect(mockedRemoveAdminSectionMembership).not.toHaveBeenCalled();
+    confirmSpy.mockRestore();
   });
 });

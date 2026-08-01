@@ -29,8 +29,9 @@ interface EditDraft {
 }
 
 // Students are onboarded exclusively through the section invite flow (Sections
-// tab), which sends the Cognito invite email this form has no way to send —
-// so this staff-only panel never lists, filters by, or creates them.
+// tab) rather than this panel, since that flow also handles section
+// membership — so this staff-only panel never lists, filters by, or creates
+// them. Both flows send the same Cognito invite email under the hood.
 const ROLE_OPTIONS: AppPrimaryRole[] = ["admin", "professor"];
 const STATUS_OPTIONS: UserStatus[] = ["invited", "active", "disabled"];
 
@@ -159,6 +160,20 @@ export function UserManagementPanel({ accessToken }: UserManagementPanelProps) {
     [roleFilter, statusFilter, users]
   );
 
+  // The "Select User to Manage" dropdown's options come from filteredUsers, but
+  // selectedUserId is resolved against the full users list. If a filter change
+  // drops the selected user out of the option list, the <select> desyncs from
+  // React state: the browser falls back to displaying the first <option> ("--
+  // Invite New User --") while selectedUserId is still the old user, so clicking
+  // it fires no change event (the browser thinks it's already selected) and
+  // nothing happens. Resync on every filter change so the selection always has
+  // a matching option.
+  useEffect(() => {
+    if (selectedUserId === null) return;
+    if (filteredUsers.some((user) => user.user_id === selectedUserId)) return;
+    applySelectedUser(filteredUsers[0] ?? null);
+  }, [filteredUsers, selectedUserId, applySelectedUser]);
+
   const activeCount = users.filter((user) => user.status === "active").length;
   const invitedCount = users.filter((user) => user.status === "invited").length;
 
@@ -231,8 +246,8 @@ export function UserManagementPanel({ accessToken }: UserManagementPanelProps) {
               Aurora-backed admin and professor accounts and their section memberships.
             </div>
             <div style={{ fontSize: 11, color: D.dim, marginTop: 6, lineHeight: 1.4 }}>
-              Invite users in Aurora first. On first Cognito sign-in, the app claims the Aurora record by email
-              and stores the Cognito `sub`.
+              Inviting a user here sends them a Cognito sign-in email right away (self-service sign-up is
+              disabled, so this is the only way in). Their Aurora record activates on first sign-in.
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>

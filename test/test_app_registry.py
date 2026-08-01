@@ -1270,6 +1270,12 @@ class _FakeCursor:
             self.rowcount = 1
             return
 
+        if sql.startswith("DELETE FROM section_memberships WHERE section_id = %s AND user_id = %s"):
+            section_id, user_id = map(str, params)
+            if self.state.memberships.pop((section_id, user_id), None) is not None:
+                self.rowcount = 1
+            return
+
         if sql.startswith("SELECT section_id FROM section_memberships WHERE section_id = %s AND user_id = %s"):
             section_id, user_id = map(str, params)
             if (section_id, user_id) in self.state.memberships:
@@ -2436,6 +2442,13 @@ def test_admin_user_and_section_crud_with_memberships(
         status="active",
         cognito_sub="sub-existing",
     )
+    # create_admin_user now sends a real Cognito invite (see
+    # test_create_admin_user_sends_cognito_invite_with_matching_group) - this
+    # predates that change and must mock Cognito too, or it silently hits the
+    # real User Pool via the COGNITO_REGION/COGNITO_USER_POOL_ID that
+    # load_dotenv() pulls from the repo's real .env on import.
+    fake_cognito = _FakeCognitoClient()
+    _patch_cognito(monkeypatch, fake_cognito)
     _patch_connection(monkeypatch, state)
 
     created_user = app_registry.create_admin_user(
@@ -2486,6 +2499,70 @@ def test_admin_user_and_section_crud_with_memberships(
     assert users[0].email == "existing@example.edu"
     assert users[1].section_memberships[0].section_id == "mit14-fall-001"
     assert sections[0].memberships[0].section_id == "mit14-fall-001"
+
+
+def test_remove_section_membership_deletes_only_that_row(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _state()
+    state.sections["mit14-fall-001"] = _section(
+        section_id="mit14-fall-001",
+        display_name="MIT 6.0014 Section A",
+    )
+    state.users["prof-1"] = _user(
+        user_id="prof-1",
+        email="prof@example.edu",
+        display_name="Prof",
+        primary_role="professor",
+        status="active",
+        cognito_sub="sub-prof",
+    )
+    state.users["student-1"] = _user(
+        user_id="student-1",
+        email="student@example.edu",
+        display_name="Student",
+        primary_role="student",
+        status="active",
+        cognito_sub="sub-student",
+    )
+    state.memberships[("mit14-fall-001", "prof-1")] = _membership(
+        section_id="mit14-fall-001",
+        user_id="prof-1",
+        role_in_section="professor",
+    )
+    state.memberships[("mit14-fall-001", "student-1")] = _membership(
+        section_id="mit14-fall-001",
+        user_id="student-1",
+        role_in_section="student",
+    )
+    _patch_connection(monkeypatch, state)
+
+    updated_section = app_registry.remove_section_membership(
+        "mit14-fall-001", "prof-1", runtime=_runtime()
+    )
+
+    assert [m.user_id for m in updated_section.memberships] == ["student-1"]
+    # The user account itself and their other memberships are untouched -
+    # this only removes the one section_memberships row.
+    assert "prof-1" in state.users
+    assert ("mit14-fall-001", "prof-1") not in state.memberships
+    assert ("mit14-fall-001", "student-1") in state.memberships
+
+
+def test_remove_section_membership_raises_when_not_found(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _state()
+    state.sections["mit14-fall-001"] = _section(
+        section_id="mit14-fall-001",
+        display_name="MIT 6.0014 Section A",
+    )
+    _patch_connection(monkeypatch, state)
+
+    with pytest.raises(app_registry.MembershipNotFoundError):
+        app_registry.remove_section_membership(
+            "mit14-fall-001", "no-such-user", runtime=_runtime()
+        )
 
 
 def test_professor_views_return_active_sections_and_rosters(
@@ -3431,6 +3508,64 @@ def test_create_admin_user_rejects_student_role(
             ),
             runtime=_runtime(),
         )
+
+
+def test_create_admin_user_sends_cognito_invite_with_matching_group(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Regression: staff (professor/admin) invites used to only write an
+    # Aurora row with cognito_sub=NULL and never touch Cognito at all - since
+    # this User Pool has self-service sign-up disabled, that left the invited
+    # professor/admin with no way to ever sign in. Staff now get the same
+    # admin_create_user + email delivery students get. They also need a
+    # Cognito group - the frontend's dashboard routing reads the group
+    # straight off the JWT (frontend/src/auth/getUserGroups.ts), it doesn't
+    # consult Aurora primary_role - so a professor with no group signs in
+    # successfully but lands on "No Cognito group assigned."
+    state = _state()
+    fake_cognito = _FakeCognitoClient()
+    _patch_cognito(monkeypatch, fake_cognito)
+    _patch_connection(monkeypatch, state)
+
+    created = app_registry.create_admin_user(
+        AdminUserCreate(
+            email="new.professor@example.edu",
+            display_name="New Professor",
+            primary_role="professor",
+        ),
+        runtime=_runtime(),
+    )
+
+    assert fake_cognito.created_users
+    assert fake_cognito.created_users[0]["Username"] == "new.professor@example.edu"
+    assert fake_cognito.created_users[0]["DesiredDeliveryMediums"] == ["EMAIL"]
+    assert fake_cognito.group_additions
+    assert fake_cognito.group_additions[0]["GroupName"] == "Professors"
+
+    user_row = state.users[created.user_id]
+    assert user_row["cognito_sub"] == "sub-new.professor@example.edu"
+    assert created.cognito_sub == "sub-new.professor@example.edu"
+
+
+def test_create_admin_user_adds_admin_role_to_admins_group(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _state()
+    fake_cognito = _FakeCognitoClient()
+    _patch_cognito(monkeypatch, fake_cognito)
+    _patch_connection(monkeypatch, state)
+
+    app_registry.create_admin_user(
+        AdminUserCreate(
+            email="new.admin@example.edu",
+            display_name="New Admin",
+            primary_role="admin",
+        ),
+        runtime=_runtime(),
+    )
+
+    assert fake_cognito.group_additions
+    assert fake_cognito.group_additions[0]["GroupName"] == "Admins"
 
 
 # --- Aurora password-rotation recovery (app_registry._connect_postgres) ---

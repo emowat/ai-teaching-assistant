@@ -78,6 +78,7 @@ from rag_eng.app_registry import (
     update_professor_section_teaching_plan_week,
     delete_professor_section_teaching_plan_week_reference,
     update_professor_section_teaching_plan_week_reference,
+    remove_section_membership,
     update_section_membership,
 )
 from rag_eng.evaluation_jobs import (
@@ -979,6 +980,17 @@ def create_app() -> FastAPI:
     ) -> AdminSection:
         try:
             return update_section_membership(section_id, user_id, payload)
+        except Exception as exc:
+            raise _app_registry_http_error(exc) from exc
+
+    @app.delete(
+        "/admin/sections/{section_id}/memberships/{user_id}",
+        response_model=AdminSection,
+        dependencies=[Depends(_require_admin_access)],
+    )
+    def admin_remove_section_membership(section_id: str, user_id: str) -> AdminSection:
+        try:
+            return remove_section_membership(section_id, user_id)
         except Exception as exc:
             raise _app_registry_http_error(exc) from exc
 

@@ -5,6 +5,7 @@ import {
   createAdminSectionMembership,
   inviteAdminSectionStudent,
   listAdminSections,
+  removeAdminSectionMembership,
   updateAdminSection,
   updateAdminSectionMembership,
   type AdminSection,
@@ -116,6 +117,7 @@ export function SectionManagementPanel({ accessToken }: SectionManagementPanelPr
   const [savingSectionId, setSavingSectionId] = useState<string | null>(null);
   const [archivingSectionId, setArchivingSectionId] = useState<string | null>(null);
   const [savingMembership, setSavingMembership] = useState(false);
+  const [removingMembershipUserId, setRemovingMembershipUserId] = useState<string | null>(null);
   const [invitingStudent, setInvitingStudent] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [formStatus, setFormStatus] = useState<string | null>(null);
@@ -419,6 +421,34 @@ export function SectionManagementPanel({ accessToken }: SectionManagementPanelPr
       setFormError(err instanceof Error ? err.message : "Unable to update membership.");
     } finally {
       setSavingMembership(false);
+    }
+  };
+
+  const handleRemoveMembership = async (userId: string) => {
+    if (selectedSection === null) {
+      return;
+    }
+    if (!window.confirm("Remove this person from the section? Their account and any other section memberships are untouched — you can add them back to this section any time.")) {
+      return;
+    }
+
+    setRemovingMembershipUserId(userId);
+    setFormError(null);
+    setFormStatus(null);
+
+    try {
+      const updated = await removeAdminSectionMembership(
+        selectedSection.section_id,
+        userId,
+        accessToken
+      );
+      upsertSection(updated);
+      applySelectedSection(updated);
+      setFormStatus(`Removed ${userId} from ${updated.section_id}.`);
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Unable to remove membership.");
+    } finally {
+      setRemovingMembershipUserId(null);
     }
   };
 
@@ -853,6 +883,16 @@ export function SectionManagementPanel({ accessToken }: SectionManagementPanelPr
                           {membership.role_in_section} · {membership.status}
                         </div>
                       </div>
+                      <Btn
+                        small
+                        variant="danger"
+                        disabled={removingMembershipUserId === membership.user_id}
+                        onClick={() => void handleRemoveMembership(membership.user_id ?? "")}
+                      >
+                        {removingMembershipUserId === membership.user_id
+                          ? "Removing..."
+                          : "Remove from section"}
+                      </Btn>
                     </Card>
                   );
                 })}
