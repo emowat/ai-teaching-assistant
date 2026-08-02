@@ -170,6 +170,29 @@ def _ta_generation_phase(
     }
 
 
+def _reportable_guardrail(
+    generation_attempts: list[dict[str, Any]] | None,
+) -> dict[str, Any] | None:
+    """Pick the guardrail result to summarize in output_guardrail_phase.
+
+    Prefers the first attempt that was actually blocked/replaced (V1 or V2),
+    since that's the safety signal dashboards care about - even when a later
+    regenerate produced a clean response the student actually saw. Without
+    this, a "blocked then successfully regenerated" turn silently vanishes
+    from guardrail stats: the top-level summary used to just take the LAST
+    attempt, which is the clean retry, not the block. Falls back to the last
+    attempt (typically action=pass) when nothing was ever blocked, and to
+    None when there were no attempts at all.
+    """
+    if not generation_attempts:
+        return None
+    for attempt in generation_attempts:
+        candidate = attempt.get("guardrail")
+        if candidate and candidate.get("action") in ("replace", "block"):
+            return candidate
+    return generation_attempts[-1].get("guardrail")
+
+
 def _legacy_output_guardrail_phase(
     guardrail: dict[str, Any] | None,
 ) -> dict[str, Any] | None:
@@ -309,7 +332,14 @@ def build_turn_snapshot(
     ta_generation_phase = _ta_generation_phase(
         generation_attempts=generation_attempts,
     )
-    output_guardrail_phase = _legacy_output_guardrail_phase(guardrail)
+    # Dashboards/stats read output_guardrail_phase, so it should reflect
+    # whether ANY attempt this turn was blocked - not just guardrail (last
+    # attempt only, used above for what was actually delivered to the
+    # student). A blocked-then-successfully-regenerated turn must still
+    # count as a guardrail intervention.
+    output_guardrail_phase = _legacy_output_guardrail_phase(
+        _reportable_guardrail(generation_attempts)
+    )
 
     snapshot = {
         "session_id": trace.session_id,

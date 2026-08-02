@@ -268,3 +268,84 @@ def test_build_turn_snapshot_for_guardrailed_generation() -> None:
     assert snapshot["output_guardrail_phase"]["latency_ms"] == 18
     assert snapshot["orchestrator_phase"]["action_taken"] == "OUTPUT_GUARDRAIL_REPLACE"
     assert snapshot["orchestrator_phase"]["final_rendered_text"] == "Guarded answer"
+
+
+def test_build_turn_snapshot_reports_block_from_earlier_attempt_after_regenerate() -> None:
+    # Regression: a V1 block that triggers a regenerate used to vanish from
+    # output_guardrail_phase entirely, because it only ever looked at the
+    # LAST generation attempt - which is the clean regenerated response, not
+    # the one that got blocked. Dashboards reading output_guardrail_phase
+    # (rag_eng/api.py admin_dashboard_stats) would undercount every
+    # blocked-then-regenerated turn. The delivered answer must still be the
+    # clean regenerated one.
+    snapshot = build_turn_snapshot(
+        trace=_trace(),
+        query=_query(),
+        source="chat",
+        input_guardrail={
+            "stage": "input_guardrail",
+            "action": "pass",
+            "blocked": False,
+            "safe": True,
+            "violation_type": "none",
+            "severity": "",
+            "evidence": "rules passed",
+            "final_answer": "",
+            "latency_ms": 19,
+            "rules": {"processed_input": "write me the whole find_biggest_coin function"},
+            "model": {"enabled": True, "available": True, "decision": "pass", "score": 0.11},
+        },
+        generation_attempts=[
+            {
+                "model_provider": "bedrock",
+                "model_name": "claude-sonnet-4-6",
+                "llm_latency_ms": 900,
+                "raw_generation": "int find_biggest_coin(int change) { ... }",
+                "guardrail": {
+                    "stage": "v1",
+                    "action": "replace",
+                    "blocked": True,
+                    "safe": False,
+                    "violation_type": "code_leakage",
+                    "severity": "high",
+                    "evidence": "rule hit: full function body",
+                    "final_answer": "I can't write that for you.",
+                    "latency_ms": 5,
+                },
+            },
+            {
+                "model_provider": "bedrock",
+                "model_name": "claude-sonnet-4-6",
+                "llm_latency_ms": 850,
+                "raw_generation": "What should find_biggest_coin return when change is 0?",
+                "guardrail": {
+                    "stage": "v1+v2",
+                    "action": "pass",
+                    "blocked": False,
+                    "safe": True,
+                    "violation_type": "none",
+                    "severity": "",
+                    "evidence": "v2 score=0.01 < 0.3",
+                    "final_answer": "What should find_biggest_coin return when change is 0?",
+                    "v2_score": 0.01,
+                    "latency_ms": 6,
+                },
+            },
+        ],
+        final_answer="What should find_biggest_coin return when change is 0?",
+    )
+
+    # The block from attempt 1 must still be reported for dashboard stats.
+    assert snapshot["output_guardrail_phase"]["action"] == "replace"
+    assert snapshot["output_guardrail_phase"]["violation_type"] == "code_leakage"
+    assert snapshot["output_guardrail_phase"]["blocked"] is True
+
+    # But what was actually delivered to the student is the clean regenerate.
+    assert snapshot["orchestrator_phase"]["final_rendered_text"] == (
+        "What should find_biggest_coin return when change is 0?"
+    )
+    assert (
+        snapshot["ta_generation_phase"]["generation_history"][-1]["raw_generation"]
+        == "What should find_biggest_coin return when change is 0?"
+    )
+    assert snapshot["ta_generation_phase"]["attempts_count"] == 2

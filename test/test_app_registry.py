@@ -25,6 +25,7 @@ from rag_eng.schemas import (
     ProfessorSectionAnalytics,
     ProfessorSectionStudentAnalytics,
     ProfessorSectionStudentInviteCreate,
+    ReportIssuePayload,
     SectionLaunchConfig,
     StudentBootstrapResponse,
 )
@@ -47,6 +48,7 @@ class _State:
     tutor_sessions: list[dict[str, object]]
     tutor_turns: list[dict[str, object]]
     tutor_turn_snapshots: list[dict[str, object]]
+    reported_issues: list[dict[str, object]]
 
 
 class _FakeCognitoClient:
@@ -1270,6 +1272,32 @@ class _FakeCursor:
             self.rowcount = 1
             return
 
+        if sql.startswith("INSERT INTO reported_issues"):
+            session_id, turn_index, user_id, section_lookup_session_id, reason, chat_history = params
+            section_id = next(
+                (
+                    session.get("section_id")
+                    for session in self.state.tutor_sessions
+                    if session.get("session_id") == section_lookup_session_id
+                ),
+                None,
+            )
+            self.state.reported_issues.append(
+                {
+                    "issue_id": str(uuid.uuid4()),
+                    "session_id": session_id,
+                    "turn_index": turn_index,
+                    "user_id": user_id,
+                    "section_id": section_id,
+                    "reason": reason,
+                    "chat_history": chat_history,
+                    "status": "open",
+                    "created_at": NOW,
+                }
+            )
+            self.rowcount = 1
+            return
+
         if sql.startswith("DELETE FROM section_memberships WHERE section_id = %s AND user_id = %s"):
             section_id, user_id = map(str, params)
             if self.state.memberships.pop((section_id, user_id), None) is not None:
@@ -1336,6 +1364,12 @@ class _FakeConnection:
     def cursor(self):
         return _FakeCursor(self.state)
 
+    def commit(self):
+        pass
+
+    def rollback(self):
+        pass
+
     def __enter__(self):
         return self
 
@@ -1362,6 +1396,7 @@ def _state() -> _State:
         tutor_sessions=[],
         tutor_turns=[],
         tutor_turn_snapshots=[],
+        reported_issues=[],
     )
 
 
@@ -1602,6 +1637,65 @@ def test_get_student_bootstrap_returns_sections_and_default(
     assert response.default_section_id == "mit14-fall-002"
     assert response.endpoints.chat == "/api/student/chat"
     assert response.sections[0].launch_configs == []
+
+
+def test_create_reported_issue_uses_the_reporting_sessions_section(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Regression: create_reported_issue used to resolve section_id via an
+    # unordered `SELECT section_id FROM section_memberships ... LIMIT 1`,
+    # which picks an arbitrary section whenever a student has more than one
+    # active membership - unrelated to which section they were actually
+    # chatting in. It should instead come from the reporting session's own
+    # tutor_sessions.section_id, the same source analytics already use
+    # correctly. Student here has two active memberships (fall-001,
+    # fall-002) but is chatting in fall-002 - the report must land there.
+    state = _state()
+    state.users["student-1"] = _user(
+        user_id="student-1",
+        email="student@example.edu",
+        display_name="Student",
+        primary_role="student",
+        status="active",
+        cognito_sub="sub-student",
+    )
+    state.sections["mit14-fall-001"] = _section(
+        section_id="mit14-fall-001",
+        display_name="MIT 6.0014 Section A",
+    )
+    state.sections["mit14-fall-002"] = _section(
+        section_id="mit14-fall-002",
+        display_name="MIT 6.0014 Section B",
+    )
+    state.memberships[("mit14-fall-001", "student-1")] = _membership(
+        section_id="mit14-fall-001",
+        user_id="student-1",
+        role_in_section="student",
+    )
+    state.memberships[("mit14-fall-002", "student-1")] = _membership(
+        section_id="mit14-fall-002",
+        user_id="student-1",
+        role_in_section="student",
+    )
+    state.tutor_sessions.append(
+        {
+            "session_id": "sess-1",
+            "user_sub": "sub-student",
+            "section_id": "mit14-fall-002",
+            "last_seen_at": NOW,
+            "updated_at": NOW,
+        }
+    )
+    _patch_connection(monkeypatch, state)
+
+    app_registry.create_reported_issue(
+        "student-1",
+        ReportIssuePayload(session_id="sess-1", turn_index=3, reason="wrong answer"),
+        runtime=_runtime(),
+    )
+
+    assert len(state.reported_issues) == 1
+    assert state.reported_issues[0]["section_id"] == "mit14-fall-002"
 
 
 def test_get_student_bootstrap_defaults_to_the_only_active_section(

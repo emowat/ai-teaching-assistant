@@ -916,7 +916,7 @@ def create_reported_issue(
                 INSERT INTO reported_issues (session_id, turn_index, user_id, section_id, reason, chat_history)
                 VALUES (
                     %s, %s, %s,
-                    (SELECT section_id FROM section_memberships WHERE user_id = %s AND role_in_section = 'student' AND status = 'active' LIMIT 1),
+                    (SELECT section_id FROM tutor_sessions WHERE session_id = %s),
                     %s, %s
                 )
                 """,
@@ -924,7 +924,7 @@ def create_reported_issue(
                     payload.session_id,
                     payload.turn_index,
                     user_id,
-                    user_id,
+                    payload.session_id,
                     payload.reason,
                     json.dumps(payload.chat_history),
                 ),
