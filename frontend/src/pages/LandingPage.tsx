@@ -1,15 +1,26 @@
 import { useCallback, useState } from "react";
 import { useAuth } from "react-oidc-context";
 
+import architectureImage from "../assets/mvp-architecture.png";
 import rabbitMascot from "../assets/mascot.png";
+import { DemoVideo } from "../components/landing/DemoVideo";
 import { SplashIntro } from "../components/landing/SplashIntro";
-import { VideoPlaceholder } from "../components/landing/VideoPlaceholder";
 import {
+  acknowledgements,
   architectureSteps,
   centralResearchQuestion,
+  cognitiveStages,
   comparisonRows,
   evaluationLevels,
+  externalMotivation,
+  finalDemo,
+  finalResults,
+  judgeResults,
   learningPrinciples,
+  participantQuotes,
+  privacyCommitments,
+  projectPageUrl,
+  repositoryUrl,
   researchSources,
   roleStories,
   teamMembers,
@@ -95,6 +106,7 @@ export function LandingPage({ onNavigate, demoMode = false }: LandingPageProps) 
           <a href="#product">Product</a>
           <a href="#evaluation">Evaluation</a>
           <a href="#team">Team</a>
+          <a href="#resources">Resources</a>
         </nav>
         <button
           type="button"
@@ -118,14 +130,15 @@ export function LandingPage({ onNavigate, demoMode = false }: LandingPageProps) 
       <main id="main-content">
         <section id="top" className="public-hero landing-shell">
           <div className="hero-copy">
-            <p className="eyebrow">UC Berkeley MIDS · Capstone project</p>
+            <p className="eyebrow">UC Berkeley MIDS · Summer 2026 capstone</p>
             <h1 id="capstone-site-title" tabIndex={-1}>
               Learn C++ without giving away the thinking.
             </h1>
             <p className="hero-lede">
-              CodingRabbit is a course-grounded AI learning partner that meets
-              students inside GitHub Codespaces, gives instructors control over
-              the learning environment, and evaluates the system end to end.
+              CodingRabbit is a pedagogy-first AI teaching assistant that meets
+              students inside GitHub Codespaces, grounds support in approved
+              course material, and gives instructors control over how assistance
+              is delivered and evaluated.
             </p>
             <div className="hero-actions">
               <button
@@ -147,7 +160,7 @@ export function LandingPage({ onNavigate, demoMode = false }: LandingPageProps) 
               <li>VS Code native</li>
               <li>Course grounded</li>
               <li>Instructor governed</li>
-              <li>Evaluated end to end</li>
+              <li>Measured end to end</li>
             </ul>
           </div>
 
@@ -221,10 +234,24 @@ export function LandingPage({ onNavigate, demoMode = false }: LandingPageProps) 
               </p>
             </article>
           </div>
-          <div className="evidence-placeholder">
-            <span>Evidence placeholder</span>
-            Add approved needs-assessment sample, finding, and participant quote.
-          </div>
+          <aside className="motivation-evidence" aria-label="External research motivation">
+            <div>
+              <span>With unrestricted AI</span>
+              <strong>{externalMotivation.assistedPerformance}</strong>
+              <small>assisted practice performance</small>
+            </div>
+            <div>
+              <span>After AI was removed</span>
+              <strong>{externalMotivation.unassistedPerformance}</strong>
+              <small>below the unaided baseline</small>
+            </div>
+            <p>
+              {externalMotivation.description}{" "}
+              <a href={externalMotivation.sourceHref} target="_blank" rel="noreferrer">
+                {externalMotivation.sourceLabel} ↗
+              </a>
+            </p>
+          </aside>
         </section>
 
         <section id="approach" className="section-block approach-section">
@@ -233,8 +260,9 @@ export function LandingPage({ onNavigate, demoMode = false }: LandingPageProps) 
               <p className="eyebrow">A broader pedagogical framework</p>
               <h2>Design the AI around the act of learning.</h2>
               <p>
-                CodingRabbit combines related learning-science ideas rather than
-                reducing instruction to a single conversational technique.
+                Drawing on Vygotsky's zone of proximal development and the
+                assistance dilemma, CodingRabbit increases specificity only when
+                the learner needs a narrower scaffold.
               </p>
             </div>
             <div className="principles-grid">
@@ -246,6 +274,27 @@ export function LandingPage({ onNavigate, demoMode = false }: LandingPageProps) 
                   <p>{principle.description}</p>
                 </article>
               ))}
+            </div>
+
+            <div className="cognitive-stage-block">
+              <div>
+                <p className="eyebrow">Read the learning state first</p>
+                <h3>Four stages guide which scaffold comes next.</h3>
+                <p>
+                  The question, code structure, cursor context, and runtime state
+                  help CodingRabbit choose support that fits the learner's current
+                  work instead of responding to the message in isolation.
+                </p>
+              </div>
+              <ol className="cognitive-stage-grid">
+                {cognitiveStages.map((stage) => (
+                  <li key={stage.stage}>
+                    <span>{stage.stage}</span>
+                    <strong>{stage.title}</strong>
+                    <small>{stage.description}</small>
+                  </li>
+                ))}
+              </ol>
             </div>
 
             <div className="human-agency-banner">
@@ -310,11 +359,11 @@ export function LandingPage({ onNavigate, demoMode = false }: LandingPageProps) 
               evaluation are parts of one deployed system, not disconnected demos.
             </p>
           </div>
-          <VideoPlaceholder
-            eyebrow="End-to-end product overview"
-            title="From a C++ bug to an evaluated learning interaction"
-            description="Replace with a 75-90 second walkthrough showing extension authentication, guided debugging, a carrot reward, instructor analytics, and an offline evaluation run."
-            duration="75-90 seconds"
+          <DemoVideo
+            videoId={finalDemo.id}
+            href={finalDemo.href}
+            title={finalDemo.title}
+            description={finalDemo.description}
           />
 
           <div className="role-grid">
@@ -328,13 +377,14 @@ export function LandingPage({ onNavigate, demoMode = false }: LandingPageProps) 
                     <li key={capability}>{capability}</li>
                   ))}
                 </ul>
-                <VideoPlaceholder
-                  compact
-                  eyebrow={story.role}
-                  title={story.videoLabel}
-                  description="Final narrated workflow recording goes here."
-                  duration={story.role === "Administrators" ? "60-75 seconds" : "45-60 seconds"}
-                />
+                <a
+                  className="role-demo-link"
+                  href={finalDemo.href}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  See this workflow in the final demonstration ↗
+                </a>
               </article>
             ))}
           </div>
@@ -352,11 +402,12 @@ export function LandingPage({ onNavigate, demoMode = false }: LandingPageProps) 
                 when the learner explains something correctly.
               </p>
               <p className="claim-boundary">
-                The mechanic is implemented. Its effect on learning and
-                engagement is an evaluation question, not a presumed outcome.
+                The mechanic is implemented, but the pilot did not isolate its
+                causal effect. The final results report overall confidence and
+                system behavior without attributing gains to carrots alone.
               </p>
               <a className="inline-link" href="#evaluation">
-                See how we plan to evaluate it →
+                See the final evaluation results →
               </a>
             </div>
             <div className="carrot-journey" aria-label="Example carrot interaction">
@@ -400,11 +451,20 @@ export function LandingPage({ onNavigate, demoMode = false }: LandingPageProps) 
               </li>
             ))}
           </ol>
-          <div className="diagram-placeholder">
-            <span>Final diagram placeholder</span>
-            Replace this block with the simplified production architecture,
-            including asynchronous ingestion and evaluation workers.
-          </div>
+          <figure className="architecture-diagram">
+            <a href={architectureImage} target="_blank" rel="noreferrer">
+              <img
+                src={architectureImage}
+                alt="CodingRabbit production architecture showing authenticated online learning, offline course ingestion, Aurora registries, Qdrant retrieval, guardrails, multi-route inference, and an isolated evaluation worker."
+                loading="lazy"
+                decoding="async"
+              />
+            </a>
+            <figcaption>
+              The live tutoring path is isolated from asynchronous ingestion and
+              evaluation work. Select the diagram to open the full-resolution view.
+            </figcaption>
+          </figure>
         </section>
 
         <section id="evaluation" className="section-block evaluation-section">
@@ -412,12 +472,12 @@ export function LandingPage({ onNavigate, demoMode = false }: LandingPageProps) 
             <div className="section-heading section-heading-split">
               <div>
                 <p className="eyebrow">Evaluate the learning system</p>
-                <h2>Model quality is necessary. It is not sufficient.</h2>
+                <h2>Evidence at the learner, retrieval, and system levels.</h2>
               </div>
               <p>
-                We evaluate whether students retain the cognitive work, whether
-                instructors gain useful control, and whether the platform behaves
-                reliably across routes and releases.
+                The final evaluation separates self-reported pilot outcomes from
+                retrieval experiments and automated TA-quality judgments. Each
+                result is presented with the boundary of what it can establish.
               </p>
             </div>
             <div className="evaluation-grid">
@@ -437,23 +497,71 @@ export function LandingPage({ onNavigate, demoMode = false }: LandingPageProps) 
 
             <div className="results-block">
               <div className="results-intro">
-                <p className="eyebrow">Results and decisions</p>
-                <h3>Every metric must change a decision.</h3>
+                <p className="eyebrow">Final results</p>
+                <h3>Metrics that changed the product.</h3>
                 <p>
-                  Final cards will report the question, dataset, sample size,
-                  baseline, metric, result, product decision, and limitation.
+                  Pilot feedback shaped the experience, retrieval experiments
+                  changed search policy, and five judge routes tested whether the
+                  assistant's behavior held across evaluators.
                 </p>
               </div>
-              {[
-                "Student learning and carrot usability",
-                "Instructor workflow and analytics value",
-                "Grounding, leakage, drift, and reliability",
-              ].map((result) => (
-                <div className="result-placeholder" key={result}>
-                  <span>Final evidence pending</span>
-                  <strong>{result}</strong>
-                  <small>Dataset · baseline · result · decision · limitation</small>
+              {finalResults.map((result) => (
+                <div className="result-card" key={result.title}>
+                  <span>{result.kicker}</span>
+                  <strong className="result-value">{result.value}</strong>
+                  <h3>{result.title}</h3>
+                  <p>{result.description}</p>
+                  <small>{result.note}</small>
                 </div>
+              ))}
+            </div>
+
+            <div className="judge-results">
+              <div className="judge-results-copy">
+                <p className="eyebrow">One rubric, five judge routes</p>
+                <h3>TA effectiveness remained high, but judge choice still mattered.</h3>
+                <p>
+                  The same pedagogy, correctness, grounding, and safety rubric was
+                  applied per reply and per conversation. Scores are automated
+                  evaluation evidence, not direct measures of student learning.
+                </p>
+              </div>
+              <div className="judge-table-wrap">
+                <table className="judge-table">
+                  <thead>
+                    <tr>
+                      <th>Judge</th>
+                      <th>TA effectiveness</th>
+                      <th>Reply impact</th>
+                      <th>Conversation effect</th>
+                      <th>Quality drift</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {judgeResults.map((judge) => (
+                      <tr key={`${judge.provider}-${judge.model}`}>
+                        <th scope="row">
+                          <strong>{judge.model}</strong>
+                          <small>{judge.provider}</small>
+                        </th>
+                        <td>{judge.effectiveness}</td>
+                        <td>{judge.impact}</td>
+                        <td>{judge.conversationEffectiveness}</td>
+                        <td>{judge.qualityDrift}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="participant-feedback">
+              <div>
+                <p className="eyebrow">Pilot participant feedback</p>
+                <h3>What learners noticed while using the MVP</h3>
+              </div>
+              {participantQuotes.map((quote) => (
+                <blockquote key={quote}>“{quote}”</blockquote>
               ))}
             </div>
           </div>
@@ -462,31 +570,21 @@ export function LandingPage({ onNavigate, demoMode = false }: LandingPageProps) 
         <section id="responsible-ai" className="section-block landing-shell">
           <div className="responsibility-grid">
             <div>
-              <p className="eyebrow">Responsible use</p>
-              <h2>Preserve agency. Make uncertainty visible.</h2>
+              <p className="eyebrow">Privacy and safety by design</p>
+              <h2>Preserve agency and keep people accountable.</h2>
+              <p>
+                Grounding and guardrails reduce risk, but they do not make an AI
+                tutor infallible. Consent, scoped access, and human escalation are
+                therefore product behavior, not policy footnotes.
+              </p>
             </div>
             <div className="responsibility-list">
-              <article>
-                <h3>Grounding is not certainty</h3>
-                <p>
-                  Approved retrieval reduces scope and hallucination risk, but
-                  the assistant can still be wrong.
-                </p>
-              </article>
-              <article>
-                <h3>Analytics are for support</h3>
-                <p>
-                  Role-scoped telemetry should help instructors intervene, not
-                  become punitive surveillance.
-                </p>
-              </article>
-              <article>
-                <h3>People remain part of the system</h3>
-                <p>
-                  Carrot exhaustion, uncertain guidance, and complex needs route
-                  students toward human TAs and instructors.
-                </p>
-              </article>
+              {privacyCommitments.map((commitment) => (
+                <article key={commitment.title}>
+                  <h3>{commitment.title}</h3>
+                  <p>{commitment.description}</p>
+                </article>
+              ))}
             </div>
           </div>
         </section>
@@ -506,7 +604,12 @@ export function LandingPage({ onNavigate, demoMode = false }: LandingPageProps) 
               {teamMembers.map((member) => (
                 <article className="team-card" key={member.name}>
                   <div className="team-portrait">
-                    <img src={member.portrait} alt={`Portrait of ${member.name}`} />
+                    <img
+                      src={member.portrait}
+                      alt={`Portrait of ${member.name}`}
+                      loading="lazy"
+                      decoding="async"
+                    />
                   </div>
                   <div className="team-card-copy">
                     <h3>{member.name}</h3>
@@ -515,23 +618,74 @@ export function LandingPage({ onNavigate, demoMode = false }: LandingPageProps) 
                 </article>
               ))}
             </div>
+            <div className="acknowledgements">
+              <div>
+                <p className="eyebrow">Acknowledgements</p>
+                <h3>Built with guidance from educators, testers, and the Berkeley community.</h3>
+              </div>
+              <ul>
+                {acknowledgements.map((acknowledgement) => (
+                  <li key={acknowledgement}>{acknowledgement}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        <section id="resources" className="section-block resources-section">
+          <div className="landing-shell resources-layout">
+            <div>
+              <p className="eyebrow">Final project resources</p>
+              <h2>Explore the evidence, implementation, and final walkthrough.</h2>
+              <p>
+                The UC Berkeley School of Information project page is the
+                canonical home for the final report and presentation.
+              </p>
+            </div>
+            <div className="resource-links">
+              <a href={projectPageUrl} target="_blank" rel="noreferrer">
+                <span>Final report + presentation</span>
+                <strong>UC Berkeley iSchool project page</strong>
+                <small>Open the official capstone archive ↗</small>
+              </a>
+              <a href={finalDemo.href} target="_blank" rel="noreferrer">
+                <span>Final demonstration</span>
+                <strong>Watch CodingRabbit in action</strong>
+                <small>Open the narrated MVP walkthrough ↗</small>
+              </a>
+              <a href={repositoryUrl} target="_blank" rel="noreferrer">
+                <span>Implementation</span>
+                <strong>Browse the project repository</strong>
+                <small>Review the deployed system and evaluation code ↗</small>
+              </a>
+            </div>
           </div>
         </section>
 
         <section className="final-cta landing-shell">
           <img src={rabbitMascot} alt="" aria-hidden="true" />
           <div>
-            <p className="eyebrow">The beta is live</p>
+            <p className="eyebrow">The deployed MVP is live</p>
             <h2>Explore a different relationship between AI and learning.</h2>
           </div>
-          <button
-            type="button"
-            className="pill-button pill-button-large"
-            onClick={handleLogin}
-            disabled={loginDisabled}
-          >
-            Try CodingRabbit
-          </button>
+          <div className="final-cta-actions">
+            <button
+              type="button"
+              className="pill-button pill-button-large"
+              onClick={handleLogin}
+              disabled={loginDisabled}
+            >
+              Try CodingRabbit
+            </button>
+            <a
+              className="pill-link pill-link-secondary"
+              href={projectPageUrl}
+              target="_blank"
+              rel="noreferrer"
+            >
+              View final project
+            </a>
+          </div>
         </section>
 
         {demoMode && (
@@ -549,7 +703,7 @@ export function LandingPage({ onNavigate, demoMode = false }: LandingPageProps) 
       <footer className="public-footer">
         <div>
           <strong>codingrabbit.dev</strong>
-          <span>UC Berkeley MIDS capstone · Beta</span>
+          <span>UC Berkeley MIDS capstone · Summer 2026</span>
         </div>
         <div className="footer-links">
           {researchSources.map((source) => (

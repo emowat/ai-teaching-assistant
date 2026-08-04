@@ -99,6 +99,50 @@ describe("LandingPage", () => {
     expect(signinRedirect).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps Cognito sign-in available from the timed splash", () => {
+    render(<LandingPage onNavigate={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+
+    expect(signinRedirect).toHaveBeenCalledTimes(1);
+  });
+
+  it("presents final evidence, architecture, and project resources", () => {
+    window.sessionStorage.setItem("codingrabbit.capstone-intro-seen", "true");
+    render(<LandingPage onNavigate={vi.fn()} />);
+
+    expect(screen.getByText("+48%")).toBeInTheDocument();
+    expect(screen.getByText("53% → 65%")).toBeInTheDocument();
+    expect(screen.getByText("0.88–0.97")).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", { name: /CodingRabbit production architecture/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: /UC Berkeley iSchool project page/i }),
+    ).toHaveAttribute(
+      "href",
+      "https://www.ischool.berkeley.edu/programs/mids/capstone/2026b-summer/coding-rabbit-ai-teaching-assistant-c-courses-and-beyond",
+    );
+  });
+
+  it("loads the final demonstration through the privacy-enhanced YouTube player", () => {
+    window.sessionStorage.setItem("codingrabbit.capstone-intro-seen", "true");
+    render(<LandingPage onNavigate={vi.fn()} />);
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Play CodingRabbit final MVP demonstration",
+      }),
+    );
+
+    expect(
+      screen.getByTitle("CodingRabbit final MVP demonstration"),
+    ).toHaveAttribute(
+      "src",
+      "https://www.youtube-nocookie.com/embed/bWv3M2eNa4c?autoplay=1&rel=0",
+    );
+  });
+
   it("shows all team members and sends Try CodingRabbit through Cognito", () => {
     window.sessionStorage.setItem("codingrabbit.capstone-intro-seen", "true");
     render(<LandingPage onNavigate={vi.fn()} />);
@@ -110,7 +154,7 @@ describe("LandingPage", () => {
     expect(screen.getByText("Eric Mowat")).toBeInTheDocument();
     expect(screen.getByText("Infrastructure, AWS backend, and UI")).toBeInTheDocument();
     expect(screen.getByText("Model guardrails")).toBeInTheDocument();
-    expect(screen.getByText("RAG pipeline")).toBeInTheDocument();
+    expect(screen.getByText(/RAG pipeline, including embeddings/i)).toBeInTheDocument();
 
     fireEvent.click(screen.getAllByRole("button", { name: "Try CodingRabbit" })[0]);
 
