@@ -9,12 +9,7 @@ from dataclasses import dataclass, replace
 from typing import Any, Mapping
 
 from rag.schemas import QueryInput
-from rag_eng.aurora_retry import connect_postgres_with_retry
-from rag_eng.aurora_secret_refresh import (
-    get_cached_refreshed_url,
-    is_password_auth_error,
-    refresh_database_url_from_secrets_manager,
-)
+from rag_eng.aurora_connect import connect_postgres_interactive as _connect_postgres
 
 
 logger = logging.getLogger(__name__)
@@ -33,34 +28,6 @@ def _normalize_course_key(value: str | None) -> str:
     return "".join(ch for ch in value.casefold() if ch.isalnum())
 
 
-def _connect_postgres(database_url: str, connect_timeout_seconds: int):
-    """Open Aurora telemetry connections with the interactive retry profile.
-
-    Prefers a previously Secrets-Manager-refreshed URL over the one passed in
-    (which every caller resolves from a process-lifetime-static env var), and
-    on a password-auth failure specifically, refreshes from Secrets Manager
-    and retries once - see aurora_secret_refresh for why the plain retry
-    profile above can't recover from this on its own (it just retries the
-    same now-wrong password).
-    """
-    effective_url = get_cached_refreshed_url() or database_url
-    try:
-        return connect_postgres_with_retry(
-            effective_url,
-            profile="interactive",
-            connect_timeout_seconds=connect_timeout_seconds,
-        )
-    except Exception as exc:
-        if not is_password_auth_error(exc):
-            raise
-        refreshed_url = refresh_database_url_from_secrets_manager()
-        if not refreshed_url or refreshed_url == effective_url:
-            raise
-        return connect_postgres_with_retry(
-            refreshed_url,
-            profile="interactive",
-            connect_timeout_seconds=connect_timeout_seconds,
-        )
 
 
 def _json_adapter(data: dict[str, Any]) -> Any:

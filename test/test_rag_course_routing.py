@@ -81,7 +81,7 @@ def test_load_database_routes_uses_canonical_rows_and_aliases(monkeypatch) -> No
     )
     monkeypatch.setattr(
         "rag.course_registry._connect_postgres",
-        lambda database_url: fake_connection,
+        lambda database_url, connect_timeout_seconds=None: fake_connection,
     )
 
     routes, defs = _load_database_routes("postgresql://example")
@@ -482,7 +482,7 @@ def test_get_course_registry_status_reports_reachable_when_probe_succeeds(
     monkeypatch.setenv("COURSE_REGISTRY_DATABASE_URL", "postgresql://example")
     monkeypatch.setattr(
         "rag.course_registry._connect_postgres",
-        lambda database_url: _ProbeConnection(),
+        lambda database_url, connect_timeout_seconds=None: _ProbeConnection(),
     )
 
     status = get_course_registry_status()

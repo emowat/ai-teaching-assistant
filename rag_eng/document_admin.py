@@ -10,6 +10,7 @@ from typing import Any
 
 from dotenv import load_dotenv
 
+from rag_eng.aurora_connect import connect_postgres_interactive as _connect_postgres
 from rag_eng.course_admin import CourseNotFoundError
 from rag_eng.schemas import (
     AdminCourseCorpusVersion,
@@ -57,14 +58,6 @@ def _format_timestamp(value: object | None) -> str:
     return str(value)
 
 
-def _connect_postgres(database_url: str, connect_timeout_seconds: int):
-    """Create a psycopg connection lazily so tests can stub it."""
-    try:
-        import psycopg
-    except ImportError as exc:  # pragma: no cover - exercised only when missing
-        raise RuntimeError("psycopg is required for document admin operations.") from exc
-
-    return psycopg.connect(database_url, connect_timeout=connect_timeout_seconds)
 
 
 def load_document_admin_runtime_config(

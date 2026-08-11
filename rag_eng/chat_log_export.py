@@ -13,12 +13,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 import boto3
-from rag_eng.aurora_retry import connect_postgres_with_retry
-from rag_eng.aurora_secret_refresh import (
-    get_cached_refreshed_url,
-    is_password_auth_error,
-    refresh_database_url_from_secrets_manager,
-)
+from rag_eng.aurora_connect import connect_postgres_reliable as _connect_postgres
 from rag_eng.config import get_runtime_policy_config
 
 
@@ -36,33 +31,6 @@ except Exception:
     DEFAULT_EXPORT_CONNECT_TIMEOUT_SECONDS = 3
 
 
-def _connect_postgres(database_url: str, connect_timeout_seconds: int):
-    """Open Aurora export connections with the reliable retry profile.
-
-    Prefers a previously Secrets-Manager-refreshed URL over the one passed in
-    (which every caller resolves from a process-lifetime-static env var), and
-    on a password-auth failure specifically, refreshes from Secrets Manager
-    and retries once - see rag_eng/aurora_secret_refresh.py for why a plain
-    retry can't recover from this on its own.
-    """
-    effective_url = get_cached_refreshed_url() or database_url
-    try:
-        return connect_postgres_with_retry(
-            effective_url,
-            profile="reliable",
-            connect_timeout_seconds=connect_timeout_seconds,
-        )
-    except Exception as exc:
-        if not is_password_auth_error(exc):
-            raise
-        refreshed_url = refresh_database_url_from_secrets_manager()
-        if not refreshed_url or refreshed_url == effective_url:
-            raise
-        return connect_postgres_with_retry(
-            refreshed_url,
-            profile="reliable",
-            connect_timeout_seconds=connect_timeout_seconds,
-        )
 
 
 def _parse_date(value: str | None, *, default: date | None = None) -> date:

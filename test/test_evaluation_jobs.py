@@ -258,7 +258,7 @@ def test_launch_evaluation_run_submits_task_and_returns_summary(monkeypatch) -> 
         _fake_export_turn_snapshots_to_s3,
     )
     monkeypatch.setattr(
-        "rag_eng.evaluation_jobs.connect_postgres_with_retry",
+        "rag_eng.evaluation_jobs._connect_postgres_with_secret_refresh",
         lambda *_args, **_kwargs: _FakeConnection(),
     )
     monkeypatch.setattr(

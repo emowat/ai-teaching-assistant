@@ -457,7 +457,7 @@ def create_app() -> FastAPI:
     async def lifespan(app: FastAPI):
         """Run DB migrations on startup before serving any requests."""
         try:
-            from rag_eng.telemetry import _connect_postgres
+            from rag_eng.aurora_connect import connect_postgres_interactive as _connect_postgres
             from rag_eng.chat_log_export import _resolve_database_url
 
             database_url = _resolve_database_url(None)
@@ -1764,7 +1764,7 @@ def create_app() -> FastAPI:
         dependencies=[Depends(_require_admin_access)],
     )
     def admin_run_migration() -> dict:
-        from rag_eng.telemetry import _connect_postgres
+        from rag_eng.aurora_connect import connect_postgres_interactive as _connect_postgres
         from rag_eng.chat_log_export import _resolve_database_url
 
         database_url = _resolve_database_url(None)
@@ -2221,7 +2221,7 @@ def create_app() -> FastAPI:
         if tz not in pytz.all_timezones:
             raise HTTPException(status_code=400, detail="Invalid timezone")
 
-        from rag_eng.telemetry import _connect_postgres
+        from rag_eng.aurora_connect import connect_postgres_interactive as _connect_postgres
         from rag_eng.chat_log_export import _resolve_database_url
 
         database_url = _resolve_database_url(None)
@@ -2661,7 +2661,7 @@ def create_app() -> FastAPI:
         end_date: str | None = None,
         tz: str = "America/Los_Angeles",
     ):
-        from rag_eng.telemetry import _connect_postgres
+        from rag_eng.aurora_connect import connect_postgres_interactive as _connect_postgres
         from rag_eng.chat_log_export import _resolve_database_url
 
         database_url = _resolve_database_url(None)
@@ -2799,7 +2799,7 @@ def create_app() -> FastAPI:
     def admin_scrub_user_data_by_request(request_id: str):
         try:
             from rag_eng.app_registry import scrub_user_data, load_app_registry_runtime_config, _require_database_url
-            from rag_eng.telemetry import _connect_postgres
+            from rag_eng.aurora_connect import connect_postgres_interactive as _connect_postgres
 
             runtime = load_app_registry_runtime_config()
             database_url = _require_database_url(runtime)
@@ -2865,7 +2865,7 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=400, detail="Invalid timezone")
 
         from rag_eng.app_registry import sync_application_user
-        from rag_eng.telemetry import _connect_postgres
+        from rag_eng.aurora_connect import connect_postgres_interactive as _connect_postgres
         from rag_eng.chat_log_export import _resolve_database_url
 
         app_user = sync_application_user(current_user)

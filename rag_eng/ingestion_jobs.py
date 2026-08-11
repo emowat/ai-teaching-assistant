@@ -12,6 +12,7 @@ from typing import Any, Mapping
 from dotenv import load_dotenv
 
 from rag.course_registry import get_course_registry
+from rag_eng.aurora_connect import connect_postgres_interactive as _connect_postgres
 from rag_eng.schemas import IngestionJobLaunchRequest, IngestionJobResponse
 
 
@@ -57,14 +58,6 @@ def _json_adapter(data: dict[str, Any]) -> Any:
     return Jsonb(_json_safe_value(data))
 
 
-def _connect_postgres(database_url: str, connect_timeout_seconds: int):
-    """Create a psycopg connection lazily so local tests do not need it imported."""
-    try:
-        import psycopg
-    except ImportError as exc:  # pragma: no cover - only when dependency missing
-        raise RuntimeError("psycopg is required for ingestion job persistence.") from exc
-
-    return psycopg.connect(database_url, connect_timeout=connect_timeout_seconds)
 
 
 @dataclass(frozen=True)

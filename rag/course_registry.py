@@ -15,6 +15,7 @@ from functools import lru_cache
 
 from rag.runtime import RagRuntimeConfig, get_runtime_config
 from rag.schemas import CourseSource, QueryInput
+from rag_eng.aurora_connect import connect_postgres_interactive as _connect_postgres
 
 
 logger = logging.getLogger(__name__)
@@ -31,18 +32,6 @@ def _parse_course_source(course_source: object) -> CourseSource:
         return CourseSource(str(course_source))
     except ValueError as exc:
         raise ValueError(f"Unsupported course_source value: {course_source}") from exc
-
-
-def _connect_postgres(database_url: str):
-    """Create a psycopg connection lazily so local tests do not need the dependency."""
-    try:
-        import psycopg
-    except ImportError as exc:  # pragma: no cover - exercised only when dependency missing
-        raise RuntimeError(
-            "psycopg is required for the Aurora-backed course registry."
-        ) from exc
-
-    return psycopg.connect(database_url, connect_timeout=5)
 
 
 @dataclass(frozen=True)
@@ -195,7 +184,7 @@ def _load_database_routes(
     routes: dict[str, CourseRoute] = {}
     defs: dict[str, CourseDef] = {}
 
-    with _connect_postgres(database_url) as connection:
+    with _connect_postgres(database_url, 5) as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
@@ -280,7 +269,7 @@ def get_course_registry_status(
         )
 
     try:
-        with _connect_postgres(resolved_url) as connection:
+        with _connect_postgres(resolved_url, 5) as connection:
             with connection.cursor() as cursor:
                 cursor.execute(
                     "SELECT COUNT(*) FROM courses WHERE is_active = TRUE"

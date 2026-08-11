@@ -57,25 +57,9 @@ class _FakeSession:
         return self._client
 
 
-def test_connect_postgres_uses_reliable_retry_profile(monkeypatch):
-    captured: dict[str, object] = {}
-
-    monkeypatch.setattr(
-        "rag_eng.chat_log_export.connect_postgres_with_retry",
-        lambda database_url, **kwargs: (
-            captured.update({"database_url": database_url, **kwargs}) or object()
-        ),
-    )
-
-    from rag_eng.chat_log_export import _connect_postgres
-
-    _connect_postgres("postgresql://example", 3)
-
-    assert captured == {
-        "database_url": "postgresql://example",
-        "profile": "reliable",
-        "connect_timeout_seconds": 3,
-    }
+# Retry-profile binding is now covered once, centrally, in test_aurora_connect.py
+# (chat_log_export._connect_postgres is a bare re-export of
+# aurora_connect.connect_postgres_reliable with no local logic of its own).
 
 
 def test_export_turn_snapshots_groups_by_date_and_uploads_jsonl(monkeypatch):
