@@ -258,26 +258,28 @@ This keeps the Docker image small while ensuring the checkpoints are present in 
 
 ---
 
-### `deploy-ingestion-worker.sh`
+### `deploy_ingestion_worker.py`
 
-**Purpose:** Describe, render, or register the ECS Fargate task definition used by the on-demand ingestion worker.
+**Purpose:** Describe, render, register, or deploy the ECS Fargate task definition used by the on-demand ingestion worker.
 
-The script does not launch jobs itself. The backend already owns job launches via `/admin/ingestion/launch`; this helper only makes the ECS wiring reproducible.
+The script does not launch jobs itself. The backend already owns job launches via `/admin/ingestion/launch`; this helper only makes the ECS wiring reproducible. Config is read from `.env` (via `INGESTION_ECS_*` vars) - there is no `deployment.yaml` section for this worker, so it's fully standalone via `uv run`.
 
 | Action | What it does |
 |---|---|
 | `describe` | Print the resolved ECS task-definition settings and any missing values |
 | `render-task-definition` | Emit the ECS task-definition JSON payload |
 | `render-backend-env` | Emit the backend `.env` fragment for `INGESTION_ECS_*` values |
-| `register-task-definition` | Register the task definition with ECS using boto3 |
+| `register-task-definition` | Register the task definition with ECS using boto3 (image must already be pushed) |
+| `deploy` | Build the image from `ingestion_worker/Dockerfile`, push it to ECR, then register a task definition pointing at it - in one step |
 
 **Usage:**
 
 ```bash
-./deploy/scripts/deploy-ingestion-worker.sh describe
-./deploy/scripts/deploy-ingestion-worker.sh render-task-definition
-./deploy/scripts/deploy-ingestion-worker.sh render-backend-env
-./deploy/scripts/deploy-ingestion-worker.sh register-task-definition
+uv run python deploy/deploy_ingestion_worker.py describe
+uv run python deploy/deploy_ingestion_worker.py render-task-definition
+uv run python deploy/deploy_ingestion_worker.py render-backend-env
+uv run python deploy/deploy_ingestion_worker.py register-task-definition
+uv run python deploy/deploy_ingestion_worker.py deploy
 ```
 
 **Required worker settings:**
@@ -318,35 +320,31 @@ export INGESTION_ECS_SECRET_ARNS_JSON='{"INGESTION_JOBS_DATABASE_URL":"arn:aws:s
 
 ---
 
-### `deploy-evaluation-worker.sh`
+### `deploy_evaluation_worker.py`
 
-**Purpose:** Describe, render, or register the ECS Fargate task definition used by the offline evaluation worker.
+**Purpose:** Describe, render, register, or deploy the ECS Fargate task definition used by the offline evaluation worker.
 
-The evaluation worker runs model-judging jobs on demand. It uses its own dedicated image and reuses the shared AWS wiring, but launches as a separate one-off task family so runs stay isolated from the online `rag_eng` service.
+The evaluation worker runs model-judging jobs on demand. It uses its own dedicated image and reuses the shared AWS wiring, but launches as a separate one-off task family so runs stay isolated from the online `rag_eng` service. Config is read from `deploy/deployment.yaml`'s `evaluation_worker:` section (with env var overrides, same as `deploy_rag_eng_ecs.py`), so it's fully standalone via `uv run` - no shell wrapper needed.
 
 | Action | What it does |
 |---|---|
 | `describe` | Print the resolved ECS task-definition settings and any missing values |
 | `render-task-definition` | Emit the ECS task-definition JSON payload |
 | `render-backend-env` | Emit the backend `.env` fragment for `EVALUATION_WORKER_ECS_*` values |
-| `register-task-definition` | Register the task definition with ECS using boto3 |
+| `register-task-definition` | Register the task definition with ECS using boto3 (image must already be pushed) |
+| `deploy` | Build the dedicated worker image, push it to ECR, then register a task definition pointing at it - in one step |
 
 **Usage:**
 
-First build and push the dedicated worker image:
-
 ```bash
-./deploy/scripts/build-evaluation-worker-image.sh
+uv run python deploy/deploy_evaluation_worker.py describe
+uv run python deploy/deploy_evaluation_worker.py render-task-definition
+uv run python deploy/deploy_evaluation_worker.py render-backend-env
+uv run python deploy/deploy_evaluation_worker.py register-task-definition
+uv run python deploy/deploy_evaluation_worker.py deploy
 ```
 
-Then render or register the task definition:
-
-```bash
-./deploy/scripts/deploy-evaluation-worker.sh describe
-./deploy/scripts/deploy-evaluation-worker.sh render-task-definition
-./deploy/scripts/deploy-evaluation-worker.sh render-backend-env
-./deploy/scripts/deploy-evaluation-worker.sh register-task-definition
-```
+`deploy` builds and pushes the image itself (see `deploy/evaluation_worker_image.py`); `register-task-definition` alone still expects an image already pushed.
 
 **Required worker settings:**
 
@@ -374,6 +372,8 @@ Then render or register the task definition:
 ## AWS wiring checklist for ingestion
 
 Use this when you are ready to make the on-demand ingestion worker live in AWS.
+
+**Shortcut:** `uv run python deploy/deploy_ingestion_worker.py deploy` does steps 1 and 3 in one step (build, push, register), using `deploy/ingestion_worker_image.py`. The manual walkthrough below is what that command does internally, useful if you want to run the steps separately or the roles in step 2 don't exist yet.
 
 ### 1. Build and push the worker image to ECR
 
@@ -414,7 +414,7 @@ export INGESTION_ECS_LOG_GROUP=/ecs/codingrabbit-ingestion-worker
 export INGESTION_ECS_LOG_STREAM_PREFIX=ecs
 export INGESTION_ECS_SECRET_ARNS_JSON='{"INGESTION_JOBS_DATABASE_URL":"arn:aws:secretsmanager:...","QDRANT_API_KEY":"arn:aws:secretsmanager:..."}'
 
-./deploy/scripts/deploy-ingestion-worker.sh register-task-definition
+uv run python deploy/deploy_ingestion_worker.py register-task-definition
 ```
 
 The helper will register a task definition with:
@@ -430,7 +430,7 @@ The helper will register a task definition with:
 The backend launcher needs the ECS control-plane values, not the image URI:
 
 ```bash
-./deploy/scripts/deploy-ingestion-worker.sh render-backend-env
+uv run python deploy/deploy_ingestion_worker.py render-backend-env
 ```
 
 Recommended backend `.env` values:

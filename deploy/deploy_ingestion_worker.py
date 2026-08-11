@@ -15,7 +15,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from dataclasses import dataclass
+import sys
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -23,6 +24,22 @@ from dotenv import load_dotenv
 
 
 load_dotenv()
+
+DEPLOY_DIR = Path(__file__).resolve().parent
+if str(DEPLOY_DIR) not in sys.path:
+    sys.path.insert(0, str(DEPLOY_DIR))
+
+from ingestion_worker_image import (  # noqa: E402
+    IngestionWorkerImageConfig,
+    build_and_push_image,
+)
+from ingestion_worker_image import (  # noqa: E402
+    DEFAULT_IMAGE_TAG as DEFAULT_IMAGE_BUILD_TAG,
+)
+from ingestion_worker_image import (  # noqa: E402
+    DEFAULT_REPOSITORY_NAME as DEFAULT_IMAGE_REPOSITORY_NAME,
+)
+from ingestion_worker_image import REPO_ROOT as IMAGE_REPO_ROOT  # noqa: E402
 
 
 SECRET_ENV_KEYS: tuple[str, ...] = (
@@ -403,6 +420,30 @@ def register_task_definition(
     }
 
 
+def deploy_worker(
+    config: IngestionWorkerDeployConfig,
+    *,
+    docker_binary: str = "docker",
+) -> dict[str, Any]:
+    """Build and push the worker image, then register a task definition
+    pointing at the freshly-pushed image (overriding whatever
+    INGESTION_ECS_IMAGE_URI is currently set to, since that value would
+    otherwise still point at the previous build).
+    """
+    image_config = IngestionWorkerImageConfig(
+        aws_region=config.aws_region,
+        aws_profile=config.aws_profile,
+        repository_name=os.getenv("INGESTION_ECR_REPOSITORY", DEFAULT_IMAGE_REPOSITORY_NAME),
+        image_tag=os.getenv("INGESTION_ECR_IMAGE_TAG", DEFAULT_IMAGE_BUILD_TAG),
+        repo_root=IMAGE_REPO_ROOT,
+    )
+    image_uri = build_and_push_image(config=image_config, docker_binary=docker_binary)
+    registration_config = replace(config, ecs_image_uri=image_uri)
+    result = register_task_definition(registration_config)
+    result["imageUri"] = image_uri
+    return result
+
+
 def _write_output(output: str, output_path: Path | None) -> None:
     if output_path is None:
         print(output)
@@ -422,8 +463,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "render-task-definition",
             "render-backend-env",
             "register-task-definition",
+            "deploy",
         ),
-        help="Inspect the worker config, render JSON, or register the task definition",
+        help=(
+            "Inspect the worker config, render JSON, register the task "
+            "definition, or build+push the image and register in one step"
+        ),
     )
     parser.add_argument(
         "--output",
@@ -477,6 +522,24 @@ def main(argv: list[str] | None = None) -> int:
                 "Missing required values. Run describe and fill in the missing fields.",
             )
         response = register_task_definition(config)
+        _write_output(json.dumps(response, indent=2, sort_keys=True), args.output)
+        return 0
+
+    if args.action == "deploy":
+        # Image URI is produced by the build+push step below, not required
+        # up front - every other registration value still is.
+        missing = [
+            value
+            for value in missing_registration_values(config)
+            if value != "INGESTION_ECS_IMAGE_URI"
+        ]
+        if missing:
+            parser.error(
+                "Missing required values: "
+                + ", ".join(missing)
+                + ". Run describe and fill in the missing fields.",
+            )
+        response = deploy_worker(config)
         _write_output(json.dumps(response, indent=2, sort_keys=True), args.output)
         return 0
 

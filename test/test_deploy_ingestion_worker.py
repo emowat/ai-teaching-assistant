@@ -3,11 +3,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import deploy.deploy_ingestion_worker as deploy_ingestion_worker
 from deploy.deploy_ingestion_worker import (
     build_backend_env_fragment,
     build_task_definition,
     describe_config,
     load_ingestion_worker_config,
+    main,
     missing_backend_launch_values,
     missing_registration_values,
     register_task_definition,
@@ -153,8 +155,82 @@ def test_worker_requirements_include_parser_dependencies() -> None:
     assert "beautifulsoup4" in requirements
 
 
-def test_deploy_script_loads_the_rendered_deploy_config() -> None:
-    script = Path("deploy/scripts/deploy-ingestion-worker.sh").read_text(encoding="utf-8")
 
-    assert "load_deploy_config \"${REPO_ROOT}\" \"${PYTHON}\"" in script
-    assert 'echo "    Config:   ${DEPLOY_CONFIG_PATH}"' in script
+# --- deploy_worker: build+push+register composition ---
+# Never touches real docker/boto3 - both build_and_push_image and
+# register_task_definition are stubbed at the module level.
+
+
+def test_deploy_worker_builds_pushes_and_registers_with_fresh_image_uri(
+    monkeypatch,
+) -> None:
+    config = load_ingestion_worker_config(_env())
+    build_calls: list[dict[str, object]] = []
+    register_calls: list = []
+
+    def fake_build_and_push_image(*, config, docker_binary="docker"):
+        build_calls.append(
+            {
+                "repository_name": config.repository_name,
+                "image_tag": config.image_tag,
+                "docker_binary": docker_binary,
+            }
+        )
+        return "123456789012.dkr.ecr.us-east-1.amazonaws.com/codingrabbit-ingestion-worker:latest-fresh"
+
+    def fake_register_task_definition(registration_config):
+        register_calls.append(registration_config)
+        return {
+            "taskDefinitionArn": "arn:aws:ecs:us-east-1:123456789012:task-definition/codingrabbit-ingestion-worker:4",
+            "family": registration_config.ecs_task_family,
+            "revision": 4,
+        }
+
+    monkeypatch.setattr(
+        deploy_ingestion_worker, "build_and_push_image", fake_build_and_push_image
+    )
+    monkeypatch.setattr(
+        deploy_ingestion_worker,
+        "register_task_definition",
+        fake_register_task_definition,
+    )
+
+    result = deploy_ingestion_worker.deploy_worker(config)
+
+    assert build_calls == [
+        {
+            "repository_name": "codingrabbit-ingestion",
+            "image_tag": "latest",
+            "docker_binary": "docker",
+        }
+    ]
+    # register_task_definition must be called with the FRESHLY pushed image
+    # URI, not whatever was in the env-configured config.
+    assert register_calls[0].ecs_image_uri.endswith(":latest-fresh")
+    assert result["imageUri"].endswith(":latest-fresh")
+    assert result["revision"] == 4
+
+
+def test_deploy_action_does_not_require_image_uri_up_front(monkeypatch) -> None:
+    """The image URI is produced by the build step, so `deploy` must not
+    fail the pre-flight missing-value check just because
+    INGESTION_ECS_IMAGE_URI isn't set yet - unlike register-task-definition,
+    which does require it."""
+    env = _env()
+    del env["INGESTION_ECS_IMAGE_URI"]
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.delenv("INGESTION_ECS_IMAGE_URI", raising=False)
+
+    calls: list = []
+
+    def fake_deploy_worker(config):
+        calls.append(config)
+        return {"taskDefinitionArn": "arn:...:5", "family": "x", "revision": 5, "imageUri": "fresh"}
+
+    monkeypatch.setattr(deploy_ingestion_worker, "deploy_worker", fake_deploy_worker)
+
+    exit_code = main(["deploy", "--region", "us-east-1"])
+
+    assert exit_code == 0
+    assert len(calls) == 1

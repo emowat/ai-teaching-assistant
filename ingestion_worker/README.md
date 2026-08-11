@@ -28,10 +28,10 @@ docker build -f ingestion_worker/Dockerfile -t codingrabbit-ingestion:dev .
 Use the repo-side helper to describe or register the ECS task definition:
 
 ```bash
-./deploy/scripts/deploy-ingestion-worker.sh describe
-./deploy/scripts/deploy-ingestion-worker.sh render-task-definition
-./deploy/scripts/deploy-ingestion-worker.sh render-backend-env
-./deploy/scripts/deploy-ingestion-worker.sh register-task-definition
+uv run python deploy/deploy_ingestion_worker.py describe
+uv run python deploy/deploy_ingestion_worker.py render-task-definition
+uv run python deploy/deploy_ingestion_worker.py render-backend-env
+uv run python deploy/deploy_ingestion_worker.py register-task-definition
 ```
 
 The helper expects the worker image URI, IAM role ARNs, and ECS subnet/security

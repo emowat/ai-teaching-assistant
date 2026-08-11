@@ -1,49 +1,52 @@
-"""Render and register the ECS evaluation worker task definition."""
+"""Render, register, and deploy the ECS evaluation worker task definition.
+
+Loads settings from deploy/deployment.yaml (with env var overrides) via
+deployment_config.load_deploy_config(), the same way deploy_rag_eng_ecs.py
+does - so this script is fully self-sufficient via `uv run` and does not
+need deploy/scripts/deploy-evaluation-worker.sh to bridge YAML values into
+flat env vars first.
+"""
 
 from __future__ import annotations
 
 import argparse
 import json
 import os
-from dataclasses import dataclass
+import sys
+from dataclasses import replace
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 from dotenv import load_dotenv
 
 
 load_dotenv()
 
+DEPLOY_DIR = Path(__file__).resolve().parent
+if str(DEPLOY_DIR) not in sys.path:
+    sys.path.insert(0, str(DEPLOY_DIR))
 
-SECRET_ENV_KEYS: tuple[str, ...] = (
-    "COURSE_REGISTRY_DATABASE_URL",
-    "OPENAI_API_KEY",
+from deployment_config import DeployConfig, load_deploy_config  # noqa: E402
+from evaluation_worker_image import (  # noqa: E402
+    EvaluationWorkerImageConfig,
+    build_and_push_image,
 )
+from evaluation_worker_image import (  # noqa: E402
+    DEFAULT_IMAGE_TAG as DEFAULT_IMAGE_BUILD_TAG,
+)
+from evaluation_worker_image import (  # noqa: E402
+    DEFAULT_REPOSITORY_NAME as DEFAULT_IMAGE_REPOSITORY_NAME,
+)
+from evaluation_worker_image import REPO_ROOT as IMAGE_REPO_ROOT  # noqa: E402
 
-WORKER_ENV_KEYS: tuple[str, ...] = (
-    "AWS_REGION",
-    "AWS_DEFAULT_REGION",
-    "S3_DATA_BUCKET",
-    "OPENAI_BASE_URL",
-    "EVALUATION_DEFAULT_JUDGE_PROVIDER",
-    "EVALUATION_DEFAULT_JUDGE_MODEL",
-    "EVALUATION_RESULTS_PREFIX",
-    "EVALUATION_OUTPUT_DIR",
-    "EVALUATION_EXPORT_TZ",
-    "EVALUATION_WRITE_AURORA",
-    "EVALUATION_HOMEWORK_N",
-    "EVALUATION_STUDY_N",
-    "EVALUATION_JUDGE_TEMPERATURE",
-    "EVALUATION_JUDGE_TOP_P",
-    "EVALUATION_JUDGE_TIMEOUT_SECONDS",
-    "EVALUATION_JUDGE_MAX_CONCURRENCY",
-    "EVALUATION_JUDGE_MAX_TOKENS",
-    "LOG_LEVEL",
-    # Plain (non-secret) env vars needed to self-heal from an Aurora master
-    # password rotation mid-run: the AWS-managed secret's ARN itself (not our
-    # app secret's - that one is never touched by Aurora's rotation) plus the
-    # stable connection details needed to rebuild a full URL from just a
-    # refreshed username/password. See rag_eng/aurora_secret_refresh.py.
+
+# Aurora password-rotation self-heal wiring for rag_eng/aurora_secret_refresh.py:
+# the AWS-managed secret's ARN itself (not our app secret's - that one is never
+# touched by Aurora's rotation) plus the stable connection details needed to
+# rebuild a full URL from just a refreshed username/password. These are plain
+# process env vars (typically from .env), not deployment.yaml settings - they
+# don't belong alongside EVALUATION_* judge/output tuning there.
+AURORA_SELF_HEAL_ENV_KEYS: tuple[str, ...] = (
     "COURSE_REGISTRY_DATABASE_URL_SECRET_ID",
     "COURSE_REGISTRY_DB_HOST",
     "COURSE_REGISTRY_DB_PORT",
@@ -51,267 +54,51 @@ WORKER_ENV_KEYS: tuple[str, ...] = (
     "COURSE_REGISTRY_DB_SSLMODE",
 )
 
-BACKEND_ENV_KEYS: tuple[str, ...] = (
-    "AWS_REGION",
-    "AWS_PROFILE",
-    "EVALUATION_WORKER_ECS_CLUSTER",
-    "EVALUATION_WORKER_ECS_TASK_DEFINITION",
-    "EVALUATION_WORKER_ECS_CONTAINER_NAME",
-    "EVALUATION_WORKER_ECS_LAUNCH_TYPE",
-    "EVALUATION_WORKER_ECS_PLATFORM_VERSION",
-    "EVALUATION_WORKER_ECS_ASSIGN_PUBLIC_IP",
-    "EVALUATION_WORKER_ECS_SUBNETS",
-    "EVALUATION_WORKER_ECS_SECURITY_GROUPS",
-)
 
-DEFAULT_TASK_FAMILY = "codingrabbit-evaluation-worker"
-DEFAULT_CONTAINER_NAME = "evaluation-worker"
-DEFAULT_LOG_GROUP = "/ecs/codingrabbit-evaluation-worker"
-DEFAULT_LOG_STREAM_PREFIX = "ecs"
+def _worker_environment(config: DeployConfig) -> list[dict[str, str]]:
+    ew = config.evaluation_worker
+    env = dict(ew.environment)
+    env["AWS_REGION"] = config.aws.region
+    env["AWS_DEFAULT_REGION"] = config.aws.region
+    for key in AURORA_SELF_HEAL_ENV_KEYS:
+        value = os.getenv(key)
+        if value:
+            env[key] = value
 
-
-def _csv_values(raw: str | None) -> tuple[str, ...]:
-    if not raw:
-        return ()
-    return tuple(item.strip() for item in raw.split(",") if item.strip())
-
-
-def _json_mapping(raw: str | None) -> dict[str, str]:
-    if not raw:
-        return {}
-    data = json.loads(raw)
-    if not isinstance(data, dict):
-        raise ValueError("Expected a JSON object for secret ARN mappings.")
-    return {
-        str(key).strip(): str(value).strip()
-        for key, value in data.items()
-        if str(key).strip() and str(value).strip()
-    }
-
-
-def _env_value(source: Mapping[str, str], *names: str, default: str | None = None) -> str | None:
-    for name in names:
-        value = source.get(name)
-        if value is not None and value != "":
-            return value
-    return default
-
-
-def _env_int(source: Mapping[str, str], *names: str, default: int) -> int:
-    raw = _env_value(source, *names)
-    if raw is None:
-        return default
-    return int(raw)
-
-
-@dataclass(frozen=True)
-class EvaluationWorkerDeployConfig:
-    """Resolved ECS settings for the offline evaluation worker."""
-
-    aws_region: str
-    aws_profile: str | None
-    ecs_cluster: str
-    ecs_task_definition: str
-    ecs_task_family: str
-    ecs_container_name: str
-    ecs_launch_type: str
-    ecs_platform_version: str
-    ecs_assign_public_ip: str
-    ecs_subnet_ids: tuple[str, ...]
-    ecs_security_group_ids: tuple[str, ...]
-    ecs_image_uri: str
-    ecs_execution_role_arn: str
-    ecs_task_role_arn: str
-    ecs_cpu: int
-    ecs_memory: int
-    ecs_log_group: str
-    ecs_log_stream_prefix: str
-    worker_env: dict[str, str]
-    secret_arn_map: dict[str, str]
-
-
-def load_evaluation_worker_config(
-    env: Mapping[str, str] | None = None,
-) -> EvaluationWorkerDeployConfig:
-    """Load worker deployment settings from environment variables."""
-    source = env or os.environ
-    secret_arn_map = {}
-    for key in ("DEPLOY_EVALUATION_WORKER_ECS_SECRET_ARNS_JSON", "EVALUATION_WORKER_ECS_SECRET_ARNS_JSON"):
-        secret_arn_map.update(_json_mapping(source.get(key)))
-
-    worker_env = {
-        key: value
-        for key in WORKER_ENV_KEYS
-        if (value := _env_value(source, key)) is not None
-    }
-
-    aws_region = _env_value(
-        source,
-        "AWS_REGION",
-        "AWS_DEFAULT_REGION",
-        "DEPLOY_AWS_REGION",
-        default="us-east-1",
-    )
-    return EvaluationWorkerDeployConfig(
-        aws_region=aws_region or "us-east-1",
-        aws_profile=_env_value(source, "AWS_PROFILE", "DEPLOY_AWS_PROFILE"),
-        ecs_cluster=_env_value(
-            source,
-            "DEPLOY_EVALUATION_WORKER_ECS_CLUSTER",
-            "EVALUATION_WORKER_ECS_CLUSTER",
-            default="",
-        )
-        or "",
-        ecs_task_definition=_env_value(
-            source,
-            "DEPLOY_EVALUATION_WORKER_ECS_TASK_DEFINITION",
-            "EVALUATION_WORKER_ECS_TASK_DEFINITION",
-            default="",
-        )
-        or _env_value(
-            source,
-            "DEPLOY_EVALUATION_WORKER_ECS_TASK_FAMILY",
-            "EVALUATION_WORKER_ECS_TASK_FAMILY",
-            default=DEFAULT_TASK_FAMILY,
-        )
-        or DEFAULT_TASK_FAMILY,
-        ecs_task_family=_env_value(
-            source,
-            "DEPLOY_EVALUATION_WORKER_ECS_TASK_FAMILY",
-            "EVALUATION_WORKER_ECS_TASK_FAMILY",
-            default=DEFAULT_TASK_FAMILY,
-        )
-        or DEFAULT_TASK_FAMILY,
-        ecs_container_name=_env_value(
-            source,
-            "DEPLOY_EVALUATION_WORKER_ECS_CONTAINER_NAME",
-            "EVALUATION_WORKER_ECS_CONTAINER_NAME",
-            default=DEFAULT_CONTAINER_NAME,
-        )
-        or DEFAULT_CONTAINER_NAME,
-        ecs_launch_type=_env_value(
-            source,
-            "DEPLOY_EVALUATION_WORKER_ECS_LAUNCH_TYPE",
-            "EVALUATION_WORKER_ECS_LAUNCH_TYPE",
-            default="FARGATE",
-        )
-        or "FARGATE",
-        ecs_platform_version=_env_value(
-            source,
-            "DEPLOY_EVALUATION_WORKER_ECS_PLATFORM_VERSION",
-            "EVALUATION_WORKER_ECS_PLATFORM_VERSION",
-            default="LATEST",
-        )
-        or "LATEST",
-        ecs_assign_public_ip=_env_value(
-            source,
-            "DEPLOY_EVALUATION_WORKER_ECS_ASSIGN_PUBLIC_IP",
-            "EVALUATION_WORKER_ECS_ASSIGN_PUBLIC_IP",
-            default="ENABLED",
-        )
-        or "ENABLED",
-        ecs_subnet_ids=_csv_values(
-            _env_value(
-                source,
-                "DEPLOY_EVALUATION_WORKER_ECS_SUBNETS",
-                "EVALUATION_WORKER_ECS_SUBNETS",
-            )
-        ),
-        ecs_security_group_ids=_csv_values(
-            _env_value(
-                source,
-                "DEPLOY_EVALUATION_WORKER_ECS_SECURITY_GROUPS",
-                "EVALUATION_WORKER_ECS_SECURITY_GROUPS",
-            )
-        ),
-        ecs_image_uri=_env_value(
-            source,
-            "DEPLOY_EVALUATION_WORKER_ECS_IMAGE_URI",
-            "EVALUATION_WORKER_ECS_IMAGE_URI",
-            default="",
-        )
-        or "",
-        ecs_execution_role_arn=_env_value(
-            source,
-            "DEPLOY_EVALUATION_WORKER_ECS_EXECUTION_ROLE_ARN",
-            "EVALUATION_WORKER_ECS_EXECUTION_ROLE_ARN",
-            default="",
-        )
-        or "",
-        ecs_task_role_arn=_env_value(
-            source,
-            "DEPLOY_EVALUATION_WORKER_ECS_TASK_ROLE_ARN",
-            "EVALUATION_WORKER_ECS_TASK_ROLE_ARN",
-            default="",
-        )
-        or "",
-        ecs_cpu=_env_int(
-            source,
-            "DEPLOY_EVALUATION_WORKER_ECS_CPU",
-            "EVALUATION_WORKER_ECS_CPU",
-            default=1024,
-        ),
-        ecs_memory=_env_int(
-            source,
-            "DEPLOY_EVALUATION_WORKER_ECS_MEMORY",
-            "EVALUATION_WORKER_ECS_MEMORY",
-            default=2048,
-        ),
-        ecs_log_group=_env_value(
-            source,
-            "DEPLOY_EVALUATION_WORKER_ECS_LOG_GROUP",
-            "EVALUATION_WORKER_ECS_LOG_GROUP",
-            default=DEFAULT_LOG_GROUP,
-        )
-        or DEFAULT_LOG_GROUP,
-        ecs_log_stream_prefix=_env_value(
-            source,
-            "DEPLOY_EVALUATION_WORKER_ECS_LOG_STREAM_PREFIX",
-            "EVALUATION_WORKER_ECS_LOG_STREAM_PREFIX",
-            default=DEFAULT_LOG_STREAM_PREFIX,
-        )
-        or DEFAULT_LOG_STREAM_PREFIX,
-        worker_env=worker_env,
-        secret_arn_map=secret_arn_map,
-    )
-
-
-def _worker_environment(config: EvaluationWorkerDeployConfig) -> list[dict[str, str]]:
-    environment = [
-        {"name": "AWS_REGION", "value": config.aws_region},
-        {"name": "AWS_DEFAULT_REGION", "value": config.aws_region},
-    ]
-    for key in WORKER_ENV_KEYS:
-        if key in {"AWS_REGION", "AWS_DEFAULT_REGION"}:
+    environment: list[dict[str, str]] = []
+    for key in sorted(env):
+        value = env[key]
+        if value is None:
             continue
-        value = config.worker_env.get(key)
-        if value is not None and value != "":
-            environment.append({"name": key, "value": value})
+        text = str(value).strip()
+        if not text:
+            continue
+        environment.append({"name": key, "value": text})
     return environment
 
 
-def _worker_secrets(config: EvaluationWorkerDeployConfig) -> list[dict[str, str]]:
+def _worker_secrets(config: DeployConfig) -> list[dict[str, str]]:
     secrets: list[dict[str, str]] = []
-    for key in SECRET_ENV_KEYS:
-        value_from = config.secret_arn_map.get(key)
+    for key, value_from in sorted(config.evaluation_worker.secret_arn_map.items()):
         if value_from:
             secrets.append({"name": key, "valueFrom": value_from})
     return secrets
 
 
-def build_task_definition(config: EvaluationWorkerDeployConfig) -> dict[str, Any]:
+def build_task_definition(config: DeployConfig) -> dict[str, Any]:
     """Build the ECS task definition payload for the evaluation worker."""
+    ew = config.evaluation_worker
     container_def: dict[str, Any] = {
-        "name": config.ecs_container_name,
-        "image": config.ecs_image_uri,
+        "name": ew.container_name,
+        "image": ew.image_uri,
         "essential": True,
         "command": ["python", "-m", "model_eval.evaluation_worker"],
         "logConfiguration": {
             "logDriver": "awslogs",
             "options": {
-                "awslogs-group": config.ecs_log_group,
-                "awslogs-region": config.aws_region,
-                "awslogs-stream-prefix": config.ecs_log_stream_prefix,
+                "awslogs-group": ew.log_group,
+                "awslogs-region": config.aws.region,
+                "awslogs-stream-prefix": ew.log_stream_prefix,
             },
         },
         "environment": _worker_environment(config),
@@ -321,13 +108,13 @@ def build_task_definition(config: EvaluationWorkerDeployConfig) -> dict[str, Any
         container_def["secrets"] = secrets
 
     return {
-        "family": config.ecs_task_family,
+        "family": ew.task_family,
         "networkMode": "awsvpc",
-        "requiresCompatibilities": [config.ecs_launch_type],
-        "cpu": str(config.ecs_cpu),
-        "memory": str(config.ecs_memory),
-        "executionRoleArn": config.ecs_execution_role_arn,
-        "taskRoleArn": config.ecs_task_role_arn,
+        "requiresCompatibilities": [ew.launch_type],
+        "cpu": str(ew.cpu),
+        "memory": str(ew.memory),
+        "executionRoleArn": ew.execution_role_arn,
+        "taskRoleArn": ew.task_role_arn,
         "runtimePlatform": {
             "operatingSystemFamily": "LINUX",
             "cpuArchitecture": "X86_64",
@@ -336,76 +123,73 @@ def build_task_definition(config: EvaluationWorkerDeployConfig) -> dict[str, Any
     }
 
 
-def build_backend_env_fragment(config: EvaluationWorkerDeployConfig) -> list[str]:
+def build_backend_env_fragment(config: DeployConfig) -> list[str]:
     """Build the env lines that backend launcher code should copy into `.env`."""
-    lines: list[str] = []
+    ew = config.evaluation_worker
     mapping = {
-        "AWS_REGION": config.aws_region,
-        "AWS_PROFILE": config.aws_profile,
-        "EVALUATION_WORKER_ECS_CLUSTER": config.ecs_cluster,
-        "EVALUATION_WORKER_ECS_TASK_DEFINITION": config.ecs_task_definition,
-        "EVALUATION_WORKER_ECS_CONTAINER_NAME": config.ecs_container_name,
-        "EVALUATION_WORKER_ECS_LAUNCH_TYPE": config.ecs_launch_type,
-        "EVALUATION_WORKER_ECS_PLATFORM_VERSION": config.ecs_platform_version,
-        "EVALUATION_WORKER_ECS_ASSIGN_PUBLIC_IP": config.ecs_assign_public_ip,
-        "EVALUATION_WORKER_ECS_SUBNETS": ",".join(config.ecs_subnet_ids),
-        "EVALUATION_WORKER_ECS_SECURITY_GROUPS": ",".join(
-            config.ecs_security_group_ids
-        ),
+        "AWS_REGION": config.aws.region,
+        "AWS_PROFILE": config.aws.profile,
+        "EVALUATION_WORKER_ECS_CLUSTER": ew.cluster,
+        "EVALUATION_WORKER_ECS_TASK_DEFINITION": ew.task_definition,
+        "EVALUATION_WORKER_ECS_CONTAINER_NAME": ew.container_name,
+        "EVALUATION_WORKER_ECS_LAUNCH_TYPE": ew.launch_type,
+        "EVALUATION_WORKER_ECS_PLATFORM_VERSION": ew.platform_version,
+        "EVALUATION_WORKER_ECS_ASSIGN_PUBLIC_IP": ew.assign_public_ip,
+        "EVALUATION_WORKER_ECS_SUBNETS": ",".join(ew.subnet_ids),
+        "EVALUATION_WORKER_ECS_SECURITY_GROUPS": ",".join(ew.security_group_ids),
     }
-    for key in BACKEND_ENV_KEYS:
-        value = mapping.get(key)
-        if value:
-            lines.append(f"{key}={value}")
-    return lines
+    return [f"{key}={value}" for key, value in mapping.items() if value]
 
 
-def missing_registration_values(config: EvaluationWorkerDeployConfig) -> list[str]:
+def missing_registration_values(config: DeployConfig) -> list[str]:
     """Return the ECS values required to register the task definition."""
+    ew = config.evaluation_worker
     missing: list[str] = []
-    if not config.ecs_image_uri:
+    if not ew.image_uri:
         missing.append("EVALUATION_WORKER_ECS_IMAGE_URI")
-    if not config.ecs_execution_role_arn:
+    if not ew.execution_role_arn:
         missing.append("EVALUATION_WORKER_ECS_EXECUTION_ROLE_ARN")
-    if not config.ecs_task_role_arn:
+    if not ew.task_role_arn:
         missing.append("EVALUATION_WORKER_ECS_TASK_ROLE_ARN")
     return missing
 
 
-def missing_backend_launch_values(config: EvaluationWorkerDeployConfig) -> list[str]:
+def missing_backend_launch_values(config: DeployConfig) -> list[str]:
     """Return the ECS values required for the backend `run-task` launcher."""
+    ew = config.evaluation_worker
     missing: list[str] = []
-    if not config.ecs_cluster:
+    if not ew.cluster:
         missing.append("EVALUATION_WORKER_ECS_CLUSTER")
-    if not config.ecs_task_definition:
+    if not ew.task_definition:
         missing.append("EVALUATION_WORKER_ECS_TASK_DEFINITION")
-    if not config.ecs_subnet_ids:
+    if not ew.subnet_ids:
         missing.append("EVALUATION_WORKER_ECS_SUBNETS")
-    if not config.ecs_security_group_ids:
+    if not ew.security_group_ids:
         missing.append("EVALUATION_WORKER_ECS_SECURITY_GROUPS")
     return missing
 
 
-def describe_config(config: EvaluationWorkerDeployConfig) -> list[str]:
+def describe_config(config: DeployConfig) -> list[str]:
     """Return a human-readable summary of the worker deployment settings."""
+    ew = config.evaluation_worker
     lines = [
         "==> ECS evaluation worker",
-        f"    Region:           {config.aws_region}",
-        f"    Profile:          {config.aws_profile or '(default credential chain)'}",
-        f"    Task family:      {config.ecs_task_family}",
-        f"    Task definition:  {config.ecs_task_definition}",
-        f"    Container:        {config.ecs_container_name}",
-        f"    Launch type:      {config.ecs_launch_type}",
-        f"    Platform version: {config.ecs_platform_version}",
-        f"    Assign public IP: {config.ecs_assign_public_ip}",
-        f"    Subnets:          {', '.join(config.ecs_subnet_ids) or '(missing)'}",
-        f"    Security groups:  {', '.join(config.ecs_security_group_ids) or '(missing)'}",
-        f"    Image URI:        {config.ecs_image_uri or '(missing)'}",
-        f"    Exec role ARN:    {config.ecs_execution_role_arn or '(missing)'}",
-        f"    Task role ARN:    {config.ecs_task_role_arn or '(missing)'}",
-        f"    CPU / Memory:     {config.ecs_cpu} / {config.ecs_memory}",
-        f"    Log group:        {config.ecs_log_group}",
-        f"    Log prefix:       {config.ecs_log_stream_prefix}",
+        f"    Region:           {config.aws.region}",
+        f"    Profile:          {config.aws.profile or '(default credential chain)'}",
+        f"    Task family:      {ew.task_family}",
+        f"    Task definition:  {ew.task_definition}",
+        f"    Container:        {ew.container_name}",
+        f"    Launch type:      {ew.launch_type}",
+        f"    Platform version: {ew.platform_version}",
+        f"    Assign public IP: {ew.assign_public_ip}",
+        f"    Subnets:          {', '.join(ew.subnet_ids) or '(missing)'}",
+        f"    Security groups:  {', '.join(ew.security_group_ids) or '(missing)'}",
+        f"    Image URI:        {ew.image_uri or '(missing)'}",
+        f"    Exec role ARN:    {ew.execution_role_arn or '(missing)'}",
+        f"    Task role ARN:    {ew.task_role_arn or '(missing)'}",
+        f"    CPU / Memory:     {ew.cpu} / {ew.memory}",
+        f"    Log group:        {ew.log_group}",
+        f"    Log prefix:       {ew.log_stream_prefix}",
     ]
     registration_missing = missing_registration_values(config)
     backend_missing = missing_backend_launch_values(config)
@@ -417,26 +201,25 @@ def describe_config(config: EvaluationWorkerDeployConfig) -> list[str]:
         "    Backend launch values missing: "
         + (", ".join(backend_missing) if backend_missing else "(none)"),
     )
-    secret_keys = sorted(config.secret_arn_map)
-    if secret_keys:
-        lines.append("    Secret ARN mappings: " + ", ".join(secret_keys))
-    else:
-        lines.append("    Secret ARN mappings: (none)")
+    secret_keys = sorted(ew.secret_arn_map)
+    lines.append(
+        "    Secret ARN mappings: " + (", ".join(secret_keys) if secret_keys else "(none)")
+    )
     return lines
 
 
-def _ecs_client(config: EvaluationWorkerDeployConfig):
+def _ecs_client(config: DeployConfig):
     import boto3
 
     session = boto3.Session(
-        profile_name=config.aws_profile,
-        region_name=config.aws_region,
+        profile_name=config.aws.profile,
+        region_name=config.aws.region,
     )
     return session.client("ecs")
 
 
 def register_task_definition(
-    config: EvaluationWorkerDeployConfig,
+    config: DeployConfig,
     *,
     client=None,
 ) -> dict[str, Any]:
@@ -452,9 +235,36 @@ def register_task_definition(
     task_definition = response.get("taskDefinition", {}) if isinstance(response, dict) else {}
     return {
         "taskDefinitionArn": task_definition.get("taskDefinitionArn"),
-        "family": task_definition.get("family", config.ecs_task_family),
+        "family": task_definition.get("family", config.evaluation_worker.task_family),
         "revision": task_definition.get("revision"),
     }
+
+
+def deploy_worker(
+    config: DeployConfig,
+    *,
+    docker_binary: str = "docker",
+) -> dict[str, Any]:
+    """Build and push the worker image, then register a task definition
+    pointing at the freshly-pushed image (overriding whatever image_uri is
+    configured, since that value would otherwise still point at the
+    previous build).
+    """
+    image_config = EvaluationWorkerImageConfig(
+        aws_region=config.aws.region,
+        aws_profile=config.aws.profile,
+        repository_name=os.getenv("EVALUATION_WORKER_ECR_REPOSITORY", DEFAULT_IMAGE_REPOSITORY_NAME),
+        image_tag=os.getenv("EVALUATION_WORKER_ECR_IMAGE_TAG", DEFAULT_IMAGE_BUILD_TAG),
+        repo_root=IMAGE_REPO_ROOT,
+    )
+    image_uri = build_and_push_image(config=image_config, docker_binary=docker_binary)
+    registration_config = replace(
+        config,
+        evaluation_worker=replace(config.evaluation_worker, image_uri=image_uri),
+    )
+    result = register_task_definition(registration_config)
+    result["imageUri"] = image_uri
+    return result
 
 
 def _write_output(output: str, output_path: Path | None) -> None:
@@ -467,7 +277,7 @@ def _write_output(output: str, output_path: Path | None) -> None:
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Describe or register the ECS evaluation worker task definition.",
+        description="Describe, render, register, or deploy the ECS evaluation worker task definition.",
     )
     parser.add_argument(
         "action",
@@ -476,14 +286,23 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "render-task-definition",
             "render-backend-env",
             "register-task-definition",
+            "deploy",
         ),
-        help="Inspect the worker config, render JSON, or register the task definition",
+        help=(
+            "Inspect the worker config, render JSON, register the task "
+            "definition, or build+push the image and register in one step"
+        ),
     )
     parser.add_argument(
         "--output",
         type=Path,
         default=None,
         help="Optional file path to write the rendered JSON or env fragment",
+    )
+    parser.add_argument(
+        "--config",
+        default=None,
+        help="Path to deployment.yaml (default: deploy/deployment.yaml or DEPLOY_CONFIG)",
     )
     parser.add_argument(
         "--region",
@@ -502,14 +321,13 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_arg_parser()
     args = parser.parse_args(argv)
 
-    env = dict(os.environ)
-    env["AWS_REGION"] = args.region
+    os.environ["AWS_REGION"] = args.region
     if args.profile:
-        env["AWS_PROFILE"] = args.profile
+        os.environ["AWS_PROFILE"] = args.profile
     else:
-        env.pop("AWS_PROFILE", None)
+        os.environ.pop("AWS_PROFILE", None)
 
-    config = load_evaluation_worker_config(env)
+    config = load_deploy_config(args.config)
 
     if args.action == "describe":
         _write_output("\n".join(describe_config(config)), args.output)
@@ -531,6 +349,24 @@ def main(argv: list[str] | None = None) -> int:
                 "Missing required values. Run describe and fill in the missing fields.",
             )
         response = register_task_definition(config)
+        _write_output(json.dumps(response, indent=2, sort_keys=True), args.output)
+        return 0
+
+    if args.action == "deploy":
+        # Image URI is produced by the build+push step below, not required
+        # up front - every other registration value still is.
+        missing = [
+            value
+            for value in missing_registration_values(config)
+            if value != "EVALUATION_WORKER_ECS_IMAGE_URI"
+        ]
+        if missing:
+            parser.error(
+                "Missing required values: "
+                + ", ".join(missing)
+                + ". Run describe and fill in the missing fields.",
+            )
+        response = deploy_worker(config)
         _write_output(json.dumps(response, indent=2, sort_keys=True), args.output)
         return 0
 
