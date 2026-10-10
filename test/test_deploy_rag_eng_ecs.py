@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -369,6 +370,39 @@ def test_upsert_service_updates_existing_service(tmp_path) -> None:
     assert "launchType" not in client.update_kwargs
     assert response["action"] == "updated"
     assert response["taskDefinition"].endswith(":4")
+
+
+def test_service_spec_uses_capacity_provider_instead_of_launch_type(tmp_path) -> None:
+    config = load_deploy_config(_write_config(tmp_path))
+    spot = replace(
+        config,
+        rag_eng_ecs=replace(config.rag_eng_ecs, capacity_provider="FARGATE_SPOT"),
+    )
+
+    spec = build_service_spec(spot, task_definition="rag-eng:5")
+
+    assert "launchType" not in spec
+    assert spec["capacityProviderStrategy"] == [
+        {"capacityProvider": "FARGATE_SPOT", "weight": 1}
+    ]
+    assert build_service_spec(config, task_definition="rag-eng:5")["launchType"] == "FARGATE"
+
+
+def test_upsert_service_passes_capacity_provider_on_update(tmp_path) -> None:
+    config = load_deploy_config(_write_config(tmp_path))
+    spot = replace(
+        config,
+        rag_eng_ecs=replace(config.rag_eng_ecs, capacity_provider="FARGATE_SPOT"),
+    )
+    client = _FakeEcsClient(has_service=True)
+
+    _upsert_service(spot, task_definition="rag-eng:5", client=client)
+
+    assert client.update_kwargs["capacityProviderStrategy"] == [
+        {"capacityProvider": "FARGATE_SPOT", "weight": 1}
+    ]
+    assert client.update_kwargs["forceNewDeployment"] is True
+    assert "launchType" not in client.update_kwargs
 
 
 def test_service_status_rendering_handles_datetime_fields(tmp_path) -> None:

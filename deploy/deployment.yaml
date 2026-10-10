@@ -202,6 +202,10 @@ rag_eng_ecs:
 
   # ECS launch and placement settings.
   launch_type: "FARGATE"
+  # FARGATE_SPOT is ~70% cheaper but AWS can reclaim the task (ECS replaces it;
+  # expect ~10 min of backend downtime while guardrails restore). For demos,
+  # deploy with `provision_rag_eng_stack.py apply --on-demand`.
+  capacity_provider: "FARGATE_SPOT"
   platform_version: "LATEST"
   assign_public_ip: "ENABLED"
   subnet_ids:
@@ -502,6 +506,9 @@ _reference:
   rag_eng_ecs.launch_type:
     description: ECS launch type for the service.
     env_override: RAG_ENG_ECS_LAUNCH_TYPE
+  rag_eng_ecs.capacity_provider:
+    description: ECS capacity provider for the service (FARGATE_SPOT or FARGATE); overrides launch_type when set.
+    env_override: RAG_ENG_ECS_CAPACITY_PROVIDER
   rag_eng_ecs.platform_version:
     description: ECS Fargate platform version.
     env_override: RAG_ENG_ECS_PLATFORM_VERSION

@@ -190,7 +190,6 @@ def build_service_spec(
         "serviceName": ecs.service_name,
         "taskDefinition": task_definition or ecs.task_definition or ecs.task_family,
         "desiredCount": ecs.desired_count,
-        "launchType": ecs.launch_type,
         "platformVersion": ecs.platform_version,
         "healthCheckGracePeriodSeconds": ecs.health_check_grace_period_seconds,
         "deploymentConfiguration": {
@@ -206,6 +205,12 @@ def build_service_spec(
             }
         },
     }
+    if ecs.capacity_provider:
+        spec["capacityProviderStrategy"] = [
+            {"capacityProvider": ecs.capacity_provider, "weight": 1}
+        ]
+    else:
+        spec["launchType"] = ecs.launch_type
     if ecs.target_group_arn:
         spec["loadBalancers"] = [
             {
@@ -276,6 +281,7 @@ def describe_config(config: DeployConfig) -> list[str]:
         f"    Health path:      {ecs.health_check_path}",
         f"    Target group ARN: {ecs.target_group_arn or '(missing)'}",
         f"    Launch type:      {ecs.launch_type}",
+        f"    Capacity provider: {ecs.capacity_provider or '(launch type)'}",
         f"    Platform version: {ecs.platform_version}",
         f"    Assign public IP: {ecs.assign_public_ip}",
         f"    Subnets:          {', '.join(ecs.subnet_ids) or '(missing)'}",
@@ -353,6 +359,13 @@ def _upsert_service(
     else:
         update_payload = dict(payload)
         update_payload.pop("launchType", None)
+        # Switching between launchType and a capacity provider strategy on an
+        # existing service requires forceNewDeployment, which is always set.
+        strategy_kwargs = (
+            {"capacityProviderStrategy": update_payload["capacityProviderStrategy"]}
+            if "capacityProviderStrategy" in update_payload
+            else {}
+        )
         response = ecs_client.update_service(
             cluster=cluster,
             service=service_name,
@@ -364,6 +377,7 @@ def _upsert_service(
             healthCheckGracePeriodSeconds=ecs.health_check_grace_period_seconds,
             deploymentConfiguration=update_payload["deploymentConfiguration"],
             forceNewDeployment=True,
+            **strategy_kwargs,
         )
         service = response.get("service", {}) if isinstance(response, dict) else {}
         action = "updated"

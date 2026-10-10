@@ -1021,6 +1021,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Path to deployment.yaml (default: deploy/deployment.yaml or DEPLOY_CONFIG)",
     )
     parser.add_argument(
+        "--on-demand",
+        action="store_true",
+        help=(
+            "Run the service on regular (on-demand) Fargate instead of the "
+            "configured capacity provider, e.g. before a demo. The next plain "
+            "`apply` returns to the configured provider (FARGATE_SPOT)."
+        ),
+    )
+    parser.add_argument(
         "--skip-preflight",
         action="store_true",
         help=(
@@ -1035,6 +1044,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_arg_parser()
     args = parser.parse_args(argv)
     config = load_deploy_config(args.config)
+    if args.on_demand:
+        config = replace(
+            config,
+            rag_eng_ecs=replace(config.rag_eng_ecs, capacity_provider="FARGATE"),
+        )
 
     if args.action == "describe":
         from deploy_rag_eng_ecs import describe_config

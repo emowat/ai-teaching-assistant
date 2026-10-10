@@ -630,6 +630,21 @@ def test_run_preflight_checks_can_be_skipped(monkeypatch) -> None:
     assert called == []
 
 
+def test_main_on_demand_flag_overrides_capacity_provider(monkeypatch, capsys) -> None:
+    captured = {}
+
+    def _describe(config):
+        captured["capacity_provider"] = config.rag_eng_ecs.capacity_provider
+        return []
+
+    monkeypatch.setattr("deploy_rag_eng_ecs.describe_config", _describe)
+
+    assert provision.main(["describe"]) == 0
+    assert captured["capacity_provider"] == "FARGATE_SPOT"
+    assert provision.main(["describe", "--on-demand"]) == 0
+    assert captured["capacity_provider"] == "FARGATE"
+
+
 def test_build_arg_parser_accepts_skip_preflight_flag() -> None:
     args = provision.build_arg_parser().parse_args(["apply", "--skip-preflight"])
 

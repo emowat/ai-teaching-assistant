@@ -39,6 +39,7 @@ ENV_OVERRIDES: dict[str, str] = {
     "RAG_ENG_ECS_TASK_DEFINITION": "rag_eng_ecs.task_definition",
     "RAG_ENG_ECS_CONTAINER_NAME": "rag_eng_ecs.container_name",
     "RAG_ENG_ECS_LAUNCH_TYPE": "rag_eng_ecs.launch_type",
+    "RAG_ENG_ECS_CAPACITY_PROVIDER": "rag_eng_ecs.capacity_provider",
     "RAG_ENG_ECS_PLATFORM_VERSION": "rag_eng_ecs.platform_version",
     "RAG_ENG_ECS_ASSIGN_PUBLIC_IP": "rag_eng_ecs.assign_public_ip",
     "RAG_ENG_ECS_SUBNETS": "rag_eng_ecs.subnet_ids",
@@ -275,6 +276,10 @@ class RagEngEcsConfig:
     target_group_arn: str | None
     environment: dict[str, str]
     secret_arn_map: dict[str, str | None]
+    # FARGATE_SPOT or FARGATE. When set, the service uses a capacity provider
+    # strategy instead of launch_type (launch_type still sets the task
+    # definition's requiresCompatibilities).
+    capacity_provider: str = ""
 
 
 @dataclass
@@ -743,6 +748,7 @@ def load_deploy_config(path: str | Path | None = None) -> DeployConfig:
             task_definition=_str_or_default(rag_ecs.get("task_definition"), ""),
             container_name=_str_or_default(rag_ecs.get("container_name"), "rag-eng"),
             launch_type=_str_or_default(rag_ecs.get("launch_type"), "FARGATE"),
+            capacity_provider=_str_or_default(rag_ecs.get("capacity_provider"), ""),
             platform_version=_str_or_default(
                 rag_ecs.get("platform_version"),
                 "LATEST",
@@ -942,6 +948,7 @@ def get_dotpath(cfg: DeployConfig, dot_path: str) -> Any:
         "rag_eng_ecs.execution_role_arn": cfg.rag_eng_ecs.execution_role_arn or "",
         "rag_eng_ecs.task_role_arn": cfg.rag_eng_ecs.task_role_arn or "",
         "rag_eng_ecs.launch_type": cfg.rag_eng_ecs.launch_type,
+        "rag_eng_ecs.capacity_provider": cfg.rag_eng_ecs.capacity_provider,
         "rag_eng_ecs.platform_version": cfg.rag_eng_ecs.platform_version,
         "rag_eng_ecs.assign_public_ip": cfg.rag_eng_ecs.assign_public_ip,
         "rag_eng_ecs.container_port": str(cfg.rag_eng_ecs.container_port),
