@@ -220,7 +220,8 @@ rag_eng_ecs:
   memory: 2048
   container_port: 8001
   desired_count: 1
-  health_check_path: "/health"
+  # Liveness only (no DB query) so Aurora Serverless v2 can auto-pause.
+  health_check_path: "/livez"
   # The ECS entrypoint restores both guardrail checkpoints from S3 before
   # uvicorn starts, so give the task time to warm up before ALB checks.
   health_check_grace_period_seconds: 600

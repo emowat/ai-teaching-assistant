@@ -68,6 +68,20 @@ def test_health_endpoint_returns_service_state(monkeypatch, client: TestClient) 
     assert response.json()["message"] == "Ready."
 
 
+def test_livez_endpoint_does_not_run_health_checks(
+    monkeypatch, client: TestClient
+) -> None:
+    def _fail() -> HealthResponse:
+        raise AssertionError("/livez must not call get_health")
+
+    monkeypatch.setattr("rag_eng.api.get_health", _fail)
+
+    response = client.get("/livez")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+
+
 def test_query_endpoint_uses_default_result_count(
     monkeypatch, client: TestClient
 ) -> None:

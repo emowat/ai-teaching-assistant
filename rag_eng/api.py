@@ -559,6 +559,12 @@ def create_app() -> FastAPI:
     def health() -> HealthResponse:
         return get_health()
 
+    @app.get("/livez")
+    def livez() -> dict[str, str]:
+        # ALB target health check. Must not touch Aurora: polling /health
+        # every 30s kept Serverless v2 from ever auto-pausing.
+        return {"status": "ok"}
+
     @app.get("/me", response_model=MeResponse)
     def me(current_user=Depends(require_authenticated_user)) -> MeResponse:
         if current_user.primary_role in {"professor", "student"}:
