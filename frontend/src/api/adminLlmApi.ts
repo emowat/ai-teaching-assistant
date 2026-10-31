@@ -1,7 +1,7 @@
 import { API_BASE_URL } from "./client.ts";
 
 export type LlmProvider =
-  "cohere" | "openai" | "ollama" | "sagemaker" | "bedrock";
+  "cohere" | "openai" | "ollama" | "sagemaker" | "bedrock" | "playlab";
 
 export interface LlmRouteConfig {
   provider: LlmProvider;

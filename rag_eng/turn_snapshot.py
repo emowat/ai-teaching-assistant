@@ -162,6 +162,12 @@ def _ta_generation_phase(
             "cot_keys": _extract_cot_keys(raw_gen),
             "raw_generation": raw_gen,
             "output_guardrail": attempt.get("guardrail"),
+            "analysis_present": attempt.get("analysis_present", "<analysis>" in raw_gen),
+            **(
+                {"provider_metadata": attempt["provider_metadata"]}
+                if attempt.get("provider_metadata") is not None
+                else {}
+            ),
         })
 
     return {

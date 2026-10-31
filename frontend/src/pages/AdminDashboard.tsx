@@ -1991,6 +1991,7 @@ export function AdminDashboard({
                       <option value="sagemaker">SageMaker</option>
                       <option value="openai">OpenAI</option>
                       <option value="bedrock">Bedrock</option>
+                      <option value="playlab">Playlab</option>
                     </select>
                   </label>
                   {renderModelPicker(

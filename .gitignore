@@ -56,3 +56,6 @@ input_guardrails/models/checkpoints/input_codebert_v1*.tar.gz
 # SageMaker deploy artifacts (upload_model.py)
 model_download/
 model.tar.gz
+
+# Local Claude Code settings
+.claude/

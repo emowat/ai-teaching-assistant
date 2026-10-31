@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 
 from botocore.exceptions import ClientError
@@ -505,3 +506,44 @@ def test_fetch_input_guardrail_status_renders_html(monkeypatch) -> None:
     assert "Input guardrail model is enabled" in html
     assert "threshold pass&lt;0.30" in html
     assert "block&gt;0.70" in html
+
+
+def test_invoke_foundation_model_direct_for_playlab(monkeypatch) -> None:
+    import httpx
+    from rag_eng import playlab_client
+
+    sent = []
+
+    def handler(request):
+        if request.url.path.endswith("/conversations"):
+            return httpx.Response(200, json={"conversation": {"id": "c1"}})
+        sent.append(json.loads(request.content)["input"]["message"])
+        return httpx.Response(200, text='event: append\ndata: {"delta": "hi from playlab"}\n\n')
+
+    real_client = playlab_client.AsyncPlaylabClient
+    monkeypatch.setattr(
+        playlab_client,
+        "AsyncPlaylabClient",
+        lambda: real_client(api_key="k", project_id="p", transport=httpx.MockTransport(handler)),
+    )
+    monkeypatch.setattr(
+        "rag_eng.gradio_tools._load_deploy_config",
+        lambda: SimpleNamespace(
+            inference_smoke_test=SimpleNamespace(
+                system_message="You are CodingRabbit.", temperature=0.2, top_p=0.95, max_new_tokens=256,
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        "rag_eng.gradio_tools.get_inference_config",
+        lambda: SimpleNamespace(chat=SimpleNamespace(provider="playlab", model="claude-haiku-5-5")),
+    )
+    monkeypatch.setattr("rag_eng.gradio_tools.describe_chat_route", lambda settings: "playlab (claude-haiku-5-5)")
+
+    response, status = invoke_foundation_model_direct(
+        "Explain pointers.", SimpleNamespace(use_sagemaker=True, aws_region="us-east-1", aws_profile=None),
+    )
+
+    assert response == "hi from playlab"
+    assert sent == ["Explain pointers."]
+    assert "Completed in" in status and "playlab" in status

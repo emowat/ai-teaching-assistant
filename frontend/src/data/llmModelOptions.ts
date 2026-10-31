@@ -29,6 +29,11 @@ export const BEDROCK_MODEL_OPTIONS: ModelOption[] = [
   },
 ];
 
+// Playlab picks the model in the Playlab app settings; this label is for telemetry only.
+export const PLAYLAB_MODEL_OPTIONS: ModelOption[] = [
+  { label: "claude-haiku-5-5 (set in Playlab app)", value: "claude-haiku-5-5" },
+];
+
 export const OLLAMA_MODEL_OPTIONS: ModelOption[] = [
   { label: "qwen3.5:9b", value: "qwen3.5:9b" },
   { label: "llama3.1:8b", value: "llama3.1:8b" },
@@ -61,6 +66,8 @@ export function getModelOptions(provider: string): ModelOption[] {
       return BEDROCK_MODEL_OPTIONS;
     case "ollama":
       return OLLAMA_MODEL_OPTIONS;
+    case "playlab":
+      return PLAYLAB_MODEL_OPTIONS;
     case "sagemaker":
       return [];
     default:
@@ -78,6 +85,8 @@ export function getDefaultModel(provider: string): string {
       return BEDROCK_MODEL_OPTIONS[0].value;
     case "ollama":
       return OLLAMA_MODEL_OPTIONS[0].value;
+    case "playlab":
+      return PLAYLAB_MODEL_OPTIONS[0].value;
     case "sagemaker":
       return "";
     default:

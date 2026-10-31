@@ -276,6 +276,9 @@ async def run_inference(
         - AsyncIterator[bytes] of NDJSON chunks when stream=True
     """
     chat_provider = get_inference_config().chat.provider
+    if chat_provider == "playlab":
+        # Playlab needs per-session state; it is handled in service._generate_llm_response.
+        raise ValueError("run_inference does not support the playlab provider.")
     if chat_provider == "sagemaker" or settings.use_sagemaker:
         if stream:
             return _stream_sagemaker(messages, settings)

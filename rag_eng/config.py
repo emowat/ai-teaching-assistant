@@ -204,7 +204,7 @@ def load_inference_config(path: Path | None = None) -> InferenceConfig:
     chat_raw = runtime_raw.get("chat", {})
     openai_raw = runtime_raw.get("openai", {})
     default_chat_provider = "sagemaker" if os.getenv("USE_SAGEMAKER", "false").lower() == "true" else "ollama"
-    rag_provider = str(rag_raw.get("provider", "cohere"))
+    rag_provider = str(rag_raw.get("provider", "bedrock"))
     chat_provider = str(chat_raw.get("provider", default_chat_provider))
     rag_default_model = (
         ""
@@ -222,6 +222,9 @@ def load_inference_config(path: Path | None = None) -> InferenceConfig:
         if chat_provider == "openai"
         else _BEDROCK_CHAT_DEFAULT_MODEL
         if chat_provider == "bedrock"
+        # Informational only: the model is chosen in the Playlab app settings.
+        else "claude-haiku-5-5"
+        if chat_provider == "playlab"
         else model
     )
 

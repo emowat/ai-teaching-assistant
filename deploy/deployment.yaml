@@ -277,8 +277,6 @@ rag_eng_ecs:
 
   # Secrets injected at task launch.
   secret_arn_map:
-    COHERE_API_KEY: "arn:aws:secretsmanager:us-east-1:976193240866:secret:codingrabbit/rag_eng/COHERE_API_KEY-GMdI8x"
-    OPENAI_API_KEY: "arn:aws:secretsmanager:us-east-1:976193240866:secret:codingrabbit/rag_eng/OPENAI_API_KEY-xH5rH5"
     QDRANT_API_KEY: "arn:aws:secretsmanager:us-east-1:976193240866:secret:codingrabbit/rag_eng/QDRANT_API_KEY-S8nEwS"
     COURSE_REGISTRY_DATABASE_URL: "arn:aws:secretsmanager:us-east-1:976193240866:secret:codingrabbit/rag_eng/COURSE_REGISTRY_DATABASE_URL-4fLsHS"
 
@@ -330,7 +328,6 @@ evaluation_worker:
   # and optional OpenAI judge path.
   # Built separately with ./deploy/scripts/build-evaluation-worker-image.sh
   secret_arn_map:
-    OPENAI_API_KEY: "arn:aws:secretsmanager:us-east-1:976193240866:secret:codingrabbit/rag_eng/OPENAI_API_KEY-xH5rH5"
     COURSE_REGISTRY_DATABASE_URL: "arn:aws:secretsmanager:us-east-1:976193240866:secret:codingrabbit/rag_eng/COURSE_REGISTRY_DATABASE_URL-4fLsHS"
 
 # -----------------------------------------------------------------------------
