@@ -20,6 +20,31 @@ def _source_line(doc: RetrievedDoc) -> str:
     return f"\nSource: {url}" if url else ""
 
 
+def format_syllabus_block(
+    syllabus_matrix: str | None,
+    query_week: int,
+    syllabus: RetrievedDoc | None = None,
+) -> str:
+    """Render the [Retrieved_Syllabus_Chunk] for one week ("" if no syllabus source)."""
+    if syllabus_matrix:
+        import json
+        try:
+            matrix = json.loads(syllabus_matrix)
+            week_key = str(query_week)
+            if week_key in matrix:
+                week_data = matrix[week_key]
+                allowed = week_data.get("allowed", "")
+                forbidden = week_data.get("forbidden", "")
+                return f"[Retrieved_Syllabus_Chunk]\nWeek {query_week} Allowed topics: {allowed}\nWeek {query_week} Forbidden topics: {forbidden}"
+            return f"[Retrieved_Syllabus_Chunk]\nNo specific topics defined for week {query_week}."
+        except Exception:
+            # Fallback if invalid JSON
+            return f"[Retrieved_Syllabus_Chunk]\n{syllabus_matrix}"
+    if syllabus:
+        return f"[Retrieved_Syllabus_Chunk]\n{syllabus.content}"
+    return ""
+
+
 def assemble_context(
     syllabus: RetrievedDoc | None,
     rules: list[RetrievedDoc],
@@ -43,23 +68,9 @@ def assemble_context(
     chunks: list[str] = []
 
     # Syllabus — directly from Postgres matrix string now
-    if syllabus_matrix:
-        import json
-        try:
-            matrix = json.loads(syllabus_matrix)
-            week_key = str(query_week)
-            if week_key in matrix:
-                week_data = matrix[week_key]
-                allowed = week_data.get("allowed", "")
-                forbidden = week_data.get("forbidden", "")
-                chunks.append(f"[Retrieved_Syllabus_Chunk]\nWeek {query_week} Allowed topics: {allowed}\nWeek {query_week} Forbidden topics: {forbidden}")
-            else:
-                chunks.append(f"[Retrieved_Syllabus_Chunk]\nNo specific topics defined for week {query_week}.")
-        except Exception as e:
-            # Fallback if invalid JSON
-            chunks.append(f"[Retrieved_Syllabus_Chunk]\n{syllabus_matrix}")
-    elif syllabus:
-        chunks.append(f"[Retrieved_Syllabus_Chunk]\n{syllabus.content}")
+    syllabus_block = format_syllabus_block(syllabus_matrix, query_week, syllabus)
+    if syllabus_block:
+        chunks.append(syllabus_block)
 
     # Style Guide
     if style_guide:

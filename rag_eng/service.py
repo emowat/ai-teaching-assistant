@@ -36,6 +36,15 @@ from rag_eng.llm_clients import (
     invoke_openai_chat_completion,
 )
 from rag_eng.prompts import get_system_prompt
+from rag_eng.playlab_generation import (
+    PlaylabTurn,
+    build_playlab_message,
+    build_session_context,
+    generate_playlab_reply,
+    stream_playlab_reply,
+)
+from rag.context_assembler import format_syllabus_block
+from rag_eng.playlab_client import playlab_configured
 from rag_eng.telemetry import (
     SessionOrchestrationState,
     TraceContext,
@@ -1176,6 +1185,8 @@ def get_health() -> HealthResponse:
             return openai_configured
         if provider == "bedrock":
             return bedrock_configured
+        if provider == "playlab":
+            return playlab_configured()
         if provider in {"ollama", "sagemaker"}:
             return True
         return False
@@ -1196,6 +1207,8 @@ def get_health() -> HealthResponse:
             message = "OpenAI API key is not configured."
         elif runtime.chat.provider == "bedrock":
             message = "AWS credentials for Bedrock are not configured."
+        elif runtime.chat.provider == "playlab":
+            message = "PLAYLAB_API_KEY / PLAYLAB_PROJECT_ID are not configured."
 
     course_registry_ready = (
         not course_registry_status.configured or course_registry_status.reachable
@@ -1365,8 +1378,20 @@ async def _generate_llm_response(
     settings,
     stream,
     model_name,
+    playlab_turn: PlaylabTurn | None = None,
 ) -> tuple[str, list[dict], Any | None]:
     api_messages = list(base_api_messages)
+
+    if chat_route.provider == "playlab":
+        if playlab_turn is None:
+            raise ValueError("playlab provider requires a PlaylabTurn")
+        latest = api_messages[-1]["content"] if api_messages else ""
+        # Retries send only the correction note: Playlab already stores the rejected draft.
+        message = latest if playlab_turn.attempt > 0 else build_playlab_message(rag_context, latest)
+        if stream:
+            return "", api_messages, stream_playlab_reply(playlab_turn, message)
+        text = await generate_playlab_reply(playlab_turn, message)
+        return text, api_messages, None
 
     if chat_route.provider == "sagemaker":
         from rag_eng.prompt_budget import assemble_sagemaker_messages
@@ -1419,6 +1444,55 @@ async def _generate_llm_response(
 
 
     raise ValueError(f"Unknown chat provider: {chat_route.provider}")
+
+
+def _build_playlab_turn(
+    *,
+    chat_route,
+    query,
+    retrieval_result,
+    instructional_context: dict | None,
+    session_id: str | None,
+    user_key: str | None,
+    conversation_history: list[dict],
+) -> PlaylabTurn | None:
+    """Per-turn Playlab state; None for every other provider."""
+    if chat_route.provider != "playlab":
+        return None
+    teaching_plan_block = ""
+    if instructional_context and instructional_context.get("applied"):
+        teaching_plan_block = str(instructional_context.get("prompt_block") or "")
+    return PlaylabTurn(
+        user_key=str(user_key or "anonymous"),
+        session_id=session_id,
+        is_new_chat=not conversation_history,
+        mode=str(query.mode.value),
+        history=list(conversation_history),
+        session_context=build_session_context(
+            week=query.week,
+            syllabus_block=format_syllabus_block(
+                getattr(query, "syllabus_matrix", None),
+                query.week,
+                getattr(retrieval_result, "syllabus", None),
+            ),
+            style_guide=getattr(query, "style_guide", None),
+            teaching_plan_block=teaching_plan_block,
+        ),
+    )
+
+
+def _playlab_attempt(turn: PlaylabTurn | None, attempt_idx: int) -> PlaylabTurn | None:
+    if turn is not None:
+        turn.attempt = attempt_idx
+    return turn
+
+
+def _attempt_extras(raw_generation: str, turn: PlaylabTurn | None) -> dict[str, Any]:
+    """Extra per-attempt telemetry: whether the CoT block came back, plus Playlab ids."""
+    extras: dict[str, Any] = {"analysis_present": "<analysis>" in (raw_generation or "")}
+    if turn is not None:
+        extras["provider_metadata"] = dict(turn.meta)
+    return extras
 
 
 async def run_chat(
@@ -1613,6 +1687,15 @@ async def run_chat(
         generation_attempts = []
         base_api_messages = [m for m in messages if m.get("role") != "system"]
         max_attempts = 2
+        playlab_turn = _build_playlab_turn(
+            chat_route=chat_route,
+            query=query,
+            retrieval_result=retrieval_result,
+            instructional_context=instructional_context,
+            session_id=session_id,
+            user_key=app_user_id or user_sub,
+            conversation_history=conversation_history,
+        )
 
         if stream:
             async def _streaming_generator():
@@ -1639,6 +1722,7 @@ async def run_chat(
                         settings,
                         True,
                         telemetry_model_name,
+                        playlab_turn=_playlab_attempt(playlab_turn, attempt_idx),
                     )
 
                     raw_text_acc = ""
@@ -1668,6 +1752,10 @@ async def run_chat(
                                 break
 
                         yield chunk_bytes
+
+                    if mid_stream_blocked and hasattr(stream_result, "aclose"):
+                        # Release the upstream connection now rather than at GC time.
+                        await stream_result.aclose()
 
                     # Stream finished (or broken by mid-stream block), run post-processing
                     answer, guardrail = _apply_pipeline_guardrails(
@@ -1709,6 +1797,7 @@ async def run_chat(
                         "llm_latency_ms": llm_latency_ms,
                         "raw_generation": raw_text_acc,
                         "guardrail": guardrail,
+                        **_attempt_extras(raw_text_acc, playlab_turn),
                     })
 
                     # If code leakage was detected, retry over the same stream connection
@@ -1786,6 +1875,7 @@ async def run_chat(
                     settings,
                     False,
                     telemetry_model_name,
+                    playlab_turn=_playlab_attempt(playlab_turn, attempt_idx),
                 )
 
                 if stream_result:
@@ -1825,6 +1915,7 @@ async def run_chat(
                     "llm_latency_ms": llm_latency_ms,
                     "raw_generation": raw_text,
                     "guardrail": guardrail,
+                    **_attempt_extras(raw_text, playlab_turn),
                 })
 
                 if guardrail.get("action") == "replace" and guardrail.get("violation_type") == "code_leakage" and attempt_idx < max_attempts - 1:

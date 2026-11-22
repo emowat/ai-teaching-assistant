@@ -386,6 +386,16 @@ def invoke_sagemaker_direct(prompt: str, settings: Settings | None = None) -> tu
     return text, f"Completed in {elapsed:.1f}s via {settings.sagemaker_endpoint}"
 
 
+async def _invoke_playlab_once(prompt: str) -> str:
+    """One throwaway Playlab conversation; not recorded in playlab_conversations."""
+    from rag_eng.playlab_client import AsyncPlaylabClient
+
+    async with AsyncPlaylabClient() as client:
+        conversation = await client.create_conversation()
+        result = await client.send_message(conversation["id"], prompt)
+    return result.text
+
+
 def invoke_foundation_model_direct(
     prompt: str,
     settings: Settings | None = None,
@@ -423,7 +433,10 @@ def invoke_foundation_model_direct(
 
     started = time.time()
     try:
-        if route.provider == "bedrock":
+        if route.provider == "playlab":
+            # Playlab ignores our system message: the app's own instructions apply.
+            text = asyncio.run(_invoke_playlab_once(prompt))
+        elif route.provider == "bedrock":
             config = BedrockChatConfig(
                 region=settings.aws_region,
                 model_id=route.model,

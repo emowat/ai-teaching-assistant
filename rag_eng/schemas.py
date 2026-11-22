@@ -967,7 +967,7 @@ class IndexRebuildResponse(BaseModel):
 class ModelRouteConfig(BaseModel):
     """Non-secret provider/model pair saved by the admin UI."""
 
-    provider: Literal["cohere", "openai", "ollama", "sagemaker", "bedrock"]
+    provider: Literal["cohere", "openai", "ollama", "sagemaker", "bedrock", "playlab"]
     model: str = Field(default="", max_length=200)
 
     @model_validator(mode="after")
@@ -1003,6 +1003,12 @@ class AdminLlmConfigUpdate(BaseModel):
     chat: ModelRouteConfig
     openai_api_key: str | None = Field(default=None, max_length=2000)
     openai_base_url: str | None = Field(default=None, max_length=500)
+
+    @model_validator(mode="after")
+    def _playlab_chat_only(self) -> "AdminLlmConfigUpdate":
+        if self.rag.provider == "playlab":
+            raise ValueError("playlab can only be used as the chat provider, not for RAG")
+        return self
 
 
 class RestartResponse(BaseModel):
